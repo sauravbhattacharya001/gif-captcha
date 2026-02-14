@@ -27,6 +27,16 @@ GPT-4 (at the time of testing) was unable to process animated GIF content, givin
 
 This demonstrates that GIF-based CAPTCHAs requiring comprehension of animated visual narratives could serve as an effective human-verification mechanism against LLMs that lack video/animation understanding.
 
+### 2025 Update: Multimodal Models Change the Landscape
+
+Since this case study was conducted, multimodal LLMs (GPT-4V, GPT-4o, Claude 3.5, Gemini 1.5 Pro) have gained the ability to process images — including individual GIF frames. While full animation comprehension (understanding temporal sequences across frames) remains more challenging, these models can now:
+
+- Describe static frames extracted from GIFs
+- Infer likely motion from visual context clues
+- Identify objects, people, and scenes in animated content
+
+This means GIF-based CAPTCHAs that rely solely on visual recognition are **no longer sufficient** as a human-verification mechanism. However, CAPTCHAs requiring understanding of *timing*, *narrative surprise*, and *comedic subversion* in animations may still pose challenges for AI systems that process frames independently rather than as a continuous sequence.
+
 ## License
 
 [MIT](LICENSE)

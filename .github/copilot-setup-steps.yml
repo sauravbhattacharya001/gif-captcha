@@ -1,0 +1,31 @@
+# Copilot Coding Agent Setup Steps
+# This workflow configures the environment for GitHub Copilot coding agents
+# (Claude, Codex, etc.) to autonomously work on issues and PRs.
+
+name: "Copilot Setup Steps"
+
+on: workflow_dispatch
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Validate HTML
+      - name: Install HTML validation tools
+        run: |
+          npm install -g htmlhint
+          npm install -g csslint
+
+      # Validate project files
+      - name: Validate HTML
+        run: htmlhint index.html || true
+
+      - name: List project structure
+        run: |
+          echo "=== Project Structure ==="
+          find . -not -path './.git/*' -type f | head -50
+          echo ""
+          echo "=== index.html size ==="
+          wc -l index.html

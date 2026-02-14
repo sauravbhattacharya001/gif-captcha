@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GIF CAPTCHA Case Study</title>
+    <style>
+        :root {
+            --bg: #0d1117;
+            --surface: #161b22;
+            --border: #30363d;
+            --text: #e6edf3;
+            --muted: #8b949e;
+            --accent: #58a6ff;
+            --green: #3fb950;
+            --red: #f85149;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            padding: 2rem;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        h1 { font-size: 2rem; margin-bottom: 0.5rem; }
+        h2 { font-size: 1.4rem; margin: 2rem 0 1rem; color: var(--accent); }
+        h3 { font-size: 1.1rem; margin: 1.5rem 0 0.5rem; }
+        p { margin-bottom: 1rem; color: var(--muted); }
+        a { color: var(--accent); text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        .subtitle { color: var(--muted); font-size: 1rem; margin-bottom: 2rem; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0 2rem;
+            font-size: 0.9rem;
+        }
+        th, td {
+            padding: 0.75rem;
+            text-align: left;
+            border: 1px solid var(--border);
+        }
+        th { background: var(--surface); color: var(--text); font-weight: 600; }
+        td { color: var(--muted); }
+        tr:nth-child(even) td { background: rgba(22, 27, 34, 0.5); }
+        .finding {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin: 1.5rem 0;
+        }
+        .finding.success { border-left: 4px solid var(--green); }
+        .finding.warning { border-left: 4px solid var(--red); }
+        .badge {
+            display: inline-block;
+            padding: 0.2rem 0.6rem;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .badge-pass { background: rgba(63, 185, 80, 0.2); color: var(--green); }
+        .badge-fail { background: rgba(248, 81, 73, 0.2); color: var(--red); }
+        footer {
+            margin-top: 3rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid var(--border);
+            color: var(--muted);
+            font-size: 0.85rem;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎞️ GIF CAPTCHA Case Study</h1>
+    <p class="subtitle">Can GIF-based CAPTCHAs distinguish humans from AI?</p>
+
+    <p>This case study explores whether animated GIFs — specifically those featuring unexpected plot twists — can serve as effective CAPTCHA tests against large language models.</p>
+
+    <h2>Methodology</h2>
+    <p>GPT-4 was given 10 GIFs, each containing an unexpected event, with the instruction: <em>"describe the unexpected event."</em> Human responses were collected for comparison.</p>
+
+    <h2>Results</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>GIF</th>
+                <th>Human Response</th>
+                <th>GPT-4 Response</th>
+                <th>Result</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>1</td>
+                <td><a href="https://tenor.com/view/unexpected-plot-twist-twist-plot-duel-gif-5053664">Duel plot twist</a></td>
+                <td>One person shot BANG and the other shot BOOM.</td>
+                <td>Cannot view animations...</td>
+                <td><span class="badge badge-pass">CAPTCHA PASS</span></td>
+            </tr>
+            <tr>
+                <td>2</td>
+                <td><a href="https://i.gifer.com/G9lg.gif">Rappers</a></td>
+                <td>3 rappers rapping and then one roller skates away.</td>
+                <td>Cannot view animations...</td>
+                <td><span class="badge badge-pass">CAPTCHA PASS</span></td>
+            </tr>
+            <tr>
+                <td>3</td>
+                <td><a href="https://funnyordie.tumblr.com/post/102557790934">Skateboarder</a></td>
+                <td>Skateboarder does a trick and flies up in the air.</td>
+                <td>Cannot view animations...</td>
+                <td><span class="badge badge-pass">CAPTCHA PASS</span></td>
+            </tr>
+            <tr>
+                <td>4</td>
+                <td><a href="https://www.pinterest.jp/pin/682225043525224271/">Banana mascot</a></td>
+                <td>Banana mascot dances; security guard takes props and does a better dance.</td>
+                <td>Cannot view animations...</td>
+                <td><span class="badge badge-pass">CAPTCHA PASS</span></td>
+            </tr>
+            <tr>
+                <td>5</td>
+                <td>Tic Tac Toe dog</td>
+                <td>Shiba Inu wins at Tic Tac Toe against a human.</td>
+                <td>Cannot view animations...</td>
+                <td><span class="badge badge-pass">CAPTCHA PASS</span></td>
+            </tr>
+            <tr>
+                <td>6</td>
+                <td>Parent dog</td>
+                <td>Person preparing puppy for cooking gets stopped by parent dog who volunteers instead.</td>
+                <td>Cannot view animations...</td>
+                <td><span class="badge badge-pass">CAPTCHA PASS</span></td>
+            </tr>
+            <tr>
+                <td>7</td>
+                <td>Mirror illusion</td>
+                <td>Hand seems to touch its reflection, but it's both hands of the same person.</td>
+                <td>Cannot view animations...</td>
+                <td><span class="badge badge-pass">CAPTCHA PASS</span></td>
+            </tr>
+            <tr>
+                <td>8</td>
+                <td>Highway drift</td>
+                <td>Car does a 180-degree drift and back to continue normally.</td>
+                <td>Cannot view animations...</td>
+                <td><span class="badge badge-pass">CAPTCHA PASS</span></td>
+            </tr>
+            <tr>
+                <td>9</td>
+                <td>Road rage hug</td>
+                <td>Road rage encounter unexpectedly ends with a friendly hug.</td>
+                <td>Cannot view animations...</td>
+                <td><span class="badge badge-pass">CAPTCHA PASS</span></td>
+            </tr>
+            <tr>
+                <td>10</td>
+                <td>Birthday cake</td>
+                <td>Girl's face smashed into cake, but emerges clean — had a paper plate cover.</td>
+                <td>Cannot view animations...</td>
+                <td><span class="badge badge-pass">CAPTCHA PASS</span></td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div class="finding success">
+        <h3>Key Finding (2023)</h3>
+        <p>GPT-4 was unable to process animated GIF content, responding identically to every test: <em>"I currently cannot view animations, including animated GIFs."</em> GIF-based CAPTCHAs requiring comprehension of animated visual narratives were effective against LLMs.</p>
+        <p><strong>Score: 10/10 CAPTCHAs blocked GPT-4</strong></p>
+    </div>
+
+    <div class="finding warning">
+        <h3>2025 Update: Multimodal Models Change the Landscape</h3>
+        <p>Since this study, multimodal LLMs (GPT-4V, GPT-4o, Claude 3.5, Gemini 1.5 Pro) can now process images — including individual GIF frames. They can describe static frames, infer motion from context, and identify objects and scenes.</p>
+        <p>GIF-based CAPTCHAs relying solely on visual recognition are <strong>no longer sufficient</strong>. However, CAPTCHAs requiring understanding of <em>timing</em>, <em>narrative surprise</em>, and <em>comedic subversion</em> may still challenge AI systems that process frames independently.</p>
+    </div>
+
+    <footer>
+        <p>
+            <a href="https://github.com/sauravbhattacharya001/gif-captcha">View on GitHub</a> · 
+            Licensed under <a href="https://opensource.org/licenses/MIT">MIT</a>
+        </p>
+    </footer>
+</body>
+</html>

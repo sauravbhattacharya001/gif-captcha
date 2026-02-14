@@ -1,0 +1,49 @@
+name: 🔬 Research Question
+description: Propose a research question or experiment related to GIF-based CAPTCHAs
+title: "[Research]: "
+labels: ["research"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This project is a research case study. Use this template to propose new experiments, test hypotheses, or suggest models to benchmark.
+
+  - type: textarea
+    id: hypothesis
+    attributes:
+      label: Research Question / Hypothesis
+      description: What are you trying to test or find out?
+      placeholder: "Can multimodal models like GPT-4o describe narrative twists in GIFs with >50% accuracy?"
+    validations:
+      required: true
+
+  - type: textarea
+    id: methodology
+    attributes:
+      label: Proposed Methodology
+      description: How would you test this?
+      placeholder: |
+        1. Select 10 GIFs with narrative twists
+        2. Feed to GPT-4o via API with video input
+        3. Compare descriptions against human baseline
+    validations:
+      required: true
+
+  - type: textarea
+    id: models
+    attributes:
+      label: Models / Tools Involved
+      description: Which LLMs, tools, or APIs would be used?
+      placeholder: GPT-4o, Claude 3.5, Gemini 2.0 Pro
+
+  - type: textarea
+    id: expected_outcome
+    attributes:
+      label: Expected Outcome
+      description: What do you predict will happen?
+
+  - type: textarea
+    id: references
+    attributes:
+      label: References
+      description: Any papers, articles, or related work.

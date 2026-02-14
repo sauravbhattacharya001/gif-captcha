@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src https: data:; script-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'self'; form-action 'none';">
+    <meta name="referrer" content="no-referrer">
+    <title>GIF CAPTCHA — Interactive Demo</title>
+    <style>
+        :root {
+            --bg: #0d1117;
+            --surface: #161b22;
+            --surface-hover: #1c2129;
+            --border: #30363d;
+            --text: #e6edf3;
+            --muted: #8b949e;
+            --accent: #58a6ff;
+            --accent-hover: #79b8ff;
+            --green: #3fb950;
+            --green-bg: rgba(63, 185, 80, 0.15);
+            --red: #f85149;
+            --red-bg: rgba(248, 81, 73, 0.15);
+            --yellow: #d29922;
+            --yellow-bg: rgba(210, 153, 34, 0.15);
+            --purple: #bc8cff;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+
+        /* Header */
+        .header {
+            text-align: center;
+            padding: 2.5rem 1.5rem 1.5rem;
+            border-bottom: 1px solid var(--border);
+        }
+        .header h1 { font-size: 2rem; margin-bottom: 0.3rem; }
+        .header .subtitle { color: var(--muted); font-size: 1rem; }
+        .header .back-link {
+            display: inline-block;
+            margin-top: 0.8rem;
+            color: var(--accent);
+            text-decoration: none;
+            font-size: 0.85rem;
+        }
+        .header .back-link:hover { text-decoration: underline; }
+
+        /* Progress bar */
+        .progress-container {
+            max-width: 700px;
+            margin: 0 auto;
+            padding: 1.5rem 1.5rem 0;
+        }
+        .progress-bar-bg {
+            width: 100%;
+            height: 6px;
+            background: var(--border);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        .progress-bar-fill {
+            height: 100%;
+            background: var(--accent);
+            border-radius: 3px;
+            transition: width 0.4s ease;
+        }
+        .progress-label {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 0.5rem;
+            font-size: 0.8rem;
+            color: var(--muted);
+        }
+
+        /* Main content */
+        .container {
+            max-width: 700px;
+            margin: 0 auto;
+            padding: 1.5rem;
+        }
+
+        /* Intro screen */
+        .intro {
+            text-align: center;
+            padding: 3rem 1rem;
+        }
+        .intro h2 { font-size: 1.5rem; margin-bottom: 1rem; }
+        .intro p { color: var(--muted); margin-bottom: 1.5rem; max-width: 500px; margin-left: auto; margin-right: auto; }
+        .intro .how-it-works {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.5rem;
+            text-align: left;
+            margin: 1.5rem 0 2rem;
+        }
+        .intro .how-it-works h3 { font-size: 1rem; margin-bottom: 0.8rem; }
+        .intro .how-it-works ol {
+            padding-left: 1.5rem;
+            color: var(--muted);
+        }
+        .intro .how-it-works li { margin-bottom: 0.4rem; }
+
+        /* Buttons */
+        .btn {
+            display: inline-block;
+            padding: 0.7rem 2rem;
+            border-radius: 8px;
+            border: none;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .btn-primary {
+            background: var(--accent);
+            color: #fff;
+        }
+        .btn-primary:hover { background: var(--accent-hover); }
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .btn-secondary {
+            background: var(--surface);
+            color: var(--text);
+            border: 1px solid var(--border);
+        }
+        .btn-secondary:hover { background: var(--surface-hover); }
+        .btn-small {
+            padding: 0.4rem 1rem;
+            font-size: 0.85rem;
+        }
+
+        /* Challenge card */
+        .challenge {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+            margin-bottom: 1.5rem;
+        }
+        .challenge-header {
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .challenge-header .label {
+            font-size: 0.85rem;
+            color: var(--muted);
+        }
+        .challenge-header .number {
+            font-weight: 700;
+            color: var(--accent);
+        }
+        .gif-container {
+            width: 100%;
+            min-height: 200px;
+            max-height: 400px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #000;
+            position: relative;
+        }
+        .gif-container img {
+            max-width: 100%;
+            max-height: 400px;
+            object-fit: contain;
+        }
+        .gif-container .gif-loading {
+            color: var(--muted);
+            font-size: 0.9rem;
+        }
+        .gif-container .gif-error {
+            color: var(--muted);
+            font-size: 0.9rem;
+            text-align: center;
+            padding: 2rem;
+        }
+        .gif-container .gif-error a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+        .gif-container .gif-error a:hover { text-decoration: underline; }
+        .challenge-prompt {
+            padding: 1.25rem 1.5rem;
+            border-top: 1px solid var(--border);
+        }
+        .challenge-prompt .prompt-text {
+            font-size: 0.95rem;
+            font-weight: 600;
+            margin-bottom: 0.4rem;
+        }
+        .challenge-prompt .prompt-hint {
+            font-size: 0.8rem;
+            color: var(--muted);
+        }
+
+        /* Input area */
+        .input-area {
+            margin-bottom: 1.5rem;
+        }
+        .input-area textarea {
+            width: 100%;
+            min-height: 80px;
+            padding: 0.8rem 1rem;
+            background: var(--surface);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 0.95rem;
+            line-height: 1.5;
+            resize: vertical;
+            transition: border-color 0.2s;
+        }
+        .input-area textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+        .input-area textarea::placeholder { color: var(--muted); }
+        .input-actions {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 0.8rem;
+        }
+        .char-count {
+            font-size: 0.75rem;
+            color: var(--muted);
+        }
+
+        /* Reveal panel */
+        .reveal {
+            border-radius: 10px;
+            overflow: hidden;
+            margin-bottom: 1.5rem;
+            animation: fadeIn 0.4s ease;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .reveal-section {
+            padding: 1rem 1.25rem;
+            border: 1px solid var(--border);
+            margin-bottom: -1px;
+        }
+        .reveal-section:first-child { border-radius: 10px 10px 0 0; }
+        .reveal-section:last-child { border-radius: 0 0 10px 10px; }
+        .reveal-section.user-answer { background: var(--surface); }
+        .reveal-section.human-answer { background: var(--green-bg); border-color: rgba(63,185,80,0.3); }
+        .reveal-section.ai-answer { background: var(--red-bg); border-color: rgba(248,81,73,0.3); }
+        .reveal-label {
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.3rem;
+        }
+        .reveal-section.user-answer .reveal-label { color: var(--purple); }
+        .reveal-section.human-answer .reveal-label { color: var(--green); }
+        .reveal-section.ai-answer .reveal-label { color: var(--red); }
+        .reveal-text {
+            font-size: 0.9rem;
+            color: var(--text);
+            font-style: italic;
+        }
+        .reveal-verdict {
+            text-align: center;
+            padding: 0.8rem;
+            font-weight: 600;
+            font-size: 0.9rem;
+            border: 1px solid var(--border);
+            border-radius: 0 0 10px 10px;
+        }
+
+        .next-actions {
+            text-align: center;
+            margin: 1.5rem 0;
+        }
+
+        /* Results screen */
+        .results {
+            text-align: center;
+            padding: 2rem 0;
+        }
+        .results h2 { font-size: 1.8rem; margin-bottom: 0.5rem; }
+        .results .score-display {
+            font-size: 4rem;
+            font-weight: 800;
+            margin: 1.5rem 0;
+            line-height: 1;
+        }
+        .results .score-display .score-label {
+            display: block;
+            font-size: 0.9rem;
+            font-weight: 400;
+            color: var(--muted);
+            margin-top: 0.3rem;
+        }
+        .results-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin: 2rem 0;
+            text-align: left;
+        }
+        .result-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.25rem;
+        }
+        .result-card .card-label {
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--muted);
+            margin-bottom: 0.4rem;
+        }
+        .result-card .card-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+        .results-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1.5rem 0;
+            font-size: 0.85rem;
+        }
+        .results-table th, .results-table td {
+            padding: 0.6rem 0.8rem;
+            text-align: left;
+            border: 1px solid var(--border);
+        }
+        .results-table th { background: var(--surface); font-weight: 600; }
+        .results-table td { color: var(--muted); }
+        .results-insight {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin: 1.5rem 0;
+            text-align: left;
+        }
+        .results-insight h3 { font-size: 1rem; margin-bottom: 0.5rem; color: var(--accent); }
+        .results-insight p { color: var(--muted); font-size: 0.9rem; }
+
+        /* Skip button */
+        .skip-link {
+            color: var(--muted);
+            font-size: 0.8rem;
+            cursor: pointer;
+            background: none;
+            border: none;
+            text-decoration: underline;
+            font-family: inherit;
+        }
+        .skip-link:hover { color: var(--text); }
+
+        /* Hidden */
+        .hidden { display: none !important; }
+
+        /* Responsive */
+        @media (max-width: 600px) {
+            .header h1 { font-size: 1.5rem; }
+            .results .score-display { font-size: 3rem; }
+            .results-grid { grid-template-columns: 1fr; }
+            .container { padding: 1rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🎞️ GIF CAPTCHA Demo</h1>
+        <p class="subtitle">Can <em>you</em> prove you're human?</p>
+        <a href="index.html" class="back-link">← Back to Case Study</a>
+    </div>
+
+    <div class="progress-container hidden" id="progressContainer">
+        <div class="progress-bar-bg">
+            <div class="progress-bar-fill" id="progressFill" style="width: 0%"></div>
+        </div>
+        <div class="progress-label">
+            <span id="progressText">Challenge 1 of 10</span>
+            <span id="scoreText">Score: 0</span>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- Intro screen -->
+        <div id="introScreen" class="intro">
+            <h2>Think You Can Beat GPT-4?</h2>
+            <p>In 2023, we tested whether GPT-4 could describe unexpected events in animated GIFs. It scored 0/10. Let's see how you do.</p>
+            <div class="how-it-works">
+                <h3>📋 How it works</h3>
+                <ol>
+                    <li>You'll see 10 animated GIFs, each with an unexpected twist</li>
+                    <li>Describe what makes it surprising or unexpected</li>
+                    <li>After each answer, see how humans and GPT-4 responded</li>
+                    <li>Get your final "humanity score" at the end</li>
+                </ol>
+            </div>
+            <p style="font-size: 0.85rem;">⏱️ Takes about 3–5 minutes</p>
+            <button class="btn btn-primary" onclick="startDemo()">Start the Challenge</button>
+        </div>
+
+        <!-- Challenge screen -->
+        <div id="challengeScreen" class="hidden">
+            <div class="challenge">
+                <div class="challenge-header">
+                    <span class="label">Challenge <span class="number" id="challengeNumber">1</span></span>
+                    <span class="label" id="gifTitle"></span>
+                </div>
+                <div class="gif-container" id="gifContainer">
+                    <span class="gif-loading">Loading GIF...</span>
+                </div>
+                <div class="challenge-prompt">
+                    <div class="prompt-text">🔍 Describe the unexpected event in this GIF</div>
+                    <div class="prompt-hint">What happens that you wouldn't expect? Be specific.</div>
+                </div>
+            </div>
+
+            <div class="input-area" id="inputArea">
+                <textarea
+                    id="userAnswer"
+                    placeholder="I see something unexpected happening... describe it here"
+                    maxlength="500"
+                    autofocus
+                ></textarea>
+                <div class="input-actions">
+                    <span class="char-count"><span id="charCount">0</span>/500</span>
+                    <div>
+                        <button class="skip-link" onclick="skipChallenge()">Skip this one</button>
+                        <button class="btn btn-primary btn-small" id="submitBtn" onclick="submitAnswer()" disabled>Submit Answer</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="revealPanel" class="hidden">
+                <div class="reveal">
+                    <div class="reveal-section user-answer">
+                        <div class="reveal-label">👤 Your Answer</div>
+                        <div class="reveal-text" id="revealUser"></div>
+                    </div>
+                    <div class="reveal-section human-answer">
+                        <div class="reveal-label">✅ Human Baseline</div>
+                        <div class="reveal-text" id="revealHuman"></div>
+                    </div>
+                    <div class="reveal-section ai-answer">
+                        <div class="reveal-label">🤖 GPT-4's Answer</div>
+                        <div class="reveal-text" id="revealAI"></div>
+                    </div>
+                </div>
+                <div class="next-actions">
+                    <button class="btn btn-primary" id="nextBtn" onclick="nextChallenge()">Next Challenge →</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Results screen -->
+        <div id="resultsScreen" class="hidden results">
+            <h2 id="resultsTitle"></h2>
+            <div class="score-display" id="resultsScore">
+                <span id="scoreValue"></span>
+                <span class="score-label">Humanity Score</span>
+            </div>
+
+            <div class="results-grid">
+                <div class="result-card">
+                    <div class="card-label">You Answered</div>
+                    <div class="card-value" id="answeredCount"></div>
+                </div>
+                <div class="result-card">
+                    <div class="card-label">Skipped</div>
+                    <div class="card-value" id="skippedCount"></div>
+                </div>
+                <div class="result-card">
+                    <div class="card-label">GPT-4 Score</div>
+                    <div class="card-value" style="color: var(--red);">0/10</div>
+                </div>
+                <div class="result-card">
+                    <div class="card-label">Avg Length</div>
+                    <div class="card-value" id="avgLength"></div>
+                </div>
+            </div>
+
+            <table class="results-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>GIF</th>
+                        <th>Your Answer</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody id="resultsTableBody"></tbody>
+            </table>
+
+            <div class="results-insight">
+                <h3>💡 What This Means</h3>
+                <p id="resultsInsight"></p>
+            </div>
+
+            <div style="margin-top: 2rem;">
+                <button class="btn btn-primary" onclick="restartDemo()" style="margin-right: 0.5rem;">Try Again</button>
+                <a href="index.html" class="btn btn-secondary" style="text-decoration: none;">View Full Study</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Challenge data — sourced from the original study
+        var challenges = [
+            {
+                id: 1,
+                title: "Duel Plot Twist",
+                gifUrl: "https://media1.tenor.com/m/g50YYgVxFo4AAAAC/unexpected-plot-twist.gif",
+                sourceUrl: "https://tenor.com/view/unexpected-plot-twist-twist-plot-duel-gif-5053664",
+                humanAnswer: "One person shot BANG and the other shot BOOM — both had trick guns.",
+                aiAnswer: "I currently cannot view animations, including animated GIFs."
+            },
+            {
+                id: 2,
+                title: "Rappers",
+                gifUrl: "https://i.gifer.com/G9lg.gif",
+                sourceUrl: "https://i.gifer.com/G9lg.gif",
+                humanAnswer: "3 rappers rapping and then one roller skates away.",
+                aiAnswer: "I currently cannot view animations, including animated GIFs."
+            },
+            {
+                id: 3,
+                title: "Skateboarder",
+                gifUrl: "https://media.giphy.com/media/l0MYDnCqzU2MQj7OM/giphy.gif",
+                sourceUrl: "https://funnyordie.tumblr.com/post/102557790934",
+                humanAnswer: "Skateboarder does a trick and flies up in the air.",
+                aiAnswer: "I currently cannot view animations, including animated GIFs."
+            },
+            {
+                id: 4,
+                title: "Banana Mascot",
+                gifUrl: "https://media.giphy.com/media/KYElw07kzDspaBOwf9/giphy.gif",
+                sourceUrl: "https://www.pinterest.jp/pin/682225043525224271/",
+                humanAnswer: "Banana mascot dances; security guard takes props and does a better dance.",
+                aiAnswer: "I currently cannot view animations, including animated GIFs."
+            },
+            {
+                id: 5,
+                title: "Tic Tac Toe Dog",
+                gifUrl: "https://media.giphy.com/media/ZqlvCTNHpqrio/giphy.gif",
+                sourceUrl: "#",
+                humanAnswer: "Shiba Inu wins at Tic Tac Toe against a human.",
+                aiAnswer: "I currently cannot view animations, including animated GIFs."
+            },
+            {
+                id: 6,
+                title: "Parent Dog",
+                gifUrl: "https://media.giphy.com/media/xTiTnMhJTwNHChdTZS/giphy.gif",
+                sourceUrl: "#",
+                humanAnswer: "Person preparing puppy for cooking gets stopped by parent dog who volunteers instead.",
+                aiAnswer: "I currently cannot view animations, including animated GIFs."
+            },
+            {
+                id: 7,
+                title: "Mirror Illusion",
+                gifUrl: "https://media.giphy.com/media/CkKg32KdKyQjm/giphy.gif",
+                sourceUrl: "#",
+                humanAnswer: "Hand seems to touch its reflection, but it's both hands of the same person.",
+                aiAnswer: "I currently cannot view animations, including animated GIFs."
+            },
+            {
+                id: 8,
+                title: "Highway Drift",
+                gifUrl: "https://media.giphy.com/media/l2SpQRuCQzY1RXHqM/giphy.gif",
+                sourceUrl: "#",
+                humanAnswer: "Car does a 180-degree drift and back to continue normally.",
+                aiAnswer: "I currently cannot view animations, including animated GIFs."
+            },
+            {
+                id: 9,
+                title: "Road Rage Hug",
+                gifUrl: "https://media.giphy.com/media/brsEO1JayBVja/giphy.gif",
+                sourceUrl: "#",
+                humanAnswer: "Road rage encounter unexpectedly ends with a friendly hug.",
+                aiAnswer: "I currently cannot view animations, including animated GIFs."
+            },
+            {
+                id: 10,
+                title: "Birthday Cake",
+                gifUrl: "https://media.giphy.com/media/xT0xeuOy2Fcl9vDGiA/giphy.gif",
+                sourceUrl: "#",
+                humanAnswer: "Girl's face smashed into cake, but emerges clean — had a paper plate cover.",
+                aiAnswer: "I currently cannot view animations, including animated GIFs."
+            }
+        ];
+
+        var currentIndex = 0;
+        var userAnswers = [];
+        var answered = 0;
+        var skipped = 0;
+
+        function startDemo() {
+            document.getElementById("introScreen").classList.add("hidden");
+            document.getElementById("progressContainer").classList.remove("hidden");
+            document.getElementById("challengeScreen").classList.remove("hidden");
+            loadChallenge(0);
+        }
+
+        function loadChallenge(index) {
+            currentIndex = index;
+            var c = challenges[index];
+
+            document.getElementById("challengeNumber").textContent = index + 1;
+            document.getElementById("gifTitle").textContent = c.title;
+
+            // Update progress
+            document.getElementById("progressFill").style.width = ((index) / challenges.length * 100) + "%";
+            document.getElementById("progressText").textContent = "Challenge " + (index + 1) + " of " + challenges.length;
+            document.getElementById("scoreText").textContent = "Score: " + answered + "/" + (answered + skipped);
+
+            // Load GIF
+            var container = document.getElementById("gifContainer");
+            container.innerHTML = '<span class="gif-loading">Loading GIF...</span>';
+
+            var img = document.createElement("img");
+            img.alt = c.title + " GIF";
+            img.onload = function() {
+                container.innerHTML = "";
+                container.appendChild(img);
+            };
+            img.onerror = function() {
+                container.innerHTML = '<div class="gif-error">' +
+                    '<p>⚠️ GIF couldn\'t load directly.</p>' +
+                    '<p><a href="' + sanitize(c.sourceUrl) + '" target="_blank" rel="noopener noreferrer">Open GIF in new tab →</a></p>' +
+                    '<p style="margin-top:0.5rem;font-size:0.8rem;">Watch it, then come back and describe what happened.</p>' +
+                    '</div>';
+            };
+            img.src = c.gifUrl;
+
+            // Reset input
+            document.getElementById("inputArea").classList.remove("hidden");
+            document.getElementById("revealPanel").classList.add("hidden");
+            var textarea = document.getElementById("userAnswer");
+            textarea.value = "";
+            textarea.disabled = false;
+            textarea.focus();
+            document.getElementById("charCount").textContent = "0";
+            document.getElementById("submitBtn").disabled = true;
+        }
+
+        function sanitize(str) {
+            var div = document.createElement("div");
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        // Character counter and submit enable
+        document.getElementById("userAnswer").addEventListener("input", function() {
+            var len = this.value.trim().length;
+            document.getElementById("charCount").textContent = this.value.length;
+            document.getElementById("submitBtn").disabled = len < 5;
+        });
+
+        // Enter to submit (Shift+Enter for newline)
+        document.getElementById("userAnswer").addEventListener("keydown", function(e) {
+            if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                if (this.value.trim().length >= 5) {
+                    submitAnswer();
+                }
+            }
+        });
+
+        function submitAnswer() {
+            var answer = document.getElementById("userAnswer").value.trim();
+            if (answer.length < 5) return;
+
+            answered++;
+            userAnswers[currentIndex] = { text: answer, skipped: false };
+            showReveal(answer);
+        }
+
+        function skipChallenge() {
+            skipped++;
+            userAnswers[currentIndex] = { text: "(skipped)", skipped: true };
+            showReveal("(skipped)");
+        }
+
+        function showReveal(userText) {
+            var c = challenges[currentIndex];
+
+            document.getElementById("inputArea").classList.add("hidden");
+            document.getElementById("userAnswer").disabled = true;
+
+            document.getElementById("revealUser").textContent = userText;
+            document.getElementById("revealHuman").textContent = c.humanAnswer;
+            document.getElementById("revealAI").textContent = c.aiAnswer;
+
+            // Change button text for last challenge
+            if (currentIndex === challenges.length - 1) {
+                document.getElementById("nextBtn").textContent = "See Results →";
+            } else {
+                document.getElementById("nextBtn").textContent = "Next Challenge →";
+            }
+
+            document.getElementById("revealPanel").classList.remove("hidden");
+        }
+
+        function nextChallenge() {
+            if (currentIndex < challenges.length - 1) {
+                loadChallenge(currentIndex + 1);
+            } else {
+                showResults();
+            }
+        }
+
+        function showResults() {
+            document.getElementById("challengeScreen").classList.add("hidden");
+            document.getElementById("progressContainer").classList.add("hidden");
+            document.getElementById("resultsScreen").classList.remove("hidden");
+
+            var ratio = answered + "/" + challenges.length;
+            document.getElementById("scoreValue").textContent = ratio;
+            document.getElementById("answeredCount").textContent = answered + "/10";
+            document.getElementById("skippedCount").textContent = skipped + "/10";
+
+            // Average answer length
+            var totalLen = 0;
+            var answeredItems = 0;
+            for (var i = 0; i < userAnswers.length; i++) {
+                if (userAnswers[i] && !userAnswers[i].skipped) {
+                    totalLen += userAnswers[i].text.length;
+                    answeredItems++;
+                }
+            }
+            var avg = answeredItems > 0 ? Math.round(totalLen / answeredItems) : 0;
+            document.getElementById("avgLength").textContent = avg + " chars";
+
+            // Title and insight
+            var pct = answered / challenges.length;
+            if (pct === 1) {
+                document.getElementById("resultsTitle").textContent = "🎉 100% Human Verified!";
+                document.getElementById("resultsInsight").textContent =
+                    "You answered all 10 challenges — something GPT-4 completely failed at in 2023. " +
+                    "Your ability to perceive narrative surprise, timing, and comedic subversion in animated sequences " +
+                    "is exactly what separates human perception from static frame analysis. " +
+                    "Even with 2025 multimodal models, understanding WHY something is unexpected remains a deeply human skill.";
+            } else if (pct >= 0.7) {
+                document.getElementById("resultsTitle").textContent = "✅ Mostly Human!";
+                document.getElementById("resultsInsight").textContent =
+                    "You answered " + answered + " out of 10 — significantly better than GPT-4's 0/10. " +
+                    "Some GIFs were tricky or didn't load, but your overall ability to describe unexpected events " +
+                    "in animations demonstrates the kind of temporal narrative understanding that AI still struggles with.";
+            } else if (pct >= 0.4) {
+                document.getElementById("resultsTitle").textContent = "🤔 Partial Human";
+                document.getElementById("resultsInsight").textContent =
+                    "You answered " + answered + " out of 10. Still better than GPT-4 (0/10), but you skipped quite a few. " +
+                    "Were the GIFs not loading? Try opening them in a new tab. The ability to describe these events " +
+                    "is a fundamental human capability that AI models are only beginning to approximate.";
+            } else {
+                document.getElementById("resultsTitle").textContent = "🤖 Suspiciously Robot-Like...";
+                document.getElementById("resultsInsight").textContent =
+                    "Only " + answered + " out of 10 answered? GPT-4 scored 0/10, and you're not far off! " +
+                    "Just kidding — GIFs might not have loaded properly. Try refreshing and opening them in new tabs. " +
+                    "The whole point is that animated narrative comprehension is inherently human.";
+            }
+
+            // Build results table
+            var tbody = document.getElementById("resultsTableBody");
+            tbody.innerHTML = "";
+            for (var j = 0; j < challenges.length; j++) {
+                var tr = document.createElement("tr");
+                var ua = userAnswers[j];
+                var status = ua && !ua.skipped ? "✅ Answered" : "⏭️ Skipped";
+                var answerText = ua ? ua.text : "(no answer)";
+
+                // Truncate long answers for the table
+                var displayText = answerText.length > 60 ? answerText.substring(0, 57) + "..." : answerText;
+
+                tr.innerHTML =
+                    '<td>' + (j + 1) + '</td>' +
+                    '<td>' + sanitize(challenges[j].title) + '</td>' +
+                    '<td>' + sanitize(displayText) + '</td>' +
+                    '<td>' + status + '</td>';
+                tbody.appendChild(tr);
+            }
+        }
+
+        function restartDemo() {
+            currentIndex = 0;
+            userAnswers = [];
+            answered = 0;
+            skipped = 0;
+
+            document.getElementById("resultsScreen").classList.add("hidden");
+            document.getElementById("introScreen").classList.remove("hidden");
+        }
+    </script>
+</body>
+</html>

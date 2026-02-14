@@ -71,6 +71,19 @@ The interactive case study is deployed as a static page:
 
 **[sauravbhattacharya001.github.io/gif-captcha](https://sauravbhattacharya001.github.io/gif-captcha/)**
 
+### 🎮 Interactive CAPTCHA Demo
+
+**[Try the Demo →](https://sauravbhattacharya001.github.io/gif-captcha/demo.html)**
+
+Take the GIF CAPTCHA challenge yourself! The interactive demo:
+- Shows you each of the 10 GIFs with unexpected twists
+- Lets you type your own description of the unexpected event
+- Reveals how humans and GPT-4 answered after you submit
+- Tracks your "humanity score" across all challenges
+- Provides a detailed results summary comparing you to GPT-4's 0/10
+
+### Case Study Page
+
 Features a dark-themed UI with:
 - Full results table with CAPTCHA pass/fail badges
 - Linked GIF sources for manual verification
@@ -89,6 +102,7 @@ Features a dark-themed UI with:
 ```
 gif-captcha/
 ├── index.html      # Interactive case study page
+├── demo.html       # Interactive CAPTCHA demo (try it yourself!)
 ├── README.md       # This file
 └── LICENSE         # MIT License
 ```

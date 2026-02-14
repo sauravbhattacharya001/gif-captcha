@@ -1,42 +1,110 @@
-# gif-captcha
+<div align="center">
 
-A case study exploring whether GIF-based CAPTCHAs can distinguish humans from AI — specifically testing GPT-4's ability to describe unexpected events in animated GIFs.
+# 🎞️ GIF CAPTCHA
 
-## Case Study: 10 GIFs Used as CAPTCHA Tests
+**Can animated GIFs distinguish humans from AI?**
 
-GPT-4 was given each of the 10 GIFs below with the instruction: *"describe the unexpected event"*
+A research case study exploring GIF-based CAPTCHAs as a human-verification mechanism against large language models.
 
-### Results
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![GitHub Pages](https://img.shields.io/badge/demo-GitHub%20Pages-brightgreen)](https://sauravbhattacharya001.github.io/gif-captcha/)
+![HTML](https://img.shields.io/badge/Built%20with-HTML%2FCSS-orange)
 
-| # | GIF | Human Response | GPT-4 Response |
-|---|-----|---------------|----------------|
-| 1 | [Duel plot twist](https://tenor.com/view/unexpected-plot-twist-twist-plot-duel-gif-5053664) | One person shot BANG and the other shot BOOM. | Cannot view animations... |
-| 2 | [Rappers](https://i.gifer.com/G9lg.gif) | 3 rappers rapping and then one of them roller skates away. | Cannot view animations... |
-| 3 | [Skateboarder](https://funnyordie.tumblr.com/post/102557790934/18-more-shocking-gifs-with-unexpected-twist) | Skateboarder does a trick and then flies up in the air. | Cannot view animations... |
-| 4 | [Banana mascot](https://www.pinterest.jp/pin/682225043525224271/) | Banana mascot at sports event dances and annoys security guard, who takes mascot's props and does a better dance. | Cannot view animations... |
-| 5 | [Tic Tac Toe dog](https://d1nk8hnup7g8zp.cloudfront.net/articles/6pGl2DodxYIFZtKZuQYmdM/3etkyuexk1gwwbyy.gif) | Shiba Inu dog wins at Tic Tac Toe against a human opponent. | Cannot view animations... |
-| 6 | [Parent dog](https://d1nk8hnup7g8zp.cloudfront.net/articles/6pGl2DodxYIFZtKZuQYmdM/5im9cju8puvv32x3.gif) | Person preparing a puppy for cooking gets stopped by the parent dog who volunteers instead. | Cannot view animations... |
-| 7 | [Mirror illusion](https://d1nk8hnup7g8zp.cloudfront.net/articles/6pGl2DodxYIFZtKZuQYmdM/t4c2qgro3q3mrdn7.gif) | Person's hand seems to touch its reflection, but it's actually both hands of the same person filming with phone held by mouth. | Cannot view animations... |
-| 8 | [Highway drift](https://d1nk8hnup7g8zp.cloudfront.net/articles/6pGl2DodxYIFZtKZuQYmdM/sk4kxd7ggjciux8r.gif) | Car in front does a 180-degree drift and back 180 degrees to continue driving normally. | Cannot view animations... |
-| 9 | [Road rage hug](https://d1nk8hnup7g8zp.cloudfront.net/articles/6pGl2DodxYIFZtKZuQYmdM/qewkv1xf930v08l1.gif) | Road rage encounter unexpectedly ends with a friendly hug. | Cannot view animations... |
-| 10 | [Birthday cake](https://d1nk8hnup7g8zp.cloudfront.net/articles/6pGl2DodxYIFZtKZuQYmdM/a2bv04cd34x8otnc.gif) | Birthday girl's face is smashed onto the cake, but she emerges clean because she had a paper plate face cover. | Cannot view animations... |
+[**View Live Demo →**](https://sauravbhattacharya001.github.io/gif-captcha/)
 
-### Key Finding
+</div>
 
-GPT-4 (at the time of testing) was unable to process animated GIF content, giving the same response for every test: *"I currently cannot view animations, including animated GIFs, so I can't provide real-time descriptions of events within them."*
+---
 
-This demonstrates that GIF-based CAPTCHAs requiring comprehension of animated visual narratives could serve as an effective human-verification mechanism against LLMs that lack video/animation understanding.
+## 📖 Overview
 
-### 2025 Update: Multimodal Models Change the Landscape
+This case study tests whether GIF-based CAPTCHAs — specifically those requiring comprehension of unexpected events in animated sequences — can serve as an effective human-verification mechanism against LLMs.
 
-Since this case study was conducted, multimodal LLMs (GPT-4V, GPT-4o, Claude 3.5, Gemini 1.5 Pro) have gained the ability to process images — including individual GIF frames. While full animation comprehension (understanding temporal sequences across frames) remains more challenging, these models can now:
+GPT-4 was given 10 GIFs, each containing a narrative twist or unexpected event, and asked to *"describe the unexpected event."* Human responses were collected as a baseline.
 
+## 🔬 Methodology
+
+| Component | Details |
+|-----------|---------|
+| **Model Tested** | GPT-4 (text-only, pre-vision) |
+| **Test Set** | 10 animated GIFs with unexpected narrative twists |
+| **Prompt** | *"Describe the unexpected event"* |
+| **Baseline** | Human descriptions collected for each GIF |
+| **Success Criteria** | AI must produce a semantically accurate description of the animated event |
+
+## 📊 Results
+
+**Score: 10/10 CAPTCHAs successfully blocked GPT-4**
+
+| # | GIF | Human Could Describe? | GPT-4 Could Describe? |
+|---|-----|:---:|:---:|
+| 1 | Duel plot twist | ✅ | ❌ |
+| 2 | Rappers roller skating | ✅ | ❌ |
+| 3 | Flying skateboarder | ✅ | ❌ |
+| 4 | Banana mascot dance-off | ✅ | ❌ |
+| 5 | Tic Tac Toe dog | ✅ | ❌ |
+| 6 | Parent dog sacrifice | ✅ | ❌ |
+| 7 | Mirror hand illusion | ✅ | ❌ |
+| 8 | Highway 180° drift | ✅ | ❌ |
+| 9 | Road rage hug | ✅ | ❌ |
+| 10 | Birthday cake face cover | ✅ | ❌ |
+
+GPT-4 responded identically to every test:
+> *"I currently cannot view animations, including animated GIFs, so I can't provide real-time descriptions of events within them."*
+
+## 🔑 Key Findings
+
+### 2023: GIF CAPTCHAs Were Effective
+Text-only LLMs had zero ability to process animated visual content. GIF-based CAPTCHAs requiring narrative comprehension of animated sequences were a **100% effective** human-verification mechanism.
+
+### 2025 Update: The Landscape Has Changed
+Multimodal LLMs (GPT-4V, GPT-4o, Claude 3.5, Gemini 1.5 Pro) can now:
 - Describe static frames extracted from GIFs
 - Infer likely motion from visual context clues
-- Identify objects, people, and scenes in animated content
+- Identify objects, people, and scenes
 
-This means GIF-based CAPTCHAs that rely solely on visual recognition are **no longer sufficient** as a human-verification mechanism. However, CAPTCHAs requiring understanding of *timing*, *narrative surprise*, and *comedic subversion* in animations may still pose challenges for AI systems that process frames independently rather than as a continuous sequence.
+**Simple visual recognition CAPTCHAs are no longer sufficient.** However, CAPTCHAs requiring understanding of **timing**, **narrative surprise**, and **comedic subversion** may still challenge AI systems that process frames independently rather than as continuous sequences.
 
-## License
+## 🚀 Live Demo
 
-[MIT](LICENSE)
+The interactive case study is deployed as a static page:
+
+**[sauravbhattacharya001.github.io/gif-captcha](https://sauravbhattacharya001.github.io/gif-captcha/)**
+
+Features a dark-themed UI with:
+- Full results table with CAPTCHA pass/fail badges
+- Linked GIF sources for manual verification
+- Key findings with visual callouts
+
+## 🛠️ Tech Stack
+
+| Technology | Purpose |
+|-----------|---------|
+| HTML5 | Page structure |
+| CSS3 (Custom Properties) | Dark theme, responsive design |
+| GitHub Pages | Hosting |
+
+## 📂 Project Structure
+
+```
+gif-captcha/
+├── index.html      # Interactive case study page
+├── README.md       # This file
+└── LICENSE         # MIT License
+```
+
+## 🔮 Future Research Directions
+
+- **Temporal sequence CAPTCHAs** — Require understanding of event ordering across frames
+- **Narrative surprise detection** — Test whether AI can identify *why* something is unexpected, not just *what* happened
+- **Multi-model benchmarking** — Extend testing to GPT-4o, Claude 3.5 Opus, Gemini 2.0 with video input
+- **Adversarial GIF generation** — Create GIFs specifically designed to exploit frame-by-frame vs. continuous processing gaps
+
+## 📄 License
+
+[MIT](LICENSE) — Saurav Bhattacharya
+
+## 👤 Author
+
+**Saurav Bhattacharya**
+- GitHub: [@sauravbhattacharya001](https://github.com/sauravbhattacharya001)

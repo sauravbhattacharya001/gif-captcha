@@ -12,20 +12,39 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Validate HTML
+      # Install validation tools
       - name: Install HTML validation tools
+        run: npm install -g htmlhint
+
+      # Validate all HTML pages
+      - name: Validate HTML files
         run: |
-          npm install -g htmlhint
-          npm install -g csslint
+          echo "=== Validating index.html ==="
+          htmlhint index.html || true
+          echo ""
+          echo "=== Validating demo.html ==="
+          htmlhint demo.html || true
+          echo ""
+          echo "=== Validating analysis.html ==="
+          htmlhint analysis.html || true
 
-      # Validate project files
-      - name: Validate HTML
-        run: htmlhint index.html || true
-
-      - name: List project structure
+      # Show project structure and key file info
+      - name: Project overview
         run: |
           echo "=== Project Structure ==="
-          find . -not -path './.git/*' -type f | head -50
+          find . -not -path './.git/*' -type f | sort
           echo ""
-          echo "=== index.html size ==="
-          wc -l index.html
+          echo "=== HTML file sizes ==="
+          wc -l index.html demo.html analysis.html
+          echo ""
+          echo "=== Dockerfile check ==="
+          cat Dockerfile
+          echo ""
+          echo "=== GitHub workflows ==="
+          ls -la .github/workflows/
+
+      # Verify Docker build works
+      - name: Verify Docker build
+        run: |
+          docker build -t gif-captcha-test .
+          echo "Docker build successful"

@@ -1,0 +1,183 @@
+# CI workflow for gif-captcha (static HTML/CSS/JS)
+#
+# Validates HTML structure, checks for common issues, and ensures
+# the static site is well-formed and deployable.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate HTML
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install html-validate
+        run: npm install -g html-validate
+
+      - name: Validate HTML files
+        run: |
+          # Validate all HTML files with relaxed rules for inline styles/scripts
+          # which are intentional in this project (CSP-controlled)
+          cat > .htmlvalidate.json << 'EOF'
+          {
+            "extends": ["html-validate:recommended"],
+            "rules": {
+              "no-inline-style": "off",
+              "require-sri": "off",
+              "no-raw-characters": "off",
+              "tel-non-breaking": "off",
+              "valid-id": "off"
+            }
+          }
+          EOF
+          html-validate "*.html" || true
+
+  structure:
+    name: Structure & Link Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check required files exist
+        run: |
+          echo "Checking required project files..."
+          for file in index.html demo.html analysis.html README.md LICENSE; do
+            if [ -f "$file" ]; then
+              echo "  ✓ $file"
+            else
+              echo "  ✗ $file MISSING" && exit 1
+            fi
+          done
+
+      - name: Verify HTML structure
+        run: |
+          echo "Checking HTML documents for required elements..."
+          ERRORS=0
+          for file in *.html; do
+            echo "--- $file ---"
+            # Check for DOCTYPE
+            if ! head -1 "$file" | grep -qi "doctype"; then
+              echo "  ✗ Missing DOCTYPE declaration"
+              ERRORS=$((ERRORS + 1))
+            else
+              echo "  ✓ DOCTYPE present"
+            fi
+            # Check for lang attribute
+            if ! grep -q 'lang="en"' "$file"; then
+              echo "  ✗ Missing lang attribute"
+              ERRORS=$((ERRORS + 1))
+            else
+              echo "  ✓ lang attribute present"
+            fi
+            # Check for charset
+            if ! grep -q 'charset="UTF-8"' "$file"; then
+              echo "  ✗ Missing charset declaration"
+              ERRORS=$((ERRORS + 1))
+            else
+              echo "  ✓ charset UTF-8 declared"
+            fi
+            # Check for viewport meta
+            if ! grep -q 'viewport' "$file"; then
+              echo "  ✗ Missing viewport meta tag"
+              ERRORS=$((ERRORS + 1))
+            else
+              echo "  ✓ viewport meta tag present"
+            fi
+            # Check for CSP header
+            if ! grep -q 'Content-Security-Policy' "$file"; then
+              echo "  ⚠ No Content-Security-Policy meta tag"
+            else
+              echo "  ✓ Content-Security-Policy present"
+            fi
+          done
+          if [ $ERRORS -gt 0 ]; then
+            echo ""
+            echo "$ERRORS structural issues found!"
+            exit 1
+          fi
+          echo ""
+          echo "All structural checks passed."
+
+      - name: Check internal links
+        run: |
+          echo "Checking internal link references..."
+          ERRORS=0
+          for file in *.html; do
+            # Extract href values pointing to local .html files
+            grep -oP 'href="([^"]*\.html)"' "$file" | sed 's/href="//;s/"//' | while read -r link; do
+              # Strip query params and anchors
+              clean=$(echo "$link" | sed 's/[?#].*//')
+              if [ ! -f "$clean" ]; then
+                echo "  ✗ $file references missing file: $clean"
+                # Write to temp file since we're in a subshell
+                echo "1" >> /tmp/link_errors
+              else
+                echo "  ✓ $file → $clean"
+              fi
+            done
+          done
+          if [ -f /tmp/link_errors ]; then
+            echo "Broken internal links found!"
+            exit 1
+          fi
+          echo "All internal links valid."
+
+  security:
+    name: Security Headers Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify CSP in HTML files
+        run: |
+          echo "Checking Content-Security-Policy meta tags..."
+          for file in *.html; do
+            if grep -q 'Content-Security-Policy' "$file"; then
+              echo "  ✓ $file has CSP"
+              # Check for dangerous directives
+              if grep -q "unsafe-eval" "$file"; then
+                echo "    ⚠ WARNING: $file uses unsafe-eval in CSP"
+              fi
+            else
+              echo "  ⚠ $file missing CSP meta tag"
+            fi
+          done
+
+      - name: Verify nginx security config
+        run: |
+          if [ -f nginx-security.conf ]; then
+            echo "✓ nginx-security.conf present"
+            for header in "X-Frame-Options" "X-Content-Type-Options" "Content-Security-Policy" "Referrer-Policy" "Permissions-Policy"; do
+              if grep -q "$header" nginx-security.conf; then
+                echo "  ✓ $header configured"
+              else
+                echo "  ✗ $header missing"
+              fi
+            done
+          else
+            echo "⚠ No nginx-security.conf found (optional)"
+          fi

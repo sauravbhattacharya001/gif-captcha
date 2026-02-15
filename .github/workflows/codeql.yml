@@ -1,0 +1,217 @@
+# CodeQL Security Analysis for gif-captcha
+#
+# Scans inline JavaScript across HTML files for security vulnerabilities.
+# Extracts JS from HTML into standalone files for CodeQL analysis,
+# plus runs custom security pattern checks for DOM-based XSS,
+# prototype pollution, and other client-side security issues.
+
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly Monday 08:00 UTC — catch vulnerabilities in dependencies
+    - cron: '0 8 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: CodeQL Analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [javascript-typescript]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract inline JavaScript for analysis
+        run: |
+          # CodeQL needs .js files — extract inline <script> blocks from HTML
+          mkdir -p _extracted_js
+          for html_file in *.html; do
+            base=$(basename "$html_file" .html)
+            # Extract content between <script> tags (handles multi-line)
+            python3 -c "
+          import re, sys
+          with open('$html_file', 'r') as f:
+              content = f.read()
+          scripts = re.findall(r'<script[^>]*>(.*?)</script>', content, re.DOTALL)
+          if scripts:
+              # Filter out external script tags (src=...)
+              inline = [s for s in scripts if s.strip()]
+              if inline:
+                  with open('_extracted_js/${base}.js', 'w') as out:
+                      out.write('\n'.join(inline))
+                  print(f'  ✓ Extracted {len(inline)} script block(s) from $html_file')
+              else:
+                  print(f'  - No inline scripts in $html_file')
+          else:
+              print(f'  - No scripts in $html_file')
+          "
+          done
+          echo ""
+          echo "Extracted files:"
+          ls -la _extracted_js/ 2>/dev/null || echo "  (none)"
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          queries: security-extended,security-and-quality
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"
+
+  security-patterns:
+    name: Client-Side Security Patterns
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check for dangerous DOM patterns
+        run: |
+          echo "=== Scanning for client-side security anti-patterns ==="
+          WARNINGS=0
+          ERRORS=0
+
+          for file in *.html; do
+            echo ""
+            echo "--- $file ---"
+
+            # DOM-based XSS: innerHTML with user input
+            if grep -n 'innerHTML\s*=' "$file" | grep -iv 'textContent\|innerText' | grep -q '.'; then
+              echo "  ⚠ innerHTML assignment detected — verify no user input flows here"
+              grep -n 'innerHTML\s*=' "$file" | head -5
+              WARNINGS=$((WARNINGS + 1))
+            fi
+
+            # Dangerous eval() usage
+            if grep -nP '\beval\s*\(' "$file"; then
+              echo "  ✗ eval() detected — potential code injection risk"
+              ERRORS=$((ERRORS + 1))
+            fi
+
+            # document.write — can enable XSS
+            if grep -nP 'document\.write\s*\(' "$file"; then
+              echo "  ✗ document.write() detected — XSS risk"
+              ERRORS=$((ERRORS + 1))
+            fi
+
+            # Unvalidated URL construction from user input
+            if grep -nP '(location\.href|window\.location|location\.assign|location\.replace)\s*=' "$file"; then
+              echo "  ⚠ Dynamic URL assignment — verify no unvalidated user input"
+              WARNINGS=$((WARNINGS + 1))
+            fi
+
+            # setTimeout/setInterval with string arguments (acts like eval)
+            if grep -nP '(setTimeout|setInterval)\s*\(\s*["\x27]' "$file"; then
+              echo "  ⚠ setTimeout/setInterval with string argument — consider using function reference"
+              WARNINGS=$((WARNINGS + 1))
+            fi
+
+            # postMessage without origin check
+            if grep -nP 'addEventListener\s*\(\s*["\x27]message["\x27]' "$file"; then
+              if ! grep -P 'event\.origin|e\.origin' "$file" > /dev/null 2>&1; then
+                echo "  ⚠ Message event listener without origin validation"
+                WARNINGS=$((WARNINGS + 1))
+              fi
+            fi
+
+            # Prototype pollution patterns
+            if grep -nP '__proto__|Object\.assign\s*\([^,]+,\s*(req|params|query|input|data)' "$file"; then
+              echo "  ⚠ Potential prototype pollution pattern"
+              WARNINGS=$((WARNINGS + 1))
+            fi
+
+            # Check for http:// URLs (should be https://)
+            if grep -nP 'http://(?!localhost|127\.0\.0\.1|0\.0\.0\.0)' "$file"; then
+              echo "  ⚠ Non-HTTPS URL detected"
+              WARNINGS=$((WARNINGS + 1))
+            fi
+          done
+
+          echo ""
+          echo "=== Summary ==="
+          echo "Warnings: $WARNINGS"
+          echo "Errors: $ERRORS"
+
+          if [ $ERRORS -gt 0 ]; then
+            echo "❌ Critical security patterns found!"
+            exit 1
+          elif [ $WARNINGS -gt 0 ]; then
+            echo "⚠ Review warnings above (non-blocking)"
+          else
+            echo "✅ No dangerous patterns detected"
+          fi
+
+      - name: Verify CSP headers are restrictive
+        run: |
+          echo "=== Validating Content-Security-Policy strictness ==="
+          ISSUES=0
+
+          for file in *.html; do
+            echo ""
+            echo "--- $file ---"
+
+            CSP=$(grep -oP 'content="[^"]*Content-Security-Policy[^"]*"' "$file" | head -1 || true)
+            if [ -z "$CSP" ]; then
+              CSP=$(grep -oP 'http-equiv="Content-Security-Policy"\s+content="[^"]*"' "$file" | head -1 || true)
+            fi
+
+            if [ -z "$CSP" ]; then
+              echo "  ✗ No CSP found — all scripts/styles/resources are unrestricted"
+              ISSUES=$((ISSUES + 1))
+              continue
+            fi
+
+            echo "  ✓ CSP present"
+
+            # Check for overly permissive directives
+            if echo "$CSP" | grep -q "default-src[[:space:]]*'\*'" ; then
+              echo "  ✗ default-src allows everything (*)"
+              ISSUES=$((ISSUES + 1))
+            fi
+
+            if echo "$CSP" | grep -q "script-src[[:space:]]*'unsafe-eval'" ; then
+              echo "  ✗ script-src allows unsafe-eval"
+              ISSUES=$((ISSUES + 1))
+            fi
+
+            if echo "$CSP" | grep -q "frame-ancestors" ; then
+              echo "  ✓ frame-ancestors set (clickjacking protection)"
+            else
+              echo "  ⚠ frame-ancestors not set"
+            fi
+          done
+
+          echo ""
+          if [ $ISSUES -gt 0 ]; then
+            echo "⚠ $ISSUES CSP issues found (review above)"
+          else
+            echo "✅ CSP policies look good"
+          fi

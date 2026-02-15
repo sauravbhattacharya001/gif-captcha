@@ -82,6 +82,18 @@ Take the GIF CAPTCHA challenge yourself! The interactive demo:
 - Tracks your "humanity score" across all challenges
 - Provides a detailed results summary comparing you to GPT-4's 0/10
 
+### 📊 Research Analysis Dashboard
+
+**[View Analysis →](https://sauravbhattacharya001.github.io/gif-captcha/analysis.html)**
+
+Deep dive into the research data with interactive visualizations:
+- **CAPTCHA Taxonomy** — 6 cognitive categories (Narrative Twist, Physical Comedy, Animal Behavior, Visual Trick, Social Subversion, Optical Illusion) with filter tabs
+- **Category & Difficulty Charts** — Canvas-rendered bar charts showing distribution and AI difficulty ratings (2023 vs 2025 estimates)
+- **Human vs AI Radar Chart** — 6-axis cognitive capability comparison (Temporal Sequencing, Narrative Surprise, Cultural Context, Motion Tracking, Humor Detection, Object Recognition)
+- **Multi-Model Comparison** — GPT-4, GPT-4o, Claude 3.5, and Gemini 1.5 Pro estimated scores per category
+- **AI Capability Timeline** — Evolution from 0/10 (2023) to projected future performance
+- **Per-GIF Analysis Cards** — Expandable breakdowns with difficulty meters, cognitive skills, and explanations of why each CAPTCHA works
+
 ### Case Study Page
 
 Features a dark-themed UI with:
@@ -103,6 +115,7 @@ Features a dark-themed UI with:
 gif-captcha/
 ├── index.html      # Interactive case study page
 ├── demo.html       # Interactive CAPTCHA demo (try it yourself!)
+├── analysis.html   # Research analysis dashboard with charts & taxonomy
 ├── README.md       # This file
 └── LICENSE         # MIT License
 ```

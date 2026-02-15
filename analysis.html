@@ -1,0 +1,1057 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src https: data:; frame-ancestors 'none'; base-uri 'self'; form-action 'none';">
+    <meta name="referrer" content="no-referrer">
+    <title>GIF CAPTCHA — Research Analysis</title>
+    <style>
+        :root {
+            --bg: #0d1117;
+            --surface: #161b22;
+            --surface-hover: #1c2129;
+            --border: #30363d;
+            --text: #e6edf3;
+            --muted: #8b949e;
+            --accent: #58a6ff;
+            --accent-hover: #79b8ff;
+            --green: #3fb950;
+            --green-bg: rgba(63, 185, 80, 0.15);
+            --red: #f85149;
+            --red-bg: rgba(248, 81, 73, 0.15);
+            --yellow: #d29922;
+            --yellow-bg: rgba(210, 153, 34, 0.15);
+            --purple: #bc8cff;
+            --purple-bg: rgba(188, 140, 255, 0.15);
+            --orange: #f0883e;
+            --orange-bg: rgba(240, 136, 62, 0.15);
+            --cyan: #39d2c0;
+            --cyan-bg: rgba(57, 210, 192, 0.15);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+
+        .header {
+            text-align: center;
+            padding: 2.5rem 1.5rem 1.5rem;
+            border-bottom: 1px solid var(--border);
+        }
+        .header h1 { font-size: 2rem; margin-bottom: 0.3rem; }
+        .header .subtitle { color: var(--muted); font-size: 1rem; }
+        .header .nav-links { margin-top: 0.8rem; }
+        .header .nav-links a {
+            color: var(--accent);
+            text-decoration: none;
+            font-size: 0.85rem;
+            margin: 0 0.5rem;
+        }
+        .header .nav-links a:hover { text-decoration: underline; }
+
+        .container {
+            max-width: 960px;
+            margin: 0 auto;
+            padding: 2rem 1.5rem;
+        }
+
+        h2 {
+            font-size: 1.4rem;
+            margin: 2.5rem 0 1rem;
+            color: var(--accent);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        h2:first-child { margin-top: 0; }
+
+        /* Summary cards */
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        .summary-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.25rem;
+            text-align: center;
+        }
+        .summary-card .card-value {
+            font-size: 2rem;
+            font-weight: 800;
+            line-height: 1.2;
+        }
+        .summary-card .card-label {
+            font-size: 0.75rem;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-top: 0.3rem;
+        }
+
+        /* Filter tabs */
+        .filter-tabs {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+        }
+        .filter-tab {
+            padding: 0.4rem 1rem;
+            border-radius: 20px;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            color: var(--muted);
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+        .filter-tab:hover { border-color: var(--accent); color: var(--text); }
+        .filter-tab.active {
+            background: var(--accent);
+            color: #fff;
+            border-color: var(--accent);
+        }
+
+        /* Canvas for charts */
+        .chart-container {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            position: relative;
+        }
+        .chart-container h3 {
+            font-size: 1rem;
+            margin-bottom: 1rem;
+            color: var(--text);
+        }
+        .chart-container .chart-subtitle {
+            font-size: 0.8rem;
+            color: var(--muted);
+            margin-top: -0.6rem;
+            margin-bottom: 1rem;
+        }
+        canvas { display: block; width: 100%; }
+
+        /* Two-col layout */
+        .two-col {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+        }
+
+        /* Detailed breakdown cards */
+        .gif-analysis-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            overflow: hidden;
+            margin-bottom: 1rem;
+            transition: border-color 0.2s;
+        }
+        .gif-analysis-card:hover { border-color: var(--accent); }
+        .gif-analysis-card .card-header {
+            padding: 1rem 1.25rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            user-select: none;
+        }
+        .gif-analysis-card .card-header .title-group {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+        }
+        .gif-analysis-card .card-header .gif-number {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: var(--accent);
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8rem;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+        .gif-analysis-card .card-header .gif-title {
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+        .gif-analysis-card .card-header .expand-icon {
+            color: var(--muted);
+            transition: transform 0.2s;
+            font-size: 0.8rem;
+        }
+        .gif-analysis-card.expanded .card-header .expand-icon { transform: rotate(180deg); }
+        .gif-analysis-card .card-body {
+            display: none;
+            padding: 0 1.25rem 1.25rem;
+            border-top: 1px solid var(--border);
+        }
+        .gif-analysis-card.expanded .card-body { display: block; }
+
+        /* Tags */
+        .tag {
+            display: inline-block;
+            padding: 0.15rem 0.5rem;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            margin-right: 0.3rem;
+            margin-bottom: 0.3rem;
+        }
+        .tag-narrative { background: var(--purple-bg); color: var(--purple); }
+        .tag-visual { background: var(--cyan-bg); color: var(--cyan); }
+        .tag-physical { background: var(--orange-bg); color: var(--orange); }
+        .tag-animal { background: var(--green-bg); color: var(--green); }
+        .tag-social { background: var(--yellow-bg); color: var(--yellow); }
+        .tag-illusion { background: var(--red-bg); color: var(--red); }
+
+        /* Difficulty meter */
+        .difficulty-meter {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin: 0.8rem 0;
+        }
+        .difficulty-meter .meter-label {
+            font-size: 0.75rem;
+            color: var(--muted);
+            width: 60px;
+            flex-shrink: 0;
+        }
+        .difficulty-bar-bg {
+            flex: 1;
+            height: 6px;
+            background: var(--border);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        .difficulty-bar-fill {
+            height: 100%;
+            border-radius: 3px;
+            transition: width 0.6s ease;
+        }
+        .difficulty-meter .meter-value {
+            font-size: 0.75rem;
+            font-weight: 600;
+            width: 30px;
+            text-align: right;
+        }
+
+        /* Detail rows */
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.85rem;
+        }
+        .detail-row:last-child { border-bottom: none; }
+        .detail-row .detail-label { color: var(--muted); }
+        .detail-row .detail-value { font-weight: 600; text-align: right; max-width: 60%; }
+
+        /* Timeline */
+        .timeline {
+            position: relative;
+            padding-left: 2rem;
+            margin: 1.5rem 0;
+        }
+        .timeline::before {
+            content: '';
+            position: absolute;
+            left: 8px;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: var(--border);
+        }
+        .timeline-item {
+            position: relative;
+            margin-bottom: 1.5rem;
+        }
+        .timeline-item::before {
+            content: '';
+            position: absolute;
+            left: -2rem;
+            top: 6px;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            border: 2px solid var(--accent);
+            background: var(--bg);
+        }
+        .timeline-item.active::before {
+            background: var(--accent);
+        }
+        .timeline-item .timeline-date {
+            font-size: 0.75rem;
+            color: var(--accent);
+            font-weight: 600;
+            margin-bottom: 0.2rem;
+        }
+        .timeline-item .timeline-title {
+            font-weight: 600;
+            font-size: 0.95rem;
+            margin-bottom: 0.2rem;
+        }
+        .timeline-item .timeline-desc {
+            font-size: 0.85rem;
+            color: var(--muted);
+        }
+
+        /* Insight box */
+        .insight-box {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-left: 4px solid var(--accent);
+            border-radius: 0 8px 8px 0;
+            padding: 1.25rem;
+            margin: 1.5rem 0;
+        }
+        .insight-box h4 {
+            font-size: 0.9rem;
+            margin-bottom: 0.4rem;
+            color: var(--accent);
+        }
+        .insight-box p {
+            font-size: 0.85rem;
+            color: var(--muted);
+        }
+
+        footer {
+            margin-top: 3rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid var(--border);
+            color: var(--muted);
+            font-size: 0.85rem;
+            text-align: center;
+        }
+        footer a { color: var(--accent); text-decoration: none; }
+        footer a:hover { text-decoration: underline; }
+
+        @media (max-width: 768px) {
+            .summary-grid { grid-template-columns: repeat(2, 1fr); }
+            .two-col { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 480px) {
+            .summary-grid { grid-template-columns: 1fr; }
+            .header h1 { font-size: 1.5rem; }
+            .container { padding: 1rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📊 GIF CAPTCHA — Research Analysis</h1>
+        <p class="subtitle">Deep dive into CAPTCHA categories, difficulty, and AI capability evolution</p>
+        <div class="nav-links">
+            <a href="index.html">← Case Study</a>
+            <a href="demo.html">🎮 Try the Demo</a>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- Summary stats -->
+        <div class="summary-grid">
+            <div class="summary-card">
+                <div class="card-value" style="color: var(--green);">10/10</div>
+                <div class="card-label">CAPTCHAs Blocked (2023)</div>
+            </div>
+            <div class="summary-card">
+                <div class="card-value" style="color: var(--red);">~4/10</div>
+                <div class="card-label">Est. Blocked (2025)</div>
+            </div>
+            <div class="summary-card">
+                <div class="card-value" style="color: var(--yellow);">6</div>
+                <div class="card-label">CAPTCHA Categories</div>
+            </div>
+            <div class="summary-card">
+                <div class="card-value" style="color: var(--purple);">4</div>
+                <div class="card-label">Models Compared</div>
+            </div>
+        </div>
+
+        <!-- Category Distribution -->
+        <h2>🏷️ CAPTCHA Taxonomy</h2>
+        <p style="color: var(--muted); margin-bottom: 1rem;">Each GIF CAPTCHA requires different cognitive skills. We classified them into 6 categories based on the type of comprehension needed.</p>
+
+        <div class="filter-tabs" id="categoryFilter">
+            <button class="filter-tab active" data-category="all">All (10)</button>
+            <button class="filter-tab" data-category="narrative">Narrative Twist (3)</button>
+            <button class="filter-tab" data-category="physical">Physical Comedy (2)</button>
+            <button class="filter-tab" data-category="animal">Animal Behavior (2)</button>
+            <button class="filter-tab" data-category="visual">Visual Trick (1)</button>
+            <button class="filter-tab" data-category="social">Social Subversion (1)</button>
+            <button class="filter-tab" data-category="illusion">Optical Illusion (1)</button>
+        </div>
+
+        <div class="two-col">
+            <div class="chart-container">
+                <h3>Category Distribution</h3>
+                <p class="chart-subtitle">Number of GIFs per cognitive category</p>
+                <canvas id="categoryChart" height="260"></canvas>
+            </div>
+            <div class="chart-container">
+                <h3>Difficulty by Category</h3>
+                <p class="chart-subtitle">Average AI difficulty rating (1-10, higher = harder for AI)</p>
+                <canvas id="difficultyChart" height="260"></canvas>
+            </div>
+        </div>
+
+        <!-- Radar Chart: Human vs AI -->
+        <h2>🧠 Human vs AI Capabilities</h2>
+        <p style="color: var(--muted); margin-bottom: 1rem;">Radar comparison of human and AI performance across key cognitive dimensions required for GIF CAPTCHA comprehension.</p>
+
+        <div class="chart-container" style="max-width: 600px; margin: 0 auto 1.5rem;">
+            <h3>Cognitive Capability Radar</h3>
+            <p class="chart-subtitle">Scores out of 10 — higher is better</p>
+            <canvas id="radarChart" height="400"></canvas>
+            <div style="display: flex; justify-content: center; gap: 2rem; margin-top: 1rem; font-size: 0.8rem;">
+                <span><span style="display: inline-block; width: 12px; height: 12px; background: rgba(63, 185, 80, 0.5); border: 2px solid #3fb950; border-radius: 2px; margin-right: 0.3rem; vertical-align: middle;"></span> Human</span>
+                <span><span style="display: inline-block; width: 12px; height: 12px; background: rgba(248, 81, 73, 0.3); border: 2px solid #f85149; border-radius: 2px; margin-right: 0.3rem; vertical-align: middle;"></span> GPT-4 (2023)</span>
+                <span><span style="display: inline-block; width: 12px; height: 12px; background: rgba(88, 166, 255, 0.3); border: 2px solid #58a6ff; border-radius: 2px; margin-right: 0.3rem; vertical-align: middle;"></span> GPT-4o (2025)</span>
+            </div>
+        </div>
+
+        <div class="insight-box">
+            <h4>💡 Key Insight</h4>
+            <p>While multimodal models have closed the gap on object recognition and scene description, they still struggle with <strong>temporal sequence understanding</strong>, <strong>narrative surprise detection</strong>, and <strong>comedic timing</strong> — the exact skills GIF CAPTCHAs test. The gap narrows but the hardest categories remain resilient.</p>
+        </div>
+
+        <!-- AI Evolution Timeline -->
+        <h2>📅 AI Capability Timeline</h2>
+        <p style="color: var(--muted); margin-bottom: 1rem;">How AI visual understanding has evolved since this study began.</p>
+
+        <div class="timeline">
+            <div class="timeline-item active">
+                <div class="timeline-date">2023 — Original Study</div>
+                <div class="timeline-title">GPT-4 (Text-Only): 0/10</div>
+                <div class="timeline-desc">Could not process any visual content. Responded identically to all 10 GIFs: "I currently cannot view animations." GIF CAPTCHAs were 100% effective.</div>
+            </div>
+            <div class="timeline-item active">
+                <div class="timeline-date">2023 Q4 — GPT-4 Vision</div>
+                <div class="timeline-title">GPT-4V: ~2/10 estimated</div>
+                <div class="timeline-desc">Could describe static frames but couldn't process animation sequences. Might infer some context from individual frames (e.g., recognizing a duel scene) but missed temporal surprises.</div>
+            </div>
+            <div class="timeline-item active">
+                <div class="timeline-date">2024 Q2 — Multimodal Era</div>
+                <div class="timeline-title">GPT-4o / Claude 3.5 / Gemini 1.5: ~4-5/10 estimated</div>
+                <div class="timeline-desc">Can process multiple frames, describe visual elements, and infer likely motion. Simple CAPTCHAs (object recognition, scene description) would fail. Complex narrative/timing CAPTCHAs still effective.</div>
+            </div>
+            <div class="timeline-item">
+                <div class="timeline-date">2025 — Video Understanding</div>
+                <div class="timeline-title">Next-Gen Models: ~6-7/10 projected</div>
+                <div class="timeline-desc">Native video input support emerging. Models can process temporal sequences directly. CAPTCHAs requiring subtle comedic timing and cultural context may remain challenging.</div>
+            </div>
+            <div class="timeline-item">
+                <div class="timeline-date">Future — Full Comprehension?</div>
+                <div class="timeline-title">Projected: ~8-9/10</div>
+                <div class="timeline-desc">As models achieve human-level video understanding, GIF CAPTCHAs will likely become insufficient. Research should shift to adversarial GIF generation targeting specific temporal blind spots.</div>
+            </div>
+        </div>
+
+        <!-- Model Comparison Table -->
+        <h2>🤖 Multi-Model Comparison</h2>
+        <p style="color: var(--muted); margin-bottom: 1rem;">Estimated performance of different AI models against each GIF CAPTCHA category. Based on known model capabilities as of early 2025.</p>
+
+        <div class="chart-container" style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem; min-width: 600px;">
+                <thead>
+                    <tr style="border-bottom: 2px solid var(--border);">
+                        <th style="padding: 0.7rem; text-align: left; color: var(--muted);">Category</th>
+                        <th style="padding: 0.7rem; text-align: center;">GPT-4<br><span style="font-size: 0.7rem; color: var(--muted);">2023</span></th>
+                        <th style="padding: 0.7rem; text-align: center;">GPT-4o<br><span style="font-size: 0.7rem; color: var(--muted);">2024</span></th>
+                        <th style="padding: 0.7rem; text-align: center;">Claude 3.5<br><span style="font-size: 0.7rem; color: var(--muted);">2024</span></th>
+                        <th style="padding: 0.7rem; text-align: center;">Gemini 1.5<br><span style="font-size: 0.7rem; color: var(--muted);">2024</span></th>
+                        <th style="padding: 0.7rem; text-align: center;">Human<br><span style="font-size: 0.7rem; color: var(--muted);">Baseline</span></th>
+                    </tr>
+                </thead>
+                <tbody id="comparisonTableBody"></tbody>
+            </table>
+        </div>
+
+        <!-- Per-GIF Breakdown -->
+        <h2>🔍 Per-GIF Detailed Analysis</h2>
+        <p style="color: var(--muted); margin-bottom: 1rem;">Click each card to expand the full analysis — category, difficulty, key challenge, and why it works as a CAPTCHA.</p>
+
+        <div id="gifCards"></div>
+
+        <!-- Research Implications -->
+        <h2>🔮 Research Implications</h2>
+
+        <div class="two-col">
+            <div class="insight-box" style="margin: 0;">
+                <h4>🛡️ Still Effective Categories</h4>
+                <p><strong>Narrative Twist</strong> and <strong>Social Subversion</strong> CAPTCHAs remain most resilient. They require understanding human expectations, cultural norms, and comedic timing — capabilities that pure visual processing can't solve.</p>
+            </div>
+            <div class="insight-box" style="margin: 0;">
+                <h4>⚠️ Weakening Categories</h4>
+                <p><strong>Physical Comedy</strong> and <strong>Visual Tricks</strong> are becoming solvable as models improve at object tracking and motion inference. These should be phased out of CAPTCHA systems or combined with narrative elements.</p>
+            </div>
+        </div>
+
+        <div class="insight-box">
+            <h4>📐 CAPTCHA Design Formula</h4>
+            <p>The most effective GIF CAPTCHAs combine: (1) <strong>temporal dependence</strong> — the surprise only makes sense in sequence, (2) <strong>cultural context</strong> — understanding "normal" requires social knowledge, and (3) <strong>narrative inversion</strong> — the punchline subverts the setup. Scoring: Temporal × Cultural × Inversion = Resilience.</p>
+        </div>
+
+        <footer>
+            <p>
+                <a href="index.html">Case Study</a> ·
+                <a href="demo.html">Interactive Demo</a> ·
+                <a href="https://github.com/sauravbhattacharya001/gif-captcha">GitHub</a> ·
+                MIT License
+            </p>
+        </footer>
+    </div>
+
+    <script>
+        // ===== DATA =====
+        var gifData = [
+            {
+                id: 1, title: "Duel Plot Twist", category: "narrative",
+                categories: ["narrative", "social"],
+                difficulty: 9, aiDifficulty2025: 7,
+                humanAnswer: "One person shot BANG and the other shot BOOM — both had trick guns.",
+                whyItWorks: "Requires understanding the setup (serious duel) and the subversion (trick guns). The comedy comes from the contrast between expectation and reality — a narrative skill.",
+                keyChallenge: "Temporal sequence: the twist only lands if you understand the dramatic buildup across multiple frames.",
+                cognitiveSkills: ["Narrative comprehension", "Expectation tracking", "Humor detection"]
+            },
+            {
+                id: 2, title: "Rappers Roller Skating", category: "social",
+                categories: ["social", "narrative"],
+                difficulty: 8, aiDifficulty2025: 5,
+                humanAnswer: "3 rappers rapping and then one roller skates away.",
+                whyItWorks: "The humor depends on understanding rap culture stereotypes (tough, cool) and how roller skating subverts that image. Cultural context is essential.",
+                keyChallenge: "Cultural knowledge: AI must know that roller skating is incongruous with rap performance conventions.",
+                cognitiveSkills: ["Cultural context", "Social norms", "Incongruity detection"]
+            },
+            {
+                id: 3, title: "Flying Skateboarder", category: "physical",
+                categories: ["physical", "visual"],
+                difficulty: 5, aiDifficulty2025: 3,
+                humanAnswer: "Skateboarder does a trick and flies up in the air.",
+                whyItWorks: "Exaggerated physics — the skateboarder defies gravity. Relatively simple to describe if you can see the motion.",
+                keyChallenge: "Motion tracking: requires processing the trajectory across frames to see the impossible height.",
+                cognitiveSkills: ["Physics intuition", "Motion tracking", "Exaggeration detection"]
+            },
+            {
+                id: 4, title: "Banana Mascot Dance-Off", category: "narrative",
+                categories: ["narrative", "social"],
+                difficulty: 8, aiDifficulty2025: 6,
+                humanAnswer: "Banana mascot dances; security guard takes props and does a better dance.",
+                whyItWorks: "Two-part narrative: setup (banana dancing) and role reversal (guard outdances mascot). Requires tracking character roles and social expectations.",
+                keyChallenge: "Role reversal comprehension: the guard is expected to stop the fun, not join/exceed it.",
+                cognitiveSkills: ["Narrative comprehension", "Role tracking", "Social expectation"]
+            },
+            {
+                id: 5, title: "Tic Tac Toe Dog", category: "animal",
+                categories: ["animal", "narrative"],
+                difficulty: 7, aiDifficulty2025: 5,
+                humanAnswer: "Shiba Inu wins at Tic Tac Toe against a human.",
+                whyItWorks: "A dog playing and winning a strategic game is unexpected because animals shouldn't understand abstract strategy games.",
+                keyChallenge: "Species capability mismatch: AI must recognize that dogs winning at board games violates normal expectations.",
+                cognitiveSkills: ["Animal behavior knowledge", "Game recognition", "Absurdity detection"]
+            },
+            {
+                id: 6, title: "Parent Dog Sacrifice", category: "animal",
+                categories: ["animal", "narrative"],
+                difficulty: 9, aiDifficulty2025: 7,
+                humanAnswer: "Person preparing puppy for cooking gets stopped by parent dog who volunteers instead.",
+                whyItWorks: "Dark humor with emotional complexity. Requires understanding: cooking threat → parental sacrifice → emotional subversion. Multiple narrative layers.",
+                keyChallenge: "Emotional narrative: the twist involves parental sacrifice, which requires understanding family bonds and altruism in animals.",
+                cognitiveSkills: ["Emotional comprehension", "Narrative arc", "Dark humor", "Moral reasoning"]
+            },
+            {
+                id: 7, title: "Mirror Hand Illusion", category: "illusion",
+                categories: ["illusion", "visual"],
+                difficulty: 8, aiDifficulty2025: 4,
+                humanAnswer: "Hand seems to touch its reflection, but it's both hands of the same person.",
+                whyItWorks: "Perceptual illusion that requires understanding what 'should' be a reflection vs. what's actually happening. Tests spatial reasoning.",
+                keyChallenge: "Spatial reasoning: distinguishing between a real reflection and two hands positioned to mimic one.",
+                cognitiveSkills: ["Spatial reasoning", "Illusion detection", "Physical world model"]
+            },
+            {
+                id: 8, title: "Highway 180° Drift", category: "physical",
+                categories: ["physical"],
+                difficulty: 6, aiDifficulty2025: 4,
+                humanAnswer: "Car does a 180-degree drift and back to continue normally.",
+                whyItWorks: "Impressive physical feat that violates normal driving behavior. The car spins completely and continues as if nothing happened.",
+                keyChallenge: "Motion comprehension: tracking the full 180° rotation and return to normal driving in sequence.",
+                cognitiveSkills: ["Motion tracking", "Physics intuition", "Driving norms"]
+            },
+            {
+                id: 9, title: "Road Rage Hug", category: "social",
+                categories: ["social", "narrative"],
+                difficulty: 9, aiDifficulty2025: 7,
+                humanAnswer: "Road rage encounter unexpectedly ends with a friendly hug.",
+                whyItWorks: "Complete social expectation inversion. Road rage (aggression) → hug (affection). The surprise is purely social/emotional, not visual.",
+                keyChallenge: "Social script violation: AI must understand that road rage typically escalates, not resolves with affection.",
+                cognitiveSkills: ["Social script knowledge", "Emotional reading", "Expectation subversion"]
+            },
+            {
+                id: 10, title: "Birthday Cake Face Cover", category: "narrative",
+                categories: ["narrative", "visual"],
+                difficulty: 7, aiDifficulty2025: 5,
+                humanAnswer: "Girl's face smashed into cake, but emerges clean — had a paper plate cover.",
+                whyItWorks: "Double subversion: (1) face-in-cake is expected to be messy, (2) the paper plate reveal adds a preparation twist. The person anticipated the prank.",
+                keyChallenge: "Two-level narrative: first the expected prank, then the clever counter-preparation.",
+                cognitiveSkills: ["Prediction", "Counter-expectation", "Object recognition"]
+            }
+        ];
+
+        var categories = {
+            narrative: { label: "Narrative Twist", color: "#bc8cff", bgColor: "rgba(188, 140, 255, 0.15)" },
+            physical: { label: "Physical Comedy", color: "#f0883e", bgColor: "rgba(240, 136, 62, 0.15)" },
+            animal: { label: "Animal Behavior", color: "#3fb950", bgColor: "rgba(63, 185, 80, 0.15)" },
+            visual: { label: "Visual Trick", color: "#39d2c0", bgColor: "rgba(57, 210, 192, 0.15)" },
+            social: { label: "Social Subversion", color: "#d29922", bgColor: "rgba(210, 153, 34, 0.15)" },
+            illusion: { label: "Optical Illusion", color: "#f85149", bgColor: "rgba(248, 81, 73, 0.15)" }
+        };
+
+        // Model comparison data (estimated capabilities per category)
+        var modelData = {
+            narrative: { gpt4: 0, gpt4o: 4, claude: 3, gemini: 5, human: 10 },
+            physical:  { gpt4: 0, gpt4o: 6, claude: 5, gemini: 7, human: 10 },
+            animal:    { gpt4: 0, gpt4o: 5, claude: 4, gemini: 5, human: 10 },
+            visual:    { gpt4: 0, gpt4o: 7, claude: 6, gemini: 7, human: 10 },
+            social:    { gpt4: 0, gpt4o: 3, claude: 3, gemini: 4, human: 10 },
+            illusion:  { gpt4: 0, gpt4o: 5, claude: 5, gemini: 6, human: 9 }
+        };
+
+        // Radar chart dimensions
+        var radarDimensions = [
+            { label: "Temporal\nSequencing", human: 10, gpt4: 0, gpt4o: 5 },
+            { label: "Narrative\nSurprise", human: 10, gpt4: 0, gpt4o: 3 },
+            { label: "Cultural\nContext", human: 9, gpt4: 0, gpt4o: 4 },
+            { label: "Motion\nTracking", human: 10, gpt4: 0, gpt4o: 7 },
+            { label: "Humor\nDetection", human: 9, gpt4: 0, gpt4o: 3 },
+            { label: "Object\nRecognition", human: 10, gpt4: 0, gpt4o: 8 }
+        ];
+
+        // ===== CHART RENDERING =====
+
+        function drawCategoryChart() {
+            var canvas = document.getElementById("categoryChart");
+            var ctx = canvas.getContext("2d");
+            var dpr = window.devicePixelRatio || 1;
+            canvas.width = canvas.offsetWidth * dpr;
+            canvas.height = 260 * dpr;
+            ctx.scale(dpr, dpr);
+
+            var w = canvas.offsetWidth;
+            var h = 260;
+            var cats = Object.keys(categories);
+            var counts = {};
+            cats.forEach(function(c) { counts[c] = 0; });
+            gifData.forEach(function(g) { counts[g.category]++; });
+
+            var barWidth = Math.min(60, (w - 80) / cats.length - 10);
+            var maxVal = 4;
+            var chartLeft = 40;
+            var chartBottom = h - 40;
+            var chartTop = 20;
+            var chartHeight = chartBottom - chartTop;
+
+            // Grid lines
+            ctx.strokeStyle = "#30363d";
+            ctx.lineWidth = 0.5;
+            for (var i = 0; i <= maxVal; i++) {
+                var y = chartBottom - (i / maxVal) * chartHeight;
+                ctx.beginPath();
+                ctx.moveTo(chartLeft, y);
+                ctx.lineTo(w - 10, y);
+                ctx.stroke();
+                ctx.fillStyle = "#8b949e";
+                ctx.font = "11px -apple-system, sans-serif";
+                ctx.textAlign = "right";
+                ctx.fillText(i, chartLeft - 5, y + 4);
+            }
+
+            // Bars
+            var totalWidth = cats.length * (barWidth + 10) - 10;
+            var startX = chartLeft + (w - chartLeft - 10 - totalWidth) / 2;
+
+            cats.forEach(function(cat, idx) {
+                var x = startX + idx * (barWidth + 10);
+                var val = counts[cat];
+                var barH = (val / maxVal) * chartHeight;
+
+                // Bar
+                ctx.fillStyle = categories[cat].color;
+                ctx.globalAlpha = 0.8;
+                ctx.beginPath();
+                ctx.roundRect(x, chartBottom - barH, barWidth, barH, [4, 4, 0, 0]);
+                ctx.fill();
+                ctx.globalAlpha = 1;
+
+                // Value
+                ctx.fillStyle = "#e6edf3";
+                ctx.font = "bold 13px -apple-system, sans-serif";
+                ctx.textAlign = "center";
+                ctx.fillText(val, x + barWidth / 2, chartBottom - barH - 6);
+
+                // Label
+                ctx.fillStyle = "#8b949e";
+                ctx.font = "10px -apple-system, sans-serif";
+                var label = categories[cat].label.split(" ");
+                label.forEach(function(word, li) {
+                    ctx.fillText(word, x + barWidth / 2, chartBottom + 14 + li * 12);
+                });
+            });
+        }
+
+        function drawDifficultyChart() {
+            var canvas = document.getElementById("difficultyChart");
+            var ctx = canvas.getContext("2d");
+            var dpr = window.devicePixelRatio || 1;
+            canvas.width = canvas.offsetWidth * dpr;
+            canvas.height = 260 * dpr;
+            ctx.scale(dpr, dpr);
+
+            var w = canvas.offsetWidth;
+            var h = 260;
+            var cats = Object.keys(categories);
+
+            // Calculate avg difficulty per category
+            var avgDiff = {};
+            var avgDiff2025 = {};
+            cats.forEach(function(c) {
+                var items = gifData.filter(function(g) { return g.category === c; });
+                var sum = items.reduce(function(a, g) { return a + g.difficulty; }, 0);
+                var sum2025 = items.reduce(function(a, g) { return a + g.aiDifficulty2025; }, 0);
+                avgDiff[c] = items.length > 0 ? sum / items.length : 0;
+                avgDiff2025[c] = items.length > 0 ? sum2025 / items.length : 0;
+            });
+
+            var barWidth = Math.min(25, (w - 80) / (cats.length * 2) - 5);
+            var maxVal = 10;
+            var chartLeft = 40;
+            var chartBottom = h - 40;
+            var chartTop = 20;
+            var chartHeight = chartBottom - chartTop;
+
+            // Grid
+            ctx.strokeStyle = "#30363d";
+            ctx.lineWidth = 0.5;
+            for (var i = 0; i <= maxVal; i += 2) {
+                var y = chartBottom - (i / maxVal) * chartHeight;
+                ctx.beginPath();
+                ctx.moveTo(chartLeft, y);
+                ctx.lineTo(w - 10, y);
+                ctx.stroke();
+                ctx.fillStyle = "#8b949e";
+                ctx.font = "11px -apple-system, sans-serif";
+                ctx.textAlign = "right";
+                ctx.fillText(i, chartLeft - 5, y + 4);
+            }
+
+            // Grouped bars
+            var groupWidth = barWidth * 2 + 6;
+            var totalWidth = cats.length * (groupWidth + 12) - 12;
+            var startX = chartLeft + (w - chartLeft - 10 - totalWidth) / 2;
+
+            cats.forEach(function(cat, idx) {
+                var x = startX + idx * (groupWidth + 12);
+                var val2023 = avgDiff[cat];
+                var val2025 = avgDiff2025[cat];
+
+                // 2023 bar
+                var barH = (val2023 / maxVal) * chartHeight;
+                ctx.fillStyle = categories[cat].color;
+                ctx.globalAlpha = 0.9;
+                ctx.beginPath();
+                ctx.roundRect(x, chartBottom - barH, barWidth, barH, [3, 3, 0, 0]);
+                ctx.fill();
+
+                // 2025 bar
+                var barH2 = (val2025 / maxVal) * chartHeight;
+                ctx.globalAlpha = 0.4;
+                ctx.beginPath();
+                ctx.roundRect(x + barWidth + 3, chartBottom - barH2, barWidth, barH2, [3, 3, 0, 0]);
+                ctx.fill();
+                ctx.globalAlpha = 1;
+
+                // Label
+                ctx.fillStyle = "#8b949e";
+                ctx.font = "9px -apple-system, sans-serif";
+                ctx.textAlign = "center";
+                var label = categories[cat].label.split(" ");
+                label.forEach(function(word, li) {
+                    ctx.fillText(word, x + groupWidth / 2, chartBottom + 14 + li * 11);
+                });
+            });
+
+            // Legend
+            ctx.font = "10px -apple-system, sans-serif";
+            ctx.globalAlpha = 0.9;
+            ctx.fillStyle = "#58a6ff";
+            ctx.fillRect(w - 150, 8, 10, 10);
+            ctx.fillStyle = "#e6edf3";
+            ctx.textAlign = "left";
+            ctx.fillText("2023 (original)", w - 136, 17);
+            ctx.globalAlpha = 0.4;
+            ctx.fillStyle = "#58a6ff";
+            ctx.fillRect(w - 150, 24, 10, 10);
+            ctx.globalAlpha = 1;
+            ctx.fillStyle = "#8b949e";
+            ctx.fillText("2025 (est.)", w - 136, 33);
+        }
+
+        function drawRadarChart() {
+            var canvas = document.getElementById("radarChart");
+            var ctx = canvas.getContext("2d");
+            var dpr = window.devicePixelRatio || 1;
+            canvas.width = canvas.offsetWidth * dpr;
+            canvas.height = 400 * dpr;
+            ctx.scale(dpr, dpr);
+
+            var w = canvas.offsetWidth;
+            var h = 400;
+            var cx = w / 2;
+            var cy = h / 2;
+            var radius = Math.min(w, h) / 2 - 60;
+            var dims = radarDimensions;
+            var n = dims.length;
+            var maxVal = 10;
+
+            function angleFor(i) { return (Math.PI * 2 * i / n) - Math.PI / 2; }
+            function pointAt(i, val) {
+                var a = angleFor(i);
+                var r = (val / maxVal) * radius;
+                return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
+            }
+
+            // Grid rings
+            for (var ring = 2; ring <= maxVal; ring += 2) {
+                ctx.strokeStyle = "#30363d";
+                ctx.lineWidth = 0.5;
+                ctx.beginPath();
+                for (var i = 0; i <= n; i++) {
+                    var p = pointAt(i % n, ring);
+                    if (i === 0) ctx.moveTo(p.x, p.y);
+                    else ctx.lineTo(p.x, p.y);
+                }
+                ctx.stroke();
+
+                // Ring label
+                var lp = pointAt(0, ring);
+                ctx.fillStyle = "#8b949e";
+                ctx.font = "9px -apple-system, sans-serif";
+                ctx.textAlign = "center";
+                ctx.fillText(ring, lp.x, lp.y - 4);
+            }
+
+            // Axis lines
+            ctx.strokeStyle = "#30363d";
+            ctx.lineWidth = 0.5;
+            for (var i = 0; i < n; i++) {
+                var p = pointAt(i, maxVal);
+                ctx.beginPath();
+                ctx.moveTo(cx, cy);
+                ctx.lineTo(p.x, p.y);
+                ctx.stroke();
+            }
+
+            // Axis labels
+            ctx.fillStyle = "#e6edf3";
+            ctx.font = "11px -apple-system, sans-serif";
+            ctx.textAlign = "center";
+            for (var i = 0; i < n; i++) {
+                var p = pointAt(i, maxVal + 1.2);
+                var lines = dims[i].label.split("\n");
+                lines.forEach(function(line, li) {
+                    ctx.fillText(line, p.x, p.y + li * 13);
+                });
+            }
+
+            // Draw data polygons
+            function drawPolygon(key, fillColor, strokeColor) {
+                ctx.beginPath();
+                for (var i = 0; i <= n; i++) {
+                    var p = pointAt(i % n, dims[i % n][key]);
+                    if (i === 0) ctx.moveTo(p.x, p.y);
+                    else ctx.lineTo(p.x, p.y);
+                }
+                ctx.fillStyle = fillColor;
+                ctx.fill();
+                ctx.strokeStyle = strokeColor;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // Dots
+                for (var i = 0; i < n; i++) {
+                    var p = pointAt(i, dims[i][key]);
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+                    ctx.fillStyle = strokeColor;
+                    ctx.fill();
+                }
+            }
+
+            drawPolygon("gpt4", "rgba(248, 81, 73, 0.1)", "#f85149");
+            drawPolygon("gpt4o", "rgba(88, 166, 255, 0.15)", "#58a6ff");
+            drawPolygon("human", "rgba(63, 185, 80, 0.2)", "#3fb950");
+        }
+
+        // ===== COMPARISON TABLE =====
+        function buildComparisonTable() {
+            var tbody = document.getElementById("comparisonTableBody");
+            var cats = Object.keys(categories);
+
+            function scoreCell(val) {
+                var color = val === 0 ? "#f85149" : val <= 3 ? "#f85149" : val <= 5 ? "#d29922" : val <= 7 ? "#58a6ff" : "#3fb950";
+                return '<td style="text-align: center; color: ' + color + '; font-weight: 600;">' + val + '/10</td>';
+            }
+
+            cats.forEach(function(cat) {
+                var d = modelData[cat];
+                var tr = document.createElement("tr");
+                tr.style.borderBottom = "1px solid var(--border)";
+                tr.innerHTML =
+                    '<td style="padding: 0.7rem;"><span class="tag tag-' + cat + '">' + categories[cat].label + '</span></td>' +
+                    scoreCell(d.gpt4) +
+                    scoreCell(d.gpt4o) +
+                    scoreCell(d.claude) +
+                    scoreCell(d.gemini) +
+                    scoreCell(d.human);
+                tbody.appendChild(tr);
+            });
+        }
+
+        // ===== GIF CARDS =====
+        function buildGifCards() {
+            var container = document.getElementById("gifCards");
+            var activeFilter = "all";
+
+            function render(filter) {
+                container.innerHTML = "";
+                gifData.forEach(function(gif) {
+                    if (filter !== "all" && gif.category !== filter) return;
+
+                    var card = document.createElement("div");
+                    card.className = "gif-analysis-card";
+                    card.dataset.category = gif.category;
+
+                    var diffColor = gif.difficulty >= 8 ? "#f85149" : gif.difficulty >= 6 ? "#d29922" : "#3fb950";
+                    var diffColor2025 = gif.aiDifficulty2025 >= 8 ? "#f85149" : gif.aiDifficulty2025 >= 6 ? "#d29922" : gif.aiDifficulty2025 >= 4 ? "#58a6ff" : "#3fb950";
+
+                    var tagsHtml = gif.categories.map(function(c) {
+                        return '<span class="tag tag-' + c + '">' + categories[c].label + '</span>';
+                    }).join("");
+
+                    card.innerHTML =
+                        '<div class="card-header">' +
+                            '<div class="title-group">' +
+                                '<span class="gif-number">' + gif.id + '</span>' +
+                                '<span class="gif-title">' + gif.title + '</span>' +
+                                tagsHtml +
+                            '</div>' +
+                            '<span class="expand-icon">▼</span>' +
+                        '</div>' +
+                        '<div class="card-body">' +
+                            '<div class="difficulty-meter">' +
+                                '<span class="meter-label">AI Difficulty<br>(2023)</span>' +
+                                '<div class="difficulty-bar-bg"><div class="difficulty-bar-fill" style="width: ' + (gif.difficulty * 10) + '%; background: ' + diffColor + ';"></div></div>' +
+                                '<span class="meter-value" style="color: ' + diffColor + '">' + gif.difficulty + '/10</span>' +
+                            '</div>' +
+                            '<div class="difficulty-meter">' +
+                                '<span class="meter-label">AI Difficulty<br>(2025 est.)</span>' +
+                                '<div class="difficulty-bar-bg"><div class="difficulty-bar-fill" style="width: ' + (gif.aiDifficulty2025 * 10) + '%; background: ' + diffColor2025 + ';"></div></div>' +
+                                '<span class="meter-value" style="color: ' + diffColor2025 + '">' + gif.aiDifficulty2025 + '/10</span>' +
+                            '</div>' +
+                            '<div class="detail-row">' +
+                                '<span class="detail-label">Human Answer</span>' +
+                                '<span class="detail-value">' + gif.humanAnswer + '</span>' +
+                            '</div>' +
+                            '<div class="detail-row">' +
+                                '<span class="detail-label">Key Challenge</span>' +
+                                '<span class="detail-value">' + gif.keyChallenge + '</span>' +
+                            '</div>' +
+                            '<div class="detail-row">' +
+                                '<span class="detail-label">Why It Works</span>' +
+                                '<span class="detail-value">' + gif.whyItWorks + '</span>' +
+                            '</div>' +
+                            '<div class="detail-row">' +
+                                '<span class="detail-label">Cognitive Skills</span>' +
+                                '<span class="detail-value">' + gif.cognitiveSkills.join(", ") + '</span>' +
+                            '</div>' +
+                        '</div>';
+
+                    card.querySelector(".card-header").addEventListener("click", function() {
+                        card.classList.toggle("expanded");
+                    });
+
+                    container.appendChild(card);
+                });
+            }
+
+            // Filter tabs
+            document.querySelectorAll(".filter-tab").forEach(function(tab) {
+                tab.addEventListener("click", function() {
+                    document.querySelectorAll(".filter-tab").forEach(function(t) { t.classList.remove("active"); });
+                    tab.classList.add("active");
+                    activeFilter = tab.dataset.category;
+                    render(activeFilter);
+                });
+            });
+
+            render("all");
+        }
+
+        // ===== INIT =====
+        function init() {
+            drawCategoryChart();
+            drawDifficultyChart();
+            drawRadarChart();
+            buildComparisonTable();
+            buildGifCards();
+        }
+
+        // Handle resize
+        var resizeTimeout;
+        window.addEventListener("resize", function() {
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(function() {
+                drawCategoryChart();
+                drawDifficultyChart();
+                drawRadarChart();
+            }, 200);
+        });
+
+        // Polyfill roundRect if needed
+        if (!CanvasRenderingContext2D.prototype.roundRect) {
+            CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, radii) {
+                var r = Array.isArray(radii) ? radii[0] : (radii || 0);
+                this.moveTo(x + r, y);
+                this.lineTo(x + w - r, y);
+                this.quadraticCurveTo(x + w, y, x + w, y + r);
+                this.lineTo(x + w, y + h - r);
+                this.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+                this.lineTo(x + r, y + h);
+                this.quadraticCurveTo(x, y + h, x, y + h - r);
+                this.lineTo(x, y + r);
+                this.quadraticCurveTo(x, y, x + r, y);
+                this.closePath();
+            };
+        }
+
+        init();
+    </script>
+</body>
+</html>

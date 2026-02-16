@@ -10,8 +10,8 @@ RUN rm -rf /usr/share/nginx/html/*
 # Add security headers configuration
 COPY nginx-security.conf /etc/nginx/conf.d/security.conf
 
-# Copy the static site
-COPY index.html /usr/share/nginx/html/
+# Copy all static site files
+COPY index.html demo.html analysis.html /usr/share/nginx/html/
 
 # Create non-root user and fix permissions
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup \

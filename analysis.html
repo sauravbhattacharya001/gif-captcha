@@ -644,6 +644,29 @@
             { label: "Object\nRecognition", human: 10, gpt4: 0, gpt4o: 8 }
         ];
 
+        // ===== PRECOMPUTED DATA =====
+        // Cache category keys, counts, and averages to avoid recomputing on every draw
+        var _catKeys = Object.keys(categories);
+        var _catCounts = {};
+        var _catAvgDiff = {};
+        var _catAvgDiff2025 = {};
+        _catKeys.forEach(function(c) { _catCounts[c] = 0; _catAvgDiff[c] = 0; _catAvgDiff2025[c] = 0; });
+        gifData.forEach(function(g) { _catCounts[g.category]++; });
+        _catKeys.forEach(function(c) {
+            if (_catCounts[c] > 0) {
+                var sumD = 0, sumD25 = 0;
+                gifData.forEach(function(g) {
+                    if (g.category === c) { sumD += g.difficulty; sumD25 += g.aiDifficulty2025; }
+                });
+                _catAvgDiff[c] = sumD / _catCounts[c];
+                _catAvgDiff2025[c] = sumD25 / _catCounts[c];
+            }
+        });
+
+        // Reusable sanitizer element (avoids creating new DOM elements per call)
+        var _sanitizeEl = document.createElement("div");
+        function sanitizeText(str) { _sanitizeEl.textContent = str; return _sanitizeEl.innerHTML; }
+
         // ===== CHART RENDERING =====
 
         function drawCategoryChart() {
@@ -656,10 +679,8 @@
 
             var w = canvas.offsetWidth;
             var h = 260;
-            var cats = Object.keys(categories);
-            var counts = {};
-            cats.forEach(function(c) { counts[c] = 0; });
-            gifData.forEach(function(g) { counts[g.category]++; });
+            var cats = _catKeys;
+            var counts = _catCounts;
 
             var barWidth = Math.min(60, (w - 80) / cats.length - 10);
             var maxVal = 4;
@@ -726,18 +747,9 @@
 
             var w = canvas.offsetWidth;
             var h = 260;
-            var cats = Object.keys(categories);
-
-            // Calculate avg difficulty per category
-            var avgDiff = {};
-            var avgDiff2025 = {};
-            cats.forEach(function(c) {
-                var items = gifData.filter(function(g) { return g.category === c; });
-                var sum = items.reduce(function(a, g) { return a + g.difficulty; }, 0);
-                var sum2025 = items.reduce(function(a, g) { return a + g.aiDifficulty2025; }, 0);
-                avgDiff[c] = items.length > 0 ? sum / items.length : 0;
-                avgDiff2025[c] = items.length > 0 ? sum2025 / items.length : 0;
-            });
+            var cats = _catKeys;
+            var avgDiff = _catAvgDiff;
+            var avgDiff2025 = _catAvgDiff2025;
 
             var barWidth = Math.min(25, (w - 80) / (cats.length * 2) - 5);
             var maxVal = 10;
@@ -912,14 +924,14 @@
         // ===== COMPARISON TABLE =====
         function buildComparisonTable() {
             var tbody = document.getElementById("comparisonTableBody");
-            var cats = Object.keys(categories);
+            var frag = document.createDocumentFragment();
 
             function scoreCell(val) {
                 var color = val === 0 ? "#f85149" : val <= 3 ? "#f85149" : val <= 5 ? "#d29922" : val <= 7 ? "#58a6ff" : "#3fb950";
                 return '<td style="text-align: center; color: ' + color + '; font-weight: 600;">' + val + '/10</td>';
             }
 
-            cats.forEach(function(cat) {
+            _catKeys.forEach(function(cat) {
                 var d = modelData[cat];
                 var tr = document.createElement("tr");
                 tr.style.borderBottom = "1px solid var(--border)";
@@ -930,75 +942,86 @@
                     scoreCell(d.claude) +
                     scoreCell(d.gemini) +
                     scoreCell(d.human);
-                tbody.appendChild(tr);
+                frag.appendChild(tr);
             });
+            tbody.appendChild(frag);
         }
 
         // ===== GIF CARDS =====
+        // Pre-build all cards once, then filter by show/hide (avoids innerHTML rebuild on each filter)
         function buildGifCards() {
             var container = document.getElementById("gifCards");
-            var activeFilter = "all";
+            var allCards = [];
+
+            // Build cards once
+            gifData.forEach(function(gif) {
+                var card = document.createElement("div");
+                card.className = "gif-analysis-card";
+                card.dataset.category = gif.category;
+
+                var diffColor = gif.difficulty >= 8 ? "#f85149" : gif.difficulty >= 6 ? "#d29922" : "#3fb950";
+                var diffColor2025 = gif.aiDifficulty2025 >= 8 ? "#f85149" : gif.aiDifficulty2025 >= 6 ? "#d29922" : gif.aiDifficulty2025 >= 4 ? "#58a6ff" : "#3fb950";
+
+                var tagsHtml = gif.categories.map(function(c) {
+                    return '<span class="tag tag-' + c + '">' + categories[c].label + '</span>';
+                }).join("");
+
+                card.innerHTML =
+                    '<div class="card-header">' +
+                        '<div class="title-group">' +
+                            '<span class="gif-number">' + gif.id + '</span>' +
+                            '<span class="gif-title">' + gif.title + '</span>' +
+                            tagsHtml +
+                        '</div>' +
+                        '<span class="expand-icon">▼</span>' +
+                    '</div>' +
+                    '<div class="card-body">' +
+                        '<div class="difficulty-meter">' +
+                            '<span class="meter-label">AI Difficulty<br>(2023)</span>' +
+                            '<div class="difficulty-bar-bg"><div class="difficulty-bar-fill" style="width: ' + (gif.difficulty * 10) + '%; background: ' + diffColor + ';"></div></div>' +
+                            '<span class="meter-value" style="color: ' + diffColor + '">' + gif.difficulty + '/10</span>' +
+                        '</div>' +
+                        '<div class="difficulty-meter">' +
+                            '<span class="meter-label">AI Difficulty<br>(2025 est.)</span>' +
+                            '<div class="difficulty-bar-bg"><div class="difficulty-bar-fill" style="width: ' + (gif.aiDifficulty2025 * 10) + '%; background: ' + diffColor2025 + ';"></div></div>' +
+                            '<span class="meter-value" style="color: ' + diffColor2025 + '">' + gif.aiDifficulty2025 + '/10</span>' +
+                        '</div>' +
+                        '<div class="detail-row">' +
+                            '<span class="detail-label">Human Answer</span>' +
+                            '<span class="detail-value">' + gif.humanAnswer + '</span>' +
+                        '</div>' +
+                        '<div class="detail-row">' +
+                            '<span class="detail-label">Key Challenge</span>' +
+                            '<span class="detail-value">' + gif.keyChallenge + '</span>' +
+                        '</div>' +
+                        '<div class="detail-row">' +
+                            '<span class="detail-label">Why It Works</span>' +
+                            '<span class="detail-value">' + gif.whyItWorks + '</span>' +
+                        '</div>' +
+                        '<div class="detail-row">' +
+                            '<span class="detail-label">Cognitive Skills</span>' +
+                            '<span class="detail-value">' + gif.cognitiveSkills.join(", ") + '</span>' +
+                        '</div>' +
+                    '</div>';
+
+                card.querySelector(".card-header").addEventListener("click", function() {
+                    card.classList.toggle("expanded");
+                });
+
+                allCards.push(card);
+            });
 
             function render(filter) {
+                // Use DocumentFragment for batch DOM insertion
+                var frag = document.createDocumentFragment();
+                for (var i = 0; i < allCards.length; i++) {
+                    if (filter === "all" || allCards[i].dataset.category === filter) {
+                        frag.appendChild(allCards[i]);
+                    }
+                }
                 container.innerHTML = "";
-                gifData.forEach(function(gif) {
-                    if (filter !== "all" && gif.category !== filter) return;
-
-                    var card = document.createElement("div");
-                    card.className = "gif-analysis-card";
-                    card.dataset.category = gif.category;
-
-                    var diffColor = gif.difficulty >= 8 ? "#f85149" : gif.difficulty >= 6 ? "#d29922" : "#3fb950";
-                    var diffColor2025 = gif.aiDifficulty2025 >= 8 ? "#f85149" : gif.aiDifficulty2025 >= 6 ? "#d29922" : gif.aiDifficulty2025 >= 4 ? "#58a6ff" : "#3fb950";
-
-                    var tagsHtml = gif.categories.map(function(c) {
-                        return '<span class="tag tag-' + c + '">' + categories[c].label + '</span>';
-                    }).join("");
-
-                    card.innerHTML =
-                        '<div class="card-header">' +
-                            '<div class="title-group">' +
-                                '<span class="gif-number">' + gif.id + '</span>' +
-                                '<span class="gif-title">' + gif.title + '</span>' +
-                                tagsHtml +
-                            '</div>' +
-                            '<span class="expand-icon">▼</span>' +
-                        '</div>' +
-                        '<div class="card-body">' +
-                            '<div class="difficulty-meter">' +
-                                '<span class="meter-label">AI Difficulty<br>(2023)</span>' +
-                                '<div class="difficulty-bar-bg"><div class="difficulty-bar-fill" style="width: ' + (gif.difficulty * 10) + '%; background: ' + diffColor + ';"></div></div>' +
-                                '<span class="meter-value" style="color: ' + diffColor + '">' + gif.difficulty + '/10</span>' +
-                            '</div>' +
-                            '<div class="difficulty-meter">' +
-                                '<span class="meter-label">AI Difficulty<br>(2025 est.)</span>' +
-                                '<div class="difficulty-bar-bg"><div class="difficulty-bar-fill" style="width: ' + (gif.aiDifficulty2025 * 10) + '%; background: ' + diffColor2025 + ';"></div></div>' +
-                                '<span class="meter-value" style="color: ' + diffColor2025 + '">' + gif.aiDifficulty2025 + '/10</span>' +
-                            '</div>' +
-                            '<div class="detail-row">' +
-                                '<span class="detail-label">Human Answer</span>' +
-                                '<span class="detail-value">' + gif.humanAnswer + '</span>' +
-                            '</div>' +
-                            '<div class="detail-row">' +
-                                '<span class="detail-label">Key Challenge</span>' +
-                                '<span class="detail-value">' + gif.keyChallenge + '</span>' +
-                            '</div>' +
-                            '<div class="detail-row">' +
-                                '<span class="detail-label">Why It Works</span>' +
-                                '<span class="detail-value">' + gif.whyItWorks + '</span>' +
-                            '</div>' +
-                            '<div class="detail-row">' +
-                                '<span class="detail-label">Cognitive Skills</span>' +
-                                '<span class="detail-value">' + gif.cognitiveSkills.join(", ") + '</span>' +
-                            '</div>' +
-                        '</div>';
-
-                    card.querySelector(".card-header").addEventListener("click", function() {
-                        card.classList.toggle("expanded");
-                    });
-
-                    container.appendChild(card);
-                });
+                container.appendChild(frag);
+            }
             }
 
             // Filter tabs
@@ -1023,7 +1046,7 @@
             buildGifCards();
         }
 
-        // Handle resize
+        // Debounced resize handler (avoids excessive canvas redraws during resize drag)
         var resizeTimeout;
         window.addEventListener("resize", function() {
             clearTimeout(resizeTimeout);

@@ -661,10 +661,11 @@
             document.getElementById("submitBtn").disabled = true;
         }
 
+        // Reusable sanitizer element (avoids creating new DOM elements per call)
+        var _sanitizeEl = document.createElement("div");
         function sanitize(str) {
-            var div = document.createElement("div");
-            div.textContent = str;
-            return div.innerHTML;
+            _sanitizeEl.textContent = str;
+            return _sanitizeEl.innerHTML;
         }
 
         // Character counter and submit enable
@@ -778,9 +779,9 @@
                     "The whole point is that animated narrative comprehension is inherently human.";
             }
 
-            // Build results table
+            // Build results table using DocumentFragment for batch insertion
             var tbody = document.getElementById("resultsTableBody");
-            tbody.innerHTML = "";
+            var frag = document.createDocumentFragment();
             for (var j = 0; j < challenges.length; j++) {
                 var tr = document.createElement("tr");
                 var ua = userAnswers[j];
@@ -795,8 +796,10 @@
                     '<td>' + sanitize(challenges[j].title) + '</td>' +
                     '<td>' + sanitize(displayText) + '</td>' +
                     '<td>' + status + '</td>';
-                tbody.appendChild(tr);
+                frag.appendChild(tr);
             }
+            tbody.innerHTML = "";
+            tbody.appendChild(frag);
         }
 
         function restartDemo() {

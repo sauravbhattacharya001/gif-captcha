@@ -6,9 +6,15 @@
 
 A research case study exploring GIF-based CAPTCHAs as a human-verification mechanism against large language models.
 
+[![CI](https://github.com/sauravbhattacharya001/gif-captcha/actions/workflows/ci.yml/badge.svg)](https://github.com/sauravbhattacharya001/gif-captcha/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/sauravbhattacharya001/gif-captcha/actions/workflows/codeql.yml/badge.svg)](https://github.com/sauravbhattacharya001/gif-captcha/actions/workflows/codeql.yml)
+[![Docker](https://github.com/sauravbhattacharya001/gif-captcha/actions/workflows/docker.yml/badge.svg)](https://github.com/sauravbhattacharya001/gif-captcha/actions/workflows/docker.yml)
+[![GitHub Pages](https://github.com/sauravbhattacharya001/gif-captcha/actions/workflows/pages.yml/badge.svg)](https://github.com/sauravbhattacharya001/gif-captcha/actions/workflows/pages.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![GitHub Pages](https://img.shields.io/badge/demo-GitHub%20Pages-brightgreen)](https://sauravbhattacharya001.github.io/gif-captcha/)
-![HTML](https://img.shields.io/badge/Built%20with-HTML%2FCSS-orange)
+![HTML](https://img.shields.io/badge/Built%20with-HTML%2FCSS%2FJS-orange)
+![GitHub repo size](https://img.shields.io/github/repo-size/sauravbhattacharya001/gif-captcha)
+![GitHub last commit](https://img.shields.io/github/last-commit/sauravbhattacharya001/gif-captcha)
+![GitHub issues](https://img.shields.io/github/issues/sauravbhattacharya001/gif-captcha)
 
 [**View Live Demo →**](https://sauravbhattacharya001.github.io/gif-captcha/)
 

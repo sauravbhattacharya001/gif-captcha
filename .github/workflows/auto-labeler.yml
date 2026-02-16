@@ -1,0 +1,59 @@
+name: Auto Labeler
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+  issues:
+    types: [opened, edited]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  label-pr:
+    name: Label Pull Request
+    if: github.event_name == 'pull_request_target'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Label PR based on file paths
+        uses: actions/labeler@v5
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          configuration-path: .github/labeler.yml
+          sync-labels: true
+
+  label-issue:
+    name: Label Issue
+    if: github.event_name == 'issues'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Label issue based on content
+        uses: github/issue-labeler@v3.4
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          configuration-path: .github/issue-labeler.yml
+          enable-versioned-regex: 0
+
+  stale:
+    name: Close Stale Issues & PRs
+    runs-on: ubuntu-latest
+    # Run on a schedule instead of every PR/issue event
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/stale@v9
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          stale-issue-message: >
+            This issue has been automatically marked as stale because it has not had
+            recent activity. It will be closed in 14 days if no further activity occurs.
+          stale-pr-message: >
+            This PR has been automatically marked as stale because it has not had
+            recent activity. It will be closed in 14 days if no further activity occurs.
+          stale-issue-label: stale
+          stale-pr-label: stale
+          days-before-stale: 60
+          days-before-close: 14
+          exempt-issue-labels: 'pinned,evergreen'
+          exempt-pr-labels: 'pinned,evergreen'

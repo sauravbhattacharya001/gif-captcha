@@ -1,0 +1,75 @@
+# Auto-labeler configuration for gif-captcha
+# Automatically labels PRs and issues based on file paths and content
+
+# Documentation changes
+documentation:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'README.md'
+          - 'CONTRIBUTING.md'
+          - 'LICENSE'
+          - 'docs/**'
+          - '*.md'
+
+# GitHub configuration
+github-config:
+  - changed-files:
+      - any-glob-to-any-file:
+          - '.github/**'
+
+# CI/CD changes
+ci-cd:
+  - changed-files:
+      - any-glob-to-any-file:
+          - '.github/workflows/**'
+          - 'Dockerfile'
+          - 'docker-compose*.yml'
+          - 'nginx*.conf'
+
+# Test changes
+tests:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'tests/**'
+          - '**/*.test.js'
+          - '**/*.spec.js'
+
+# Frontend / UI changes
+frontend:
+  - changed-files:
+      - any-glob-to-any-file:
+          - '*.html'
+          - '*.css'
+          - '*.js'
+
+# Research content
+research:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'analysis.html'
+          - 'demo.html'
+          - 'index.html'
+
+# Security-related changes
+security:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'nginx-security.conf'
+          - '.github/workflows/codeql.yml'
+          - '.github/dependabot.yml'
+
+# Docker/Infrastructure
+infrastructure:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'Dockerfile'
+          - 'docker-compose*.yml'
+          - 'nginx*.conf'
+          - '.github/workflows/docker.yml'
+
+# Dependencies
+dependencies:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'package.json'
+          - 'package-lock.json'

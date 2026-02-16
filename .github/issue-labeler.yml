@@ -1,0 +1,19 @@
+# Issue labeler configuration
+# Labels issues based on title and body content using regex
+
+bug:
+  - '(bug|error|fail|crash|broken|not working|issue|problem)'
+enhancement:
+  - '(feature|enhancement|improve|add|request|suggestion|new)'
+question:
+  - '(question|how to|how do|help|confused|clarification)'
+research:
+  - '(research|study|paper|experiment|methodology|findings|analysis|benchmark)'
+captcha:
+  - '(captcha|gif|animation|verification|human|bot|ai detection)'
+multimodal:
+  - '(gpt-4o|claude|gemini|multimodal|vision|image recognition)'
+security:
+  - '(security|vulnerability|exploit|xss|injection|csp|cors)'
+documentation:
+  - '(docs|documentation|readme|typo|spelling|grammar)'

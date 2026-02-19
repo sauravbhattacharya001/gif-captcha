@@ -362,6 +362,7 @@
         <div class="nav-links">
             <a href="index.html">← Case Study</a>
             <a href="demo.html">🎮 Try the Demo</a>
+            <a href="generator.html">🛠️ Workshop</a>
         </div>
     </div>
 
@@ -514,6 +515,7 @@
             <p>
                 <a href="index.html">Case Study</a> ·
                 <a href="demo.html">Interactive Demo</a> ·
+                <a href="generator.html">CAPTCHA Workshop</a> ·
                 <a href="https://github.com/sauravbhattacharya001/gif-captcha">GitHub</a> ·
                 MIT License
             </p>
@@ -1022,9 +1024,9 @@
                 container.innerHTML = "";
                 container.appendChild(frag);
             }
-            }
 
             // Filter tabs
+            var activeFilter = "all";
             document.querySelectorAll(".filter-tab").forEach(function(tab) {
                 tab.addEventListener("click", function() {
                     document.querySelectorAll(".filter-tab").forEach(function(t) { t.classList.remove("active"); });

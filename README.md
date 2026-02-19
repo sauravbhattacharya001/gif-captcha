@@ -100,6 +100,17 @@ Deep dive into the research data with interactive visualizations:
 - **AI Capability Timeline** — Evolution from 0/10 (2023) to projected future performance
 - **Per-GIF Analysis Cards** — Expandable breakdowns with difficulty meters, cognitive skills, and explanations of why each CAPTCHA works
 
+### 🛠️ CAPTCHA Workshop
+
+**[Open Workshop →](https://sauravbhattacharya001.github.io/gif-captcha/generator.html)**
+
+Create your own custom GIF CAPTCHA challenge sets:
+- **Build** — Add GIF challenges with titles, URLs, expected answers, categories, and difficulty ratings
+- **Preview** — Test your CAPTCHA set as a user would experience it, with answer submission and reveal
+- **Export/Import** — Export as JSON, download as file, or generate shareable URL links
+- **Local Storage** — Auto-saves your work in the browser so you never lose progress
+- **Sample Set** — Load a pre-built set of 5 challenges to get started quickly
+
 ### Case Study Page
 
 Features a dark-themed UI with:
@@ -122,6 +133,7 @@ gif-captcha/
 ├── index.html      # Interactive case study page
 ├── demo.html       # Interactive CAPTCHA demo (try it yourself!)
 ├── analysis.html   # Research analysis dashboard with charts & taxonomy
+├── generator.html  # CAPTCHA Workshop — create custom challenge sets
 ├── README.md       # This file
 └── LICENSE         # MIT License
 ```

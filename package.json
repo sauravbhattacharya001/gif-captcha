@@ -2,9 +2,13 @@
   "name": "gif-captcha-tests",
   "private": true,
   "scripts": {
-    "test": "node --test tests/*.test.js"
+    "test": "node --test tests/*.test.js",
+    "test:coverage": "c8 --reporter=text --reporter=lcov --reporter=json-summary node --test tests/*.test.js",
+    "coverage": "c8 --reporter=text --reporter=lcov node --test tests/*.test.js",
+    "coverage:check": "c8 check-coverage --lines 70 --functions 70 --branches 70"
   },
   "devDependencies": {
+    "c8": "^10.1.0",
     "jsdom": "^25.0.0"
   }
 }

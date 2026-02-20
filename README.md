@@ -124,6 +124,18 @@ Explore how different AI models respond to each GIF CAPTCHA:
 - **Comparative Charts** — Stacked effectiveness bar chart and capability radar overlay
 - **Interactive Model Switching** — Click any model to see its full response set
 
+### ⏱️ Temporal Sequence Challenge
+
+**[Try Temporal Challenge →](https://sauravbhattacharya001.github.io/gif-captcha/temporal.html)**
+
+A harder CAPTCHA format testing temporal event ordering:
+- **Event Sequencing** — Watch each GIF and arrange 4 events in correct chronological order
+- **Drag & Drop + Buttons** — Reorder events by dragging or using arrow buttons (mobile-friendly)
+- **Kendall Tau Scoring** — Pairwise concordance scoring (0–100%) for partial credit on near-correct orderings
+- **Per-Challenge AI Analysis** — Why frame-by-frame AI processing fails at temporal sequencing
+- **Research Context** — Explores temporal CAPTCHAs as a next-generation human verification approach
+- **Results Dashboard** — Overall score, per-challenge breakdown with score bars, research implications
+
 ### Case Study Page
 
 Features a dark-themed UI with:
@@ -148,6 +160,7 @@ gif-captcha/
 ├── analysis.html   # Research analysis dashboard with charts & taxonomy
 ├── generator.html  # CAPTCHA Workshop — create custom challenge sets
 ├── simulator.html  # AI Response Simulator — model comparison & capability analysis
+├── temporal.html   # Temporal Sequence Challenge — event ordering CAPTCHA format
 ├── README.md       # This file
 └── LICENSE         # MIT License
 ```

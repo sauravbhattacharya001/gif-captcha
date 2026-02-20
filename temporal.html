@@ -1,0 +1,1318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src https: data:; script-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'self'; form-action 'none';">
+    <meta name="referrer" content="no-referrer">
+    <title>GIF CAPTCHA — Temporal Sequence Challenge</title>
+    <style>
+        :root {
+            --bg: #0d1117;
+            --surface: #161b22;
+            --surface-hover: #1c2129;
+            --border: #30363d;
+            --text: #e6edf3;
+            --muted: #8b949e;
+            --accent: #58a6ff;
+            --accent-hover: #79b8ff;
+            --green: #3fb950;
+            --green-bg: rgba(63, 185, 80, 0.15);
+            --red: #f85149;
+            --red-bg: rgba(248, 81, 73, 0.15);
+            --yellow: #d29922;
+            --yellow-bg: rgba(210, 153, 34, 0.15);
+            --purple: #bc8cff;
+            --purple-bg: rgba(188, 140, 255, 0.15);
+            --orange: #f0883e;
+            --cyan: #39d2c0;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+
+        /* Header */
+        .header {
+            text-align: center;
+            padding: 2.5rem 1.5rem 1.5rem;
+            border-bottom: 1px solid var(--border);
+        }
+        .header h1 { font-size: 2rem; margin-bottom: 0.3rem; }
+        .header .subtitle { color: var(--muted); font-size: 1rem; }
+        .nav-links { margin-top: 0.8rem; }
+        .nav-links a {
+            color: var(--accent);
+            text-decoration: none;
+            font-size: 0.85rem;
+            margin: 0 0.5rem;
+        }
+        .nav-links a:hover { text-decoration: underline; }
+
+        /* Progress bar */
+        .progress-container {
+            max-width: 700px;
+            margin: 0 auto;
+            padding: 1.5rem 1.5rem 0;
+        }
+        .progress-bar-bg {
+            width: 100%;
+            height: 6px;
+            background: var(--border);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        .progress-bar-fill {
+            height: 100%;
+            background: var(--accent);
+            border-radius: 3px;
+            transition: width 0.4s ease;
+        }
+        .progress-label {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 0.5rem;
+            font-size: 0.8rem;
+            color: var(--muted);
+        }
+
+        /* Main content */
+        .container {
+            max-width: 700px;
+            margin: 0 auto;
+            padding: 1.5rem;
+        }
+
+        /* Intro screen */
+        .intro {
+            text-align: center;
+            padding: 3rem 1rem;
+        }
+        .intro h2 { font-size: 1.5rem; margin-bottom: 1rem; }
+        .intro p { color: var(--muted); margin-bottom: 1.5rem; max-width: 500px; margin-left: auto; margin-right: auto; }
+        .intro .how-it-works {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.5rem;
+            text-align: left;
+            margin: 1.5rem 0 2rem;
+        }
+        .intro .how-it-works h3 { font-size: 1rem; margin-bottom: 0.8rem; }
+        .intro .how-it-works ol {
+            padding-left: 1.5rem;
+            color: var(--muted);
+        }
+        .intro .how-it-works li { margin-bottom: 0.4rem; }
+        .intro .research-note {
+            background: var(--purple-bg);
+            border: 1px solid rgba(188, 140, 255, 0.3);
+            border-radius: 10px;
+            padding: 1.25rem;
+            text-align: left;
+            margin: 1.5rem 0;
+        }
+        .intro .research-note h4 {
+            font-size: 0.9rem;
+            margin-bottom: 0.5rem;
+            color: var(--purple);
+        }
+        .intro .research-note p {
+            font-size: 0.85rem;
+            margin-bottom: 0;
+        }
+
+        /* Buttons */
+        .btn {
+            display: inline-block;
+            padding: 0.7rem 2rem;
+            border-radius: 8px;
+            border: none;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .btn-primary {
+            background: var(--accent);
+            color: #fff;
+        }
+        .btn-primary:hover { background: var(--accent-hover); }
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .btn-secondary {
+            background: var(--surface);
+            color: var(--text);
+            border: 1px solid var(--border);
+        }
+        .btn-secondary:hover { background: var(--surface-hover); }
+        .btn-small {
+            padding: 0.4rem 1rem;
+            font-size: 0.85rem;
+        }
+
+        /* Challenge card */
+        .challenge {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+            margin-bottom: 1.5rem;
+        }
+        .challenge-header {
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .challenge-header .label {
+            font-size: 0.85rem;
+            color: var(--muted);
+        }
+        .challenge-header .number {
+            font-weight: 700;
+            color: var(--accent);
+        }
+        .gif-container {
+            width: 100%;
+            min-height: 200px;
+            max-height: 400px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #000;
+            position: relative;
+        }
+        .gif-container img {
+            max-width: 100%;
+            max-height: 400px;
+            object-fit: contain;
+        }
+        .gif-container .gif-loading {
+            color: var(--muted);
+            font-size: 0.9rem;
+        }
+        .gif-container .gif-error {
+            color: var(--muted);
+            font-size: 0.9rem;
+            text-align: center;
+            padding: 2rem;
+        }
+        .gif-container .gif-error a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+        .gif-container .gif-error a:hover { text-decoration: underline; }
+        .challenge-prompt {
+            padding: 1.25rem 1.5rem;
+            border-top: 1px solid var(--border);
+        }
+        .challenge-prompt .prompt-text {
+            font-size: 0.95rem;
+            font-weight: 600;
+            margin-bottom: 0.4rem;
+        }
+        .challenge-prompt .prompt-hint {
+            font-size: 0.8rem;
+            color: var(--muted);
+        }
+
+        /* Sortable event list */
+        .sequence-area {
+            margin-bottom: 1.5rem;
+        }
+        .sequence-area .instruction {
+            font-size: 0.85rem;
+            color: var(--muted);
+            margin-bottom: 0.8rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .sequence-list {
+            list-style: none;
+            padding: 0;
+        }
+        .sequence-item {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.85rem 1rem;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            margin-bottom: 0.5rem;
+            cursor: grab;
+            transition: all 0.2s ease;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        .sequence-item:hover {
+            border-color: var(--accent);
+            background: var(--surface-hover);
+        }
+        .sequence-item:active {
+            cursor: grabbing;
+        }
+        .sequence-item.dragging {
+            opacity: 0.5;
+            border-color: var(--accent);
+            background: rgba(88, 166, 255, 0.1);
+        }
+        .sequence-item.drag-over {
+            border-color: var(--accent);
+            transform: translateY(2px);
+        }
+        .sequence-item .order-num {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: var(--border);
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8rem;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+        .sequence-item .drag-handle {
+            color: var(--muted);
+            font-size: 1.1rem;
+            flex-shrink: 0;
+            cursor: grab;
+        }
+        .sequence-item .event-text {
+            flex: 1;
+            font-size: 0.9rem;
+            color: var(--text);
+        }
+        .sequence-item .move-btns {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            flex-shrink: 0;
+        }
+        .sequence-item .move-btn {
+            background: none;
+            border: 1px solid var(--border);
+            color: var(--muted);
+            width: 24px;
+            height: 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.7rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.15s ease;
+        }
+        .sequence-item .move-btn:hover {
+            background: var(--surface-hover);
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+        .sequence-actions {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 1rem;
+        }
+
+        /* Reveal / feedback */
+        .reveal {
+            border-radius: 10px;
+            overflow: hidden;
+            margin-bottom: 1.5rem;
+            animation: fadeIn 0.4s ease;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .sequence-feedback {
+            margin-bottom: 1.5rem;
+            animation: fadeIn 0.4s ease;
+        }
+        .feedback-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+            padding: 1rem 1.25rem;
+            border-radius: 10px;
+        }
+        .feedback-header.perfect {
+            background: var(--green-bg);
+            border: 1px solid rgba(63, 185, 80, 0.3);
+        }
+        .feedback-header.partial {
+            background: var(--yellow-bg);
+            border: 1px solid rgba(210, 153, 34, 0.3);
+        }
+        .feedback-header.wrong {
+            background: var(--red-bg);
+            border: 1px solid rgba(248, 81, 73, 0.3);
+        }
+        .feedback-header .feedback-icon { font-size: 1.5rem; }
+        .feedback-header .feedback-text {
+            font-size: 0.95rem;
+            font-weight: 600;
+        }
+        .feedback-header .feedback-score {
+            margin-left: auto;
+            font-size: 1.3rem;
+            font-weight: 800;
+        }
+        .feedback-header.perfect .feedback-text { color: var(--green); }
+        .feedback-header.partial .feedback-text { color: var(--yellow); }
+        .feedback-header.wrong .feedback-text { color: var(--red); }
+        .feedback-header.perfect .feedback-score { color: var(--green); }
+        .feedback-header.partial .feedback-score { color: var(--yellow); }
+        .feedback-header.wrong .feedback-score { color: var(--red); }
+
+        .correct-order {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.25rem;
+            margin-bottom: 1rem;
+        }
+        .correct-order h4 {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--muted);
+            margin-bottom: 0.8rem;
+        }
+        .correct-item {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.5rem 0;
+            font-size: 0.9rem;
+        }
+        .correct-item + .correct-item {
+            border-top: 1px solid var(--border);
+        }
+        .correct-item .step-num {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+        .correct-item.matched .step-num {
+            background: var(--green-bg);
+            color: var(--green);
+        }
+        .correct-item.mismatched .step-num {
+            background: var(--red-bg);
+            color: var(--red);
+        }
+        .correct-item .step-text {
+            flex: 1;
+            color: var(--text);
+        }
+        .correct-item .step-status {
+            font-size: 0.75rem;
+            flex-shrink: 0;
+        }
+        .correct-item.matched .step-status { color: var(--green); }
+        .correct-item.mismatched .step-status { color: var(--red); }
+
+        .ai-note {
+            background: var(--purple-bg);
+            border: 1px solid rgba(188, 140, 255, 0.3);
+            border-radius: 10px;
+            padding: 1rem 1.25rem;
+            margin-bottom: 1rem;
+        }
+        .ai-note h4 {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--purple);
+            margin-bottom: 0.4rem;
+        }
+        .ai-note p {
+            font-size: 0.85rem;
+            color: var(--muted);
+            margin-bottom: 0;
+        }
+
+        .next-actions {
+            text-align: center;
+            margin: 1.5rem 0;
+        }
+
+        /* Results screen */
+        .results {
+            text-align: center;
+            padding: 2rem 0;
+        }
+        .results h2 { font-size: 1.8rem; margin-bottom: 0.5rem; }
+        .results .score-display {
+            font-size: 4rem;
+            font-weight: 800;
+            margin: 1.5rem 0;
+            line-height: 1;
+        }
+        .results .score-display .score-label {
+            display: block;
+            font-size: 0.9rem;
+            font-weight: 400;
+            color: var(--muted);
+            margin-top: 0.3rem;
+        }
+        .results-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 1rem;
+            margin: 2rem 0;
+            text-align: left;
+        }
+        .result-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.25rem;
+        }
+        .result-card .card-label {
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--muted);
+            margin-bottom: 0.4rem;
+        }
+        .result-card .card-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+        .results-breakdown {
+            text-align: left;
+            margin: 1.5rem 0;
+        }
+        .results-breakdown h3 {
+            font-size: 1.1rem;
+            margin-bottom: 1rem;
+            color: var(--accent);
+        }
+        .breakdown-item {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 0.8rem 1rem;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            margin-bottom: 0.5rem;
+        }
+        .breakdown-item .breakdown-num {
+            font-weight: 700;
+            color: var(--muted);
+            font-size: 0.85rem;
+            flex-shrink: 0;
+            width: 20px;
+        }
+        .breakdown-item .breakdown-title {
+            flex: 1;
+            font-size: 0.9rem;
+        }
+        .breakdown-item .breakdown-score {
+            font-weight: 700;
+            font-size: 0.9rem;
+            flex-shrink: 0;
+        }
+        .breakdown-item .breakdown-bar {
+            width: 60px;
+            height: 6px;
+            background: var(--border);
+            border-radius: 3px;
+            overflow: hidden;
+            flex-shrink: 0;
+        }
+        .breakdown-item .breakdown-bar-fill {
+            height: 100%;
+            border-radius: 3px;
+            transition: width 0.6s ease;
+        }
+
+        .results-insight {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin: 1.5rem 0;
+            text-align: left;
+        }
+        .results-insight h3 { font-size: 1rem; margin-bottom: 0.5rem; color: var(--accent); }
+        .results-insight p { color: var(--muted); font-size: 0.9rem; margin-bottom: 0; }
+
+        .results-research {
+            background: var(--purple-bg);
+            border: 1px solid rgba(188, 140, 255, 0.3);
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin: 1.5rem 0;
+            text-align: left;
+        }
+        .results-research h3 { font-size: 1rem; margin-bottom: 0.5rem; color: var(--purple); }
+        .results-research p { color: var(--muted); font-size: 0.9rem; margin-bottom: 0; }
+
+        /* Skip button */
+        .skip-link {
+            color: var(--muted);
+            font-size: 0.8rem;
+            cursor: pointer;
+            background: none;
+            border: none;
+            text-decoration: underline;
+            font-family: inherit;
+        }
+        .skip-link:hover { color: var(--text); }
+
+        /* Hidden */
+        .hidden { display: none !important; }
+
+        /* Responsive */
+        @media (max-width: 600px) {
+            .header h1 { font-size: 1.5rem; }
+            .results .score-display { font-size: 3rem; }
+            .results-grid { grid-template-columns: 1fr; }
+            .container { padding: 1rem; }
+            .sequence-item .move-btns { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>⏱️ Temporal Sequence Challenge</h1>
+        <p class="subtitle">Can you order events in the right sequence?</p>
+        <div class="nav-links">
+            <a href="index.html">← Case Study</a>
+            <a href="demo.html">🎮 Demo</a>
+            <a href="analysis.html">📊 Analysis</a>
+            <a href="generator.html">🛠️ Workshop</a>
+            <a href="simulator.html">🤖 Simulator</a>
+        </div>
+    </div>
+
+    <div class="progress-container hidden" id="progressContainer">
+        <div class="progress-bar-bg">
+            <div class="progress-bar-fill" id="progressFill" style="width: 0%"></div>
+        </div>
+        <div class="progress-label">
+            <span id="progressText">Challenge 1 of 10</span>
+            <span id="scoreText">Score: 0</span>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- Intro screen -->
+        <div id="introScreen" class="intro">
+            <h2>⏱️ Put Events in Order</h2>
+            <p>A harder CAPTCHA format: watch each GIF and arrange the events in the correct temporal sequence. This tests your ability to track <strong>what happens when</strong>.</p>
+            <div class="how-it-works">
+                <h3>📋 How it works</h3>
+                <ol>
+                    <li>Watch each animated GIF carefully</li>
+                    <li>You'll see 4 events listed in random order</li>
+                    <li>Drag and drop (or use arrow buttons) to arrange them chronologically</li>
+                    <li>Submit your ordering and see how you did</li>
+                </ol>
+            </div>
+            <div class="research-note">
+                <h4>🔬 Why Temporal Sequencing?</h4>
+                <p>The original GIF CAPTCHA tested <em>description</em> ability — can you say what happened? This challenge tests <em>temporal ordering</em> — can you say <strong>when</strong> things happened? AI models that process frames independently struggle with event ordering, making this a potentially stronger CAPTCHA signal.</p>
+            </div>
+            <p style="font-size: 0.85rem;">⏱️ Takes about 5–7 minutes</p>
+            <button class="btn btn-primary" onclick="TemporalChallenge.start()">Start the Challenge</button>
+        </div>
+
+        <!-- Challenge screen -->
+        <div id="challengeScreen" class="hidden">
+            <div class="challenge">
+                <div class="challenge-header">
+                    <span class="label">Challenge <span class="number" id="challengeNumber">1</span></span>
+                    <span class="label" id="gifTitle"></span>
+                </div>
+                <div class="gif-container" id="gifContainer">
+                    <span class="gif-loading">Loading GIF...</span>
+                </div>
+                <div class="challenge-prompt">
+                    <div class="prompt-text">⏱️ Arrange these events in chronological order</div>
+                    <div class="prompt-hint">Drag to reorder, or use the arrow buttons. First event at the top.</div>
+                </div>
+            </div>
+
+            <div class="sequence-area" id="sequenceArea">
+                <div class="instruction">
+                    <span>Earliest → Latest</span>
+                    <button class="skip-link" onclick="TemporalChallenge.shuffle()">🔀 Re-shuffle</button>
+                </div>
+                <ul class="sequence-list" id="sequenceList" role="list" aria-label="Event sequence"></ul>
+                <div class="sequence-actions">
+                    <button class="skip-link" onclick="TemporalChallenge.skip()">Skip this one</button>
+                    <button class="btn btn-primary btn-small" id="submitBtn" onclick="TemporalChallenge.submit()">Check Order →</button>
+                </div>
+            </div>
+
+            <div id="feedbackPanel" class="hidden">
+                <div class="sequence-feedback" id="feedbackContent"></div>
+                <div class="next-actions">
+                    <button class="btn btn-primary" id="nextBtn" onclick="TemporalChallenge.next()">Next Challenge →</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Results screen -->
+        <div id="resultsScreen" class="hidden results"></div>
+    </div>
+
+    <script>
+        var TemporalChallenge = (function() {
+            // ---- Challenge data ----
+            // Each challenge has 4 events in correct order, plus AI difficulty context
+            var challenges = [
+                {
+                    id: 1,
+                    title: "Duel Plot Twist",
+                    gifUrl: "https://media1.tenor.com/m/g50YYgVxFo4AAAAC/unexpected-plot-twist.gif",
+                    sourceUrl: "https://tenor.com/view/unexpected-plot-twist-twist-plot-duel-gif-5053664",
+                    events: [
+                        "Two people face each other in a duel stance",
+                        "They draw their weapons simultaneously",
+                        "One fires with a 'BANG' flag, the other with a 'BOOM' flag",
+                        "Both reveal their guns were joke props all along"
+                    ],
+                    aiNote: "AI models processing individual frames would see two people standing, then holding objects — but miss the comedic timing of the simultaneous fake-gun reveal that makes the sequence funny."
+                },
+                {
+                    id: 2,
+                    title: "Rappers Roller Skating",
+                    gifUrl: "https://i.gifer.com/G9lg.gif",
+                    sourceUrl: "https://i.gifer.com/G9lg.gif",
+                    events: [
+                        "Three rappers are posing tough together",
+                        "They start an aggressive rap performance",
+                        "The energy suddenly shifts mid-performance",
+                        "One rapper smoothly roller-skates away from the group"
+                    ],
+                    aiNote: "The humor depends on tracking the transition from 'tough' body language to the absurd roller-skating exit — a narrative arc that requires understanding social expectations and their subversion."
+                },
+                {
+                    id: 3,
+                    title: "Flying Skateboarder",
+                    gifUrl: "https://media.giphy.com/media/l0MYDnCqzU2MQj7OM/giphy.gif",
+                    sourceUrl: "https://funnyordie.tumblr.com/post/102557790934",
+                    events: [
+                        "A skateboarder approaches a ramp at speed",
+                        "They launch off the ramp into the air",
+                        "Instead of landing, they keep rising higher",
+                        "The skateboarder flies away into the sky"
+                    ],
+                    aiNote: "Frame-by-frame analysis might detect a person getting higher, but would miss the 'impossibility transition' — the exact moment where physics breaks and the situation becomes absurd."
+                },
+                {
+                    id: 4,
+                    title: "Banana Mascot Dance-Off",
+                    gifUrl: "https://media.giphy.com/media/KYElw07kzDspaBOwf9/giphy.gif",
+                    sourceUrl: "https://www.pinterest.jp/pin/682225043525224271/",
+                    events: [
+                        "A banana mascot starts dancing in a public area",
+                        "A security guard approaches the mascot",
+                        "The guard confiscates the mascot's props",
+                        "The security guard starts dancing even better than the mascot"
+                    ],
+                    aiNote: "Understanding this sequence requires tracking the role reversal — the authority figure (guard) transforms from enforcer to performer. AI would need to understand social roles and their unexpected inversion."
+                },
+                {
+                    id: 5,
+                    title: "Tic Tac Toe Dog",
+                    gifUrl: "https://media.giphy.com/media/ZqlvCTNHpqrio/giphy.gif",
+                    sourceUrl: "https://giphy.com/gifs/dog-shiba-inu-tic-tac-toe-ZqlvCTNHpqrio",
+                    events: [
+                        "A tic-tac-toe grid is set up between a human and a Shiba Inu",
+                        "The human places their mark on the board",
+                        "The dog uses its paw to place a mark in response",
+                        "The dog completes a winning line and beats the human"
+                    ],
+                    aiNote: "While AI could potentially identify a dog and a grid, understanding the game progression — that the dog is strategically playing and winning — requires temporal game-state tracking across multiple frames."
+                },
+                {
+                    id: 6,
+                    title: "Parent Dog Sacrifice",
+                    gifUrl: "https://media.giphy.com/media/xTiTnMhJTwNHChdTZS/giphy.gif",
+                    sourceUrl: "https://giphy.com/gifs/dog-puppy-parent-xTiTnMhJTwNHChdTZS",
+                    events: [
+                        "A person picks up a small puppy",
+                        "The person appears to prepare the puppy for cooking",
+                        "The parent dog sees what's happening and intervenes",
+                        "The parent dog offers itself in place of the puppy"
+                    ],
+                    aiNote: "This sequence requires understanding emotional narrative — parental sacrifice — and the escalating tension across frames. AI processing frames independently would miss the parent dog's motivation entirely."
+                },
+                {
+                    id: 7,
+                    title: "Mirror Hand Illusion",
+                    gifUrl: "https://media.giphy.com/media/CkKg32KdKyQjm/giphy.gif",
+                    sourceUrl: "https://giphy.com/gifs/mirror-illusion-hand-CkKg32KdKyQjm",
+                    events: [
+                        "A hand reaches toward what appears to be a mirror",
+                        "The hand's 'reflection' moves in perfect sync",
+                        "The two hands touch fingertip to fingertip",
+                        "The reveal shows both hands belong to the same person — there's no mirror"
+                    ],
+                    aiNote: "The illusion's power comes from the temporal buildup of the mirror assumption, then its sudden destruction. AI would need to track the visual deception across time to understand why the reveal is surprising."
+                },
+                {
+                    id: 8,
+                    title: "Highway 180° Drift",
+                    gifUrl: "https://media.giphy.com/media/l2SpQRuCQzY1RXHqM/giphy.gif",
+                    sourceUrl: "https://giphy.com/gifs/car-drift-highway-l2SpQRuCQzY1RXHqM",
+                    events: [
+                        "A car is driving normally on a highway",
+                        "The car suddenly spins 180 degrees mid-lane",
+                        "The car continues driving briefly facing backwards",
+                        "The car spins back 180° and resumes normal driving as if nothing happened"
+                    ],
+                    aiNote: "Each individual frame shows a car on a road — unremarkable. The unexpected element is entirely in the motion sequence: the casual 360° spin that requires tracking orientation changes through time."
+                },
+                {
+                    id: 9,
+                    title: "Road Rage Hug",
+                    gifUrl: "https://media.giphy.com/media/brsEO1JayBVja/giphy.gif",
+                    sourceUrl: "https://giphy.com/gifs/road-rage-hug-brsEO1JayBVja",
+                    events: [
+                        "Two drivers get out of their cars in an apparent road rage incident",
+                        "They approach each other aggressively",
+                        "The tension escalates as they get face to face",
+                        "Instead of fighting, they embrace in a friendly hug"
+                    ],
+                    aiNote: "The emotional arc — anger → confrontation → unexpected warmth — requires understanding human social dynamics across time. Frame-by-frame analysis would show 'two people approaching then touching' without the emotional reversal."
+                },
+                {
+                    id: 10,
+                    title: "Birthday Cake Surprise",
+                    gifUrl: "https://media.giphy.com/media/xT0xeuOy2Fcl9vDGiA/giphy.gif",
+                    sourceUrl: "https://giphy.com/gifs/birthday-cake-surprise-xT0xeuOy2Fcl9vDGiA",
+                    events: [
+                        "A girl leans forward to blow out birthday candles",
+                        "Someone pushes her face into the cake",
+                        "She lifts her face from the cake",
+                        "Her face is completely clean — she had a paper plate as a shield"
+                    ],
+                    aiNote: "The 'double twist' — first the face-smash (expected prank), then the clean reveal (unexpected defense) — requires tracking a setup-payoff-reversal narrative across multiple time points."
+                }
+            ];
+
+            var currentIndex = 0;
+            var currentOrder = [];
+            var results = [];
+            var totalScore = 0;
+            var dragItem = null;
+
+            // ---- Sanitizer ----
+            var _el = document.createElement("div");
+            function sanitize(str) {
+                _el.textContent = str;
+                return _el.innerHTML;
+            }
+
+            // ---- Shuffle array (Fisher-Yates) ----
+            function shuffleArray(arr) {
+                var a = arr.slice();
+                for (var i = a.length - 1; i > 0; i--) {
+                    var j = Math.floor(Math.random() * (i + 1));
+                    var tmp = a[i];
+                    a[i] = a[j];
+                    a[j] = tmp;
+                }
+                return a;
+            }
+
+            // ---- Score calculation ----
+            // Kendall tau distance: count pairwise inversions vs correct order
+            function scoreOrder(userOrder, correctOrder) {
+                var n = correctOrder.length;
+                // Map each event text to its correct position
+                var correctPos = {};
+                for (var i = 0; i < n; i++) {
+                    correctPos[correctOrder[i]] = i;
+                }
+                // Count concordant pairs
+                var concordant = 0;
+                var total = 0;
+                for (var a = 0; a < n - 1; a++) {
+                    for (var b = a + 1; b < n; b++) {
+                        total++;
+                        var posA = correctPos[userOrder[a]];
+                        var posB = correctPos[userOrder[b]];
+                        if (posA < posB) concordant++;
+                    }
+                }
+                // Score: percentage of concordant pairs (0-100)
+                return Math.round((concordant / total) * 100);
+            }
+
+            // How many items are in their exact correct position?
+            function exactMatches(userOrder, correctOrder) {
+                var count = 0;
+                for (var i = 0; i < correctOrder.length; i++) {
+                    if (userOrder[i] === correctOrder[i]) count++;
+                }
+                return count;
+            }
+
+            // ---- GIF loading ----
+            var MAX_RETRIES = 2;
+            function loadGif(container, challenge, attempt) {
+                var img = document.createElement("img");
+                img.alt = challenge.title + " GIF";
+                img.onload = function() {
+                    container.innerHTML = "";
+                    container.appendChild(img);
+                };
+                img.onerror = function() {
+                    if (attempt < MAX_RETRIES) {
+                        container.innerHTML = '<span class="gif-loading">Retrying... (' + (attempt + 1) + '/' + MAX_RETRIES + ')</span>';
+                        setTimeout(function() { loadGif(container, challenge, attempt + 1); }, 1500);
+                        return;
+                    }
+                    var html = '<div class="gif-error"><p>⚠️ GIF couldn\'t load.</p>';
+                    if (challenge.sourceUrl && challenge.sourceUrl !== '#') {
+                        html += '<p><a href="' + sanitize(challenge.sourceUrl) + '" target="_blank" rel="noopener noreferrer">Open GIF in new tab →</a></p>';
+                        html += '<p style="margin-top:0.5rem;font-size:0.8rem;">Watch it there, then come back and order the events.</p>';
+                    } else {
+                        html += '<p style="margin-top:0.5rem;font-size:0.85rem;color:var(--yellow);">💡 This is "' + sanitize(challenge.title) + '"</p>';
+                    }
+                    html += '</div>';
+                    container.innerHTML = html;
+                };
+                img.src = attempt > 0 ? challenge.gifUrl + '?retry=' + attempt : challenge.gifUrl;
+            }
+
+            // ---- Drag and drop ----
+            function setupDragDrop() {
+                var list = document.getElementById("sequenceList");
+                var items = list.querySelectorAll(".sequence-item");
+
+                items.forEach(function(item) {
+                    item.setAttribute("draggable", "true");
+
+                    item.addEventListener("dragstart", function(e) {
+                        dragItem = this;
+                        this.classList.add("dragging");
+                        e.dataTransfer.effectAllowed = "move";
+                        e.dataTransfer.setData("text/plain", ""); // Required for Firefox
+                    });
+
+                    item.addEventListener("dragend", function() {
+                        this.classList.remove("dragging");
+                        dragItem = null;
+                        // Remove all drag-over states
+                        list.querySelectorAll(".drag-over").forEach(function(el) {
+                            el.classList.remove("drag-over");
+                        });
+                        updateOrderNumbers();
+                    });
+
+                    item.addEventListener("dragover", function(e) {
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = "move";
+                        if (this !== dragItem) {
+                            this.classList.add("drag-over");
+                        }
+                    });
+
+                    item.addEventListener("dragleave", function() {
+                        this.classList.remove("drag-over");
+                    });
+
+                    item.addEventListener("drop", function(e) {
+                        e.preventDefault();
+                        this.classList.remove("drag-over");
+                        if (dragItem && this !== dragItem) {
+                            // Insert dragged item before or after this item
+                            var allItems = Array.from(list.children);
+                            var dragIdx = allItems.indexOf(dragItem);
+                            var dropIdx = allItems.indexOf(this);
+                            if (dragIdx < dropIdx) {
+                                list.insertBefore(dragItem, this.nextSibling);
+                            } else {
+                                list.insertBefore(dragItem, this);
+                            }
+                            updateOrderNumbers();
+                        }
+                    });
+
+                    // Touch support for mobile
+                    var touchY = 0;
+                    item.addEventListener("touchstart", function(e) {
+                        touchY = e.touches[0].clientY;
+                        dragItem = this;
+                        this.classList.add("dragging");
+                    }, { passive: true });
+
+                    item.addEventListener("touchmove", function(e) {
+                        e.preventDefault();
+                        var touch = e.touches[0];
+                        var target = document.elementFromPoint(touch.clientX, touch.clientY);
+                        if (target) {
+                            var targetItem = target.closest(".sequence-item");
+                            list.querySelectorAll(".drag-over").forEach(function(el) {
+                                el.classList.remove("drag-over");
+                            });
+                            if (targetItem && targetItem !== dragItem) {
+                                targetItem.classList.add("drag-over");
+                            }
+                        }
+                    }, { passive: false });
+
+                    item.addEventListener("touchend", function(e) {
+                        this.classList.remove("dragging");
+                        var overItem = list.querySelector(".drag-over");
+                        if (overItem && dragItem) {
+                            var allItems = Array.from(list.children);
+                            var dragIdx = allItems.indexOf(dragItem);
+                            var dropIdx = allItems.indexOf(overItem);
+                            if (dragIdx < dropIdx) {
+                                list.insertBefore(dragItem, overItem.nextSibling);
+                            } else {
+                                list.insertBefore(dragItem, overItem);
+                            }
+                        }
+                        list.querySelectorAll(".drag-over").forEach(function(el) {
+                            el.classList.remove("drag-over");
+                        });
+                        dragItem = null;
+                        updateOrderNumbers();
+                    });
+                });
+            }
+
+            function updateOrderNumbers() {
+                var items = document.getElementById("sequenceList").querySelectorAll(".sequence-item");
+                items.forEach(function(item, i) {
+                    item.querySelector(".order-num").textContent = i + 1;
+                });
+                // Update currentOrder
+                currentOrder = [];
+                items.forEach(function(item) {
+                    currentOrder.push(item.getAttribute("data-event"));
+                });
+            }
+
+            function moveItem(idx, direction) {
+                var list = document.getElementById("sequenceList");
+                var items = Array.from(list.children);
+                var newIdx = idx + direction;
+                if (newIdx < 0 || newIdx >= items.length) return;
+
+                if (direction === -1) {
+                    list.insertBefore(items[idx], items[newIdx]);
+                } else {
+                    list.insertBefore(items[newIdx], items[idx]);
+                }
+                updateOrderNumbers();
+            }
+
+            // ---- Render sequence list ----
+            function renderSequence(events) {
+                var list = document.getElementById("sequenceList");
+                list.innerHTML = "";
+                for (var i = 0; i < events.length; i++) {
+                    var li = document.createElement("li");
+                    li.className = "sequence-item";
+                    li.setAttribute("data-event", events[i]);
+                    li.setAttribute("role", "listitem");
+                    li.innerHTML =
+                        '<span class="drag-handle" aria-hidden="true">⠿</span>' +
+                        '<span class="order-num">' + (i + 1) + '</span>' +
+                        '<span class="event-text">' + sanitize(events[i]) + '</span>' +
+                        '<span class="move-btns">' +
+                            '<button class="move-btn" onclick="TemporalChallenge.move(' + i + ', -1)" aria-label="Move up" title="Move up">▲</button>' +
+                            '<button class="move-btn" onclick="TemporalChallenge.move(' + i + ', 1)" aria-label="Move down" title="Move down">▼</button>' +
+                        '</span>';
+                    list.appendChild(li);
+                }
+                currentOrder = events.slice();
+                setupDragDrop();
+            }
+
+            // ---- Load challenge ----
+            function loadChallenge(index) {
+                currentIndex = index;
+                var c = challenges[index];
+
+                document.getElementById("challengeNumber").textContent = index + 1;
+                document.getElementById("gifTitle").textContent = c.title;
+
+                // Progress
+                document.getElementById("progressFill").style.width = ((index) / challenges.length * 100) + "%";
+                document.getElementById("progressText").textContent = "Challenge " + (index + 1) + " of " + challenges.length;
+                document.getElementById("scoreText").textContent = "Score: " + totalScore;
+
+                // Load GIF
+                var container = document.getElementById("gifContainer");
+                container.innerHTML = '<span class="gif-loading">Loading GIF...</span>';
+                loadGif(container, c, 0);
+
+                // Shuffle and render events
+                var shuffled = shuffleArray(c.events);
+                // Ensure shuffled isn't identical to correct order
+                var attempts = 0;
+                while (shuffled.join("|") === c.events.join("|") && attempts < 10) {
+                    shuffled = shuffleArray(c.events);
+                    attempts++;
+                }
+                renderSequence(shuffled);
+
+                // Show input, hide feedback
+                document.getElementById("sequenceArea").classList.remove("hidden");
+                document.getElementById("feedbackPanel").classList.add("hidden");
+            }
+
+            // ---- Show feedback ----
+            function showFeedback(score, skipped) {
+                var c = challenges[currentIndex];
+                var correct = c.events;
+
+                document.getElementById("sequenceArea").classList.add("hidden");
+                document.getElementById("feedbackPanel").classList.remove("hidden");
+
+                var feedbackHtml = '';
+
+                if (skipped) {
+                    feedbackHtml += '<div class="feedback-header wrong">' +
+                        '<span class="feedback-icon">⏭️</span>' +
+                        '<span class="feedback-text">Skipped</span>' +
+                        '<span class="feedback-score">0%</span>' +
+                        '</div>';
+                } else {
+                    var exact = exactMatches(currentOrder, correct);
+                    var grade, cls;
+                    if (score === 100) {
+                        grade = "Perfect Order!";
+                        cls = "perfect";
+                    } else if (score >= 67) {
+                        grade = "Close! " + exact + "/4 in position";
+                        cls = "partial";
+                    } else {
+                        grade = "Not quite — " + exact + "/4 in position";
+                        cls = "wrong";
+                    }
+                    feedbackHtml += '<div class="feedback-header ' + cls + '">' +
+                        '<span class="feedback-icon">' + (score === 100 ? '🎯' : score >= 67 ? '🔶' : '❌') + '</span>' +
+                        '<span class="feedback-text">' + grade + '</span>' +
+                        '<span class="feedback-score">' + score + '%</span>' +
+                        '</div>';
+                }
+
+                // Show correct order with matched/mismatched status
+                feedbackHtml += '<div class="correct-order"><h4>✅ Correct Order</h4>';
+                for (var i = 0; i < correct.length; i++) {
+                    var matched = !skipped && currentOrder[i] === correct[i];
+                    feedbackHtml += '<div class="correct-item ' + (matched ? 'matched' : 'mismatched') + '">' +
+                        '<span class="step-num">' + (i + 1) + '</span>' +
+                        '<span class="step-text">' + sanitize(correct[i]) + '</span>' +
+                        '<span class="step-status">' + (skipped ? '—' : (matched ? '✓ Correct' : '✗ Wrong position')) + '</span>' +
+                        '</div>';
+                }
+                feedbackHtml += '</div>';
+
+                // AI note
+                feedbackHtml += '<div class="ai-note">' +
+                    '<h4>🤖 Why AI Struggles With This</h4>' +
+                    '<p>' + sanitize(c.aiNote) + '</p>' +
+                    '</div>';
+
+                document.getElementById("feedbackContent").innerHTML = feedbackHtml;
+
+                // Update next button text
+                if (currentIndex === challenges.length - 1) {
+                    document.getElementById("nextBtn").textContent = "See Results →";
+                } else {
+                    document.getElementById("nextBtn").textContent = "Next Challenge →";
+                }
+            }
+
+            // ---- Results ----
+            function showResults() {
+                document.getElementById("challengeScreen").classList.add("hidden");
+                document.getElementById("progressContainer").classList.add("hidden");
+
+                var screen = document.getElementById("resultsScreen");
+                screen.classList.remove("hidden");
+
+                var totalChallenges = challenges.length;
+                var attempted = 0;
+                var skippedCount = 0;
+                var perfectCount = 0;
+                var sumScores = 0;
+
+                for (var i = 0; i < results.length; i++) {
+                    if (results[i].skipped) {
+                        skippedCount++;
+                    } else {
+                        attempted++;
+                        sumScores += results[i].score;
+                        if (results[i].score === 100) perfectCount++;
+                    }
+                }
+
+                var avgScore = attempted > 0 ? Math.round(sumScores / attempted) : 0;
+                var overallPct = Math.round(sumScores / totalChallenges);
+
+                // Title
+                var title, insight, researchNote;
+                if (overallPct >= 90) {
+                    title = "🎯 Temporal Master!";
+                    insight = "You scored " + overallPct + "% overall with " + perfectCount + " perfect orderings. " +
+                        "Your ability to track event sequences across animated narratives is exceptional. " +
+                        "This kind of temporal reasoning — understanding not just what happened but when — is one of the hardest capabilities for AI to replicate.";
+                } else if (overallPct >= 70) {
+                    title = "⏱️ Strong Sequencer!";
+                    insight = "You scored " + overallPct + "% overall. Solid temporal reasoning! " +
+                        "Most AI models would struggle significantly with this task since they process frames independently " +
+                        "and lack the continuous temporal awareness that lets you naturally track event ordering.";
+                } else if (overallPct >= 40) {
+                    title = "🔶 Partial Sequencer";
+                    insight = "You scored " + overallPct + "% overall. Some GIFs were trickier than others! " +
+                        "Even partial temporal ordering ability far exceeds what current AI models can do with " +
+                        "frame-by-frame analysis, which typically can't distinguish event sequence from simultaneous events.";
+                } else {
+                    title = "🤔 Tricky Sequences";
+                    insight = "You scored " + overallPct + "% overall. These temporal orderings are tough! " +
+                        "GIFs might not have loaded properly — try opening them in new tabs. " +
+                        "The important takeaway: temporal event ordering in animations remains a distinctly human capability.";
+                }
+
+                researchNote = "Temporal sequence CAPTCHAs represent a potential advancement over simple description-based CAPTCHAs. " +
+                    "While 2025 multimodal AI models can describe individual frames and even infer motion, " +
+                    "correctly ordering the narrative beats of an unexpected event requires continuous temporal processing " +
+                    "— watching the GIF as a stream, not analyzing it as a set of snapshots. " +
+                    "This makes temporal sequencing a promising direction for next-generation human verification.";
+
+                var html = '<h2>' + title + '</h2>' +
+                    '<div class="score-display"><span>' + overallPct + '%</span><span class="score-label">Temporal Score</span></div>';
+
+                html += '<div class="results-grid">' +
+                    '<div class="result-card"><div class="card-label">Avg Score</div><div class="card-value">' + avgScore + '%</div></div>' +
+                    '<div class="result-card"><div class="card-label">Perfect</div><div class="card-value" style="color:var(--green);">' + perfectCount + '/' + totalChallenges + '</div></div>' +
+                    '<div class="result-card"><div class="card-label">Skipped</div><div class="card-value">' + skippedCount + '/' + totalChallenges + '</div></div>' +
+                    '</div>';
+
+                // Per-challenge breakdown
+                html += '<div class="results-breakdown"><h3>Per-Challenge Breakdown</h3>';
+                for (var j = 0; j < results.length; j++) {
+                    var r = results[j];
+                    var barColor = r.skipped ? 'var(--muted)' : (r.score === 100 ? 'var(--green)' : r.score >= 67 ? 'var(--yellow)' : 'var(--red)');
+                    var scoreLabel = r.skipped ? 'Skip' : r.score + '%';
+                    var barWidth = r.skipped ? 0 : r.score;
+                    html += '<div class="breakdown-item">' +
+                        '<span class="breakdown-num">' + (j + 1) + '</span>' +
+                        '<span class="breakdown-title">' + sanitize(challenges[j].title) + '</span>' +
+                        '<span class="breakdown-bar"><span class="breakdown-bar-fill" style="width:' + barWidth + '%;background:' + barColor + ';"></span></span>' +
+                        '<span class="breakdown-score" style="color:' + barColor + ';">' + scoreLabel + '</span>' +
+                        '</div>';
+                }
+                html += '</div>';
+
+                html += '<div class="results-insight"><h3>💡 Your Performance</h3><p>' + insight + '</p></div>';
+                html += '<div class="results-research"><h3>🔬 Research Implications</h3><p>' + researchNote + '</p></div>';
+
+                html += '<div style="margin-top: 2rem;">' +
+                    '<button class="btn btn-primary" onclick="TemporalChallenge.restart()" style="margin-right: 0.5rem;">Try Again</button>' +
+                    '<a href="demo.html" class="btn btn-secondary" style="text-decoration: none; margin-right: 0.5rem;">🎮 Classic Demo</a>' +
+                    '<a href="index.html" class="btn btn-secondary" style="text-decoration: none;">← Case Study</a>' +
+                    '</div>';
+
+                screen.innerHTML = html;
+            }
+
+            // ---- Public API ----
+            return {
+                start: function() {
+                    currentIndex = 0;
+                    results = [];
+                    totalScore = 0;
+
+                    document.getElementById("introScreen").classList.add("hidden");
+                    document.getElementById("progressContainer").classList.remove("hidden");
+                    document.getElementById("challengeScreen").classList.remove("hidden");
+                    loadChallenge(0);
+                },
+
+                submit: function() {
+                    // Read current order from DOM
+                    updateOrderNumbers();
+                    var c = challenges[currentIndex];
+                    var score = scoreOrder(currentOrder, c.events);
+                    totalScore += score;
+                    results[currentIndex] = { score: score, skipped: false, order: currentOrder.slice() };
+                    showFeedback(score, false);
+                },
+
+                skip: function() {
+                    results[currentIndex] = { score: 0, skipped: true, order: [] };
+                    showFeedback(0, true);
+                },
+
+                next: function() {
+                    if (currentIndex < challenges.length - 1) {
+                        loadChallenge(currentIndex + 1);
+                    } else {
+                        showResults();
+                    }
+                },
+
+                shuffle: function() {
+                    var c = challenges[currentIndex];
+                    var shuffled = shuffleArray(c.events);
+                    var attempts = 0;
+                    while (shuffled.join("|") === c.events.join("|") && attempts < 10) {
+                        shuffled = shuffleArray(c.events);
+                        attempts++;
+                    }
+                    renderSequence(shuffled);
+                },
+
+                move: function(idx, direction) {
+                    moveItem(idx, direction);
+                },
+
+                restart: function() {
+                    currentIndex = 0;
+                    results = [];
+                    totalScore = 0;
+                    currentOrder = [];
+
+                    document.getElementById("resultsScreen").classList.add("hidden");
+                    document.getElementById("resultsScreen").innerHTML = '';
+                    document.getElementById("introScreen").classList.remove("hidden");
+                },
+
+                // Expose for testing
+                _scoreOrder: scoreOrder,
+                _exactMatches: exactMatches,
+                _shuffleArray: shuffleArray,
+                _challenges: challenges
+            };
+        })();
+    </script>
+</body>
+</html>

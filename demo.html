@@ -563,7 +563,7 @@
                 id: 5,
                 title: "Tic Tac Toe Dog",
                 gifUrl: "https://media.giphy.com/media/ZqlvCTNHpqrio/giphy.gif",
-                sourceUrl: "#",
+                sourceUrl: "https://giphy.com/gifs/dog-shiba-inu-tic-tac-toe-ZqlvCTNHpqrio",
                 humanAnswer: "Shiba Inu wins at Tic Tac Toe against a human.",
                 aiAnswer: "I currently cannot view animations, including animated GIFs."
             },
@@ -571,7 +571,7 @@
                 id: 6,
                 title: "Parent Dog",
                 gifUrl: "https://media.giphy.com/media/xTiTnMhJTwNHChdTZS/giphy.gif",
-                sourceUrl: "#",
+                sourceUrl: "https://giphy.com/gifs/dog-puppy-parent-xTiTnMhJTwNHChdTZS",
                 humanAnswer: "Person preparing puppy for cooking gets stopped by parent dog who volunteers instead.",
                 aiAnswer: "I currently cannot view animations, including animated GIFs."
             },
@@ -579,7 +579,7 @@
                 id: 7,
                 title: "Mirror Illusion",
                 gifUrl: "https://media.giphy.com/media/CkKg32KdKyQjm/giphy.gif",
-                sourceUrl: "#",
+                sourceUrl: "https://giphy.com/gifs/mirror-illusion-hand-CkKg32KdKyQjm",
                 humanAnswer: "Hand seems to touch its reflection, but it's both hands of the same person.",
                 aiAnswer: "I currently cannot view animations, including animated GIFs."
             },
@@ -587,7 +587,7 @@
                 id: 8,
                 title: "Highway Drift",
                 gifUrl: "https://media.giphy.com/media/l2SpQRuCQzY1RXHqM/giphy.gif",
-                sourceUrl: "#",
+                sourceUrl: "https://giphy.com/gifs/car-drift-highway-l2SpQRuCQzY1RXHqM",
                 humanAnswer: "Car does a 180-degree drift and back to continue normally.",
                 aiAnswer: "I currently cannot view animations, including animated GIFs."
             },
@@ -595,7 +595,7 @@
                 id: 9,
                 title: "Road Rage Hug",
                 gifUrl: "https://media.giphy.com/media/brsEO1JayBVja/giphy.gif",
-                sourceUrl: "#",
+                sourceUrl: "https://giphy.com/gifs/road-rage-hug-brsEO1JayBVja",
                 humanAnswer: "Road rage encounter unexpectedly ends with a friendly hug.",
                 aiAnswer: "I currently cannot view animations, including animated GIFs."
             },
@@ -603,7 +603,7 @@
                 id: 10,
                 title: "Birthday Cake",
                 gifUrl: "https://media.giphy.com/media/xT0xeuOy2Fcl9vDGiA/giphy.gif",
-                sourceUrl: "#",
+                sourceUrl: "https://giphy.com/gifs/birthday-cake-surprise-xT0xeuOy2Fcl9vDGiA",
                 humanAnswer: "Girl's face smashed into cake, but emerges clean — had a paper plate cover.",
                 aiAnswer: "I currently cannot view animations, including animated GIFs."
             }
@@ -633,24 +633,11 @@
             document.getElementById("progressText").textContent = "Challenge " + (index + 1) + " of " + challenges.length;
             document.getElementById("scoreText").textContent = "Score: " + answered + "/" + (answered + skipped);
 
-            // Load GIF
+            // Load GIF with retry logic
             var container = document.getElementById("gifContainer");
             container.innerHTML = '<span class="gif-loading">Loading GIF...</span>';
 
-            var img = document.createElement("img");
-            img.alt = c.title + " GIF";
-            img.onload = function() {
-                container.innerHTML = "";
-                container.appendChild(img);
-            };
-            img.onerror = function() {
-                container.innerHTML = '<div class="gif-error">' +
-                    '<p>⚠️ GIF couldn\'t load directly.</p>' +
-                    '<p><a href="' + sanitize(c.sourceUrl) + '" target="_blank" rel="noopener noreferrer">Open GIF in new tab →</a></p>' +
-                    '<p style="margin-top:0.5rem;font-size:0.8rem;">Watch it, then come back and describe what happened.</p>' +
-                    '</div>';
-            };
-            img.src = c.gifUrl;
+            loadGifWithRetry(container, c, 0);
 
             // Reset input
             document.getElementById("inputArea").classList.remove("hidden");
@@ -668,6 +655,50 @@
         function sanitize(str) {
             _sanitizeEl.textContent = str;
             return _sanitizeEl.innerHTML;
+        }
+
+        var MAX_GIF_RETRIES = 2;
+        var RETRY_DELAY_MS = 1500;
+
+        /**
+         * Load a GIF image with automatic retry on failure.
+         * On final failure, shows a fallback with a link to the source
+         * (if available) or a text description of the GIF content.
+         */
+        function loadGifWithRetry(container, challenge, attempt) {
+            var img = document.createElement("img");
+            img.alt = challenge.title + " GIF";
+            img.onload = function() {
+                container.innerHTML = "";
+                container.appendChild(img);
+            };
+            img.onerror = function() {
+                if (attempt < MAX_GIF_RETRIES) {
+                    container.innerHTML = '<span class="gif-loading">Retrying... (' + (attempt + 1) + '/' + MAX_GIF_RETRIES + ')</span>';
+                    setTimeout(function() {
+                        loadGifWithRetry(container, challenge, attempt + 1);
+                    }, RETRY_DELAY_MS);
+                    return;
+                }
+
+                var hasSource = challenge.sourceUrl && challenge.sourceUrl !== '#';
+                var errorHtml = '<div class="gif-error">' +
+                    '<p>⚠️ GIF couldn\'t load (CDN may be blocking direct access).</p>';
+
+                if (hasSource) {
+                    errorHtml += '<p><a href="' + sanitize(challenge.sourceUrl) + '" target="_blank" rel="noopener noreferrer">Open GIF in new tab →</a></p>' +
+                        '<p style="margin-top:0.5rem;font-size:0.8rem;">Watch it there, then come back and describe what happened.</p>';
+                } else {
+                    // No valid source URL — show description hint so user can still participate
+                    errorHtml += '<p style="margin-top:0.5rem;font-size:0.85rem;color:var(--yellow);">💡 Hint: This GIF is titled "' + sanitize(challenge.title) + '".</p>' +
+                        '<p style="margin-top:0.3rem;font-size:0.8rem;">Try searching for it online, or skip this challenge.</p>';
+                }
+
+                errorHtml += '</div>';
+                container.innerHTML = errorHtml;
+            };
+            // Append cache-buster on retry to bypass cached failures
+            img.src = attempt > 0 ? challenge.gifUrl + '?retry=' + attempt : challenge.gifUrl;
         }
 
         // Character counter and submit enable

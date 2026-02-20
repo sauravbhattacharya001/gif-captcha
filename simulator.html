@@ -1,0 +1,1148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src https: data:; frame-ancestors 'none'; base-uri 'self'; form-action 'none';">
+    <meta name="referrer" content="no-referrer">
+    <title>GIF CAPTCHA — AI Response Simulator</title>
+    <style>
+        :root {
+            --bg: #0d1117;
+            --surface: #161b22;
+            --surface-hover: #1c2129;
+            --border: #30363d;
+            --text: #e6edf3;
+            --muted: #8b949e;
+            --accent: #58a6ff;
+            --accent-hover: #79b8ff;
+            --green: #3fb950;
+            --green-bg: rgba(63, 185, 80, 0.15);
+            --red: #f85149;
+            --red-bg: rgba(248, 81, 73, 0.15);
+            --yellow: #d29922;
+            --yellow-bg: rgba(210, 153, 34, 0.15);
+            --purple: #bc8cff;
+            --purple-bg: rgba(188, 140, 255, 0.15);
+            --orange: #f0883e;
+            --orange-bg: rgba(240, 136, 62, 0.15);
+            --cyan: #39d2c0;
+            --cyan-bg: rgba(57, 210, 192, 0.15);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+
+        .header {
+            text-align: center;
+            padding: 2.5rem 1.5rem 1.5rem;
+            border-bottom: 1px solid var(--border);
+        }
+        .header h1 { font-size: 2rem; margin-bottom: 0.3rem; }
+        .header .subtitle { color: var(--muted); font-size: 1rem; }
+        .header .nav-links { margin-top: 0.8rem; }
+        .header .nav-links a {
+            color: var(--accent);
+            text-decoration: none;
+            font-size: 0.85rem;
+            margin: 0 0.5rem;
+        }
+        .header .nav-links a:hover { text-decoration: underline; }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 2rem 1.5rem;
+        }
+
+        h2 {
+            font-size: 1.4rem;
+            margin: 2.5rem 0 1rem;
+            color: var(--accent);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        h2:first-child { margin-top: 0; }
+
+        /* Model selector */
+        .model-selector {
+            display: flex;
+            gap: 0.75rem;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+        }
+        .model-btn {
+            padding: 0.7rem 1.2rem;
+            border-radius: 10px;
+            border: 2px solid var(--border);
+            background: var(--surface);
+            color: var(--muted);
+            font-size: 0.85rem;
+            font-family: inherit;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.2rem;
+            min-width: 120px;
+        }
+        .model-btn:hover { border-color: var(--accent); color: var(--text); background: var(--surface-hover); }
+        .model-btn.active { border-color: var(--accent); background: rgba(88, 166, 255, 0.1); color: var(--text); }
+        .model-btn .model-name { font-weight: 700; font-size: 0.95rem; }
+        .model-btn .model-year { font-size: 0.7rem; opacity: 0.7; }
+        .model-btn .model-score {
+            font-size: 0.75rem;
+            font-weight: 700;
+            margin-top: 0.15rem;
+            padding: 0.1rem 0.5rem;
+            border-radius: 10px;
+        }
+
+        /* Overview cards */
+        .overview-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        .overview-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.2rem;
+            text-align: center;
+        }
+        .overview-card .card-value {
+            font-size: 1.8rem;
+            font-weight: 800;
+            line-height: 1.2;
+        }
+        .overview-card .card-label {
+            font-size: 0.72rem;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-top: 0.3rem;
+        }
+
+        /* Response cards */
+        .response-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+            margin-bottom: 1rem;
+            transition: border-color 0.2s;
+        }
+        .response-card:hover { border-color: var(--accent); }
+        .response-card .card-header {
+            padding: 1rem 1.25rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            user-select: none;
+        }
+        .response-card .card-header .title-group {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            flex: 1;
+        }
+        .response-card .gif-number {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8rem;
+            font-weight: 700;
+            flex-shrink: 0;
+            color: #fff;
+        }
+        .response-card .gif-title {
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+        .response-card .result-badge {
+            display: inline-block;
+            padding: 0.2rem 0.7rem;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            margin-left: 0.5rem;
+            flex-shrink: 0;
+        }
+        .result-pass { background: var(--green-bg); color: var(--green); }
+        .result-fail { background: var(--red-bg); color: var(--red); }
+        .result-partial { background: var(--yellow-bg); color: var(--yellow); }
+        .expand-icon {
+            color: var(--muted);
+            transition: transform 0.2s;
+            font-size: 0.8rem;
+            margin-left: 0.5rem;
+        }
+        .response-card.expanded .expand-icon { transform: rotate(180deg); }
+        .response-card .card-body {
+            display: none;
+            padding: 0 1.25rem 1.25rem;
+            border-top: 1px solid var(--border);
+        }
+        .response-card.expanded .card-body { display: block; }
+
+        /* Response comparison */
+        .response-comparison {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin: 1rem 0;
+        }
+        .response-box {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem;
+        }
+        .response-box .response-label {
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.5rem;
+            font-weight: 700;
+        }
+        .response-box .response-text {
+            font-size: 0.88rem;
+            color: var(--muted);
+            line-height: 1.5;
+            font-style: italic;
+        }
+
+        /* Capability bars */
+        .capability-section { margin-top: 1rem; }
+        .capability-section h4 {
+            font-size: 0.85rem;
+            color: var(--accent);
+            margin-bottom: 0.6rem;
+        }
+        .capability-bar {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+        .capability-bar .cap-label {
+            font-size: 0.78rem;
+            color: var(--muted);
+            width: 140px;
+            flex-shrink: 0;
+        }
+        .capability-bar .cap-bar-bg {
+            flex: 1;
+            height: 8px;
+            background: var(--border);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .capability-bar .cap-bar-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.5s ease;
+        }
+        .capability-bar .cap-value {
+            font-size: 0.75rem;
+            font-weight: 700;
+            width: 28px;
+            text-align: right;
+            flex-shrink: 0;
+        }
+
+        /* Reasoning box */
+        .reasoning-box {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-left: 3px solid var(--purple);
+            border-radius: 0 8px 8px 0;
+            padding: 0.8rem 1rem;
+            margin-top: 0.8rem;
+        }
+        .reasoning-box .reasoning-title {
+            font-size: 0.78rem;
+            color: var(--purple);
+            font-weight: 700;
+            margin-bottom: 0.3rem;
+        }
+        .reasoning-box .reasoning-text {
+            font-size: 0.82rem;
+            color: var(--muted);
+            line-height: 1.5;
+        }
+
+        /* Scorecard chart */
+        .chart-container {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .chart-container h3 {
+            font-size: 1rem;
+            margin-bottom: 0.3rem;
+        }
+        .chart-container .chart-subtitle {
+            font-size: 0.8rem;
+            color: var(--muted);
+            margin-bottom: 1rem;
+        }
+        canvas { display: block; width: 100%; }
+
+        .two-col {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+        }
+
+        /* Insight box */
+        .insight-box {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-left: 4px solid var(--accent);
+            border-radius: 0 8px 8px 0;
+            padding: 1.25rem;
+            margin: 1.5rem 0;
+        }
+        .insight-box h4 {
+            font-size: 0.9rem;
+            margin-bottom: 0.4rem;
+            color: var(--accent);
+        }
+        .insight-box p {
+            font-size: 0.85rem;
+            color: var(--muted);
+        }
+
+        /* Heatmap table */
+        .heatmap-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.82rem;
+        }
+        .heatmap-table th {
+            padding: 0.6rem 0.5rem;
+            text-align: center;
+            color: var(--muted);
+            font-size: 0.72rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            border-bottom: 2px solid var(--border);
+        }
+        .heatmap-table th:first-child { text-align: left; }
+        .heatmap-table td {
+            padding: 0.5rem;
+            text-align: center;
+            border-bottom: 1px solid var(--border);
+            font-weight: 600;
+        }
+        .heatmap-table td:first-child {
+            text-align: left;
+            color: var(--text);
+            font-weight: 600;
+        }
+        .heatmap-table tr:last-child td { border-bottom: none; }
+        .heatmap-cell {
+            display: inline-block;
+            width: 28px;
+            height: 28px;
+            line-height: 28px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+        }
+
+        /* Tags */
+        .tag {
+            display: inline-block;
+            padding: 0.15rem 0.5rem;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            margin-right: 0.3rem;
+        }
+        .tag-narrative { background: var(--purple-bg); color: var(--purple); }
+        .tag-visual { background: var(--cyan-bg); color: var(--cyan); }
+        .tag-physical { background: var(--orange-bg); color: var(--orange); }
+        .tag-animal { background: var(--green-bg); color: var(--green); }
+        .tag-social { background: var(--yellow-bg); color: var(--yellow); }
+        .tag-illusion { background: var(--red-bg); color: var(--red); }
+
+        /* Typing animation */
+        .typing-cursor {
+            display: inline-block;
+            width: 2px;
+            height: 1em;
+            background: var(--accent);
+            margin-left: 2px;
+            animation: blink 1s step-end infinite;
+            vertical-align: text-bottom;
+        }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+        .sim-active .response-text { min-height: 1.5em; }
+
+        footer {
+            margin-top: 3rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid var(--border);
+            color: var(--muted);
+            font-size: 0.85rem;
+            text-align: center;
+        }
+        footer a { color: var(--accent); text-decoration: none; }
+        footer a:hover { text-decoration: underline; }
+
+        @media (max-width: 768px) {
+            .overview-grid { grid-template-columns: repeat(2, 1fr); }
+            .two-col { grid-template-columns: 1fr; }
+            .response-comparison { grid-template-columns: 1fr; }
+            .model-selector { gap: 0.5rem; }
+            .model-btn { min-width: 100px; padding: 0.5rem 0.8rem; }
+        }
+        @media (max-width: 480px) {
+            .overview-grid { grid-template-columns: 1fr; }
+            .header h1 { font-size: 1.5rem; }
+            .container { padding: 1rem; }
+            .model-btn { flex: 1; min-width: 80px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🤖 AI Response Simulator</h1>
+        <p class="subtitle">See how different AI models respond to each GIF CAPTCHA — and why they succeed or fail</p>
+        <div class="nav-links">
+            <a href="index.html">← Case Study</a>
+            <a href="demo.html">🎮 Demo</a>
+            <a href="analysis.html">📊 Analysis</a>
+            <a href="generator.html">🛠️ Workshop</a>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>🎯 Select an AI Model</h2>
+        <p style="color: var(--muted); margin-bottom: 1rem;">Choose a model to see its simulated responses to all 10 GIF CAPTCHAs, along with capability analysis explaining why it passes or fails each one.</p>
+
+        <div class="model-selector" id="modelSelector"></div>
+
+        <!-- Overview cards -->
+        <div class="overview-grid" id="overviewGrid"></div>
+
+        <!-- Response cards -->
+        <h2>💬 Simulated Responses</h2>
+        <p style="color: var(--muted); margin-bottom: 1rem;">Click each card to expand the full response, human comparison, capability breakdown, and reasoning.</p>
+        <div id="responseCards"></div>
+
+        <!-- Heatmap -->
+        <h2>🗺️ Model × CAPTCHA Heatmap</h2>
+        <p style="color: var(--muted); margin-bottom: 1rem;">Pass/fail matrix across all models and CAPTCHAs. Green = AI fails to solve (CAPTCHA works), Red = AI solves it (CAPTCHA broken).</p>
+        <div class="chart-container">
+            <table class="heatmap-table" id="heatmapTable"></table>
+        </div>
+
+        <!-- Comparative charts -->
+        <h2>📊 Comparative Analysis</h2>
+        <div class="two-col">
+            <div class="chart-container">
+                <h3>Overall CAPTCHA Effectiveness</h3>
+                <p class="chart-subtitle">How many CAPTCHAs block each model (higher = more effective)</p>
+                <canvas id="effectivenessChart" height="280"></canvas>
+            </div>
+            <div class="chart-container">
+                <h3>Capability Profile</h3>
+                <p class="chart-subtitle">Average capability scores across all CAPTCHA dimensions</p>
+                <canvas id="capabilityRadar" height="280"></canvas>
+            </div>
+        </div>
+
+        <!-- Insights -->
+        <h2>💡 Key Insights</h2>
+        <div class="two-col">
+            <div class="insight-box" style="margin: 0;">
+                <h4>🛡️ Most Resilient CAPTCHAs</h4>
+                <p>GIF #6 (Parent Dog Sacrifice) and #9 (Road Rage Hug) remain hardest for all models. They require <strong>emotional comprehension</strong> and <strong>social script violation detection</strong> — capabilities that even 2025 multimodal models struggle with.</p>
+            </div>
+            <div class="insight-box" style="margin: 0;">
+                <h4>⚠️ Most Vulnerable CAPTCHAs</h4>
+                <p>GIF #3 (Flying Skateboarder) and #8 (Highway Drift) are solvable by modern vision models. They rely on <strong>motion tracking</strong> — a capability that multimodal models with frame analysis can now handle.</p>
+            </div>
+        </div>
+
+        <div class="insight-box">
+            <h4>📐 The Simulation Model</h4>
+            <p>Responses are simulated based on each model's documented capabilities (text-only vs. multimodal, frame analysis vs. video understanding, cultural training data). Results reflect estimated performance, not actual API calls. The simulation captures the <em>type</em> of response each model would generate — from complete inability (GPT-4 2023) to partial frame-based inference (GPT-4o) to emerging video comprehension (Gemini 1.5 Pro).</p>
+        </div>
+
+        <footer>
+            <p>
+                <a href="index.html">Case Study</a> ·
+                <a href="demo.html">Interactive Demo</a> ·
+                <a href="analysis.html">Research Analysis</a> ·
+                <a href="generator.html">CAPTCHA Workshop</a> ·
+                <a href="https://github.com/sauravbhattacharya001/gif-captcha">GitHub</a> ·
+                MIT License
+            </p>
+        </footer>
+    </div>
+
+    <script>
+        // ===== MODEL DEFINITIONS =====
+        var models = [
+            {
+                id: "gpt4",
+                name: "GPT-4",
+                year: "2023",
+                color: "#f85149",
+                desc: "Text-only, no vision capability",
+                capabilities: {
+                    frameAnalysis: 0, motionTracking: 0, narrativeComp: 0,
+                    culturalContext: 7, humorDetection: 5, objectRecog: 0
+                }
+            },
+            {
+                id: "gpt4v",
+                name: "GPT-4V",
+                year: "2023 Q4",
+                color: "#f0883e",
+                desc: "First vision model — single-frame analysis",
+                capabilities: {
+                    frameAnalysis: 6, motionTracking: 2, narrativeComp: 3,
+                    culturalContext: 7, humorDetection: 5, objectRecog: 7
+                }
+            },
+            {
+                id: "gpt4o",
+                name: "GPT-4o",
+                year: "2024",
+                color: "#58a6ff",
+                desc: "Multimodal — multi-frame analysis, no native video",
+                capabilities: {
+                    frameAnalysis: 8, motionTracking: 5, narrativeComp: 4,
+                    culturalContext: 8, humorDetection: 5, objectRecog: 9
+                }
+            },
+            {
+                id: "claude35",
+                name: "Claude 3.5",
+                year: "2024",
+                color: "#bc8cff",
+                desc: "Strong reasoning, image analysis, limited sequence understanding",
+                capabilities: {
+                    frameAnalysis: 7, motionTracking: 4, narrativeComp: 5,
+                    culturalContext: 8, humorDetection: 6, objectRecog: 8
+                }
+            },
+            {
+                id: "gemini15",
+                name: "Gemini 1.5",
+                year: "2024",
+                color: "#3fb950",
+                desc: "Native video input, long-context, best temporal understanding",
+                capabilities: {
+                    frameAnalysis: 8, motionTracking: 7, narrativeComp: 5,
+                    culturalContext: 7, humorDetection: 5, objectRecog: 9
+                }
+            }
+        ];
+
+        // ===== CAPTCHA DATA WITH PER-MODEL RESPONSES =====
+        var captchas = [
+            {
+                id: 1, title: "Duel Plot Twist", category: "narrative",
+                humanAnswer: "One person shot BANG and the other shot BOOM — both had trick guns.",
+                requiredCapabilities: {
+                    frameAnalysis: 6, motionTracking: 4, narrativeComp: 9,
+                    culturalContext: 7, humorDetection: 8, objectRecog: 5
+                },
+                responses: {
+                    gpt4: { result: "blocked", response: "I currently cannot view animations, including animated GIFs, so I can't provide real-time descriptions of events within them.", reasoning: "GPT-4 is text-only and cannot process any visual input. It has zero ability to analyze the GIF frames." },
+                    gpt4v: { result: "blocked", response: "I can see what appears to be two people facing each other in a Western-style duel setting. They seem to be in a dramatic standoff, but I cannot determine what happens next as I can only analyze individual frames.", reasoning: "GPT-4V can identify the scene from a single frame (duel setting) but cannot process the temporal sequence needed to see the trick gun reveal — the twist spans multiple frames." },
+                    gpt4o: { result: "partial", response: "Two people appear to be in a duel. From the sequence of frames, one appears to fire something, followed by the other. The objects they're holding may not be real weapons — they look unusual. There seems to be an element of comedy or surprise.", reasoning: "GPT-4o can analyze multiple frames and notices the unusual weapons, but lacks the temporal precision to describe the BANG/BOOM twist accurately. It detects comedy but can't articulate the specific narrative surprise." },
+                    claude35: { result: "blocked", response: "The image shows what appears to be a duel scenario between two individuals. I can see dramatic poses suggesting a confrontation, but I'm unable to fully describe the animated sequence or identify the specific unexpected twist without seeing the full animation play out.", reasoning: "Claude 3.5 has strong scene description but processes frames independently. The narrative twist requires continuous temporal understanding — the comedic timing of BANG followed by BOOM is lost." },
+                    gemini15: { result: "partial", response: "This appears to be an animated sequence showing a comedic duel. Two participants face off, and when they 'fire,' the results are exaggerated or unexpected — possibly toy guns or comedic sound effects rather than a real confrontation. The humor comes from subverting the dramatic duel setup.", reasoning: "Gemini 1.5's video understanding lets it grasp the overall narrative arc and detect the subversion, but it still describes the twist vaguely rather than capturing the specific BANG/BOOM detail that makes it funny." }
+                }
+            },
+            {
+                id: 2, title: "Rappers Roller Skating", category: "social",
+                humanAnswer: "3 rappers rapping and then one roller skates away.",
+                requiredCapabilities: {
+                    frameAnalysis: 5, motionTracking: 6, narrativeComp: 6,
+                    culturalContext: 9, humorDetection: 8, objectRecog: 6
+                },
+                responses: {
+                    gpt4: { result: "blocked", response: "I currently cannot view animations, including animated GIFs, so I can't provide real-time descriptions of events within them.", reasoning: "Text-only model — no visual processing capability." },
+                    gpt4v: { result: "blocked", response: "I see what looks like three people in casual/street fashion, possibly performing or posing. The setting appears to be outdoors. I cannot determine any motion or unexpected events from the static frame.", reasoning: "Can identify people and style from a single frame, but completely misses the roller skating motion which is the entire unexpected twist." },
+                    gpt4o: { result: "partial", response: "Three people who appear to be rappers or hip-hop artists are shown in what seems like a performance context. In later frames, there's a notable change in motion — one person appears to be gliding or moving unusually. The contrast between the hip-hop setting and this unexpected movement seems to be the surprise.", reasoning: "GPT-4o detects the motion change across frames and senses the cultural incongruity, but describes 'gliding' vaguely. It catches the contrast but can't specifically identify roller skating or articulate why it's culturally incongruous with rap." },
+                    claude35: { result: "blocked", response: "The image appears to show several people in what looks like a hip-hop or rap setting. They seem to be performing or posturing. Without seeing the full animation, I can observe the style and setting but cannot identify the specific unexpected event.", reasoning: "Claude's per-frame analysis captures the rap setting accurately but misses the temporal action entirely. The roller skating departure happens across frames." },
+                    gemini15: { result: "solved", response: "Three rappers are performing or posturing in a hip-hop context, and then one of them unexpectedly roller skates or glides away on wheels, breaking character from the tough rap persona. The humor comes from the contrast between the hard rap image and the playful, unexpected exit.", reasoning: "Gemini 1.5's video processing captures the full sequence: rap performance → roller skating exit. It correctly identifies both the action and the cultural humor, though 'glides away on wheels' is slightly less precise than 'roller skates away.'" }
+                }
+            },
+            {
+                id: 3, title: "Flying Skateboarder", category: "physical",
+                humanAnswer: "Skateboarder does a trick and flies up in the air.",
+                requiredCapabilities: {
+                    frameAnalysis: 5, motionTracking: 7, narrativeComp: 3,
+                    culturalContext: 2, humorDetection: 4, objectRecog: 6
+                },
+                responses: {
+                    gpt4: { result: "blocked", response: "I currently cannot view animations, including animated GIFs, so I can't provide real-time descriptions of events within them.", reasoning: "Text-only model — no visual processing capability." },
+                    gpt4v: { result: "blocked", response: "I can see a person on a skateboard in what appears to be an outdoor setting, possibly a skate park. The person seems to be performing a trick, but I cannot determine the outcome from a single frame.", reasoning: "Identifies the skateboarder and setting from a single frame, but the 'flying' is a motion event that spans multiple frames." },
+                    gpt4o: { result: "solved", response: "A skateboarder performs a trick on a ramp or surface, and then appears to launch or fly unusually high into the air — far beyond what normal skateboarding physics would allow. The unexpected part is the exaggerated height of the jump.", reasoning: "This is a simpler CAPTCHA — it relies mainly on motion tracking and physics intuition. GPT-4o can compare the skateboarder's position across frames and detect the impossible trajectory. No cultural context or narrative complexity needed." },
+                    claude35: { result: "partial", response: "A skateboarder appears to be performing a trick that results in an unusually high or exaggerated aerial. The trajectory seems beyond what normal skateboarding physics would allow, suggesting either video editing or an extremely impressive stunt.", reasoning: "Claude correctly identifies the exaggerated physics but hedges with 'appears to be' — it's analyzing frames independently and inferring rather than directly tracking the motion." },
+                    gemini15: { result: "solved", response: "A skateboarder hits a ramp or surface and launches dramatically high into the air, defying normal physics. The skateboard trick sends them flying to an unexpected height. The surprise is the extreme, impossible-looking altitude they achieve.", reasoning: "Straightforward for Gemini's video processing — clear motion trajectory across frames, no narrative complexity required. The exaggerated physics is easily detected through frame-by-frame position analysis." }
+                }
+            },
+            {
+                id: 4, title: "Banana Mascot Dance-Off", category: "narrative",
+                humanAnswer: "Banana mascot dances; security guard takes props and does a better dance.",
+                requiredCapabilities: {
+                    frameAnalysis: 6, motionTracking: 5, narrativeComp: 8,
+                    culturalContext: 7, humorDetection: 8, objectRecog: 7
+                },
+                responses: {
+                    gpt4: { result: "blocked", response: "I currently cannot view animations, including animated GIFs, so I can't provide real-time descriptions of events within them.", reasoning: "Text-only model — no visual processing capability." },
+                    gpt4v: { result: "blocked", response: "I can see what appears to be a person in a banana costume and another person who might be in a uniform. They appear to be in some kind of public space. I cannot determine any action or sequence from this frame.", reasoning: "Identifies the banana costume and uniform from a single frame, but the entire narrative — dancing, prop stealing, outdancing — is temporal." },
+                    gpt4o: { result: "partial", response: "A person in a banana costume appears to be performing or dancing in a public area. There's another person nearby who appears to be in a uniform (possibly security). Across the frames, there seems to be some interaction between them — the uniformed person may join in or react to the performance.", reasoning: "GPT-4o detects both characters and their interaction across frames, but can't resolve the specific narrative arc: that the guard steals props AND outdances the mascot. The role reversal — the authority figure becoming the better performer — is the subtle humor it misses." },
+                    claude35: { result: "blocked", response: "I see a person in a banana costume and what appears to be a security guard or uniformed individual in what looks like a public venue. There seems to be some kind of performance or interaction happening, but I cannot fully describe the sequence of events.", reasoning: "Claude identifies characters accurately but can't track the temporal narrative. The two-part structure (mascot dancing → guard outdancing) requires continuous sequence processing." },
+                    gemini15: { result: "partial", response: "A person in a banana mascot costume is dancing or performing in a public area. A security guard or staff member approaches, and there's an unexpected interaction — the guard appears to join in the performance rather than stopping it. There may be a role reversal where the guard becomes the center of attention.", reasoning: "Gemini catches the role reversal concept and the guard joining in, but misses the specific detail about stealing props and outdancing the mascot. Gets the spirit but not the full narrative precision." }
+                }
+            },
+            {
+                id: 5, title: "Tic Tac Toe Dog", category: "animal",
+                humanAnswer: "Shiba Inu wins at Tic Tac Toe against a human.",
+                requiredCapabilities: {
+                    frameAnalysis: 6, motionTracking: 5, narrativeComp: 6,
+                    culturalContext: 5, humorDetection: 6, objectRecog: 7
+                },
+                responses: {
+                    gpt4: { result: "blocked", response: "I currently cannot view animations, including animated GIFs, so I can't provide real-time descriptions of events within them.", reasoning: "Text-only model — no visual processing capability." },
+                    gpt4v: { result: "blocked", response: "I can see what appears to be a Shiba Inu dog near what might be a game board or surface with markings. There's a human hand visible. I cannot determine the action or outcome.", reasoning: "Correctly identifies the dog breed and game board from a frame, but can't track the gameplay sequence or determine who wins." },
+                    gpt4o: { result: "partial", response: "A Shiba Inu appears to be interacting with what looks like a Tic Tac Toe board. A human is also playing. The dog seems to be making deliberate moves by placing its paw on the board. The unexpected element may be that the dog appears to be actually playing the game.", reasoning: "GPT-4o identifies the game and the dog's participation, which is impressive. But it only catches half the surprise — the dog PLAYING is noted, but the dog WINNING (the actual punchline) requires tracking the full game to completion." },
+                    claude35: { result: "partial", response: "A Shiba Inu dog is positioned near what appears to be a Tic Tac Toe game board. There's interaction between the dog and a human player. The unexpected element seems to be the dog's participation in a strategic game, which animals wouldn't normally understand.", reasoning: "Claude identifies the absurdity of a dog playing a strategy game but, like GPT-4o, can't track the full game to see the winning outcome." },
+                    gemini15: { result: "solved", response: "A Shiba Inu dog plays Tic Tac Toe against a human and appears to win the game. The dog places its paw on the board for its moves, and the final board position shows the dog has achieved three in a row. The unexpected event is a dog successfully playing and winning a strategic board game.", reasoning: "Gemini's video processing can track the full game sequence: moves being made, board state evolving, and the final winning position. Combined with its object recognition (board, Xs, Os), it reconstructs the complete narrative." }
+                }
+            },
+            {
+                id: 6, title: "Parent Dog Sacrifice", category: "animal",
+                humanAnswer: "Person preparing puppy for cooking gets stopped by parent dog who volunteers instead.",
+                requiredCapabilities: {
+                    frameAnalysis: 6, motionTracking: 5, narrativeComp: 10,
+                    culturalContext: 8, humorDetection: 9, objectRecog: 6
+                },
+                responses: {
+                    gpt4: { result: "blocked", response: "I currently cannot view animations, including animated GIFs, so I can't provide real-time descriptions of events within them.", reasoning: "Text-only model — no visual processing capability." },
+                    gpt4v: { result: "blocked", response: "I can see what appears to be dogs and a person, possibly in a kitchen setting. There seems to be a small puppy and a larger dog. I cannot determine any narrative or action sequence.", reasoning: "Identifies the characters and setting but has zero ability to track the complex narrative: cooking threat → parental intervention → sacrifice." },
+                    gpt4o: { result: "blocked", response: "There appears to be a person interacting with dogs — a puppy and an adult dog — in what looks like a kitchen or food preparation area. There's some kind of interaction between the adult dog and the person regarding the puppy. The sequence seems to involve the adult dog intervening.", reasoning: "GPT-4o detects the multi-character interaction and the adult dog's intervention, but can't piece together the dark humor narrative. The emotional complexity — parental sacrifice, dark comedy about cooking — requires deep narrative comprehension that frame analysis doesn't provide." },
+                    claude35: { result: "blocked", response: "The image shows a scene with dogs and a human in what appears to be a domestic setting. There's a small puppy and a larger adult dog. The person seems to be interacting with them around what might be a cooking area. I sense there's a narrative sequence but cannot fully reconstruct it from the frames.", reasoning: "Claude correctly identifies all elements and even senses a narrative, but the emotional arc — from threat to sacrifice — is too complex for per-frame analysis. This CAPTCHA's difficulty comes from requiring understanding of parental instinct, dark humor, and self-sacrifice." },
+                    gemini15: { result: "partial", response: "A person appears to be in a kitchen with a small puppy and a larger adult dog. The sequence suggests the person may be handling the puppy near cooking equipment. The adult dog reacts and seems to intervene or position itself between the person and the puppy, possibly in a protective manner.", reasoning: "Gemini captures the protective behavior of the adult dog but misses the darkly comedic punchline: the parent dog volunteering ITSELF as a substitute. Understanding self-sacrifice requires emotional narrative depth that even video-capable models struggle with." }
+                }
+            },
+            {
+                id: 7, title: "Mirror Hand Illusion", category: "illusion",
+                humanAnswer: "Hand seems to touch its reflection, but it's both hands of the same person.",
+                requiredCapabilities: {
+                    frameAnalysis: 7, motionTracking: 5, narrativeComp: 5,
+                    culturalContext: 3, humorDetection: 3, objectRecog: 8
+                },
+                responses: {
+                    gpt4: { result: "blocked", response: "I currently cannot view animations, including animated GIFs, so I can't provide real-time descriptions of events within them.", reasoning: "Text-only model — no visual processing capability." },
+                    gpt4v: { result: "partial", response: "I can see what appears to be a hand near a reflective surface, possibly a mirror. The symmetry is striking — it looks like the hand is touching its own reflection. The positioning of the fingers seems precise.", reasoning: "GPT-4V's strong image analysis correctly identifies the visual elements and symmetry. However, it falls for the illusion — it describes it as a reflection rather than identifying that both 'reflections' are actually real hands." },
+                    gpt4o: { result: "solved", response: "At first it appears to be a hand touching a mirror, with its reflection matching perfectly. However, looking more closely at multiple frames, both 'hands' appear to be real — they're positioned to create the illusion of a mirror reflection, but subtle differences in movement timing between frames suggest they're both actual hands of the same person.", reasoning: "GPT-4o's multi-frame analysis is actually well-suited here. By comparing tiny differences in timing/position across frames, it can detect that the 'reflection' moves independently — revealing the illusion. This is more of a visual puzzle than a narrative one." },
+                    claude35: { result: "partial", response: "The image shows what appears to be a hand touching its mirror reflection. The symmetry is remarkably precise. There may be a visual trick at play — the reflection seems almost too perfect, suggesting both might be real hands positioned to mimic a mirror effect.", reasoning: "Claude's strong analytical reasoning makes it suspicious of the illusion, but it hedges with 'may be' and 'suggesting.' Without motion analysis, it can't confirm the trick definitively." },
+                    gemini15: { result: "solved", response: "This is a visual illusion where a person positions both their hands to mimic a mirror reflection. What appears to be a hand touching its reflection is actually two real hands moving in synchronized but not-quite-identical patterns. The slight timing differences between frames reveal that both 'reflections' are real, independently controlled hands.", reasoning: "Gemini's temporal analysis catches the micro-timing differences between the two hands, confirming they move independently. This is one of the easier CAPTCHAs for video-capable models because the solution is revealed by motion analysis rather than narrative comprehension." }
+                }
+            },
+            {
+                id: 8, title: "Highway 180° Drift", category: "physical",
+                humanAnswer: "Car does a 180-degree drift and back to continue normally.",
+                requiredCapabilities: {
+                    frameAnalysis: 5, motionTracking: 8, narrativeComp: 3,
+                    culturalContext: 3, humorDetection: 3, objectRecog: 6
+                },
+                responses: {
+                    gpt4: { result: "blocked", response: "I currently cannot view animations, including animated GIFs, so I can't provide real-time descriptions of events within them.", reasoning: "Text-only model — no visual processing capability." },
+                    gpt4v: { result: "blocked", response: "I can see a car on what appears to be a highway or road. The car seems to be at an unusual angle relative to the road direction. I cannot determine the motion from a single frame.", reasoning: "GPT-4V captures an interesting single frame — the car at an unusual angle mid-drift — but can't determine the full 180° rotation and return to normal driving." },
+                    gpt4o: { result: "solved", response: "A car on a highway appears to execute a dramatic spinning maneuver — rotating approximately 180 degrees while maintaining forward momentum, then completing the spin to return to normal forward-facing driving. The car seems to spin completely around and continue as if nothing happened.", reasoning: "This CAPTCHA relies primarily on motion tracking, which GPT-4o can handle through multi-frame analysis. The car's orientation change is clearly visible across frames, and no complex narrative or cultural understanding is needed." },
+                    claude35: { result: "partial", response: "A car on a highway appears to be at various unusual angles relative to the road. The sequence suggests some kind of dramatic maneuver — possibly a spin or drift. The car seems to end up continuing forward despite the unusual movement.", reasoning: "Claude identifies the unusual angles and suggests a spin, but describes it cautiously without confident specifics. The 180° measurement and the casual continuation require precise motion tracking." },
+                    gemini15: { result: "solved", response: "A car on a highway performs a full 180-degree spin or drift while traveling at speed, rotating completely around and then continuing to drive normally in the same direction. The impressive part is that the car maintains its lane and forward momentum throughout the entire maneuver.", reasoning: "Straightforward for Gemini's video processing. The car's orientation across frames clearly shows the 180° rotation. This is a pure motion-tracking challenge with no narrative complexity." }
+                }
+            },
+            {
+                id: 9, title: "Road Rage Hug", category: "social",
+                humanAnswer: "Road rage encounter unexpectedly ends with a friendly hug.",
+                requiredCapabilities: {
+                    frameAnalysis: 5, motionTracking: 4, narrativeComp: 9,
+                    culturalContext: 9, humorDetection: 9, objectRecog: 5
+                },
+                responses: {
+                    gpt4: { result: "blocked", response: "I currently cannot view animations, including animated GIFs, so I can't provide real-time descriptions of events within them.", reasoning: "Text-only model — no visual processing capability." },
+                    gpt4v: { result: "blocked", response: "I can see two people near vehicles on what appears to be a road. Their body language suggests some kind of confrontation or interaction. I cannot determine how the situation resolves.", reasoning: "GPT-4V identifies the confrontation setup but can't see the resolution — the entire joke depends on the temporal arc from aggression to affection." },
+                    gpt4o: { result: "partial", response: "Two people appear to be in a road confrontation near their vehicles. They seem to approach each other aggressively. In later frames, their body language appears to change — they might be getting closer in a way that suggests the confrontation de-escalates. The ending seems unexpected given the aggressive start.", reasoning: "GPT-4o detects the shift in body language and correctly identifies de-escalation, but can't specifically identify the hug. 'Getting closer' could mean many things. The social script violation (rage → hug) requires understanding human emotional norms." },
+                    claude35: { result: "blocked", response: "The scene appears to show two individuals in what looks like a road confrontation. They emerge from vehicles with aggressive body language. The subsequent frames show them approaching each other, but I cannot fully determine how the interaction concludes.", reasoning: "Claude accurately describes the setup but can't resolve the punchline. The emotional inversion from aggression to affection is a narrative/social comprehension challenge that per-frame analysis can't solve." },
+                    gemini15: { result: "partial", response: "Two drivers appear to get into a road rage confrontation, exiting their vehicles and approaching each other aggressively. The situation then takes an unexpected turn — instead of fighting, their interaction seems to become friendly or reconciliatory. They may embrace or shake hands, defying the expected escalation.", reasoning: "Gemini catches the narrative inversion — aggression turning to friendliness — and even suggests an embrace. But 'may embrace or shake hands' shows uncertainty. The social script violation is correctly identified conceptually but not with visual confidence." }
+                }
+            },
+            {
+                id: 10, title: "Birthday Cake Face Cover", category: "narrative",
+                humanAnswer: "Girl's face smashed into cake, but emerges clean — had a paper plate cover.",
+                requiredCapabilities: {
+                    frameAnalysis: 6, motionTracking: 5, narrativeComp: 8,
+                    culturalContext: 6, humorDetection: 7, objectRecog: 7
+                },
+                responses: {
+                    gpt4: { result: "blocked", response: "I currently cannot view animations, including animated GIFs, so I can't provide real-time descriptions of events within them.", reasoning: "Text-only model — no visual processing capability." },
+                    gpt4v: { result: "blocked", response: "I can see a person near what appears to be a birthday cake with candles. There seems to be another person nearby. I cannot determine any action or surprise from this frame.", reasoning: "Identifies the birthday setting but the physical comedy — face push, clean reveal — is entirely temporal." },
+                    gpt4o: { result: "partial", response: "A birthday celebration scene where someone's face appears to make contact with a cake. However, something seems off about the outcome — the person's face doesn't appear as messy as expected afterward. There may be some kind of protective barrier or trick involved.", reasoning: "GPT-4o correctly identifies the face-cake contact and notices the unexpected cleanliness. It even infers a protective barrier. But it can't identify the specific paper plate — the cleverness of the counter-preparation is the real surprise." },
+                    claude35: { result: "partial", response: "A birthday celebration where someone's face is pushed into a cake. The person appears to come away from the cake unexpectedly clean, which suggests some kind of preparation or trick. There may be a barrier between the face and the cake.", reasoning: "Claude's reasoning ability lets it deduce the trick from the anomalous cleanliness, but it can't specify the paper plate. It correctly identifies the double-subversion structure." },
+                    gemini15: { result: "solved", response: "At a birthday party, someone's face gets pushed into the cake — a classic prank. But when they pull back, their face is completely clean. The reveal shows they had a paper plate or protective cover over their face, anticipating the prank. The unexpected part is the counter-preparation — they knew it was coming.", reasoning: "Gemini's video processing captures the full sequence: face push → clean reveal → plate visible. The temporal arc is clear, and the object (paper plate) is identifiable in the reveal frames. This is a medium-complexity CAPTCHA that video-capable models can handle." }
+                }
+            }
+        ];
+
+        var capLabels = {
+            frameAnalysis: "Frame Analysis",
+            motionTracking: "Motion Tracking",
+            narrativeComp: "Narrative Comprehension",
+            culturalContext: "Cultural Context",
+            humorDetection: "Humor Detection",
+            objectRecog: "Object Recognition"
+        };
+        var capKeys = Object.keys(capLabels);
+
+        // ===== PRECOMPUTE SCORES =====
+        models.forEach(function(m) {
+            var solved = 0, partial = 0, blocked = 0;
+            captchas.forEach(function(c) {
+                var r = c.responses[m.id].result;
+                if (r === "solved") solved++;
+                else if (r === "partial") partial++;
+                else blocked++;
+            });
+            m.solved = solved;
+            m.partial = partial;
+            m.blocked = blocked;
+            m.score = solved + "/" + captchas.length;
+            m.effectiveness = captchas.length - solved;
+        });
+
+        var selectedModel = "gpt4";
+
+        // ===== BUILD UI =====
+        function buildModelSelector() {
+            var container = document.getElementById("modelSelector");
+            models.forEach(function(m) {
+                var btn = document.createElement("button");
+                btn.className = "model-btn" + (m.id === selectedModel ? " active" : "");
+                btn.dataset.model = m.id;
+                var scoreColor = m.solved === 0 ? "var(--green)" : m.solved <= 3 ? "var(--yellow)" : "var(--red)";
+                btn.innerHTML =
+                    '<span class="model-name" style="color: ' + m.color + ';">' + m.name + '</span>' +
+                    '<span class="model-year">' + m.year + '</span>' +
+                    '<span class="model-score" style="background: ' + scoreColor + '22; color: ' + scoreColor + ';">' + m.score + ' solved</span>';
+                btn.addEventListener("click", function() {
+                    selectedModel = m.id;
+                    document.querySelectorAll(".model-btn").forEach(function(b) { b.classList.remove("active"); });
+                    btn.classList.add("active");
+                    updateResponseCards();
+                    updateOverview();
+                });
+                container.appendChild(btn);
+            });
+        }
+
+        function getModel(id) {
+            for (var i = 0; i < models.length; i++) {
+                if (models[i].id === id) return models[i];
+            }
+            return models[0];
+        }
+
+        function updateOverview() {
+            var m = getModel(selectedModel);
+            var grid = document.getElementById("overviewGrid");
+            var blockedColor = m.blocked >= 7 ? "var(--green)" : m.blocked >= 4 ? "var(--yellow)" : "var(--red)";
+            var solvedColor = m.solved === 0 ? "var(--green)" : m.solved <= 3 ? "var(--yellow)" : "var(--red)";
+            grid.innerHTML =
+                '<div class="overview-card"><div class="card-value" style="color: ' + blockedColor + ';">' + m.blocked + '/10</div><div class="card-label">CAPTCHAs Block This Model</div></div>' +
+                '<div class="overview-card"><div class="card-value" style="color: var(--yellow);">' + m.partial + '/10</div><div class="card-label">Partial (Vague)</div></div>' +
+                '<div class="overview-card"><div class="card-value" style="color: ' + solvedColor + ';">' + m.solved + '/10</div><div class="card-label">Solved by Model</div></div>' +
+                '<div class="overview-card"><div class="card-value" style="color: var(--accent);">' + Math.round(m.blocked * 10) + '%</div><div class="card-label">CAPTCHA Effectiveness</div></div>';
+        }
+
+        function capColor(val) {
+            if (val >= 8) return "var(--green)";
+            if (val >= 5) return "var(--yellow)";
+            if (val >= 2) return "var(--orange)";
+            return "var(--red)";
+        }
+
+        function updateResponseCards() {
+            var container = document.getElementById("responseCards");
+            container.innerHTML = "";
+            var m = getModel(selectedModel);
+            var frag = document.createDocumentFragment();
+
+            captchas.forEach(function(c) {
+                var resp = c.responses[m.id];
+                var card = document.createElement("div");
+                card.className = "response-card";
+
+                var resultLabel = resp.result === "blocked" ? "CAPTCHA PASS" : resp.result === "partial" ? "PARTIAL" : "AI SOLVED";
+                var resultClass = resp.result === "blocked" ? "result-pass" : resp.result === "partial" ? "result-partial" : "result-fail";
+                var numBg = resp.result === "blocked" ? "var(--green)" : resp.result === "partial" ? "var(--yellow)" : "var(--red)";
+
+                var tagClass = "tag-" + c.category;
+                var catLabel = {
+                    narrative: "Narrative Twist", physical: "Physical Comedy", animal: "Animal Behavior",
+                    visual: "Visual Trick", social: "Social Subversion", illusion: "Optical Illusion"
+                }[c.category] || c.category;
+
+                // Build capability bars
+                var capBars = "";
+                capKeys.forEach(function(key) {
+                    var modelVal = m.capabilities[key];
+                    var reqVal = c.requiredCapabilities[key];
+                    var meets = modelVal >= reqVal;
+                    var barColor = meets ? "var(--green)" : modelVal >= reqVal - 2 ? "var(--yellow)" : "var(--red)";
+                    capBars +=
+                        '<div class="capability-bar">' +
+                            '<span class="cap-label">' + capLabels[key] + '</span>' +
+                            '<span class="cap-bar-bg"><span class="cap-bar-fill" style="width: ' + (modelVal * 10) + '%; background: ' + barColor + ';"></span></span>' +
+                            '<span class="cap-value" style="color: ' + barColor + ';">' + modelVal + '</span>' +
+                            '<span style="font-size:0.65rem;color:var(--muted);width:40px;text-align:center;">(need ' + reqVal + ')</span>' +
+                        '</div>';
+                });
+
+                card.innerHTML =
+                    '<div class="card-header">' +
+                        '<div class="title-group">' +
+                            '<span class="gif-number" style="background: ' + numBg + ';">' + c.id + '</span>' +
+                            '<span class="gif-title">' + c.title + '</span>' +
+                            '<span class="tag ' + tagClass + '">' + catLabel + '</span>' +
+                            '<span class="result-badge ' + resultClass + '">' + resultLabel + '</span>' +
+                        '</div>' +
+                        '<span class="expand-icon">▼</span>' +
+                    '</div>' +
+                    '<div class="card-body">' +
+                        '<div class="response-comparison">' +
+                            '<div class="response-box">' +
+                                '<div class="response-label" style="color: var(--green);">👤 Human Response</div>' +
+                                '<div class="response-text">"' + c.humanAnswer + '"</div>' +
+                            '</div>' +
+                            '<div class="response-box">' +
+                                '<div class="response-label" style="color: ' + m.color + ';">🤖 ' + m.name + ' Response</div>' +
+                                '<div class="response-text">"' + resp.response + '"</div>' +
+                            '</div>' +
+                        '</div>' +
+                        '<div class="reasoning-box">' +
+                            '<div class="reasoning-title">🧠 Why ' + m.name + ' ' + (resp.result === "blocked" ? "fails" : resp.result === "partial" ? "partially succeeds" : "succeeds") + '</div>' +
+                            '<div class="reasoning-text">' + resp.reasoning + '</div>' +
+                        '</div>' +
+                        '<div class="capability-section">' +
+                            '<h4>📊 Capability Match — ' + m.name + ' vs. Requirements</h4>' +
+                            capBars +
+                        '</div>' +
+                    '</div>';
+
+                card.querySelector(".card-header").addEventListener("click", function() {
+                    card.classList.toggle("expanded");
+                });
+
+                frag.appendChild(card);
+            });
+
+            container.appendChild(frag);
+        }
+
+        function buildHeatmap() {
+            var table = document.getElementById("heatmapTable");
+            var headerRow = '<tr><th>CAPTCHA</th>';
+            models.forEach(function(m) {
+                headerRow += '<th style="color: ' + m.color + ';">' + m.name + '</th>';
+            });
+            headerRow += '<th>Human</th></tr>';
+
+            var rows = "";
+            captchas.forEach(function(c) {
+                rows += '<tr><td>' + c.id + '. ' + c.title + '</td>';
+                models.forEach(function(m) {
+                    var r = c.responses[m.id].result;
+                    var bg, fg, label;
+                    if (r === "blocked") { bg = "var(--green-bg)"; fg = "var(--green)"; label = "✓"; }
+                    else if (r === "partial") { bg = "var(--yellow-bg)"; fg = "var(--yellow)"; label = "~"; }
+                    else { bg = "var(--red-bg)"; fg = "var(--red)"; label = "✗"; }
+                    rows += '<td><span class="heatmap-cell" style="background: ' + bg + '; color: ' + fg + ';">' + label + '</span></td>';
+                });
+                rows += '<td><span class="heatmap-cell" style="background: var(--green-bg); color: var(--green);">✓</span></td>';
+                rows += '</tr>';
+            });
+
+            // Totals row
+            rows += '<tr style="border-top: 2px solid var(--border);"><td style="font-weight: 700;">Blocked</td>';
+            models.forEach(function(m) {
+                var color = m.blocked >= 7 ? "var(--green)" : m.blocked >= 4 ? "var(--yellow)" : "var(--red)";
+                rows += '<td style="color: ' + color + '; font-weight: 800; font-size: 1rem;">' + m.blocked + '/10</td>';
+            });
+            rows += '<td style="color: var(--green); font-weight: 800; font-size: 1rem;">10/10</td></tr>';
+
+            table.innerHTML = headerRow + rows;
+        }
+
+        function drawEffectivenessChart() {
+            var canvas = document.getElementById("effectivenessChart");
+            var ctx = canvas.getContext("2d");
+            if (!ctx) return;
+            var dpr = window.devicePixelRatio || 1;
+            canvas.width = canvas.offsetWidth * dpr;
+            canvas.height = 280 * dpr;
+            ctx.scale(dpr, dpr);
+
+            var w = canvas.offsetWidth;
+            var h = 280;
+            var chartLeft = 40;
+            var chartBottom = h - 50;
+            var chartTop = 10;
+            var chartHeight = chartBottom - chartTop;
+            var maxVal = 10;
+
+            // Add human as reference
+            var all = models.concat([{ name: "Human", color: "#e6edf3", blocked: 0, partial: 0, solved: 10, effectiveness: 10 }]);
+
+            var barWidth = Math.min(55, (w - 80) / all.length - 15);
+            var totalWidth = all.length * (barWidth + 15) - 15;
+            var startX = chartLeft + (w - chartLeft - 10 - totalWidth) / 2;
+
+            // Grid
+            ctx.strokeStyle = "#30363d";
+            ctx.lineWidth = 0.5;
+            for (var i = 0; i <= maxVal; i += 2) {
+                var y = chartBottom - (i / maxVal) * chartHeight;
+                ctx.beginPath();
+                ctx.moveTo(chartLeft, y);
+                ctx.lineTo(w - 10, y);
+                ctx.stroke();
+                ctx.fillStyle = "#8b949e";
+                ctx.font = "11px -apple-system, sans-serif";
+                ctx.textAlign = "right";
+                ctx.fillText(i, chartLeft - 5, y + 4);
+            }
+
+            // Stacked bars: blocked (green), partial (yellow), solved (red)
+            all.forEach(function(m, idx) {
+                var x = startX + idx * (barWidth + 15);
+
+                // Blocked (bottom)
+                var blockedH = (m.blocked / maxVal) * chartHeight;
+                if (blockedH > 0) {
+                    ctx.fillStyle = "#3fb950";
+                    ctx.globalAlpha = 0.8;
+                    ctx.beginPath();
+                    roundRect(ctx, x, chartBottom - blockedH, barWidth, blockedH, [0, 0, 0, 0]);
+                    ctx.fill();
+                }
+
+                // Partial (middle)
+                var partialH = (m.partial / maxVal) * chartHeight;
+                if (partialH > 0) {
+                    ctx.fillStyle = "#d29922";
+                    ctx.globalAlpha = 0.8;
+                    ctx.beginPath();
+                    roundRect(ctx, x, chartBottom - blockedH - partialH, barWidth, partialH, [0, 0, 0, 0]);
+                    ctx.fill();
+                }
+
+                // Solved (top)
+                var solvedH = (m.solved / maxVal) * chartHeight;
+                if (m.name !== "Human" && solvedH > 0) {
+                    ctx.fillStyle = "#f85149";
+                    ctx.globalAlpha = 0.8;
+                    ctx.beginPath();
+                    roundRect(ctx, x, chartBottom - blockedH - partialH - solvedH, barWidth, solvedH, [4, 4, 0, 0]);
+                    ctx.fill();
+                }
+
+                // Human special: full green
+                if (m.name === "Human") {
+                    var humanH = (10 / maxVal) * chartHeight;
+                    ctx.fillStyle = "#3fb950";
+                    ctx.globalAlpha = 0.8;
+                    ctx.beginPath();
+                    roundRect(ctx, x, chartBottom - humanH, barWidth, humanH, [4, 4, 0, 0]);
+                    ctx.fill();
+                }
+
+                ctx.globalAlpha = 1;
+
+                // Label
+                ctx.fillStyle = m.color;
+                ctx.font = "bold 10px -apple-system, sans-serif";
+                ctx.textAlign = "center";
+                var nameParts = m.name.split(" ");
+                nameParts.forEach(function(part, pi) {
+                    ctx.fillText(part, x + barWidth / 2, chartBottom + 14 + pi * 12);
+                });
+            });
+
+            // Legend
+            var legendY = 4;
+            ctx.font = "10px -apple-system, sans-serif";
+            ctx.textAlign = "left";
+
+            ctx.fillStyle = "#3fb950"; ctx.fillRect(w - 165, legendY, 10, 10);
+            ctx.fillStyle = "#e6edf3"; ctx.fillText("Blocked", w - 151, legendY + 9);
+
+            ctx.fillStyle = "#d29922"; ctx.fillRect(w - 100, legendY, 10, 10);
+            ctx.fillStyle = "#e6edf3"; ctx.fillText("Partial", w - 86, legendY + 9);
+
+            ctx.fillStyle = "#f85149"; ctx.fillRect(w - 40, legendY, 10, 10);
+            ctx.fillStyle = "#e6edf3"; ctx.fillText("Solved", w - 26, legendY + 9);
+        }
+
+        function drawCapabilityRadar() {
+            var canvas = document.getElementById("capabilityRadar");
+            var ctx = canvas.getContext("2d");
+            if (!ctx) return;
+            var dpr = window.devicePixelRatio || 1;
+            canvas.width = canvas.offsetWidth * dpr;
+            canvas.height = 280 * dpr;
+            ctx.scale(dpr, dpr);
+
+            var w = canvas.offsetWidth;
+            var h = 280;
+            var cx = w / 2;
+            var cy = h / 2 + 5;
+            var radius = Math.min(w, h) / 2 - 50;
+            var n = capKeys.length;
+            var maxVal = 10;
+
+            function angleFor(i) { return (Math.PI * 2 * i / n) - Math.PI / 2; }
+            function pointAt(i, val) {
+                var a = angleFor(i);
+                var r = (val / maxVal) * radius;
+                return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
+            }
+
+            // Grid rings
+            for (var ring = 2; ring <= maxVal; ring += 2) {
+                ctx.strokeStyle = "#30363d";
+                ctx.lineWidth = 0.5;
+                ctx.beginPath();
+                for (var i = 0; i <= n; i++) {
+                    var p = pointAt(i % n, ring);
+                    if (i === 0) ctx.moveTo(p.x, p.y);
+                    else ctx.lineTo(p.x, p.y);
+                }
+                ctx.stroke();
+            }
+
+            // Axes
+            for (var i = 0; i < n; i++) {
+                var p = pointAt(i, maxVal);
+                ctx.strokeStyle = "#30363d";
+                ctx.lineWidth = 0.5;
+                ctx.beginPath();
+                ctx.moveTo(cx, cy);
+                ctx.lineTo(p.x, p.y);
+                ctx.stroke();
+
+                // Labels
+                var lp = pointAt(i, maxVal + 1.5);
+                ctx.fillStyle = "#e6edf3";
+                ctx.font = "9px -apple-system, sans-serif";
+                ctx.textAlign = "center";
+                var parts = capLabels[capKeys[i]].split(" ");
+                parts.forEach(function(word, wi) {
+                    ctx.fillText(word, lp.x, lp.y + wi * 11);
+                });
+            }
+
+            // Draw model polygons
+            function drawPoly(modelCaps, color, alpha) {
+                ctx.beginPath();
+                for (var i = 0; i <= n; i++) {
+                    var p = pointAt(i % n, modelCaps[capKeys[i % n]]);
+                    if (i === 0) ctx.moveTo(p.x, p.y);
+                    else ctx.lineTo(p.x, p.y);
+                }
+                ctx.fillStyle = color;
+                ctx.globalAlpha = alpha;
+                ctx.fill();
+                ctx.strokeStyle = color;
+                ctx.globalAlpha = Math.min(1, alpha + 0.4);
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                ctx.globalAlpha = 1;
+            }
+
+            // Draw all models
+            models.forEach(function(m) {
+                drawPoly(m.capabilities, m.color, 0.1);
+            });
+
+            // Highlight selected
+            var sel = getModel(selectedModel);
+            drawPoly(sel.capabilities, sel.color, 0.25);
+
+            // Dots for selected
+            for (var i = 0; i < n; i++) {
+                var p = pointAt(i, sel.capabilities[capKeys[i]]);
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+                ctx.fillStyle = sel.color;
+                ctx.fill();
+            }
+        }
+
+        function roundRect(ctx, x, y, w, h, radii) {
+            var r = Array.isArray(radii) ? radii[0] : (radii || 0);
+            ctx.moveTo(x + r, y);
+            ctx.lineTo(x + w - r, y);
+            ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+            ctx.lineTo(x + w, y + h - r);
+            ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+            ctx.lineTo(x + r, y + h);
+            ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+            ctx.lineTo(x, y + r);
+            ctx.quadraticCurveTo(x, y, x + r, y);
+            ctx.closePath();
+        }
+
+        // ===== INIT =====
+        function init() {
+            buildModelSelector();
+            updateOverview();
+            updateResponseCards();
+            buildHeatmap();
+            drawEffectivenessChart();
+            drawCapabilityRadar();
+        }
+
+        var resizeTimeout;
+        window.addEventListener("resize", function() {
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(function() {
+                drawEffectivenessChart();
+                drawCapabilityRadar();
+            }, 200);
+        });
+
+        init();
+    </script>
+</body>
+</html>

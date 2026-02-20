@@ -111,6 +111,19 @@ Create your own custom GIF CAPTCHA challenge sets:
 - **Local Storage** — Auto-saves your work in the browser so you never lose progress
 - **Sample Set** — Load a pre-built set of 5 challenges to get started quickly
 
+### 🤖 AI Response Simulator
+
+**[Try Simulator →](https://sauravbhattacharya001.github.io/gif-captcha/simulator.html)**
+
+Explore how different AI models respond to each GIF CAPTCHA:
+- **5 AI Models** — GPT-4 (2023), GPT-4V (2023 Q4), GPT-4o (2024), Claude 3.5 (2024), Gemini 1.5 Pro (2024)
+- **Simulated Responses** — See exactly what each model would say for each CAPTCHA
+- **Capability Breakdown** — Per-CAPTCHA analysis of model capabilities vs. requirements (frame analysis, motion tracking, narrative comprehension, cultural context, humor detection, object recognition)
+- **Reasoning Explanations** — Why each model succeeds, partially succeeds, or fails
+- **Model × CAPTCHA Heatmap** — Pass/fail matrix across all models and CAPTCHAs
+- **Comparative Charts** — Stacked effectiveness bar chart and capability radar overlay
+- **Interactive Model Switching** — Click any model to see its full response set
+
 ### Case Study Page
 
 Features a dark-themed UI with:
@@ -134,6 +147,7 @@ gif-captcha/
 ├── demo.html       # Interactive CAPTCHA demo (try it yourself!)
 ├── analysis.html   # Research analysis dashboard with charts & taxonomy
 ├── generator.html  # CAPTCHA Workshop — create custom challenge sets
+├── simulator.html  # AI Response Simulator — model comparison & capability analysis
 ├── README.md       # This file
 └── LICENSE         # MIT License
 ```

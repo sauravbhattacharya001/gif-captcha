@@ -3,59 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src https: data:; frame-ancestors 'none'; base-uri 'self'; form-action 'none';">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src https: data:; frame-ancestors 'none'; base-uri 'self'; form-action 'none';">
     <meta name="referrer" content="no-referrer">
     <title>GIF CAPTCHA — Workshop</title>
+    <link rel="stylesheet" href="shared.css">
     <style>
-        :root {
-            --bg: #0d1117;
-            --surface: #161b22;
-            --surface-hover: #1c2129;
-            --border: #30363d;
-            --text: #e6edf3;
-            --muted: #8b949e;
-            --accent: #58a6ff;
-            --accent-hover: #79b8ff;
-            --green: #3fb950;
-            --green-bg: rgba(63, 185, 80, 0.15);
-            --red: #f85149;
-            --red-bg: rgba(248, 81, 73, 0.15);
-            --yellow: #d29922;
-            --yellow-bg: rgba(210, 153, 34, 0.15);
-            --purple: #bc8cff;
-            --purple-bg: rgba(188, 140, 255, 0.15);
-            --orange: #f0883e;
-        }
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
-            background: var(--bg);
-            color: var(--text);
-            line-height: 1.6;
-            min-height: 100vh;
-        }
-
-        .header {
-            text-align: center;
-            padding: 2.5rem 1.5rem 1.5rem;
-            border-bottom: 1px solid var(--border);
-        }
-        .header h1 { font-size: 2rem; margin-bottom: 0.3rem; }
-        .header .subtitle { color: var(--muted); font-size: 1rem; }
-        .header .nav-links { margin-top: 0.8rem; }
-        .header .nav-links a {
-            color: var(--accent);
-            text-decoration: none;
-            font-size: 0.85rem;
-            margin: 0 0.5rem;
-        }
-        .header .nav-links a:hover { text-decoration: underline; }
-
-        .container {
-            max-width: 900px;
-            margin: 0 auto;
-            padding: 2rem 1.5rem;
-        }
+        /* generator.html — page-specific styles (base styles in shared.css) */
 
         /* Tabs */
         .tab-bar {
@@ -85,32 +38,11 @@
         .tab-pane { display: none; }
         .tab-pane.active { display: block; }
 
-        /* Buttons */
-        .btn {
-            display: inline-block;
-            padding: 0.6rem 1.5rem;
-            border-radius: 8px;
-            border: none;
-            font-size: 0.9rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-            font-family: inherit;
-        }
-        .btn-primary { background: var(--accent); color: #fff; }
-        .btn-primary:hover { background: var(--accent-hover); }
-        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
-        .btn-secondary {
-            background: var(--surface);
-            color: var(--text);
-            border: 1px solid var(--border);
-        }
-        .btn-secondary:hover { background: var(--surface-hover); }
+        /* Buttons (extend shared.css) */
         .btn-danger { background: var(--red-bg); color: var(--red); border: 1px solid rgba(248,81,73,0.3); }
         .btn-danger:hover { background: rgba(248,81,73,0.25); }
         .btn-success { background: var(--green-bg); color: var(--green); border: 1px solid rgba(63,185,80,0.3); }
         .btn-success:hover { background: rgba(63,185,80,0.25); }
-        .btn-small { padding: 0.35rem 0.8rem; font-size: 0.8rem; }
         .btn-group { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 
         /* Forms */
@@ -496,11 +428,9 @@
         .results-row .r-title { flex: 1; }
         .results-row .r-status { font-weight: 600; flex-shrink: 0; }
 
-        .hidden { display: none !important; }
+        /* .hidden — see shared.css */
 
         @media (max-width: 600px) {
-            .header h1 { font-size: 1.5rem; }
-            .container { padding: 1rem; }
             .tab-btn { padding: 0.6rem 0.8rem; font-size: 0.85rem; }
             .stats-bar { gap: 0.8rem; }
             .challenge-card .card-preview { display: none; }
@@ -740,6 +670,7 @@
     <!-- Toast -->
     <div class="toast" id="toast"></div>
 
+    <script src="shared.js"></script>
     <script>
         // ===== STATE =====
         var challenges = [];
@@ -752,9 +683,7 @@
         var pvAnswered = 0;
         var pvSkipped = 0;
 
-        // Sanitizer
-        var _sanitizeEl = document.createElement("div");
-        function sanitize(str) { _sanitizeEl.textContent = str; return _sanitizeEl.innerHTML; }
+        // sanitize() is now in shared.js
 
         // ===== TABS =====
         function switchTab(tabId) {

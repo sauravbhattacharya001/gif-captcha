@@ -3,36 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src https:; frame-ancestors 'none'; base-uri 'self'; form-action 'none';">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; img-src https:; frame-ancestors 'none'; base-uri 'self'; form-action 'none';">
     <meta name="referrer" content="no-referrer">
     <title>GIF CAPTCHA Case Study</title>
+    <link rel="stylesheet" href="shared.css">
     <style>
-        :root {
-            --bg: #0d1117;
-            --surface: #161b22;
-            --border: #30363d;
-            --text: #e6edf3;
-            --muted: #8b949e;
-            --accent: #58a6ff;
-            --green: #3fb950;
-            --red: #f85149;
-        }
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
-            background: var(--bg);
-            color: var(--text);
-            line-height: 1.6;
-            padding: 2rem;
-            max-width: 900px;
-            margin: 0 auto;
-        }
+        /* index.html — page-specific styles (base styles in shared.css) */
+        body { padding: 2rem; max-width: 900px; margin: 0 auto; }
         h1 { font-size: 2rem; margin-bottom: 0.5rem; }
         h2 { font-size: 1.4rem; margin: 2rem 0 1rem; color: var(--accent); }
         h3 { font-size: 1.1rem; margin: 1.5rem 0 0.5rem; }
         p { margin-bottom: 1rem; color: var(--muted); }
-        a { color: var(--accent); text-decoration: none; }
-        a:hover { text-decoration: underline; }
         .subtitle { color: var(--muted); font-size: 1rem; margin-bottom: 2rem; }
         table {
             width: 100%;

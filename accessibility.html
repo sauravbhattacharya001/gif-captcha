@@ -1,0 +1,966 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; img-src https: data:; script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'self'; form-action 'none';">
+    <meta name="referrer" content="no-referrer">
+    <title>GIF CAPTCHA — Accessibility Audit</title>
+    <link rel="stylesheet" href="shared.css">
+    <style>
+        /* accessibility.html — page-specific styles */
+
+        .overview-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        .overview-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.25rem;
+            text-align: center;
+        }
+        .card-value { font-size: 2rem; font-weight: 800; line-height: 1.2; }
+        .card-label { font-size: 0.75rem; color: var(--muted); margin-top: 0.3rem; }
+
+        .section-title {
+            font-size: 1.2rem;
+            font-weight: 700;
+            margin: 2rem 0 0.5rem;
+        }
+        .section-desc {
+            font-size: 0.85rem;
+            color: var(--muted);
+            margin-bottom: 1.25rem;
+        }
+
+        .chart-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.25rem;
+            margin-bottom: 2rem;
+        }
+        .chart-panel {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.25rem;
+        }
+        .chart-panel h3 { font-size: 0.95rem; margin-bottom: 0.75rem; }
+
+        /* Dimension legend */
+        .dimension-legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            margin-bottom: 1.5rem;
+            justify-content: center;
+        }
+        .dim-badge {
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+            font-size: 0.8rem;
+            color: var(--muted);
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 0.3rem 0.7rem;
+        }
+        .dim-dot {
+            width: 10px; height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        /* WCAG criteria table */
+        .wcag-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+            margin: 1rem 0 2rem;
+        }
+        .wcag-table th, .wcag-table td {
+            padding: 0.65rem 0.75rem;
+            text-align: left;
+            border: 1px solid var(--border);
+        }
+        .wcag-table th {
+            background: var(--surface);
+            color: var(--text);
+            font-weight: 600;
+        }
+        .wcag-table td { color: var(--muted); }
+        .wcag-table tr:nth-child(even) td { background: rgba(22, 27, 34, 0.5); }
+        .level-badge {
+            display: inline-block;
+            padding: 0.1rem 0.4rem;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: 700;
+        }
+        .level-a { background: var(--green-bg); color: var(--green); }
+        .level-aa { background: var(--yellow-bg); color: var(--yellow); }
+        .level-aaa { background: var(--purple-bg); color: var(--purple); }
+
+        .status-icon { font-size: 1rem; }
+
+        /* Sort controls */
+        .sort-controls {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            margin-bottom: 1.25rem;
+        }
+        .sort-btn {
+            padding: 0.35rem 0.75rem;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            color: var(--muted);
+            font-size: 0.8rem;
+            cursor: pointer;
+            font-family: inherit;
+            transition: all 0.2s;
+        }
+        .sort-btn:hover { border-color: var(--accent); color: var(--text); }
+        .sort-btn.active {
+            background: var(--accent);
+            color: #fff;
+            border-color: var(--accent);
+        }
+
+        /* CAPTCHA cards */
+        .captcha-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+            gap: 1.25rem;
+            margin-bottom: 2rem;
+        }
+        .captcha-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            overflow: hidden;
+            transition: border-color 0.2s;
+        }
+        .captcha-card:hover { border-color: var(--accent); }
+        .card-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--border);
+        }
+        .card-id {
+            font-size: 0.75rem;
+            color: var(--muted);
+            font-weight: 600;
+        }
+        .score-badge {
+            padding: 0.2rem 0.6rem;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 700;
+        }
+        .score-good { background: var(--green-bg); color: var(--green); }
+        .score-ok { background: var(--yellow-bg); color: var(--yellow); }
+        .score-poor { background: var(--orange-bg); color: var(--orange); }
+        .score-bad { background: var(--red-bg); color: var(--red); }
+        .card-body { padding: 1rem; }
+        .card-title { font-size: 1rem; font-weight: 600; margin-bottom: 0.5rem; }
+        .card-chart-row {
+            display: flex;
+            gap: 1rem;
+            align-items: flex-start;
+        }
+        .card-canvas { flex: 0 0 140px; }
+        .card-bars { flex: 1; }
+        .bar-row {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.35rem;
+            font-size: 0.75rem;
+        }
+        .bar-label { width: 55px; color: var(--muted); text-align: right; flex-shrink: 0; }
+        .bar-track {
+            flex: 1;
+            height: 8px;
+            background: var(--border);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .bar-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.4s ease;
+        }
+        .bar-val {
+            width: 22px;
+            text-align: right;
+            color: var(--text);
+            font-weight: 600;
+            flex-shrink: 0;
+        }
+
+        /* Issues list */
+        .card-issues { margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border); }
+        .card-issues h4 { font-size: 0.8rem; color: var(--muted); margin-bottom: 0.3rem; }
+        .issue-item {
+            font-size: 0.78rem;
+            color: var(--muted);
+            padding: 0.2rem 0;
+        }
+        .issue-sev { font-weight: 600; margin-right: 0.3rem; }
+        .sev-high { color: var(--red); }
+        .sev-medium { color: var(--yellow); }
+        .sev-low { color: var(--green); }
+
+        /* Recommendation cards */
+        .rec-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        .rec-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.25rem;
+        }
+        .rec-card h4 { font-size: 0.95rem; margin-bottom: 0.4rem; }
+        .rec-card p { font-size: 0.82rem; color: var(--muted); margin-bottom: 0.4rem; }
+        .rec-impact {
+            font-size: 0.7rem;
+            font-weight: 600;
+            padding: 0.15rem 0.4rem;
+            border-radius: 4px;
+        }
+        .impact-high { background: var(--green-bg); color: var(--green); }
+        .impact-medium { background: var(--yellow-bg); color: var(--yellow); }
+
+        @media (max-width: 768px) {
+            .chart-grid { grid-template-columns: 1fr; }
+            .captcha-cards { grid-template-columns: 1fr; }
+            .card-chart-row { flex-direction: column; align-items: center; }
+            .card-canvas { flex: 0 0 auto; }
+        }
+        @media (max-width: 600px) {
+            .overview-cards { grid-template-columns: repeat(2, 1fr); }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <h1>♿ Accessibility Audit</h1>
+        <p class="subtitle">Evaluating GIF CAPTCHA accessibility across WCAG 2.1 criteria</p>
+        <nav class="nav-links" aria-label="Page navigation">
+            <a href="index.html">Home</a>
+            <a href="demo.html">Demo</a>
+            <a href="analysis.html">Analysis</a>
+            <a href="simulator.html">Simulator</a>
+            <a href="temporal.html">Temporal</a>
+            <a href="benchmark.html">Benchmark</a>
+            <a href="cognitive-load.html">Cognitive Load</a>
+        </nav>
+    </header>
+
+    <main class="container" role="main">
+        <!-- Overview Cards -->
+        <div class="overview-cards" id="overviewCards" role="group" aria-label="Accessibility overview statistics"></div>
+
+        <!-- Dimension Legend -->
+        <div class="dimension-legend" id="dimensionLegend" role="list" aria-label="Accessibility dimensions"></div>
+
+        <!-- Charts -->
+        <h2 class="section-title">📊 Accessibility Score Distribution</h2>
+        <p class="section-desc">Per-CAPTCHA accessibility scores (0–100, higher = more accessible) and dimension breakdown.</p>
+        <div class="chart-grid">
+            <div class="chart-panel">
+                <h3>Score by CAPTCHA</h3>
+                <canvas id="scoreChart" width="400" height="280" aria-label="Bar chart of accessibility scores per CAPTCHA"></canvas>
+            </div>
+            <div class="chart-panel">
+                <h3>Dimension Averages</h3>
+                <canvas id="radarChart" width="400" height="280" aria-label="Radar chart of average accessibility dimension scores"></canvas>
+            </div>
+        </div>
+
+        <!-- WCAG Criteria -->
+        <h2 class="section-title">📋 WCAG 2.1 Compliance Assessment</h2>
+        <p class="section-desc">How GIF-based CAPTCHAs fare against relevant Web Content Accessibility Guidelines criteria.</p>
+        <div class="chart-panel">
+            <table class="wcag-table" id="wcagTable" aria-label="WCAG 2.1 criteria compliance">
+                <thead>
+                    <tr>
+                        <th>Criterion</th>
+                        <th>Level</th>
+                        <th>Status</th>
+                        <th>Notes</th>
+                    </tr>
+                </thead>
+                <tbody id="wcagBody"></tbody>
+            </table>
+        </div>
+
+        <!-- Research Insight -->
+        <div class="insight-box" id="insightBox">
+            <h4>🔬 Research Insight</h4>
+            <p id="insightText"></p>
+        </div>
+
+        <!-- Per-CAPTCHA Cards -->
+        <h2 class="section-title">🔍 Per-CAPTCHA Accessibility Profiles</h2>
+        <p class="section-desc">Individual accessibility assessment for each CAPTCHA, with dimension radar and identified issues.</p>
+
+        <div class="sort-controls" role="group" aria-label="Sort CAPTCHA cards">
+            <button class="sort-btn active" data-sort="id">By ID</button>
+            <button class="sort-btn" data-sort="score-desc">Most Accessible</button>
+            <button class="sort-btn" data-sort="score-asc">Least Accessible</button>
+            <button class="sort-btn" data-sort="issues">Most Issues</button>
+            <button class="sort-btn" data-sort="motion">Worst Motion</button>
+        </div>
+
+        <div class="captcha-cards" id="captchaCards"></div>
+
+        <!-- Recommendations -->
+        <h2 class="section-title">💡 Recommendations</h2>
+        <p class="section-desc">Actionable improvements to make GIF CAPTCHAs more inclusive.</p>
+        <div class="rec-grid" id="recGrid"></div>
+
+        <footer>
+            <p>Part of the <a href="index.html">GIF CAPTCHA Research Study</a></p>
+        </footer>
+    </main>
+
+    <script src="shared.js"></script>
+    <script>
+    /* ===== Accessibility Dimensions ===== */
+    var A11Y_DIMS = [
+        { key: "motion",    label: "Motion",    color: "#f85149", emoji: "🌀",  desc: "Rapid movement, flashing, or vestibular-triggering animation" },
+        { key: "visual",    label: "Visual",    color: "#58a6ff", emoji: "👁️",  desc: "Visual complexity, contrast requirements, and detail dependency" },
+        { key: "cognitive", label: "Cognitive",  color: "#bc8cff", emoji: "🧠",  desc: "Mental effort, working memory, and comprehension demands" },
+        { key: "cultural",  label: "Cultural",  color: "#d29922", emoji: "🌍",  desc: "Dependency on cultural knowledge or regional context" },
+        { key: "temporal",  label: "Temporal",   color: "#3fb950", emoji: "⏱️", desc: "Speed of key events and time pressure to observe them" }
+    ];
+
+    /*
+     * Per-CAPTCHA accessibility ratings (1-10 scale, 10 = worst accessibility barrier).
+     * These are inverted to compute an accessibility score:
+     *   score = 100 - (avgBarrier * 10)
+     *
+     * Expert-calibrated based on animation speed, visual complexity,
+     * cognitive demands, cultural dependency, and temporal requirements.
+     */
+    var a11yData = [
+        {
+            id: 1, title: "Duel Plot Twist", category: "narrative",
+            barriers: { motion: 4, visual: 5, cognitive: 8, cultural: 7, temporal: 5 },
+            issues: [
+                { severity: "high", text: "Requires understanding of comedic trope subversion" },
+                { severity: "medium", text: "Cultural familiarity with duel conventions assumed" },
+                { severity: "low", text: "Moderate animation speed is manageable" }
+            ]
+        },
+        {
+            id: 2, title: "Rappers", category: "social",
+            barriers: { motion: 5, visual: 4, cognitive: 6, cultural: 8, temporal: 5 },
+            issues: [
+                { severity: "high", text: "Heavy cultural context required (rap + skating incongruity)" },
+                { severity: "medium", text: "Multiple scene transitions to track" },
+                { severity: "low", text: "Clear visual contrast between subjects" }
+            ]
+        },
+        {
+            id: 3, title: "Skateboarder", category: "physical",
+            barriers: { motion: 9, visual: 7, cognitive: 4, cultural: 2, temporal: 8 },
+            issues: [
+                { severity: "high", text: "Extremely rapid motion — vestibular risk for sensitive users" },
+                { severity: "high", text: "Key event happens in under 1 second" },
+                { severity: "medium", text: "High visual complexity with motion blur" }
+            ]
+        },
+        {
+            id: 4, title: "Banana Mascot", category: "social",
+            barriers: { motion: 5, visual: 5, cognitive: 6, cultural: 5, temporal: 5 },
+            issues: [
+                { severity: "medium", text: "Role reversal requires social context understanding" },
+                { severity: "low", text: "Moderate animation pace allows observation" },
+                { severity: "low", text: "Good visual contrast — mascot costume is distinctive" }
+            ]
+        },
+        {
+            id: 5, title: "Tic Tac Toe Dog", category: "animal",
+            barriers: { motion: 3, visual: 6, cognitive: 5, cultural: 3, temporal: 4 },
+            issues: [
+                { severity: "medium", text: "Small game board details may challenge low-vision users" },
+                { severity: "low", text: "Slow animation speed is accessible" },
+                { severity: "low", text: "Minimal cultural knowledge required" }
+            ]
+        },
+        {
+            id: 6, title: "Parent Dog", category: "animal",
+            barriers: { motion: 4, visual: 5, cognitive: 9, cultural: 5, temporal: 6 },
+            issues: [
+                { severity: "high", text: "Multi-step narrative demands high working memory" },
+                { severity: "medium", text: "Emotional nuance may confuse users with cognitive disabilities" },
+                { severity: "medium", text: "Moderate temporal pacing" }
+            ]
+        },
+        {
+            id: 7, title: "Mirror Illusion", category: "illusion",
+            barriers: { motion: 2, visual: 10, cognitive: 7, cultural: 1, temporal: 3 },
+            issues: [
+                { severity: "high", text: "Extremely high visual acuity demand — subtle hand illusion" },
+                { severity: "high", text: "Requires precise spatial-visual discrimination" },
+                { severity: "low", text: "Minimal motion — accessible for vestibular-sensitive users" }
+            ]
+        },
+        {
+            id: 8, title: "Highway Drift", category: "physical",
+            barriers: { motion: 10, visual: 8, cognitive: 4, cultural: 2, temporal: 9 },
+            issues: [
+                { severity: "high", text: "Maximum motion intensity — flashing and rapid movement" },
+                { severity: "high", text: "Key event under 0.5 seconds — extremely time-sensitive" },
+                { severity: "medium", text: "High visual complexity at speed" }
+            ]
+        },
+        {
+            id: 9, title: "Road Rage Hug", category: "social",
+            barriers: { motion: 4, visual: 4, cognitive: 6, cultural: 8, temporal: 5 },
+            issues: [
+                { severity: "high", text: "Humor depends on cultural scripts about road rage" },
+                { severity: "medium", text: "Social context comprehension required" },
+                { severity: "low", text: "Clear visual staging with good contrast" }
+            ]
+        },
+        {
+            id: 10, title: "Birthday Cake", category: "narrative",
+            barriers: { motion: 5, visual: 6, cognitive: 7, cultural: 5, temporal: 6 },
+            issues: [
+                { severity: "medium", text: "Multi-step narrative requires sequential processing" },
+                { severity: "medium", text: "Hidden object reveal demands visual attention" },
+                { severity: "medium", text: "Moderate temporal requirements" }
+            ]
+        }
+    ];
+
+    /* ===== WCAG 2.1 Criteria Relevant to GIF CAPTCHAs ===== */
+    var wcagCriteria = [
+        {
+            id: "1.1.1", name: "Non-text Content",
+            level: "A", status: "fail",
+            notes: "GIF CAPTCHAs lack text alternatives. Inherent to the CAPTCHA purpose — providing alt text would reveal the answer."
+        },
+        {
+            id: "1.2.1", name: "Audio-only / Video-only (Prerecorded)",
+            level: "A", status: "fail",
+            notes: "No text transcript or audio description provided for GIF animations."
+        },
+        {
+            id: "1.4.3", name: "Contrast (Minimum)",
+            level: "AA", status: "partial",
+            notes: "GIF content contrast varies by source. UI controls meet 4.5:1 ratio."
+        },
+        {
+            id: "2.2.1", name: "Timing Adjustable",
+            level: "A", status: "pass",
+            notes: "No time limit on response — users can take as long as needed."
+        },
+        {
+            id: "2.2.2", name: "Pause, Stop, Hide",
+            level: "A", status: "fail",
+            notes: "GIFs cannot be paused by the user — autoplay animation with no controls."
+        },
+        {
+            id: "2.3.1", name: "Three Flashes or Below Threshold",
+            level: "A", status: "partial",
+            notes: "Most GIFs stay below flash threshold. Highway Drift and Skateboarder may approach limits."
+        },
+        {
+            id: "2.4.6", name: "Headings and Labels",
+            level: "AA", status: "pass",
+            notes: "CAPTCHA challenges have clear headings and descriptive labels."
+        },
+        {
+            id: "3.1.5", name: "Reading Level",
+            level: "AAA", status: "partial",
+            notes: "Instructions are clear but comprehension of GIF content varies by cultural/cognitive ability."
+        },
+        {
+            id: "3.3.8", name: "Accessible Authentication",
+            level: "AA", status: "fail",
+            notes: "No cognitive function test alternative provided (new in WCAG 2.2, but critical for CAPTCHAs)."
+        },
+        {
+            id: "4.1.2", name: "Name, Role, Value",
+            level: "A", status: "pass",
+            notes: "Interactive elements have proper ARIA labels and roles."
+        }
+    ];
+
+    /* ===== Recommendations ===== */
+    var recommendations = [
+        {
+            emoji: "⏸️", title: "Add GIF Pause/Play Controls",
+            desc: "Allow users to pause, step through frames, and replay GIF animations at their own pace. Critical for vestibular-sensitive and slow-processing users.",
+            impact: "high", wcag: "2.2.2"
+        },
+        {
+            emoji: "📝", title: "Provide Text-Based Alternative CAPTCHA",
+            desc: "Offer a fallback CAPTCHA type (logic puzzle, audio CAPTCHA) for users who cannot process animated visual content.",
+            impact: "high", wcag: "1.1.1"
+        },
+        {
+            emoji: "🔊", title: "Add Audio Descriptions",
+            desc: "Provide optional audio narration describing GIF content for blind and low-vision users. Could describe scene without revealing the answer.",
+            impact: "high", wcag: "1.2.1"
+        },
+        {
+            emoji: "🐢", title: "Adjustable Playback Speed",
+            desc: "Allow users to slow down GIF playback to 0.25x–0.5x speed. Helps users with processing delays or motor impairments.",
+            impact: "medium", wcag: "2.2.1"
+        },
+        {
+            emoji: "🌍", title: "Reduce Cultural Dependency",
+            desc: "Prioritize CAPTCHAs with universal visual events (physics, spatial) over culturally-specific humor for international audiences.",
+            impact: "medium", wcag: "3.1.5"
+        },
+        {
+            emoji: "⚡", title: "Motion Sensitivity Warnings",
+            desc: "Display a warning icon on high-motion CAPTCHAs and allow users to skip them. Respect prefers-reduced-motion.",
+            impact: "medium", wcag: "2.3.1"
+        },
+        {
+            emoji: "🔍", title: "High-Contrast Mode",
+            desc: "Offer a high-contrast overlay or outline mode for GIF content to assist low-vision users with visual discrimination tasks.",
+            impact: "medium", wcag: "1.4.3"
+        },
+        {
+            emoji: "🧩", title: "Simplify Cognitive Demands",
+            desc: "For high-cognitive-load CAPTCHAs, provide hints or multiple-choice answers instead of free-text responses.",
+            impact: "medium", wcag: "3.3.8"
+        }
+    ];
+
+    /* ===== Compute Scores ===== */
+    function computeScores() {
+        a11yData.forEach(function(c) {
+            var sum = 0;
+            var count = 0;
+            A11Y_DIMS.forEach(function(d) {
+                sum += c.barriers[d.key];
+                count++;
+            });
+            c.avgBarrier = sum / count;
+            c.score = Math.round(100 - (c.avgBarrier * 10));
+            c.issueCount = c.issues.filter(function(i) { return i.severity === "high" || i.severity === "medium"; }).length;
+        });
+
+        var dimAvg = {};
+        A11Y_DIMS.forEach(function(d) {
+            var sum = 0;
+            a11yData.forEach(function(c) { sum += c.barriers[d.key]; });
+            dimAvg[d.key] = sum / a11yData.length;
+        });
+
+        var totalScore = a11yData.reduce(function(s, c) { return s + c.score; }, 0) / a11yData.length;
+        var highIssues = a11yData.reduce(function(s, c) {
+            return s + c.issues.filter(function(i) { return i.severity === "high"; }).length;
+        }, 0);
+        var wcagPass = wcagCriteria.filter(function(w) { return w.status === "pass"; }).length;
+        var wcagFail = wcagCriteria.filter(function(w) { return w.status === "fail"; }).length;
+
+        return { dimAvg: dimAvg, totalScore: totalScore, highIssues: highIssues, wcagPass: wcagPass, wcagFail: wcagFail };
+    }
+
+    var stats = computeScores();
+
+    /* ===== Score Grade + Color ===== */
+    function scoreGrade(score) {
+        if (score >= 70) return { grade: "Good", cls: "score-good" };
+        if (score >= 50) return { grade: "Fair", cls: "score-ok" };
+        if (score >= 30) return { grade: "Poor", cls: "score-poor" };
+        return { grade: "Bad", cls: "score-bad" };
+    }
+
+    /* ===== Render Overview Cards ===== */
+    function renderOverview() {
+        var best = a11yData.slice().sort(function(a, b) { return b.score - a.score; })[0];
+        var worst = a11yData.slice().sort(function(a, b) { return a.score - b.score; })[0];
+        var g = scoreGrade(stats.totalScore);
+
+        var html =
+            '<div class="overview-card"><div class="card-value" style="color:var(--accent)">' + Math.round(stats.totalScore) + '/100</div><div class="card-label">Avg Accessibility Score</div></div>' +
+            '<div class="overview-card"><div class="card-value" style="color:var(--green)">' + sanitize(best.title) + '</div><div class="card-label">Most Accessible (' + best.score + ')</div></div>' +
+            '<div class="overview-card"><div class="card-value" style="color:var(--red)">' + sanitize(worst.title) + '</div><div class="card-label">Least Accessible (' + worst.score + ')</div></div>' +
+            '<div class="overview-card"><div class="card-value" style="color:var(--red)">' + stats.highIssues + '</div><div class="card-label">High-Severity Issues</div></div>' +
+            '<div class="overview-card"><div class="card-value" style="color:var(--yellow)">' + stats.wcagPass + '/' + wcagCriteria.length + '</div><div class="card-label">WCAG Criteria Passed</div></div>';
+
+        document.getElementById("overviewCards").innerHTML = html;
+    }
+
+    /* ===== Render Dimension Legend ===== */
+    function renderLegend() {
+        var html = "";
+        A11Y_DIMS.forEach(function(d) {
+            html += '<div class="dim-badge" role="listitem"><span class="dim-dot" style="background:' + d.color + '"></span>' + d.emoji + ' ' + sanitize(d.label) + '</div>';
+        });
+        document.getElementById("dimensionLegend").innerHTML = html;
+    }
+
+    /* ===== Draw Score Bar Chart ===== */
+    function drawScoreChart() {
+        var canvas = document.getElementById("scoreChart");
+        if (!canvas || typeof canvas.getContext !== "function") return;
+        var ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        var W = canvas.width, H = canvas.height;
+        var padL = 35, padR = 10, padT = 10, padB = 40;
+        var cW = W - padL - padR;
+        var cH = H - padT - padB;
+        var n = a11yData.length;
+        var barW = Math.floor(cW / n * 0.65);
+        var gap = cW / n;
+
+        ctx.clearRect(0, 0, W, H);
+
+        // Grid
+        ctx.strokeStyle = "rgba(48,54,61,0.5)";
+        ctx.lineWidth = 1;
+        for (var g = 0; g <= 100; g += 25) {
+            var gy = padT + cH - (g / 100) * cH;
+            ctx.beginPath(); ctx.moveTo(padL, gy); ctx.lineTo(W - padR, gy); ctx.stroke();
+            ctx.fillStyle = "#8b949e"; ctx.font = "10px sans-serif"; ctx.textAlign = "right";
+            ctx.fillText(g.toString(), padL - 5, gy + 3);
+        }
+
+        // Bars
+        a11yData.forEach(function(c, i) {
+            var x = padL + i * gap + (gap - barW) / 2;
+            var bH = (c.score / 100) * cH;
+            var y = padT + cH - bH;
+            var sg = scoreGrade(c.score);
+            var colors = { "score-good": "#3fb950", "score-ok": "#d29922", "score-poor": "#f0883e", "score-bad": "#f85149" };
+            ctx.fillStyle = colors[sg.cls] || "#58a6ff";
+            ctx.beginPath();
+            if (ctx.roundRect) { ctx.roundRect(x, y, barW, bH, [3, 3, 0, 0]); } else { ctx.rect(x, y, barW, bH); }
+            ctx.fill();
+
+            // Label
+            ctx.fillStyle = "#8b949e"; ctx.font = "10px sans-serif"; ctx.textAlign = "center";
+            ctx.save(); ctx.translate(x + barW / 2, padT + cH + 14); ctx.rotate(-0.4);
+            ctx.fillText("#" + c.id, 0, 0);
+            ctx.restore();
+
+            // Value
+            ctx.fillStyle = "#e6edf3"; ctx.font = "bold 10px sans-serif"; ctx.textAlign = "center";
+            ctx.fillText(c.score.toString(), x + barW / 2, y - 4);
+        });
+    }
+
+    /* ===== Draw Radar Chart ===== */
+    function drawRadar() {
+        var canvas = document.getElementById("radarChart");
+        if (!canvas || typeof canvas.getContext !== "function") return;
+        var ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        var W = canvas.width, H = canvas.height;
+        var cx = W / 2, cy = H / 2 + 5;
+        var R = Math.min(W, H) * 0.35;
+        var n = A11Y_DIMS.length;
+        var angleStep = (2 * Math.PI) / n;
+        var startAngle = -Math.PI / 2;
+
+        ctx.clearRect(0, 0, W, H);
+
+        // Grid rings
+        ctx.strokeStyle = "rgba(48,54,61,0.6)";
+        ctx.lineWidth = 1;
+        for (var ring = 1; ring <= 5; ring++) {
+            var rr = R * ring / 5;
+            ctx.beginPath();
+            for (var i = 0; i <= n; i++) {
+                var a = startAngle + i * angleStep;
+                var px = cx + Math.cos(a) * rr;
+                var py = cy + Math.sin(a) * rr;
+                if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+            }
+            ctx.stroke();
+        }
+
+        // Axis lines
+        for (var i = 0; i < n; i++) {
+            var a = startAngle + i * angleStep;
+            ctx.beginPath();
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(cx + Math.cos(a) * R, cy + Math.sin(a) * R);
+            ctx.stroke();
+        }
+
+        // Barrier area (how bad things are)
+        ctx.beginPath();
+        A11Y_DIMS.forEach(function(d, i) {
+            var a = startAngle + i * angleStep;
+            var v = stats.dimAvg[d.key] / 10;
+            var px = cx + Math.cos(a) * R * v;
+            var py = cy + Math.sin(a) * R * v;
+            if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        });
+        ctx.closePath();
+        ctx.fillStyle = "rgba(248, 81, 73, 0.2)";
+        ctx.fill();
+        ctx.strokeStyle = "#f85149";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Ideal threshold (score of 3 = acceptable barrier)
+        ctx.beginPath();
+        for (var i = 0; i <= n; i++) {
+            var a = startAngle + (i % n) * angleStep;
+            var px = cx + Math.cos(a) * R * 0.3;
+            var py = cy + Math.sin(a) * R * 0.3;
+            if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.strokeStyle = "rgba(63, 185, 80, 0.6)";
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([5, 3]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Labels
+        ctx.fillStyle = "#e6edf3"; ctx.font = "11px sans-serif"; ctx.textAlign = "center";
+        A11Y_DIMS.forEach(function(d, i) {
+            var a = startAngle + i * angleStep;
+            var lx = cx + Math.cos(a) * (R + 18);
+            var ly = cy + Math.sin(a) * (R + 18);
+            ctx.fillText(d.emoji + " " + d.label, lx, ly + 4);
+        });
+
+        // Legend
+        ctx.fillStyle = "rgba(248, 81, 73, 0.5)"; ctx.fillRect(W - 135, 8, 12, 12);
+        ctx.fillStyle = "#8b949e"; ctx.font = "10px sans-serif"; ctx.textAlign = "left";
+        ctx.fillText("Avg Barrier Level", W - 120, 18);
+        ctx.strokeStyle = "rgba(63, 185, 80, 0.6)"; ctx.setLineDash([5, 3]); ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(W - 135, 32); ctx.lineTo(W - 123, 32); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillText("Acceptable Threshold", W - 120, 36);
+    }
+
+    /* ===== Render WCAG Table ===== */
+    function renderWcag() {
+        var html = "";
+        wcagCriteria.forEach(function(w) {
+            var levelClass = w.level === "A" ? "level-a" : (w.level === "AA" ? "level-aa" : "level-aaa");
+            var statusIcon = w.status === "pass" ? "✅" : (w.status === "fail" ? "❌" : "⚠️");
+            html += '<tr>' +
+                '<td><strong>' + sanitize(w.id) + '</strong> ' + sanitize(w.name) + '</td>' +
+                '<td><span class="level-badge ' + levelClass + '">' + sanitize(w.level) + '</span></td>' +
+                '<td class="status-icon">' + statusIcon + '</td>' +
+                '<td>' + sanitize(w.notes) + '</td>' +
+                '</tr>';
+        });
+        document.getElementById("wcagBody").innerHTML = html;
+    }
+
+    /* ===== Render Research Insight ===== */
+    function renderInsight() {
+        var worstDim = A11Y_DIMS.slice().sort(function(a, b) { return stats.dimAvg[b.key] - stats.dimAvg[a.key]; })[0];
+        var bestDim = A11Y_DIMS.slice().sort(function(a, b) { return stats.dimAvg[a.key] - stats.dimAvg[b.key]; })[0];
+        var text = "GIF CAPTCHAs present the greatest accessibility barrier in <strong>" + worstDim.label +
+            "</strong> (avg barrier: " + stats.dimAvg[worstDim.key].toFixed(1) + "/10), while <strong>" + bestDim.label +
+            "</strong> is the least problematic (avg: " + stats.dimAvg[bestDim.key].toFixed(1) + "/10). " +
+            "Only " + stats.wcagPass + " of " + wcagCriteria.length + " WCAG criteria are fully met, " +
+            "with " + stats.wcagFail + " failures. The inherent tension between CAPTCHA security (hiding the answer) " +
+            "and accessibility (providing alternatives) remains the central design challenge.";
+        document.getElementById("insightText").innerHTML = text;
+    }
+
+    /* ===== Draw Mini Radar ===== */
+    function drawMiniRadar(canvasId, barriers) {
+        var canvas = document.getElementById(canvasId);
+        if (!canvas || typeof canvas.getContext !== "function") return;
+        var ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        var W = canvas.width, H = canvas.height;
+        var cx = W / 2, cy = H / 2;
+        var R = Math.min(W, H) * 0.4;
+        var n = A11Y_DIMS.length;
+        var angleStep = (2 * Math.PI) / n;
+        var startAngle = -Math.PI / 2;
+
+        ctx.clearRect(0, 0, W, H);
+
+        // Grid
+        ctx.strokeStyle = "rgba(48,54,61,0.5)";
+        ctx.lineWidth = 0.5;
+        for (var ring = 1; ring <= 5; ring++) {
+            ctx.beginPath();
+            for (var i = 0; i <= n; i++) {
+                var a = startAngle + i * angleStep;
+                var px = cx + Math.cos(a) * R * ring / 5;
+                var py = cy + Math.sin(a) * R * ring / 5;
+                if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+            }
+            ctx.stroke();
+        }
+
+        // Data area
+        ctx.beginPath();
+        A11Y_DIMS.forEach(function(d, i) {
+            var a = startAngle + i * angleStep;
+            var v = barriers[d.key] / 10;
+            var px = cx + Math.cos(a) * R * v;
+            var py = cy + Math.sin(a) * R * v;
+            if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        });
+        ctx.closePath();
+        ctx.fillStyle = "rgba(248, 81, 73, 0.25)";
+        ctx.fill();
+        ctx.strokeStyle = "#f85149";
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // Dimension dots
+        A11Y_DIMS.forEach(function(d, i) {
+            var a = startAngle + i * angleStep;
+            var v = barriers[d.key] / 10;
+            var px = cx + Math.cos(a) * R * v;
+            var py = cy + Math.sin(a) * R * v;
+            ctx.beginPath();
+            ctx.arc(px, py, 3, 0, Math.PI * 2);
+            ctx.fillStyle = d.color;
+            ctx.fill();
+        });
+    }
+
+    /* ===== Render CAPTCHA Cards ===== */
+    function renderCards(sortBy) {
+        var sorted = a11yData.slice();
+        switch (sortBy) {
+            case "score-desc": sorted.sort(function(a, b) { return b.score - a.score; }); break;
+            case "score-asc": sorted.sort(function(a, b) { return a.score - b.score; }); break;
+            case "issues": sorted.sort(function(a, b) { return b.issueCount - a.issueCount || a.score - b.score; }); break;
+            case "motion": sorted.sort(function(a, b) { return b.barriers.motion - a.barriers.motion; }); break;
+            default: sorted.sort(function(a, b) { return a.id - b.id; });
+        }
+
+        var html = "";
+        sorted.forEach(function(c) {
+            var g = scoreGrade(c.score);
+            var canvasId = "radar-" + c.id;
+            html += '<div class="captcha-card">' +
+                '<div class="card-top">' +
+                '<span class="card-id">#' + c.id + ' · <span class="tag tag-' + c.category + '">' + sanitize(c.category) + '</span></span>' +
+                '<span class="score-badge ' + g.cls + '">' + c.score + '/100 ' + g.grade + '</span>' +
+                '</div>' +
+                '<div class="card-body">' +
+                '<div class="card-title">' + sanitize(c.title) + '</div>' +
+                '<div class="card-chart-row">' +
+                '<div class="card-canvas"><canvas id="' + canvasId + '" width="140" height="140"></canvas></div>' +
+                '<div class="card-bars">';
+
+            A11Y_DIMS.forEach(function(d) {
+                var val = c.barriers[d.key];
+                var pct = val * 10;
+                html += '<div class="bar-row">' +
+                    '<span class="bar-label">' + d.emoji + ' ' + sanitize(d.label.substring(0, 5)) + '</span>' +
+                    '<div class="bar-track"><div class="bar-fill" style="width:' + pct + '%;background:' + d.color + '"></div></div>' +
+                    '<span class="bar-val">' + val + '</span>' +
+                    '</div>';
+            });
+
+            html += '</div></div>'; // card-bars, card-chart-row
+
+            // Issues
+            html += '<div class="card-issues"><h4>Accessibility Issues</h4>';
+            c.issues.forEach(function(iss) {
+                html += '<div class="issue-item"><span class="issue-sev sev-' + iss.severity + '">' +
+                    (iss.severity === "high" ? "⚠" : iss.severity === "medium" ? "●" : "○") +
+                    '</span>' + sanitize(iss.text) + '</div>';
+            });
+            html += '</div>';
+
+            html += '</div></div>'; // card-body, captcha-card
+        });
+
+        document.getElementById("captchaCards").innerHTML = html;
+
+        // Draw mini radars after DOM update
+        sorted.forEach(function(c) {
+            drawMiniRadar("radar-" + c.id, c.barriers);
+        });
+    }
+
+    /* ===== Render Recommendations ===== */
+    function renderRecs() {
+        var html = "";
+        recommendations.forEach(function(r) {
+            html += '<div class="rec-card">' +
+                '<h4>' + r.emoji + ' ' + sanitize(r.title) + '</h4>' +
+                '<p>' + sanitize(r.desc) + '</p>' +
+                '<span class="rec-impact impact-' + r.impact + '">' + r.impact.toUpperCase() + ' IMPACT</span>' +
+                (r.wcag ? ' <span style="font-size:0.7rem;color:var(--muted)">WCAG ' + sanitize(r.wcag) + '</span>' : '') +
+                '</div>';
+        });
+        document.getElementById("recGrid").innerHTML = html;
+    }
+
+    /* ===== Sort Button Handlers ===== */
+    function initSort() {
+        var btns = document.querySelectorAll(".sort-btn");
+        btns.forEach(function(btn) {
+            btn.addEventListener("click", function() {
+                btns.forEach(function(b) { b.classList.remove("active"); });
+                btn.classList.add("active");
+                renderCards(btn.getAttribute("data-sort"));
+            });
+        });
+    }
+
+    /* ===== Initialize ===== */
+    function init() {
+        renderOverview();
+        renderLegend();
+        drawScoreChart();
+        drawRadar();
+        renderWcag();
+        renderInsight();
+        renderCards("id");
+        renderRecs();
+        initSort();
+    }
+
+    /* ===== Exports for Testing ===== */
+    if (typeof module !== "undefined" && module.exports) {
+        module.exports = {
+            A11Y_DIMS: A11Y_DIMS,
+            a11yData: a11yData,
+            wcagCriteria: wcagCriteria,
+            recommendations: recommendations,
+            computeScores: computeScores,
+            scoreGrade: scoreGrade,
+            renderOverview: renderOverview,
+            renderLegend: renderLegend,
+            drawScoreChart: drawScoreChart,
+            drawRadar: drawRadar,
+            renderWcag: renderWcag,
+            renderInsight: renderInsight,
+            renderCards: renderCards,
+            renderRecs: renderRecs,
+            drawMiniRadar: drawMiniRadar,
+            initSort: initSort,
+            init: init
+        };
+    } else {
+        init();
+    }
+    </script>
+</body>
+</html>

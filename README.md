@@ -11,12 +11,13 @@ A research case study exploring GIF-based CAPTCHAs as a human-verification mecha
 [![Docker](https://github.com/sauravbhattacharya001/gif-captcha/actions/workflows/docker.yml/badge.svg)](https://github.com/sauravbhattacharya001/gif-captcha/actions/workflows/docker.yml)
 [![GitHub Pages](https://github.com/sauravbhattacharya001/gif-captcha/actions/workflows/pages.yml/badge.svg)](https://github.com/sauravbhattacharya001/gif-captcha/actions/workflows/pages.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![npm](https://img.shields.io/npm/v/gif-captcha)](https://www.npmjs.com/package/gif-captcha)
 ![HTML](https://img.shields.io/badge/Built%20with-HTML%2FCSS%2FJS-orange)
 ![GitHub repo size](https://img.shields.io/github/repo-size/sauravbhattacharya001/gif-captcha)
 ![GitHub last commit](https://img.shields.io/github/last-commit/sauravbhattacharya001/gif-captcha)
 ![GitHub issues](https://img.shields.io/github/issues/sauravbhattacharya001/gif-captcha)
 
-[**View Live Demo →**](https://sauravbhattacharya001.github.io/gif-captcha/)
+[**View Live Demo →**](https://sauravbhattacharya001.github.io/gif-captcha/) · [**API Docs →**](https://sauravbhattacharya001.github.io/gif-captcha/docs/)
 
 </div>
 
@@ -149,18 +150,69 @@ Features a dark-themed UI with:
 |-----------|---------|
 | HTML5 | Page structure |
 | CSS3 (Custom Properties) | Dark theme, responsive design |
+| JavaScript | Core CAPTCHA library (UMD, browser + Node.js) |
 | GitHub Pages | Hosting |
+| npm | Package distribution |
+
+## 📦 Installation
+
+Install as an npm package for programmatic access to the CAPTCHA utilities:
+
+```bash
+npm install gif-captcha
+```
+
+```javascript
+const gifCaptcha = require("gif-captcha");
+
+// Create a challenge
+const challenge = gifCaptcha.createChallenge({
+  id: 1,
+  title: "Surprise Ending",
+  gifUrl: "https://example.com/twist.gif",
+  humanAnswer: "The cat fell off the table unexpectedly",
+});
+
+// Pick 5 random challenges from a pool
+const selected = gifCaptcha.pickChallenges(challengePool, 5);
+
+// Validate a user's answer (fuzzy matching with Jaccard similarity)
+const result = gifCaptcha.validateAnswer(
+  userAnswer,
+  challenge.humanAnswer,
+  { threshold: 0.3, requiredKeywords: ["cat", "fell"] }
+);
+console.log(result); // { passed: true, score: 0.75, hasKeywords: true }
+
+// Sanitize untrusted input for safe HTML rendering
+const safe = gifCaptcha.sanitize('<script>alert("XSS")</script>');
+```
+
+Or use via CDN in the browser:
+
+```html
+<script src="https://unpkg.com/gif-captcha/src/index.js"></script>
+<script>
+  const challenge = gifCaptcha.createChallenge({ ... });
+  gifCaptcha.loadGifWithRetry(container, challenge);
+</script>
+```
 
 ## 📂 Project Structure
 
 ```
 gif-captcha/
+├── src/
+│   └── index.js    # Core library (UMD — browser + Node.js)
 ├── index.html      # Interactive case study page
 ├── demo.html       # Interactive CAPTCHA demo (try it yourself!)
 ├── analysis.html   # Research analysis dashboard with charts & taxonomy
 ├── generator.html  # CAPTCHA Workshop — create custom challenge sets
 ├── simulator.html  # AI Response Simulator — model comparison & capability analysis
 ├── temporal.html   # Temporal Sequence Challenge — event ordering CAPTCHA format
+├── shared.js       # Browser-specific shared utilities
+├── shared.css      # Shared dark theme styles
+├── tests/          # Test suite (Node.js built-in test runner)
 ├── README.md       # This file
 └── LICENSE         # MIT License
 ```

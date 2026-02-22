@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="GIF CAPTCHA API Documentation — core library for building GIF-based CAPTCHA systems">
+    <title>GIF CAPTCHA — Documentation</title>
+    <link rel="stylesheet" href="../shared.css">
+    <style>
+        body { padding: 2rem; max-width: 960px; margin: 0 auto; }
+        h1 { font-size: 2rem; margin-bottom: 0.3rem; }
+        h2 { font-size: 1.5rem; margin: 2.5rem 0 1rem; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 0.3rem; }
+        h3 { font-size: 1.15rem; margin: 1.8rem 0 0.5rem; color: var(--text); }
+        p, li { color: var(--muted); line-height: 1.65; }
+        .subtitle { color: var(--muted); font-size: 1rem; margin-bottom: 1.5rem; }
+        code { background: var(--surface); padding: 0.15rem 0.4rem; border-radius: 3px; font-size: 0.88em; color: var(--accent); }
+        pre { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 1rem; overflow-x: auto; margin: 1rem 0; }
+        pre code { background: none; padding: 0; color: var(--text); }
+        .nav { display: flex; gap: 1.5rem; margin-bottom: 2rem; flex-wrap: wrap; }
+        .nav a { color: var(--accent); text-decoration: none; font-size: 0.9rem; }
+        .nav a:hover { text-decoration: underline; }
+        .method-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.2rem; margin: 1rem 0; }
+        .method-card h3 { margin-top: 0; font-family: 'Courier New', monospace; color: var(--accent); }
+        .param-table { width: 100%; border-collapse: collapse; margin: 0.8rem 0; font-size: 0.9rem; }
+        .param-table th, .param-table td { padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border); }
+        .param-table th { color: var(--text); font-weight: 600; }
+        .param-table td { color: var(--muted); }
+        .badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 3px; font-size: 0.75rem; font-weight: 600; margin-left: 0.5rem; }
+        .badge-returns { background: #1a3a2a; color: #4ade80; }
+        .badge-throws { background: #3a1a1a; color: #f87171; }
+        .toc { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.5rem; margin: 1.5rem 0; }
+        .toc h3 { margin-top: 0; font-size: 1rem; }
+        .toc ul { margin: 0; padding-left: 1.2rem; }
+        .toc li { margin: 0.3rem 0; }
+        .toc a { color: var(--accent); text-decoration: none; font-size: 0.9rem; }
+        .toc a:hover { text-decoration: underline; }
+        .section-label { color: var(--muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 0.3rem; }
+    </style>
+</head>
+<body>
+    <div class="nav">
+        <a href="../index.html">← Case Study</a>
+        <a href="../demo.html">Demo</a>
+        <a href="../analysis.html">Analysis</a>
+        <a href="../generator.html">Workshop</a>
+        <a href="getting-started.html">Getting Started</a>
+        <a href="index.html"><strong>API Reference</strong></a>
+    </div>
+
+    <h1>📚 API Reference</h1>
+    <p class="subtitle">gif-captcha core library — <code>v1.0.0</code></p>
+
+    <div class="toc">
+        <h3>Contents</h3>
+        <ul>
+            <li><a href="#installation">Installation</a></li>
+            <li><a href="#sanitize">sanitize(str)</a></li>
+            <li><a href="#createSanitizer">createSanitizer()</a></li>
+            <li><a href="#loadGifWithRetry">loadGifWithRetry(container, challenge, attempt)</a></li>
+            <li><a href="#textSimilarity">textSimilarity(a, b)</a></li>
+            <li><a href="#validateAnswer">validateAnswer(userAnswer, expectedAnswer, options)</a></li>
+            <li><a href="#createChallenge">createChallenge(opts)</a></li>
+            <li><a href="#pickChallenges">pickChallenges(pool, count)</a></li>
+            <li><a href="#installRoundRectPolyfill">installRoundRectPolyfill()</a></li>
+            <li><a href="#constants">Constants</a></li>
+        </ul>
+    </div>
+
+    <h2 id="installation">Installation</h2>
+    <h3>npm</h3>
+    <pre><code>npm install gif-captcha</code></pre>
+    <pre><code>const gifCaptcha = require("gif-captcha");
+// or
+import gifCaptcha from "gif-captcha";</code></pre>
+
+    <h3>CDN (Browser)</h3>
+    <pre><code>&lt;script src="https://unpkg.com/gif-captcha/src/index.js"&gt;&lt;/script&gt;
+&lt;script&gt;
+  // Available as window.gifCaptcha
+  const challenge = gifCaptcha.createChallenge({ ... });
+&lt;/script&gt;</code></pre>
+
+    <h2>Functions</h2>
+
+    <!-- sanitize -->
+    <div class="method-card" id="sanitize">
+        <h3>sanitize(str) <span class="badge badge-returns">→ string</span></h3>
+        <p>Escape a string for safe insertion into <code>innerHTML</code>. Uses DOM-based escaping in browsers, regex-based escaping in Node.js.</p>
+        <table class="param-table">
+            <tr><th>Param</th><th>Type</th><th>Description</th></tr>
+            <tr><td><code>str</code></td><td>string</td><td>Untrusted input to escape</td></tr>
+        </table>
+        <pre><code>gifCaptcha.sanitize('&lt;script&gt;alert(1)&lt;/script&gt;');
+// → "&amp;lt;script&amp;gt;alert(1)&amp;lt;/script&amp;gt;"
+
+gifCaptcha.sanitize('Hello "world" & friends');
+// → 'Hello &amp;quot;world&amp;quot; &amp;amp; friends'</code></pre>
+    </div>
+
+    <!-- createSanitizer -->
+    <div class="method-card" id="createSanitizer">
+        <h3>createSanitizer() <span class="badge badge-returns">→ { sanitize }</span></h3>
+        <p>Create a standalone sanitizer instance. Useful when you need isolated sanitizers or want to avoid the global default.</p>
+        <pre><code>const mySanitizer = gifCaptcha.createSanitizer();
+mySanitizer.sanitize('&lt;b&gt;bold&lt;/b&gt;');
+// → "&amp;lt;b&amp;gt;bold&amp;lt;/b&amp;gt;"</code></pre>
+    </div>
+
+    <!-- loadGifWithRetry -->
+    <div class="method-card" id="loadGifWithRetry">
+        <h3>loadGifWithRetry(container, challenge, attempt) <span class="badge badge-returns">→ void</span></h3>
+        <p>Load a GIF image into a DOM container with automatic retry on failure. On final failure, shows a fallback with a link to the source or a title hint. <strong>Browser-only.</strong></p>
+        <table class="param-table">
+            <tr><th>Param</th><th>Type</th><th>Description</th></tr>
+            <tr><td><code>container</code></td><td>HTMLElement</td><td>DOM element to render into</td></tr>
+            <tr><td><code>challenge</code></td><td>Object</td><td>Challenge object with <code>title</code>, <code>gifUrl</code>, and optional <code>sourceUrl</code></td></tr>
+            <tr><td><code>attempt</code></td><td>number</td><td>Current attempt index (0-based, default 0)</td></tr>
+        </table>
+        <pre><code>const container = document.getElementById('captcha-gif');
+gifCaptcha.loadGifWithRetry(container, {
+  title: "Surprise Ending",
+  gifUrl: "https://example.com/twist.gif",
+  sourceUrl: "https://example.com/source"
+});</code></pre>
+    </div>
+
+    <!-- textSimilarity -->
+    <div class="method-card" id="textSimilarity">
+        <h3>textSimilarity(a, b) <span class="badge badge-returns">→ number</span></h3>
+        <p>Calculate word-level Jaccard similarity between two strings. Returns a score between 0 (no overlap) and 1 (identical words). Case-insensitive.</p>
+        <table class="param-table">
+            <tr><th>Param</th><th>Type</th><th>Description</th></tr>
+            <tr><td><code>a</code></td><td>string</td><td>First string</td></tr>
+            <tr><td><code>b</code></td><td>string</td><td>Second string</td></tr>
+        </table>
+        <pre><code>gifCaptcha.textSimilarity("the cat sat on the mat", "the cat sat");
+// → 0.833 (5/6 unique words overlap)
+
+gifCaptcha.textSimilarity("hello world", "goodbye moon");
+// → 0 (no shared words)</code></pre>
+    </div>
+
+    <!-- validateAnswer -->
+    <div class="method-card" id="validateAnswer">
+        <h3>validateAnswer(userAnswer, expectedAnswer, options?) <span class="badge badge-returns">→ { passed, score, hasKeywords }</span></h3>
+        <p>Validate a user's CAPTCHA response against the expected answer using fuzzy text matching and optional keyword checks.</p>
+        <table class="param-table">
+            <tr><th>Param</th><th>Type</th><th>Description</th></tr>
+            <tr><td><code>userAnswer</code></td><td>string</td><td>The user's typed response</td></tr>
+            <tr><td><code>expectedAnswer</code></td><td>string</td><td>The correct/expected answer</td></tr>
+            <tr><td><code>options.threshold</code></td><td>number</td><td>Minimum similarity score to pass (default: <code>0.3</code>)</td></tr>
+            <tr><td><code>options.requiredKeywords</code></td><td>string[]</td><td>Words that must appear in the answer (at least one)</td></tr>
+        </table>
+        <p class="section-label">Returns</p>
+        <table class="param-table">
+            <tr><th>Field</th><th>Type</th><th>Description</th></tr>
+            <tr><td><code>passed</code></td><td>boolean</td><td><code>true</code> if score ≥ threshold AND keywords matched</td></tr>
+            <tr><td><code>score</code></td><td>number</td><td>Jaccard similarity (0–1)</td></tr>
+            <tr><td><code>hasKeywords</code></td><td>boolean</td><td>Whether at least one required keyword was found</td></tr>
+        </table>
+        <pre><code>gifCaptcha.validateAnswer(
+  "the cat fell off the table",
+  "the cat fell off the table unexpectedly"
+);
+// → { passed: true, score: 0.857, hasKeywords: true }
+
+gifCaptcha.validateAnswer(
+  "I cannot view animated images",
+  "the cat fell off the table",
+  { requiredKeywords: ["cat", "fell"] }
+);
+// → { passed: false, score: 0, hasKeywords: false }</code></pre>
+    </div>
+
+    <!-- createChallenge -->
+    <div class="method-card" id="createChallenge">
+        <h3>createChallenge(opts) <span class="badge badge-returns">→ Challenge</span> <span class="badge badge-throws">throws Error</span></h3>
+        <p>Create a structured CAPTCHA challenge object with validation.</p>
+        <table class="param-table">
+            <tr><th>Param</th><th>Type</th><th>Required</th><th>Description</th></tr>
+            <tr><td><code>opts.id</code></td><td>number | string</td><td>✓</td><td>Unique identifier</td></tr>
+            <tr><td><code>opts.title</code></td><td>string</td><td></td><td>Human-readable title (defaults to "Challenge {id}")</td></tr>
+            <tr><td><code>opts.gifUrl</code></td><td>string</td><td>✓</td><td>URL of the GIF image</td></tr>
+            <tr><td><code>opts.sourceUrl</code></td><td>string</td><td></td><td>Original source URL for attribution</td></tr>
+            <tr><td><code>opts.humanAnswer</code></td><td>string</td><td>✓</td><td>Expected human description</td></tr>
+            <tr><td><code>opts.aiAnswer</code></td><td>string</td><td></td><td>Typical AI model response</td></tr>
+            <tr><td><code>opts.keywords</code></td><td>string[]</td><td></td><td>Keywords for validation</td></tr>
+        </table>
+        <pre><code>const challenge = gifCaptcha.createChallenge({
+  id: 1,
+  title: "Plot Twist",
+  gifUrl: "https://media.tenor.com/twist.gif",
+  humanAnswer: "Both fired trick guns with flags",
+  aiAnswer: "I cannot view animated GIFs",
+  keywords: ["trick", "guns", "flags"]
+});</code></pre>
+    </div>
+
+    <!-- pickChallenges -->
+    <div class="method-card" id="pickChallenges">
+        <h3>pickChallenges(pool, count?) <span class="badge badge-returns">→ Challenge[]</span></h3>
+        <p>Pick N random challenges from a pool without replacement, using Fisher-Yates shuffle. Does not modify the original array.</p>
+        <table class="param-table">
+            <tr><th>Param</th><th>Type</th><th>Description</th></tr>
+            <tr><td><code>pool</code></td><td>Challenge[]</td><td>Array of challenge objects</td></tr>
+            <tr><td><code>count</code></td><td>number</td><td>Number to pick (default: 5, max: pool length)</td></tr>
+        </table>
+        <pre><code>const selected = gifCaptcha.pickChallenges(allChallenges, 5);
+// → 5 random challenges from the pool</code></pre>
+    </div>
+
+    <!-- installRoundRectPolyfill -->
+    <div class="method-card" id="installRoundRectPolyfill">
+        <h3>installRoundRectPolyfill() <span class="badge badge-returns">→ void</span></h3>
+        <p>Install the <code>roundRect</code> polyfill on <code>CanvasRenderingContext2D</code>. No-op if already available or outside a browser. Used by analysis and simulator chart renderers.</p>
+        <pre><code>gifCaptcha.installRoundRectPolyfill();
+// Canvas roundRect() is now available in older browsers</code></pre>
+    </div>
+
+    <!-- Constants -->
+    <div class="method-card" id="constants">
+        <h3>Constants</h3>
+        <table class="param-table">
+            <tr><th>Name</th><th>Value</th><th>Description</th></tr>
+            <tr><td><code>GIF_MAX_RETRIES</code></td><td>2</td><td>Maximum retry attempts for failed GIF loads</td></tr>
+            <tr><td><code>GIF_RETRY_DELAY_MS</code></td><td>1500</td><td>Delay between retry attempts (ms)</td></tr>
+        </table>
+    </div>
+
+    <hr style="margin: 3rem 0 1.5rem; border-color: var(--border);">
+    <p style="text-align: center; font-size: 0.85rem;">
+        <a href="https://github.com/sauravbhattacharya001/gif-captcha" style="color: var(--accent);">GitHub</a> ·
+        <a href="https://www.npmjs.com/package/gif-captcha" style="color: var(--accent);">npm</a> ·
+        <a href="../index.html" style="color: var(--accent);">Case Study</a> ·
+        MIT License
+    </p>
+</body>
+</html>

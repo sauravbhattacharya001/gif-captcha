@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Getting Started with GIF CAPTCHA — installation, quickstart, and integration guide">
+    <title>GIF CAPTCHA — Getting Started</title>
+    <link rel="stylesheet" href="../shared.css">
+    <style>
+        body { padding: 2rem; max-width: 960px; margin: 0 auto; }
+        h1 { font-size: 2rem; margin-bottom: 0.3rem; }
+        h2 { font-size: 1.5rem; margin: 2.5rem 0 1rem; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 0.3rem; }
+        h3 { font-size: 1.15rem; margin: 1.8rem 0 0.5rem; }
+        p, li { color: var(--muted); line-height: 1.65; }
+        .subtitle { color: var(--muted); font-size: 1rem; margin-bottom: 1.5rem; }
+        code { background: var(--surface); padding: 0.15rem 0.4rem; border-radius: 3px; font-size: 0.88em; color: var(--accent); }
+        pre { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 1rem; overflow-x: auto; margin: 1rem 0; }
+        pre code { background: none; padding: 0; color: var(--text); }
+        .nav { display: flex; gap: 1.5rem; margin-bottom: 2rem; flex-wrap: wrap; }
+        .nav a { color: var(--accent); text-decoration: none; font-size: 0.9rem; }
+        .nav a:hover { text-decoration: underline; }
+        .callout { background: var(--surface); border-left: 3px solid var(--accent); padding: 1rem 1.2rem; border-radius: 0 6px 6px 0; margin: 1.5rem 0; }
+        .callout p { margin: 0; }
+        .step { display: flex; gap: 1rem; margin: 1.5rem 0; }
+        .step-num { background: var(--accent); color: var(--bg); width: 2rem; height: 2rem; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; flex-shrink: 0; margin-top: 0.2rem; }
+        .step-content { flex: 1; }
+        .step-content h3 { margin-top: 0; }
+        ol li { margin: 0.5rem 0; }
+    </style>
+</head>
+<body>
+    <div class="nav">
+        <a href="../index.html">&larr; Case Study</a>
+        <a href="../demo.html">Demo</a>
+        <a href="../analysis.html">Analysis</a>
+        <a href="getting-started.html"><strong>Getting Started</strong></a>
+        <a href="index.html">API Reference</a>
+    </div>
+
+    <h1>🚀 Getting Started</h1>
+    <p class="subtitle">Build your own GIF-based CAPTCHA system in minutes</p>
+
+    <h2>What is GIF CAPTCHA?</h2>
+    <p>GIF CAPTCHA is a human-verification system that uses animated GIFs with narrative twists. Users must describe what happened in a GIF — something trivially easy for humans who can watch the animation, but impossible for text-based AI models that can't process animated content.</p>
+
+    <div class="callout">
+        <p>💡 <strong>Key insight:</strong> In testing, GPT-4 scored 0/10 on GIF CAPTCHAs because it fundamentally cannot view animated images. Even vision-capable models struggle with temporal comprehension of unexpected events.</p>
+    </div>
+
+    <h2>Quick Start</h2>
+
+    <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-content">
+            <h3>Install</h3>
+            <pre><code>npm install gif-captcha</code></pre>
+            <p>Or include directly via CDN:</p>
+            <pre><code>&lt;script src="https://unpkg.com/gif-captcha/src/index.js"&gt;&lt;/script&gt;</code></pre>
+        </div>
+    </div>
+
+    <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-content">
+            <h3>Define Challenges</h3>
+            <pre><code>const gifCaptcha = require("gif-captcha");
+
+const challenges = [
+  gifCaptcha.createChallenge({
+    id: 1,
+    title: "Cat vs Cucumber",
+    gifUrl: "https://example.com/cat-cucumber.gif",
+    humanAnswer: "The cat jumped when it saw the cucumber behind it",
+    keywords: ["cat", "jumped", "cucumber"]
+  }),
+  gifCaptcha.createChallenge({
+    id: 2,
+    title: "Plot Twist Duel",
+    gifUrl: "https://example.com/duel-twist.gif",
+    humanAnswer: "Both duelists fired trick guns with flags",
+    keywords: ["trick", "guns", "flags"]
+  }),
+  // ... add more challenges
+];</code></pre>
+        </div>
+    </div>
+
+    <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-content">
+            <h3>Present &amp; Validate</h3>
+            <pre><code>// Pick 5 random challenges for this session
+const selected = gifCaptcha.pickChallenges(challenges, 5);
+
+// For each challenge, show the GIF and collect user input
+selected.forEach(challenge => {
+  const container = document.getElementById('captcha-' + challenge.id);
+  gifCaptcha.loadGifWithRetry(container, challenge);
+});
+
+// When user submits their answer:
+function checkAnswer(challenge, userInput) {
+  const result = gifCaptcha.validateAnswer(
+    userInput,
+    challenge.humanAnswer,
+    { threshold: 0.3, requiredKeywords: challenge.keywords }
+  );
+
+  if (result.passed) {
+    console.log("Human verified! Score:", result.score);
+  } else {
+    console.log("Verification failed. Score:", result.score);
+  }
+}</code></pre>
+        </div>
+    </div>
+
+    <h2>Browser Integration</h2>
+    <p>For a complete browser-based implementation, check the <a href="../demo.html">interactive demo</a> which shows the full flow: GIF display, user input, answer comparison, and scoring.</p>
+
+    <h3>Minimal HTML Example</h3>
+    <pre><code>&lt;!DOCTYPE html&gt;
+&lt;html&gt;
+&lt;head&gt;
+  &lt;script src="https://unpkg.com/gif-captcha/src/index.js"&gt;&lt;/script&gt;
+&lt;/head&gt;
+&lt;body&gt;
+  &lt;div id="captcha-container"&gt;&lt;/div&gt;
+  &lt;input type="text" id="answer" placeholder="Describe what happened..."&gt;
+  &lt;button onclick="verify()"&gt;Verify&lt;/button&gt;
+
+  &lt;script&gt;
+    var challenge = gifCaptcha.createChallenge({
+      id: 1,
+      title: "Surprise",
+      gifUrl: "https://example.com/surprise.gif",
+      humanAnswer: "The box opened and confetti flew out"
+    });
+
+    gifCaptcha.loadGifWithRetry(
+      document.getElementById("captcha-container"),
+      challenge
+    );
+
+    function verify() {
+      var answer = document.getElementById("answer").value;
+      var result = gifCaptcha.validateAnswer(answer, challenge.humanAnswer);
+      alert(result.passed ? "Human! ✅" : "Bot? ❌ Score: " + result.score);
+    }
+  &lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;</code></pre>
+
+    <h2>How Validation Works</h2>
+    <ol>
+        <li><strong>Tokenization</strong> — Both the user's answer and expected answer are split into words and lowercased</li>
+        <li><strong>Jaccard Index</strong> — Calculates word-level overlap: <code>|A ∩ B| / |A ∪ B|</code></li>
+        <li><strong>Threshold Check</strong> — Score must be ≥ threshold (default 0.3, i.e. 30% word overlap)</li>
+        <li><strong>Keyword Check</strong> — If required keywords are specified, at least one must appear in the answer</li>
+        <li><strong>Result</strong> — Returns <code>{ passed, score, hasKeywords }</code></li>
+    </ol>
+
+    <div class="callout">
+        <p>🔧 <strong>Tuning the threshold:</strong> Lower values (0.2) are more forgiving, higher values (0.5) require closer matches. For CAPTCHAs, 0.3 works well — it catches AI refusals ("I cannot view images") while allowing human variations ("the cat freaked out" vs "the cat jumped in surprise").</p>
+    </div>
+
+    <h2>Creating Good Challenges</h2>
+    <p>Effective GIF CAPTCHAs share these characteristics:</p>
+    <ol>
+        <li><strong>Unexpected event</strong> — Something surprising happens that requires watching the full animation</li>
+        <li><strong>Temporal dependency</strong> — Understanding requires seeing events unfold over time</li>
+        <li><strong>Narrative surprise</strong> — The "answer" can't be guessed from a single frame</li>
+        <li><strong>Unambiguous outcome</strong> — Humans generally agree on what happened</li>
+    </ol>
+    <p>Use the <a href="../generator.html">CAPTCHA Workshop</a> to build and test your own challenge sets.</p>
+
+    <h2>Next Steps</h2>
+    <ul>
+        <li><a href="index.html">API Reference</a> — Full documentation for all functions</li>
+        <li><a href="../analysis.html">Research Analysis</a> — Deep dive into CAPTCHA effectiveness data</li>
+        <li><a href="../simulator.html">AI Simulator</a> — See how different AI models respond</li>
+        <li><a href="../temporal.html">Temporal Challenge</a> — Event-ordering CAPTCHA variant</li>
+    </ul>
+
+    <hr style="margin: 3rem 0 1.5rem; border-color: var(--border);">
+    <p style="text-align: center; font-size: 0.85rem;">
+        <a href="https://github.com/sauravbhattacharya001/gif-captcha" style="color: var(--accent);">GitHub</a> ·
+        <a href="https://www.npmjs.com/package/gif-captcha" style="color: var(--accent);">npm</a> ·
+        <a href="../index.html" style="color: var(--accent);">Case Study</a> ·
+        MIT License
+    </p>
+</body>
+</html>

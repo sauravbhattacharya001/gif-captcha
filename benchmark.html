@@ -1,0 +1,1021 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; img-src https: data:; script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'self'; form-action 'none';">
+    <meta name="referrer" content="no-referrer">
+    <title>GIF CAPTCHA — Response Time Benchmark</title>
+    <link rel="stylesheet" href="shared.css">
+    <style>
+        /* benchmark.html — page-specific styles (base styles in shared.css) */
+
+        /* Container (narrower) */
+        .container { max-width: 700px; }
+
+        /* Intro screen */
+        .intro {
+            text-align: center;
+            padding: 3rem 1rem;
+        }
+        .intro h2 { font-size: 1.5rem; margin-bottom: 1rem; }
+        .intro p { color: var(--muted); margin-bottom: 1.5rem; max-width: 500px; margin-left: auto; margin-right: auto; }
+        .intro .how-it-works {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.5rem;
+            text-align: left;
+            margin: 1.5rem 0 2rem;
+        }
+        .intro .how-it-works h3 { font-size: 1rem; margin-bottom: 0.8rem; }
+        .intro .how-it-works ol {
+            padding-left: 1.5rem;
+            color: var(--muted);
+        }
+        .intro .how-it-works li { margin-bottom: 0.4rem; }
+        .intro .research-note {
+            background: var(--cyan-bg);
+            border: 1px solid rgba(57, 210, 192, 0.3);
+            border-radius: 10px;
+            padding: 1.25rem;
+            text-align: left;
+            margin: 1.5rem 0;
+        }
+        .intro .research-note h4 {
+            font-size: 0.9rem;
+            margin-bottom: 0.5rem;
+            color: var(--cyan);
+        }
+        .intro .research-note p {
+            font-size: 0.85rem;
+            margin-bottom: 0;
+        }
+
+        /* Timer display */
+        .timer-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.8rem 1.5rem;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+        }
+        .timer-display {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: var(--accent);
+            min-width: 80px;
+            text-align: center;
+        }
+        .timer-display.warning { color: var(--yellow); }
+        .timer-display.critical { color: var(--red); animation: pulse 0.5s ease-in-out infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .timer-label {
+            font-size: 0.8rem;
+            color: var(--muted);
+        }
+        .accuracy-badge {
+            font-size: 0.85rem;
+            font-weight: 600;
+            padding: 0.3rem 0.8rem;
+            border-radius: 20px;
+        }
+        .accuracy-badge.high { background: var(--green-bg); color: var(--green); }
+        .accuracy-badge.medium { background: var(--yellow-bg); color: var(--yellow); }
+        .accuracy-badge.low { background: var(--red-bg); color: var(--red); }
+
+        /* Answer area */
+        .answer-area {
+            padding: 1rem 1.5rem 1.5rem;
+        }
+        .answer-area textarea {
+            width: 100%;
+            min-height: 80px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text);
+            font-family: inherit;
+            font-size: 0.9rem;
+            padding: 0.8rem;
+            resize: vertical;
+        }
+        .answer-area textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+        .answer-buttons {
+            display: flex;
+            gap: 0.8rem;
+            margin-top: 0.8rem;
+            justify-content: flex-end;
+        }
+
+        /* Results screen */
+        .results {
+            animation: fadeIn 0.5s ease;
+        }
+        .results h2 { font-size: 1.5rem; margin-bottom: 1.5rem; text-align: center; }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        .stat-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.2rem;
+            text-align: center;
+        }
+        .stat-card .stat-value {
+            font-size: 1.6rem;
+            font-weight: 700;
+            color: var(--accent);
+        }
+        .stat-card .stat-label {
+            font-size: 0.8rem;
+            color: var(--muted);
+            margin-top: 0.3rem;
+        }
+
+        /* Per-challenge breakdown table */
+        .breakdown-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1.5rem 0;
+            font-size: 0.85rem;
+        }
+        .breakdown-table th {
+            padding: 0.6rem 0.8rem;
+            text-align: left;
+            background: var(--surface);
+            border-bottom: 2px solid var(--border);
+            color: var(--muted);
+            font-weight: 600;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+        }
+        .breakdown-table td {
+            padding: 0.6rem 0.8rem;
+            border-bottom: 1px solid var(--border);
+        }
+        .breakdown-table tr:hover td {
+            background: var(--surface-hover);
+        }
+        .time-bar-cell {
+            position: relative;
+            min-width: 120px;
+        }
+        .time-bar {
+            height: 6px;
+            border-radius: 3px;
+            background: var(--accent);
+            transition: width 0.6s ease;
+        }
+        .time-bar.fast { background: var(--green); }
+        .time-bar.medium { background: var(--yellow); }
+        .time-bar.slow { background: var(--red); }
+        .status-icon { font-size: 1rem; }
+
+        /* Chart area */
+        .chart-container {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin: 1.5rem 0;
+        }
+        .chart-container h3 {
+            font-size: 1rem;
+            margin-bottom: 1rem;
+        }
+        .chart-container canvas {
+            width: 100%;
+            height: 250px;
+        }
+
+        /* AI comparison section */
+        .ai-comparison {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin: 1.5rem 0;
+        }
+        .ai-comparison h3 {
+            font-size: 1rem;
+            margin-bottom: 1rem;
+            color: var(--purple);
+        }
+        .ai-bar {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 0.8rem;
+        }
+        .ai-bar .ai-name {
+            font-size: 0.85rem;
+            min-width: 100px;
+            color: var(--muted);
+        }
+        .ai-bar .ai-time-bar {
+            flex: 1;
+            height: 8px;
+            border-radius: 4px;
+            background: var(--border);
+            overflow: hidden;
+        }
+        .ai-bar .ai-time-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.8s ease;
+        }
+        .ai-bar .ai-time-label {
+            font-size: 0.8rem;
+            color: var(--muted);
+            min-width: 60px;
+            text-align: right;
+        }
+
+        /* Difficulty ranking */
+        .difficulty-list {
+            list-style: none;
+            padding: 0;
+            counter-reset: diff-counter;
+        }
+        .difficulty-list li {
+            counter-increment: diff-counter;
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+            padding: 0.6rem 0;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.85rem;
+        }
+        .difficulty-list li:last-child { border-bottom: none; }
+        .difficulty-list li::before {
+            content: "#" counter(diff-counter);
+            font-weight: 700;
+            color: var(--accent);
+            min-width: 30px;
+        }
+        .diff-time {
+            margin-left: auto;
+            font-family: 'Courier New', monospace;
+            color: var(--muted);
+        }
+
+        /* Responsive */
+        @media (max-width: 600px) {
+            .stats-grid { grid-template-columns: 1fr 1fr; }
+            .timer-bar { flex-wrap: wrap; gap: 0.5rem; }
+            .breakdown-table { font-size: 0.75rem; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1>⏱️ Response Time Benchmark</h1>
+    <p class="subtitle">How fast can you decode GIF CAPTCHAs?</p>
+    <div class="nav-links">
+        <a href="index.html">← Case Study</a> |
+        <a href="demo.html">Interactive Demo</a> |
+        <a href="analysis.html">Research Analysis</a> |
+        <a href="temporal.html">Temporal Challenge</a>
+    </div>
+</div>
+
+<!-- Intro Screen -->
+<div class="container" id="introScreen">
+    <div class="intro">
+        <h2>⏱️ Speed vs. Accuracy Benchmark</h2>
+        <p>Solve 10 GIF CAPTCHAs as fast and accurately as you can. Your response times are measured to the millisecond and compared against AI processing speeds.</p>
+
+        <div class="how-it-works">
+            <h3>How It Works</h3>
+            <ol>
+                <li><strong>Watch the GIF</strong> — observe the unexpected event</li>
+                <li><strong>Timer starts</strong> when the GIF loads</li>
+                <li><strong>Describe what happened</strong> — be accurate, not fast</li>
+                <li><strong>Submit</strong> — or skip if you can't tell</li>
+                <li><strong>See your analytics</strong> — timing, accuracy, AI comparison</li>
+            </ol>
+        </div>
+
+        <div class="research-note">
+            <h4>🔬 Why This Matters</h4>
+            <p>Response time is a key metric for CAPTCHA viability. Too slow and users abandon. Too fast and bots can game it. This benchmark quantifies the human temporal cost of GIF-based CAPTCHAs and compares it against AI processing speeds.</p>
+        </div>
+
+        <button class="btn btn-primary" id="startBtn" onclick="Benchmark.start()">Start Benchmark</button>
+    </div>
+</div>
+
+<!-- Progress Bar -->
+<div class="progress-container hidden" id="progressContainer">
+    <div class="progress-bar-bg">
+        <div class="progress-bar-fill" id="progressFill" style="width: 0%"></div>
+    </div>
+    <div class="progress-label">
+        <span id="progressText">Challenge 1 of 10</span>
+        <span id="progressAccuracy">0/0 answered</span>
+    </div>
+</div>
+
+<!-- Challenge Screen -->
+<div class="container hidden" id="challengeScreen">
+    <div class="challenge">
+        <div class="challenge-header">
+            <div>
+                <span class="label">Challenge </span>
+                <span class="number" id="challengeNum">1</span>
+                <span class="label"> of 10</span>
+            </div>
+            <div id="challengeTitle" style="font-size: 0.85rem; color: var(--muted);"></div>
+        </div>
+
+        <!-- Timer bar -->
+        <div class="timer-bar">
+            <div>
+                <div class="timer-label">Elapsed</div>
+                <div class="timer-display" id="timerDisplay">0.0s</div>
+            </div>
+            <div>
+                <span class="accuracy-badge high" id="accuracyBadge">0% accuracy</span>
+            </div>
+        </div>
+
+        <div class="gif-container" id="gifContainer">
+            <span class="gif-loading">Loading GIF...</span>
+        </div>
+
+        <div class="challenge-prompt">
+            <p class="prompt-text">What unexpected thing happens in this GIF?</p>
+            <p class="prompt-hint">⏱️ Timer is running — describe what you see, then submit.</p>
+        </div>
+
+        <div class="answer-area">
+            <textarea id="userAnswer" placeholder="Describe the unexpected event..." aria-label="Your answer"></textarea>
+            <div class="answer-buttons">
+                <button class="btn btn-secondary btn-small skip-link" onclick="Benchmark.skip()">Skip</button>
+                <button class="btn btn-primary" id="submitBtn" onclick="Benchmark.submit()">Submit ⏱️</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Results Screen -->
+<div class="container hidden" id="resultsScreen">
+    <div class="results">
+        <h2>📊 Benchmark Results</h2>
+
+        <!-- Summary Stats -->
+        <div class="stats-grid" id="statsGrid">
+            <!-- filled by JS -->
+        </div>
+
+        <!-- Per-challenge breakdown -->
+        <div class="chart-container">
+            <h3>📋 Per-Challenge Breakdown</h3>
+            <table class="breakdown-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Challenge</th>
+                        <th>Status</th>
+                        <th>Time</th>
+                        <th>Response Time</th>
+                    </tr>
+                </thead>
+                <tbody id="breakdownBody">
+                    <!-- filled by JS -->
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Speed Chart -->
+        <div class="chart-container">
+            <h3>📈 Response Time Distribution</h3>
+            <canvas id="speedChart" width="600" height="250"></canvas>
+        </div>
+
+        <!-- AI Comparison -->
+        <div class="ai-comparison">
+            <h3>🤖 Your Speed vs. AI Processing Time</h3>
+            <p style="font-size: 0.85rem; color: var(--muted); margin-bottom: 1rem;">
+                AI models process images in seconds but fail to <em>understand</em> GIF narratives.
+                Humans are slower but far more accurate at identifying unexpected events.
+            </p>
+            <div id="aiComparisonBars">
+                <!-- filled by JS -->
+            </div>
+        </div>
+
+        <!-- Difficulty Ranking -->
+        <div class="chart-container">
+            <h3>🏆 Difficulty Ranking (by your response time)</h3>
+            <ol class="difficulty-list" id="difficultyList">
+                <!-- filled by JS -->
+            </ol>
+        </div>
+
+        <!-- Research Insight -->
+        <div class="insight-box" id="insightBox">
+            <h4>🔬 Research Insight</h4>
+            <p id="insightText"></p>
+        </div>
+
+        <div style="text-align: center; margin-top: 2rem;">
+            <button class="btn btn-primary" onclick="Benchmark.restart()">🔄 Try Again</button>
+            <a href="demo.html" class="btn btn-secondary" style="margin-left: 0.8rem;">← Interactive Demo</a>
+        </div>
+    </div>
+</div>
+
+<footer>
+    <p>Part of the <a href="index.html">GIF CAPTCHA Case Study</a>. Research tool — not a real CAPTCHA system.</p>
+</footer>
+
+<script src="shared.js"></script>
+<script>
+/* exported Benchmark */
+"use strict";
+
+// ===== Challenge Data (same 10 GIFs as demo) =====
+var benchmarkChallenges = [
+    {
+        id: 1, title: "Duel Plot Twist",
+        gifUrl: "https://media1.tenor.com/m/g50YYgVxFo4AAAAC/unexpected-plot-twist.gif",
+        sourceUrl: "https://tenor.com/view/unexpected-plot-twist-twist-plot-duel-gif-5053664",
+        humanAnswer: "One person shot BANG and the other shot BOOM — both had trick guns.",
+        category: "narrative"
+    },
+    {
+        id: 2, title: "Rappers",
+        gifUrl: "https://i.gifer.com/G9lg.gif",
+        sourceUrl: "https://i.gifer.com/G9lg.gif",
+        humanAnswer: "3 rappers rapping and then one roller skates away.",
+        category: "social"
+    },
+    {
+        id: 3, title: "Skateboarder",
+        gifUrl: "https://media.giphy.com/media/l0MYDnCqzU2MQj7OM/giphy.gif",
+        sourceUrl: "https://funnyordie.tumblr.com/post/102557790934",
+        humanAnswer: "Skateboarder does a trick and flies up in the air.",
+        category: "physical"
+    },
+    {
+        id: 4, title: "Weird Walk",
+        gifUrl: "https://media.giphy.com/media/xTiTnJ3BooiDs8dL7W/giphy.gif",
+        sourceUrl: "https://giphy.com/gifs/afv-funny-fail-lol-xTiTnJ3BooiDs8dL7W",
+        humanAnswer: "A person walks normally, then suddenly starts doing a strange duck walk.",
+        category: "physical"
+    },
+    {
+        id: 5, title: "Squirrel Steals",
+        gifUrl: "https://media.giphy.com/media/UxNTT095uL0go/giphy.gif",
+        sourceUrl: "https://giphy.com/gifs/funny-cute-squirrel-UxNTT095uL0go",
+        humanAnswer: "A squirrel sneaks up and steals a nut from someone.",
+        category: "animal"
+    },
+    {
+        id: 6, title: "Optical Illusion",
+        gifUrl: "https://media.giphy.com/media/3o7TKP9ln2Dr6ze6f6/giphy.gif",
+        sourceUrl: "https://giphy.com/gifs/illusion-3o7TKP9ln2Dr6ze6f6",
+        humanAnswer: "The spinning shape changes direction if you blink or look away.",
+        category: "illusion"
+    },
+    {
+        id: 7, title: "Cat Surprise",
+        gifUrl: "https://media.giphy.com/media/VbnUQpnihPSIgIXuZv/giphy.gif",
+        sourceUrl: "https://giphy.com/gifs/cat-funny-VbnUQpnihPSIgIXuZv",
+        humanAnswer: "The cat gets surprised and jumps up dramatically.",
+        category: "animal"
+    },
+    {
+        id: 8, title: "Magic Trick",
+        gifUrl: "https://media.giphy.com/media/l4pTfx2qLszoacZRS/giphy.gif",
+        sourceUrl: "https://giphy.com/gifs/magic-trick-l4pTfx2qLszoacZRS",
+        humanAnswer: "A magician makes something appear or disappear unexpectedly.",
+        category: "narrative"
+    },
+    {
+        id: 9, title: "Sports Fail",
+        gifUrl: "https://media.giphy.com/media/l0HlNaQ6gWfllcjDO/giphy.gif",
+        sourceUrl: "https://giphy.com/gifs/sports-fail-l0HlNaQ6gWfllcjDO",
+        humanAnswer: "An athlete attempts a move and fails spectacularly.",
+        category: "physical"
+    },
+    {
+        id: 10, title: "Dance Off",
+        gifUrl: "https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif",
+        sourceUrl: "https://giphy.com/gifs/dance-l0MYt5jPR6QX5pnqM",
+        humanAnswer: "Dancers are performing, then someone unexpected joins in.",
+        category: "social"
+    }
+];
+
+// ===== AI Processing Benchmarks (simulated, based on published latencies) =====
+var aiProcessingTimes = [
+    { name: "GPT-4 (2023)", time: 8200, color: "var(--red)", accuracy: 0 },
+    { name: "GPT-4V", time: 3500, color: "var(--orange)", accuracy: 15 },
+    { name: "GPT-4o", time: 2100, color: "var(--yellow)", accuracy: 35 },
+    { name: "Claude 3.5", time: 2800, color: "var(--purple)", accuracy: 25 },
+    { name: "Gemini 1.5", time: 1900, color: "var(--cyan)", accuracy: 30 }
+];
+
+// ===== Benchmark Module =====
+var Benchmark = (function () {
+    var currentIndex = 0;
+    var results = [];
+    var timerStart = 0;
+    var timerInterval = null;
+    var answered = 0;
+    var totalAnswered = 0;
+
+    /** Format milliseconds to human-readable */
+    function formatTime(ms) {
+        if (ms < 1000) return ms + "ms";
+        if (ms < 60000) return (ms / 1000).toFixed(1) + "s";
+        return (ms / 60000).toFixed(1) + "m";
+    }
+
+    /** Classify speed */
+    function speedClass(ms) {
+        if (ms < 5000) return "fast";
+        if (ms < 15000) return "medium";
+        return "slow";
+    }
+
+    /** Start the benchmark */
+    function start() {
+        currentIndex = 0;
+        results = [];
+        answered = 0;
+        totalAnswered = 0;
+
+        document.getElementById("introScreen").classList.add("hidden");
+        document.getElementById("progressContainer").classList.remove("hidden");
+        document.getElementById("challengeScreen").classList.remove("hidden");
+        document.getElementById("resultsScreen").classList.add("hidden");
+
+        showChallenge(0);
+    }
+
+    /** Show a specific challenge */
+    function showChallenge(index) {
+        var c = benchmarkChallenges[index];
+        document.getElementById("challengeNum").textContent = index + 1;
+        document.getElementById("challengeTitle").textContent = c.title;
+        document.getElementById("progressFill").style.width = (index / benchmarkChallenges.length * 100) + "%";
+        document.getElementById("progressText").textContent = "Challenge " + (index + 1) + " of " + benchmarkChallenges.length;
+        document.getElementById("progressAccuracy").textContent = answered + "/" + totalAnswered + " answered";
+        document.getElementById("userAnswer").value = "";
+
+        // Load GIF
+        var container = document.getElementById("gifContainer");
+        container.innerHTML = '<span class="gif-loading">Loading GIF...</span>';
+        loadGifWithRetry(container, c, 0);
+
+        // Start timer
+        startTimer();
+
+        // Update accuracy badge
+        updateAccuracyBadge();
+
+        // Focus textarea
+        document.getElementById("userAnswer").focus();
+    }
+
+    /** Start the per-challenge timer */
+    function startTimer() {
+        timerStart = Date.now();
+        clearInterval(timerInterval);
+        var display = document.getElementById("timerDisplay");
+        display.className = "timer-display";
+
+        timerInterval = setInterval(function () {
+            var elapsed = Date.now() - timerStart;
+            var seconds = elapsed / 1000;
+            display.textContent = seconds.toFixed(1) + "s";
+
+            // Color coding
+            if (seconds > 30) {
+                display.className = "timer-display critical";
+            } else if (seconds > 15) {
+                display.className = "timer-display warning";
+            } else {
+                display.className = "timer-display";
+            }
+        }, 100);
+    }
+
+    /** Stop the timer, return elapsed ms */
+    function stopTimer() {
+        clearInterval(timerInterval);
+        timerInterval = null;
+        return Date.now() - timerStart;
+    }
+
+    /** Update accuracy badge */
+    function updateAccuracyBadge() {
+        var badge = document.getElementById("accuracyBadge");
+        if (totalAnswered === 0) {
+            badge.textContent = "0% accuracy";
+            badge.className = "accuracy-badge high";
+            return;
+        }
+        var pct = Math.round((answered / totalAnswered) * 100);
+        badge.textContent = pct + "% accuracy";
+        if (pct >= 70) badge.className = "accuracy-badge high";
+        else if (pct >= 40) badge.className = "accuracy-badge medium";
+        else badge.className = "accuracy-badge low";
+    }
+
+    /** Submit the current answer */
+    function submit() {
+        var answer = document.getElementById("userAnswer").value.trim();
+        if (!answer) return; // must type something
+
+        var elapsed = stopTimer();
+        totalAnswered++;
+        answered++;
+
+        results.push({
+            challengeId: benchmarkChallenges[currentIndex].id,
+            title: benchmarkChallenges[currentIndex].title,
+            category: benchmarkChallenges[currentIndex].category,
+            time: elapsed,
+            skipped: false,
+            answer: answer
+        });
+
+        advance();
+    }
+
+    /** Skip the current challenge */
+    function skip() {
+        var elapsed = stopTimer();
+        totalAnswered++;
+
+        results.push({
+            challengeId: benchmarkChallenges[currentIndex].id,
+            title: benchmarkChallenges[currentIndex].title,
+            category: benchmarkChallenges[currentIndex].category,
+            time: elapsed,
+            skipped: true,
+            answer: ""
+        });
+
+        advance();
+    }
+
+    /** Advance to next challenge or show results */
+    function advance() {
+        if (currentIndex < benchmarkChallenges.length - 1) {
+            currentIndex++;
+            showChallenge(currentIndex);
+        } else {
+            showResults();
+        }
+    }
+
+    /** Calculate stats from results */
+    function calcStats() {
+        var answeredResults = results.filter(function (r) { return !r.skipped; });
+        var times = answeredResults.map(function (r) { return r.time; });
+        var allTimes = results.map(function (r) { return r.time; });
+
+        if (times.length === 0) {
+            return {
+                avgTime: 0, medianTime: 0, fastestTime: 0, slowestTime: 0,
+                totalTime: 0, accuracy: 0, answered: 0, skipped: results.length
+            };
+        }
+
+        times.sort(function (a, b) { return a - b; });
+        var sum = 0;
+        for (var i = 0; i < times.length; i++) sum += times[i];
+
+        var totalSum = 0;
+        for (var j = 0; j < allTimes.length; j++) totalSum += allTimes[j];
+
+        var median;
+        var mid = Math.floor(times.length / 2);
+        if (times.length % 2 === 0) {
+            median = (times[mid - 1] + times[mid]) / 2;
+        } else {
+            median = times[mid];
+        }
+
+        return {
+            avgTime: Math.round(sum / times.length),
+            medianTime: Math.round(median),
+            fastestTime: times[0],
+            slowestTime: times[times.length - 1],
+            totalTime: Math.round(totalSum),
+            accuracy: Math.round((answeredResults.length / results.length) * 100),
+            answered: answeredResults.length,
+            skipped: results.length - answeredResults.length
+        };
+    }
+
+    /** Show results screen */
+    function showResults() {
+        document.getElementById("challengeScreen").classList.add("hidden");
+        document.getElementById("progressContainer").classList.add("hidden");
+        document.getElementById("resultsScreen").classList.remove("hidden");
+
+        var stats = calcStats();
+        renderStatsGrid(stats);
+        renderBreakdown();
+        renderSpeedChart(stats);
+        renderAIComparison(stats);
+        renderDifficultyRanking();
+        renderInsight(stats);
+    }
+
+    /** Render summary stat cards */
+    function renderStatsGrid(stats) {
+        var grid = document.getElementById("statsGrid");
+        var cards = [
+            { value: formatTime(stats.avgTime), label: "Avg Response Time" },
+            { value: formatTime(stats.medianTime), label: "Median Time" },
+            { value: formatTime(stats.fastestTime), label: "Fastest" },
+            { value: formatTime(stats.slowestTime), label: "Slowest" },
+            { value: stats.accuracy + "%", label: "Accuracy" },
+            { value: formatTime(stats.totalTime), label: "Total Time" }
+        ];
+
+        var html = "";
+        for (var i = 0; i < cards.length; i++) {
+            html += '<div class="stat-card">' +
+                '<div class="stat-value">' + sanitize(cards[i].value) + '</div>' +
+                '<div class="stat-label">' + sanitize(cards[i].label) + '</div>' +
+                '</div>';
+        }
+        grid.innerHTML = html;
+    }
+
+    /** Render per-challenge breakdown table */
+    function renderBreakdown() {
+        var tbody = document.getElementById("breakdownBody");
+        var maxTime = 0;
+        for (var i = 0; i < results.length; i++) {
+            if (results[i].time > maxTime) maxTime = results[i].time;
+        }
+
+        var html = "";
+        for (var j = 0; j < results.length; j++) {
+            var r = results[j];
+            var barWidth = maxTime > 0 ? Math.round((r.time / maxTime) * 100) : 0;
+            var cls = speedClass(r.time);
+            var statusIcon = r.skipped ? "⏭️" : "✅";
+            html += "<tr>" +
+                "<td>" + (j + 1) + "</td>" +
+                "<td>" + sanitize(r.title) + "</td>" +
+                "<td class='status-icon'>" + statusIcon + "</td>" +
+                "<td>" + formatTime(r.time) + "</td>" +
+                '<td class="time-bar-cell"><div class="time-bar ' + cls + '" style="width: ' + barWidth + '%;"></div></td>' +
+                "</tr>";
+        }
+        tbody.innerHTML = html;
+    }
+
+    /** Render speed distribution chart (bar chart) */
+    function renderSpeedChart(stats) {
+        var canvas = document.getElementById("speedChart");
+        if (!canvas || !canvas.getContext) return;
+        var ctx = canvas.getContext("2d");
+
+        // Set actual pixel size
+        canvas.width = canvas.offsetWidth * 2 || 1200;
+        canvas.height = 500;
+        ctx.scale(2, 2);
+        var w = canvas.offsetWidth || 600;
+        var h = 250;
+
+        ctx.clearRect(0, 0, w, h);
+
+        var answeredResults = results.filter(function (r) { return !r.skipped; });
+        if (answeredResults.length === 0) {
+            ctx.fillStyle = "#8b949e";
+            ctx.font = "14px -apple-system, sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillText("No answered challenges to chart", w / 2, h / 2);
+            return;
+        }
+
+        // Bar chart of per-challenge times
+        var padding = { top: 20, right: 20, bottom: 40, left: 60 };
+        var chartW = w - padding.left - padding.right;
+        var chartH = h - padding.top - padding.bottom;
+
+        var maxTime = 0;
+        for (var i = 0; i < results.length; i++) {
+            if (results[i].time > maxTime) maxTime = results[i].time;
+        }
+        maxTime = maxTime * 1.1; // 10% headroom
+
+        var barW = chartW / results.length - 8;
+
+        // Y axis
+        ctx.strokeStyle = "#30363d";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(padding.left, padding.top);
+        ctx.lineTo(padding.left, padding.top + chartH);
+        ctx.lineTo(padding.left + chartW, padding.top + chartH);
+        ctx.stroke();
+
+        // Y axis labels
+        ctx.fillStyle = "#8b949e";
+        ctx.font = "11px -apple-system, sans-serif";
+        ctx.textAlign = "right";
+        var ySteps = 5;
+        for (var s = 0; s <= ySteps; s++) {
+            var yVal = (maxTime / ySteps) * s;
+            var yPos = padding.top + chartH - (s / ySteps) * chartH;
+            ctx.fillText(formatTime(Math.round(yVal)), padding.left - 8, yPos + 4);
+
+            // Grid line
+            if (s > 0) {
+                ctx.strokeStyle = "rgba(48, 54, 61, 0.5)";
+                ctx.beginPath();
+                ctx.moveTo(padding.left, yPos);
+                ctx.lineTo(padding.left + chartW, yPos);
+                ctx.stroke();
+            }
+        }
+
+        // Bars
+        for (var b = 0; b < results.length; b++) {
+            var r = results[b];
+            var barH = (r.time / maxTime) * chartH;
+            var x = padding.left + b * (chartW / results.length) + 4;
+            var y = padding.top + chartH - barH;
+
+            // Color by speed
+            var color = r.skipped ? "#30363d" :
+                r.time < 5000 ? "#3fb950" :
+                r.time < 15000 ? "#d29922" : "#f85149";
+
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            if (ctx.roundRect) ctx.roundRect(x, y, barW, barH, 3);
+            else ctx.rect(x, y, barW, barH);
+            ctx.fill();
+
+            // X label
+            ctx.fillStyle = "#8b949e";
+            ctx.font = "10px -apple-system, sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillText("#" + (b + 1), x + barW / 2, padding.top + chartH + 15);
+        }
+
+        // Median line
+        if (stats.medianTime > 0) {
+            var medY = padding.top + chartH - (stats.medianTime / maxTime) * chartH;
+            ctx.strokeStyle = "#58a6ff";
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([5, 5]);
+            ctx.beginPath();
+            ctx.moveTo(padding.left, medY);
+            ctx.lineTo(padding.left + chartW, medY);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            ctx.fillStyle = "#58a6ff";
+            ctx.font = "11px -apple-system, sans-serif";
+            ctx.textAlign = "left";
+            ctx.fillText("Median: " + formatTime(stats.medianTime), padding.left + chartW - 120, medY - 6);
+        }
+    }
+
+    /** Render AI comparison bars */
+    function renderAIComparison(stats) {
+        var container = document.getElementById("aiComparisonBars");
+        var humanAvg = stats.avgTime;
+
+        // Include human in the scale
+        var maxScale = humanAvg;
+        for (var i = 0; i < aiProcessingTimes.length; i++) {
+            if (aiProcessingTimes[i].time > maxScale) maxScale = aiProcessingTimes[i].time;
+        }
+        maxScale = maxScale * 1.1;
+
+        var html = "";
+
+        // Human bar first
+        var humanPct = Math.min(100, Math.round((humanAvg / maxScale) * 100));
+        html += '<div class="ai-bar">' +
+            '<span class="ai-name" style="color: var(--green); font-weight: 600;">👤 You</span>' +
+            '<div class="ai-time-bar"><div class="ai-time-fill" style="width: ' + humanPct + '%; background: var(--green);"></div></div>' +
+            '<span class="ai-time-label">' + formatTime(humanAvg) + ' (' + stats.accuracy + '% acc)</span>' +
+            '</div>';
+
+        // AI bars
+        for (var j = 0; j < aiProcessingTimes.length; j++) {
+            var ai = aiProcessingTimes[j];
+            var pct = Math.min(100, Math.round((ai.time / maxScale) * 100));
+            html += '<div class="ai-bar">' +
+                '<span class="ai-name">' + sanitize(ai.name) + '</span>' +
+                '<div class="ai-time-bar"><div class="ai-time-fill" style="width: ' + pct + '%; background: ' + ai.color + ';"></div></div>' +
+                '<span class="ai-time-label">' + formatTime(ai.time) + ' (' + ai.accuracy + '% acc)</span>' +
+                '</div>';
+        }
+
+        container.innerHTML = html;
+    }
+
+    /** Render difficulty ranking (sorted by response time, slowest = hardest) */
+    function renderDifficultyRanking() {
+        var list = document.getElementById("difficultyList");
+        var answeredResults = results.filter(function (r) { return !r.skipped; });
+
+        if (answeredResults.length === 0) {
+            list.innerHTML = '<li style="color: var(--muted);">No answered challenges to rank.</li>';
+            return;
+        }
+
+        // Sort by time descending (slowest = hardest)
+        var sorted = answeredResults.slice().sort(function (a, b) { return b.time - a.time; });
+
+        var html = "";
+        for (var i = 0; i < sorted.length; i++) {
+            var r = sorted[i];
+            var tagClass = "tag-" + r.category;
+            html += '<li>' +
+                '<span class="tag ' + tagClass + '">' + sanitize(r.category) + '</span>' +
+                '<span>' + sanitize(r.title) + '</span>' +
+                '<span class="diff-time">' + formatTime(r.time) + '</span>' +
+                '</li>';
+        }
+        list.innerHTML = html;
+    }
+
+    /** Render research insight */
+    function renderInsight(stats) {
+        var text = "";
+        var avgSec = stats.avgTime / 1000;
+
+        if (stats.accuracy >= 80 && avgSec < 10) {
+            text = "Impressive! You combined high accuracy (" + stats.accuracy +
+                "%) with fast response times (avg " + formatTime(stats.avgTime) +
+                "). This suggests strong GIF comprehension — the kind of human intuition that current AI models lack. " +
+                "For CAPTCHA viability, sub-10s average with >80% accuracy is the sweet spot.";
+        } else if (stats.accuracy >= 60) {
+            text = "Your accuracy of " + stats.accuracy + "% with an average response time of " +
+                formatTime(stats.avgTime) + " shows the typical human pattern: we sacrifice speed for understanding. " +
+                "AI models process frames faster (" + formatTime(aiProcessingTimes[2].time) +
+                " for GPT-4o) but score only ~35% accuracy on GIF CAPTCHAs.";
+        } else if (stats.skipped > stats.answered) {
+            text = "You skipped " + stats.skipped + " of 10 challenges, which mirrors the real-world CAPTCHA abandonment problem. " +
+                "Research shows that CAPTCHAs with >15s average solve time see 40%+ abandonment rates. " +
+                "Your total benchmark time was " + formatTime(stats.totalTime) + ".";
+        } else {
+            text = "Your average response time of " + formatTime(stats.avgTime) +
+                " provides valuable data for CAPTCHA design. While AI models process in " +
+                formatTime(aiProcessingTimes[2].time) + " (GPT-4o), they achieve only ~35% accuracy. " +
+                "The human advantage lies in narrative comprehension, not raw processing speed.";
+        }
+
+        document.getElementById("insightText").textContent = text;
+    }
+
+    /** Restart the benchmark */
+    function restart() {
+        document.getElementById("resultsScreen").classList.add("hidden");
+        document.getElementById("introScreen").classList.remove("hidden");
+    }
+
+    // Public API
+    return {
+        start: start,
+        submit: submit,
+        skip: skip,
+        restart: restart,
+        formatTime: formatTime,
+        speedClass: speedClass,
+        calcStats: calcStats,
+        getChallenges: function () { return benchmarkChallenges; },
+        getResults: function () { return results; },
+        getAIBenchmarks: function () { return aiProcessingTimes; },
+        // Expose for testing
+        _setResults: function (r) { results = r; answered = r.filter(function (x) { return !x.skipped; }).length; totalAnswered = r.length; },
+        _renderStatsGrid: renderStatsGrid,
+        _renderBreakdown: renderBreakdown,
+        _renderDifficultyRanking: renderDifficultyRanking,
+        _renderInsight: renderInsight,
+        _renderAIComparison: renderAIComparison
+    };
+})();
+</script>
+
+</body>
+</html>

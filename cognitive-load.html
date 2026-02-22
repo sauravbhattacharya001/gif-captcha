@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; img-src https: data:; script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'self'; form-action 'none';">
+    <meta name="referrer" content="no-referrer">
+    <title>GIF CAPTCHA — Cognitive Load Analyzer</title>
+    <link rel="stylesheet" href="shared.css">
+    <style>
+        /* cognitive-load.html — page-specific styles */
+        .container { max-width: 1000px; }
+
+        .overview-cards {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        .overview-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.25rem;
+            text-align: center;
+        }
+        .overview-card .card-value {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 0.3rem;
+        }
+        .overview-card .card-label {
+            font-size: 0.8rem;
+            color: var(--muted);
+        }
+
+        .section-title {
+            font-size: 1.3rem;
+            margin: 2.5rem 0 0.5rem;
+            color: var(--text);
+        }
+        .section-desc {
+            color: var(--muted);
+            font-size: 0.9rem;
+            margin-bottom: 1.5rem;
+        }
+
+        /* Dimension legend */
+        .dimension-legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.8rem;
+            margin-bottom: 1.5rem;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            font-size: 0.8rem;
+            color: var(--muted);
+        }
+        .legend-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+
+        /* Charts */
+        .chart-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .chart-panel {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.25rem;
+        }
+        .chart-panel h3 {
+            font-size: 0.95rem;
+            margin-bottom: 1rem;
+            color: var(--text);
+        }
+        .chart-panel canvas {
+            width: 100%;
+        }
+
+        /* CAPTCHA cards */
+        .captcha-cards {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 1.5rem;
+        }
+        .captcha-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+            animation: fadeIn 0.4s ease;
+        }
+        .captcha-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid var(--border);
+        }
+        .captcha-card-header .card-title {
+            font-weight: 700;
+            font-size: 1rem;
+        }
+        .captcha-card-header .card-score {
+            font-size: 0.85rem;
+            padding: 0.2rem 0.7rem;
+            border-radius: 12px;
+            font-weight: 600;
+        }
+        .score-high { background: var(--red-bg); color: var(--red); }
+        .score-medium { background: var(--yellow-bg); color: var(--yellow); }
+        .score-low { background: var(--green-bg); color: var(--green); }
+
+        .captcha-card-body {
+            display: grid;
+            grid-template-columns: 200px 1fr;
+            gap: 1.5rem;
+            padding: 1.25rem 1.5rem;
+        }
+        .radar-mini { width: 200px; height: 200px; }
+
+        .dimension-bars {
+            display: flex;
+            flex-direction: column;
+            gap: 0.6rem;
+            justify-content: center;
+        }
+        .dim-bar-row {
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+        }
+        .dim-bar-label {
+            font-size: 0.75rem;
+            color: var(--muted);
+            width: 100px;
+            text-align: right;
+            flex-shrink: 0;
+        }
+        .dim-bar-track {
+            flex: 1;
+            height: 8px;
+            background: var(--border);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .dim-bar-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.6s ease;
+        }
+        .dim-bar-value {
+            font-size: 0.75rem;
+            color: var(--text);
+            width: 30px;
+            font-weight: 600;
+        }
+
+        .captcha-card-footer {
+            padding: 0.8rem 1.5rem;
+            border-top: 1px solid var(--border);
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        /* AI gap table */
+        .gap-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+        .gap-table th, .gap-table td {
+            padding: 0.7rem 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+        .gap-table th {
+            color: var(--muted);
+            font-weight: 600;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+        }
+        .gap-table td { color: var(--text); }
+        .gap-bar {
+            display: inline-block;
+            height: 6px;
+            border-radius: 3px;
+            min-width: 4px;
+        }
+
+        /* Sort controls */
+        .sort-controls {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+        }
+        .sort-btn {
+            padding: 0.35rem 0.8rem;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            color: var(--muted);
+            font-size: 0.8rem;
+            cursor: pointer;
+            font-family: inherit;
+            transition: all 0.2s;
+        }
+        .sort-btn:hover { border-color: var(--accent); color: var(--text); }
+        .sort-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+        @media (max-width: 768px) {
+            .overview-cards { grid-template-columns: 1fr; }
+            .chart-grid { grid-template-columns: 1fr; }
+            .captcha-card-body { grid-template-columns: 1fr; }
+            .radar-mini { margin: 0 auto; }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <h1>🧠 Cognitive Load Analyzer</h1>
+        <p class="subtitle">Measuring the cognitive complexity of GIF CAPTCHAs across 6 dimensions</p>
+        <nav class="nav-links" aria-label="Page navigation">
+            <a href="index.html">Home</a>
+            <a href="demo.html">Demo</a>
+            <a href="analysis.html">Analysis</a>
+            <a href="simulator.html">Simulator</a>
+            <a href="temporal.html">Temporal</a>
+            <a href="benchmark.html">Benchmark</a>
+        </nav>
+    </header>
+
+    <main class="container" role="main">
+        <!-- Overview Cards -->
+        <div class="overview-cards" id="overviewCards"></div>
+
+        <!-- Dimension Legend -->
+        <div class="dimension-legend" id="dimensionLegend" role="list" aria-label="Cognitive dimensions"></div>
+
+        <!-- Distribution Chart + AI Gap Chart -->
+        <h2 class="section-title">📊 Cognitive Dimension Distribution</h2>
+        <p class="section-desc">Average cognitive load across all 10 CAPTCHAs, measured on a 1–10 scale per dimension.</p>
+        <div class="chart-grid">
+            <div class="chart-panel">
+                <h3>Average Load by Dimension</h3>
+                <canvas id="distributionChart" width="400" height="280" aria-label="Bar chart of average cognitive load per dimension"></canvas>
+            </div>
+            <div class="chart-panel">
+                <h3>Human vs AI Capability</h3>
+                <canvas id="gapChart" width="400" height="280" aria-label="Radar chart comparing human and AI capability per dimension"></canvas>
+            </div>
+        </div>
+
+        <!-- AI Capability Gap Table -->
+        <h2 class="section-title">🤖 AI Capability Gap Analysis</h2>
+        <p class="section-desc">Where AI struggles most — ranked by the gap between CAPTCHA complexity and AI capability.</p>
+        <div class="chart-panel">
+            <table class="gap-table" id="gapTable" aria-label="AI capability gap by cognitive dimension">
+                <thead>
+                    <tr>
+                        <th>Dimension</th>
+                        <th>Avg. Load</th>
+                        <th>AI Capability</th>
+                        <th>Gap</th>
+                        <th>Visual</th>
+                    </tr>
+                </thead>
+                <tbody id="gapTableBody"></tbody>
+            </table>
+        </div>
+
+        <!-- Research Insights -->
+        <div class="insight-box" id="insightBox">
+            <h4>🔬 Research Insight</h4>
+            <p id="insightText"></p>
+        </div>
+
+        <!-- Per-CAPTCHA Cards -->
+        <h2 class="section-title">🔍 Per-CAPTCHA Cognitive Profiles</h2>
+        <p class="section-desc">Individual cognitive fingerprint for each CAPTCHA, with radar visualization and dimension breakdowns.</p>
+
+        <div class="sort-controls" role="group" aria-label="Sort CAPTCHA cards">
+            <button class="sort-btn active" data-sort="id">By ID</button>
+            <button class="sort-btn" data-sort="load-desc">Highest Load</button>
+            <button class="sort-btn" data-sort="load-asc">Lowest Load</button>
+            <button class="sort-btn" data-sort="visual">Most Visual</button>
+            <button class="sort-btn" data-sort="temporal">Most Temporal</button>
+        </div>
+
+        <div class="captcha-cards" id="captchaCards"></div>
+
+        <footer>
+            <p>Part of the <a href="index.html">GIF CAPTCHA Research Study</a></p>
+        </footer>
+    </main>
+
+    <script src="shared.js"></script>
+    <script>
+    /* ===== Cognitive Dimension Definitions ===== */
+    var DIMENSIONS = [
+        { key: "visual",    label: "Visual Processing",    color: "#58a6ff", emoji: "👁️",  desc: "Ability to parse visual elements, motion, and scene composition" },
+        { key: "temporal",  label: "Temporal Reasoning",   color: "#bc8cff", emoji: "⏱️", desc: "Understanding sequence, timing, and cause-effect over time" },
+        { key: "cultural",  label: "Cultural Context",     color: "#d29922", emoji: "🌍",  desc: "Knowledge of social norms, memes, and cultural references" },
+        { key: "humor",     label: "Humor & Irony",        color: "#f85149", emoji: "😂",  desc: "Detecting subverted expectations, jokes, and ironic situations" },
+        { key: "spatial",   label: "Spatial Awareness",    color: "#3fb950", emoji: "📐",  desc: "Tracking object positions, movement trajectories, and spatial relations" },
+        { key: "narrative", label: "Narrative Comprehension", color: "#f0883e", emoji: "📖", desc: "Following storyline, identifying plot twists, understanding intent" }
+    ];
+
+    /* AI capability scores per dimension (0-10) — based on GPT-4o (2025) research */
+    var AI_CAPABILITY = {
+        visual:    7.5,   // Good at static image analysis, weaker at motion
+        temporal:  3.0,   // Poor at tracking frame-by-frame sequences
+        cultural:  5.5,   // Moderate cultural knowledge, weak on niche memes
+        humor:     2.5,   // Very poor at detecting irony and subverted expectations
+        spatial:   6.0,   // Decent object detection, weak trajectory tracking
+        narrative: 4.0    // Can describe scenes but misses plot twists
+    };
+
+    /* ===== Per-CAPTCHA Cognitive Ratings (expert-calibrated 1-10) ===== */
+    var cognitiveData = [
+        {
+            id: 1, title: "Duel Plot Twist",
+            category: "narrative",
+            ratings: { visual: 6, temporal: 8, cultural: 7, humor: 9, spatial: 4, narrative: 9 },
+            keyDemand: "Recognizing the subverted expectation of a duel outcome",
+            whyHard: "AI fails to detect that both guns are trick props — requires understanding comedic tropes"
+        },
+        {
+            id: 2, title: "Rappers",
+            category: "social",
+            ratings: { visual: 5, temporal: 6, cultural: 8, humor: 7, spatial: 5, narrative: 7 },
+            keyDemand: "Cultural context of rap performance + unexpected roller skating exit",
+            whyHard: "The humor relies on the incongruity of roller skating in a rap context"
+        },
+        {
+            id: 3, title: "Skateboarder",
+            category: "physical",
+            ratings: { visual: 8, temporal: 7, cultural: 3, humor: 5, spatial: 9, narrative: 5 },
+            keyDemand: "Tracking rapid spatial movement and trajectory of the skateboarder",
+            whyHard: "Requires frame-by-frame spatial tracking of aerial trajectory"
+        },
+        {
+            id: 4, title: "Banana Mascot",
+            category: "social",
+            ratings: { visual: 6, temporal: 7, cultural: 6, humor: 8, spatial: 5, narrative: 8 },
+            keyDemand: "Understanding role reversal — security guard outperforming the mascot",
+            whyHard: "The narrative twist of authority figure dancing better is contextual humor"
+        },
+        {
+            id: 5, title: "Tic Tac Toe Dog",
+            category: "animal",
+            ratings: { visual: 7, temporal: 6, cultural: 4, humor: 7, spatial: 7, narrative: 6 },
+            keyDemand: "Recognizing a dog is strategically playing and winning a game",
+            whyHard: "AI can identify the game board but not that the dog is intentionally winning"
+        },
+        {
+            id: 6, title: "Parent Dog",
+            category: "animal",
+            ratings: { visual: 7, temporal: 8, cultural: 5, humor: 8, spatial: 5, narrative: 9 },
+            keyDemand: "Complex narrative — fake cooking threat, parental sacrifice twist",
+            whyHard: "Multi-step narrative with dark humor requires deep contextual understanding"
+        },
+        {
+            id: 7, title: "Mirror Illusion",
+            category: "illusion",
+            ratings: { visual: 10, temporal: 4, cultural: 2, humor: 3, spatial: 10, narrative: 3 },
+            keyDemand: "Pure visual-spatial puzzle — the mirror reflection is actually two hands",
+            whyHard: "Requires understanding physical impossibility of mirror reflections"
+        },
+        {
+            id: 8, title: "Highway Drift",
+            category: "physical",
+            ratings: { visual: 8, temporal: 9, cultural: 3, humor: 5, spatial: 9, narrative: 6 },
+            keyDemand: "Tracking a 180-degree car spin at high speed and return to normal",
+            whyHard: "Rapid temporal-spatial dynamics with a brief but critical motion sequence"
+        },
+        {
+            id: 9, title: "Road Rage Hug",
+            category: "social",
+            ratings: { visual: 5, temporal: 7, cultural: 8, humor: 9, spatial: 4, narrative: 8 },
+            keyDemand: "Subverted expectation — aggressive confrontation ending in a hug",
+            whyHard: "Humor relies on violating social scripts about road rage encounters"
+        },
+        {
+            id: 10, title: "Birthday Cake",
+            category: "narrative",
+            ratings: { visual: 7, temporal: 8, cultural: 6, humor: 7, spatial: 5, narrative: 8 },
+            keyDemand: "Understanding the paper-plate reveal twist after the face-smash",
+            whyHard: "Multi-step narrative with hidden object that resolves the surprise"
+        }
+    ];
+
+    /* ===== Computed Statistics ===== */
+    function computeStats() {
+        var dimSums = {};
+        var dimMax = {};
+        var dimMin = {};
+        DIMENSIONS.forEach(function(d) { dimSums[d.key] = 0; dimMax[d.key] = 0; dimMin[d.key] = 10; });
+
+        cognitiveData.forEach(function(c) {
+            DIMENSIONS.forEach(function(d) {
+                var v = c.ratings[d.key];
+                dimSums[d.key] += v;
+                if (v > dimMax[d.key]) dimMax[d.key] = v;
+                if (v < dimMin[d.key]) dimMin[d.key] = v;
+            });
+        });
+
+        var dimAvg = {};
+        DIMENSIONS.forEach(function(d) { dimAvg[d.key] = dimSums[d.key] / cognitiveData.length; });
+
+        // Overall load per CAPTCHA
+        cognitiveData.forEach(function(c) {
+            var sum = 0;
+            DIMENSIONS.forEach(function(d) { sum += c.ratings[d.key]; });
+            c.avgLoad = sum / DIMENSIONS.length;
+        });
+
+        var totalLoad = cognitiveData.reduce(function(s, c) { return s + c.avgLoad; }, 0) / cognitiveData.length;
+
+        // Hardest dimension for AI (biggest gap)
+        var gaps = DIMENSIONS.map(function(d) {
+            return { key: d.key, label: d.label, avg: dimAvg[d.key], aiCap: AI_CAPABILITY[d.key], gap: dimAvg[d.key] - AI_CAPABILITY[d.key] };
+        }).sort(function(a, b) { return b.gap - a.gap; });
+
+        return { dimAvg: dimAvg, dimMax: dimMax, dimMin: dimMin, totalLoad: totalLoad, gaps: gaps };
+    }
+
+    var stats = computeStats();
+
+    /* ===== Render Overview Cards ===== */
+    function renderOverview() {
+        var hardest = cognitiveData.slice().sort(function(a, b) { return b.avgLoad - a.avgLoad; })[0];
+        var easiest = cognitiveData.slice().sort(function(a, b) { return a.avgLoad - b.avgLoad; })[0];
+
+        var html =
+            '<div class="overview-card"><div class="card-value" style="color:var(--accent)">' + stats.totalLoad.toFixed(1) + '</div><div class="card-label">Average Cognitive Load (1-10)</div></div>' +
+            '<div class="overview-card"><div class="card-value" style="color:var(--red)">' + sanitize(hardest.title) + '</div><div class="card-label">Highest Load (' + hardest.avgLoad.toFixed(1) + ')</div></div>' +
+            '<div class="overview-card"><div class="card-value" style="color:var(--green)">' + sanitize(easiest.title) + '</div><div class="card-label">Lowest Load (' + easiest.avgLoad.toFixed(1) + ')</div></div>';
+
+        document.getElementById("overviewCards").innerHTML = html;
+    }
+
+    /* ===== Render Dimension Legend ===== */
+    function renderLegend() {
+        var html = "";
+        DIMENSIONS.forEach(function(d) {
+            html += '<div class="legend-item" role="listitem"><span class="legend-dot" style="background:' + d.color + '"></span>' + d.emoji + ' ' + sanitize(d.label) + '</div>';
+        });
+        document.getElementById("dimensionLegend").innerHTML = html;
+    }
+
+    /* ===== Distribution Bar Chart ===== */
+    function drawDistributionChart() {
+        var canvas = document.getElementById("distributionChart");
+        var ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        var dpr = window.devicePixelRatio || 1;
+        canvas.width = canvas.offsetWidth * dpr;
+        canvas.height = 280 * dpr;
+        ctx.scale(dpr, dpr);
+        var W = canvas.offsetWidth, H = 280;
+
+        ctx.clearRect(0, 0, W, H);
+
+        var padL = 120, padR = 40, padT = 20, padB = 20;
+        var barH = 26, gap = 10;
+        var chartW = W - padL - padR;
+
+        DIMENSIONS.forEach(function(d, i) {
+            var y = padT + i * (barH + gap);
+            var val = stats.dimAvg[d.key];
+            var barW = (val / 10) * chartW;
+
+            // Label
+            ctx.fillStyle = "#8b949e";
+            ctx.font = "12px -apple-system, sans-serif";
+            ctx.textAlign = "right";
+            ctx.textBaseline = "middle";
+            ctx.fillText(d.emoji + " " + d.label, padL - 10, y + barH / 2);
+
+            // Bar background
+            ctx.fillStyle = "#30363d";
+            ctx.beginPath();
+            ctx.roundRect(padL, y, chartW, barH, 4);
+            ctx.fill();
+
+            // Bar fill
+            ctx.fillStyle = d.color;
+            ctx.globalAlpha = 0.85;
+            ctx.beginPath();
+            ctx.roundRect(padL, y, barW, barH, 4);
+            ctx.fill();
+            ctx.globalAlpha = 1;
+
+            // Value
+            ctx.fillStyle = "#e6edf3";
+            ctx.font = "bold 11px -apple-system, sans-serif";
+            ctx.textAlign = "left";
+            ctx.fillText(val.toFixed(1), padL + barW + 8, y + barH / 2);
+        });
+    }
+
+    /* ===== Human vs AI Radar Chart ===== */
+    function drawGapRadar() {
+        var canvas = document.getElementById("gapChart");
+        var ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        var dpr = window.devicePixelRatio || 1;
+        canvas.width = canvas.offsetWidth * dpr;
+        canvas.height = 280 * dpr;
+        ctx.scale(dpr, dpr);
+        var W = canvas.offsetWidth, H = 280;
+        ctx.clearRect(0, 0, W, H);
+
+        var cx = W / 2, cy = H / 2 + 5;
+        var R = Math.min(W, H) / 2 - 40;
+        var n = DIMENSIONS.length;
+        var angleStep = (2 * Math.PI) / n;
+
+        // Grid circles
+        [0.25, 0.5, 0.75, 1.0].forEach(function(frac) {
+            ctx.beginPath();
+            ctx.arc(cx, cy, R * frac, 0, 2 * Math.PI);
+            ctx.strokeStyle = "#30363d";
+            ctx.lineWidth = 1;
+            ctx.stroke();
+        });
+
+        // Axis lines + labels
+        DIMENSIONS.forEach(function(d, i) {
+            var angle = -Math.PI / 2 + i * angleStep;
+            var x = cx + R * Math.cos(angle);
+            var y = cy + R * Math.sin(angle);
+
+            ctx.beginPath();
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(x, y);
+            ctx.strokeStyle = "#30363d";
+            ctx.stroke();
+
+            // Label
+            var lx = cx + (R + 22) * Math.cos(angle);
+            var ly = cy + (R + 22) * Math.sin(angle);
+            ctx.fillStyle = "#8b949e";
+            ctx.font = "10px -apple-system, sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(d.emoji, lx, ly);
+        });
+
+        // Human polygon (avg ratings)
+        drawRadarPolygon(ctx, cx, cy, R, n, angleStep, function(i) {
+            return stats.dimAvg[DIMENSIONS[i].key] / 10;
+        }, "rgba(88, 166, 255, 0.3)", "rgba(88, 166, 255, 0.9)", 2);
+
+        // AI polygon
+        drawRadarPolygon(ctx, cx, cy, R, n, angleStep, function(i) {
+            return AI_CAPABILITY[DIMENSIONS[i].key] / 10;
+        }, "rgba(248, 81, 73, 0.2)", "rgba(248, 81, 73, 0.8)", 2);
+
+        // Legend
+        ctx.fillStyle = "rgba(88, 166, 255, 0.9)";
+        ctx.fillRect(10, 10, 12, 12);
+        ctx.fillStyle = "#e6edf3";
+        ctx.font = "11px -apple-system, sans-serif";
+        ctx.textAlign = "left";
+        ctx.fillText("CAPTCHA Demand", 28, 19);
+
+        ctx.fillStyle = "rgba(248, 81, 73, 0.8)";
+        ctx.fillRect(10, 28, 12, 12);
+        ctx.fillStyle = "#e6edf3";
+        ctx.fillText("AI Capability", 28, 37);
+    }
+
+    function drawRadarPolygon(ctx, cx, cy, R, n, step, valFn, fill, stroke, lw) {
+        ctx.beginPath();
+        for (var i = 0; i < n; i++) {
+            var angle = -Math.PI / 2 + i * step;
+            var v = valFn(i);
+            var x = cx + R * v * Math.cos(angle);
+            var y = cy + R * v * Math.sin(angle);
+            if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.closePath();
+        ctx.fillStyle = fill;
+        ctx.fill();
+        ctx.strokeStyle = stroke;
+        ctx.lineWidth = lw;
+        ctx.stroke();
+
+        // Dots
+        for (var i = 0; i < n; i++) {
+            var angle = -Math.PI / 2 + i * step;
+            var v = valFn(i);
+            var x = cx + R * v * Math.cos(angle);
+            var y = cy + R * v * Math.sin(angle);
+            ctx.beginPath();
+            ctx.arc(x, y, 3, 0, 2 * Math.PI);
+            ctx.fillStyle = stroke;
+            ctx.fill();
+        }
+    }
+
+    /* ===== Gap Table ===== */
+    function renderGapTable() {
+        var html = "";
+        stats.gaps.forEach(function(g) {
+            var gapPct = (g.gap / 10) * 100;
+            var gapColor = g.gap > 3 ? "var(--red)" : g.gap > 1.5 ? "var(--yellow)" : "var(--green)";
+            html += '<tr>' +
+                '<td>' + sanitize(g.label) + '</td>' +
+                '<td>' + g.avg.toFixed(1) + '</td>' +
+                '<td>' + g.aiCap.toFixed(1) + '</td>' +
+                '<td style="color:' + gapColor + ';font-weight:600">' + (g.gap > 0 ? '+' : '') + g.gap.toFixed(1) + '</td>' +
+                '<td><span class="gap-bar" style="width:' + Math.max(gapPct, 2) + '%;background:' + gapColor + '"></span></td>' +
+                '</tr>';
+        });
+        document.getElementById("gapTableBody").innerHTML = html;
+    }
+
+    /* ===== Research Insight ===== */
+    function renderInsight() {
+        var topGap = stats.gaps[0];
+        var bottomGap = stats.gaps[stats.gaps.length - 1];
+        var text = 'The largest AI capability gap is in <strong>' + sanitize(topGap.label) +
+            '</strong> (gap: ' + topGap.gap.toFixed(1) + '), where CAPTCHAs demand an average of ' +
+            topGap.avg.toFixed(1) + '/10 but AI only achieves ' + topGap.aiCap.toFixed(1) +
+            '/10. This confirms that ' + sanitize(topGap.label.toLowerCase()) +
+            ' remains the most effective discriminator for GIF-based CAPTCHAs. ' +
+            'In contrast, <strong>' + sanitize(bottomGap.label) + '</strong> has the smallest gap (' +
+            bottomGap.gap.toFixed(1) + '), suggesting AI models have nearly closed this capability. ' +
+            'Effective GIF CAPTCHAs should prioritize challenges that require ' +
+            sanitize(stats.gaps.slice(0, 3).map(function(g) { return g.label.toLowerCase(); }).join(", ")) + '.';
+        document.getElementById("insightText").innerHTML = text;
+    }
+
+    /* ===== Per-CAPTCHA Cards ===== */
+    function renderCards(sortKey) {
+        var sorted = cognitiveData.slice();
+        switch (sortKey) {
+            case "load-desc": sorted.sort(function(a, b) { return b.avgLoad - a.avgLoad; }); break;
+            case "load-asc":  sorted.sort(function(a, b) { return a.avgLoad - b.avgLoad; }); break;
+            case "visual":    sorted.sort(function(a, b) { return b.ratings.visual - a.ratings.visual; }); break;
+            case "temporal":  sorted.sort(function(a, b) { return b.ratings.temporal - a.ratings.temporal; }); break;
+            default:          sorted.sort(function(a, b) { return a.id - b.id; }); break;
+        }
+
+        var html = "";
+        sorted.forEach(function(c) {
+            var scoreClass = c.avgLoad >= 7 ? "score-high" : c.avgLoad >= 5 ? "score-medium" : "score-low";
+            var scoreLabel = c.avgLoad >= 7 ? "High" : c.avgLoad >= 5 ? "Medium" : "Low";
+
+            html += '<div class="captcha-card" data-id="' + c.id + '">';
+            html += '<div class="captcha-card-header"><span class="card-title">#' + c.id + ' ' + sanitize(c.title) + '</span>';
+            html += '<span class="card-score ' + scoreClass + '">' + scoreLabel + ' Load: ' + c.avgLoad.toFixed(1) + '</span></div>';
+
+            html += '<div class="captcha-card-body">';
+            html += '<canvas class="radar-mini" id="radar-' + c.id + '" width="200" height="200" aria-label="Cognitive fingerprint radar for ' + sanitize(c.title) + '"></canvas>';
+            html += '<div class="dimension-bars">';
+
+            DIMENSIONS.forEach(function(d) {
+                var v = c.ratings[d.key];
+                var pct = (v / 10) * 100;
+                html += '<div class="dim-bar-row">' +
+                    '<span class="dim-bar-label">' + d.emoji + ' ' + sanitize(d.label) + '</span>' +
+                    '<div class="dim-bar-track"><div class="dim-bar-fill" style="width:' + pct + '%;background:' + d.color + '"></div></div>' +
+                    '<span class="dim-bar-value">' + v + '</span></div>';
+            });
+
+            html += '</div></div>';
+
+            // Footer with tags
+            html += '<div class="captcha-card-footer">';
+            html += '<span class="tag tag-' + sanitize(c.category) + '">' + sanitize(c.category) + '</span>';
+            html += '<span style="font-size:0.75rem;color:var(--muted);margin-left:0.5rem">💡 ' + sanitize(c.keyDemand) + '</span>';
+            html += '</div></div>';
+        });
+
+        document.getElementById("captchaCards").innerHTML = html;
+
+        // Draw mini radars
+        sorted.forEach(function(c) { drawMiniRadar(c); });
+    }
+
+    /* ===== Mini Radar per CAPTCHA ===== */
+    function drawMiniRadar(c) {
+        var canvas = document.getElementById("radar-" + c.id);
+        if (!canvas) return;
+        var ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        var dpr = window.devicePixelRatio || 1;
+        canvas.width = 200 * dpr;
+        canvas.height = 200 * dpr;
+        ctx.scale(dpr, dpr);
+        var W = 200, H = 200;
+        ctx.clearRect(0, 0, W, H);
+
+        var cx = W / 2, cy = H / 2;
+        var R = 75;
+        var n = DIMENSIONS.length;
+        var step = (2 * Math.PI) / n;
+
+        // Grid
+        [0.25, 0.5, 0.75, 1.0].forEach(function(frac) {
+            ctx.beginPath();
+            ctx.arc(cx, cy, R * frac, 0, 2 * Math.PI);
+            ctx.strokeStyle = "#30363d";
+            ctx.lineWidth = 0.5;
+            ctx.stroke();
+        });
+
+        // Axes + labels
+        DIMENSIONS.forEach(function(d, i) {
+            var angle = -Math.PI / 2 + i * step;
+            ctx.beginPath();
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(cx + R * Math.cos(angle), cy + R * Math.sin(angle));
+            ctx.strokeStyle = "#30363d";
+            ctx.lineWidth = 0.5;
+            ctx.stroke();
+
+            // Emoji label
+            var lx = cx + (R + 14) * Math.cos(angle);
+            var ly = cy + (R + 14) * Math.sin(angle);
+            ctx.fillStyle = d.color;
+            ctx.font = "10px sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(d.emoji, lx, ly);
+        });
+
+        // Rating polygon
+        drawRadarPolygon(ctx, cx, cy, R, n, step, function(i) {
+            return c.ratings[DIMENSIONS[i].key] / 10;
+        }, "rgba(88, 166, 255, 0.25)", "rgba(88, 166, 255, 0.8)", 1.5);
+
+        // AI polygon overlay
+        drawRadarPolygon(ctx, cx, cy, R, n, step, function(i) {
+            return AI_CAPABILITY[DIMENSIONS[i].key] / 10;
+        }, "rgba(248, 81, 73, 0.1)", "rgba(248, 81, 73, 0.5)", 1);
+    }
+
+    /* ===== Sort Controls ===== */
+    document.querySelectorAll(".sort-btn").forEach(function(btn) {
+        btn.addEventListener("click", function() {
+            document.querySelectorAll(".sort-btn").forEach(function(b) { b.classList.remove("active"); });
+            btn.classList.add("active");
+            renderCards(btn.getAttribute("data-sort"));
+        });
+    });
+
+    /* ===== Init ===== */
+    renderOverview();
+    renderLegend();
+    drawDistributionChart();
+    drawGapRadar();
+    renderGapTable();
+    renderInsight();
+    renderCards("id");
+
+    // Redraw charts on resize
+    window.addEventListener("resize", function() {
+        drawDistributionChart();
+        drawGapRadar();
+        cognitiveData.forEach(function(c) { drawMiniRadar(c); });
+    });
+    </script>
+</body>
+</html>

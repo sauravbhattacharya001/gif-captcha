@@ -550,6 +550,39 @@ function createSetAnalyzer(challenges) {
 
   var _challenges = challenges.slice(); // defensive copy
 
+  // Precompute word-sets for pairwise similarity (avoids recomputing in O(n²) loops)
+  var _wordSets = null;
+  function _getWordSets() {
+    if (_wordSets) return _wordSets;
+    _wordSets = _challenges.map(function (c) {
+      var words = String(c.humanAnswer || "").toLowerCase().split(/\s+/).filter(Boolean);
+      var set = {};
+      words.forEach(function (w) { set[w] = true; });
+      return set;
+    });
+    return _wordSets;
+  }
+
+  /**
+   * Compute Jaccard similarity between two precomputed word sets.
+   * @param {Object} setA - Word set (keys = words)
+   * @param {Object} setB - Word set
+   * @returns {number} Similarity 0-1
+   */
+  function _jaccardSets(setA, setB) {
+    var keysA = Object.keys(setA);
+    var keysB = Object.keys(setB);
+    if (keysA.length === 0 || keysB.length === 0) return 0;
+    var intersection = 0;
+    var union = {};
+    keysA.forEach(function (w) { union[w] = true; });
+    keysB.forEach(function (w) {
+      if (setA[w]) intersection++;
+      union[w] = true;
+    });
+    return intersection / Object.keys(union).length;
+  }
+
   /**
    * Compute answer length statistics.
    * @returns {{ min: number, max: number, mean: number, median: number, stdDev: number }}
@@ -625,10 +658,11 @@ function createSetAnalyzer(challenges) {
    */
   function findSimilarPairs(threshold) {
     if (threshold === undefined || threshold === null) threshold = 0.6;
+    var sets = _getWordSets();
     var pairs = [];
     for (var i = 0; i < _challenges.length; i++) {
       for (var j = i + 1; j < _challenges.length; j++) {
-        var sim = textSimilarity(_challenges[i].humanAnswer, _challenges[j].humanAnswer);
+        var sim = _jaccardSets(sets[i], sets[j]);
         if (sim >= threshold) {
           pairs.push({ idA: _challenges[i].id, idB: _challenges[j].id, similarity: sim });
         }
@@ -655,11 +689,12 @@ function createSetAnalyzer(challenges) {
    */
   function diversityScore() {
     // answerDiversity: mean pairwise dissimilarity × 100
+    var sets = _getWordSets();
     var totalDissimilarity = 0;
     var pairCount = 0;
     for (var i = 0; i < _challenges.length; i++) {
       for (var j = i + 1; j < _challenges.length; j++) {
-        var sim = textSimilarity(_challenges[i].humanAnswer, _challenges[j].humanAnswer);
+        var sim = _jaccardSets(sets[i], sets[j]);
         totalDissimilarity += (1 - sim);
         pairCount++;
       }
@@ -869,12 +904,16 @@ function createSetAnalyzer(challenges) {
     else if (score >= 40) grade = "D";
     else grade = "F";
 
+    // Compute similar pairs once; duplicates are a subset (threshold 0.85)
+    var allSimilarPairs = findSimilarPairs();
+    var duplicatePairs = allSimilarPairs.filter(function (p) { return p.similarity >= 0.85; });
+
     return {
       challengeCount: _challenges.length,
       answerStats: answerLengthStats(),
       keywords: keywordCoverage(),
-      similarPairs: findSimilarPairs(),
-      duplicates: detectDuplicates(),
+      similarPairs: allSimilarPairs,
+      duplicates: duplicatePairs,
       diversity: diversityScore(),
       complexity: answerComplexity(),
       issues: issuesList,
@@ -1035,7 +1074,7 @@ function createDifficultyCalibrator(challenges) {
    * @param {string} challengeId
    * @returns {number|null} Calibrated difficulty 0-100, null if no data
    */
-  function calibrateDifficulty(challengeId) {
+  function calibrateDifficulty(challengeId, precomputedMedians) {
     var stats = getStats(challengeId);
     if (!stats) return null;
 
@@ -1046,11 +1085,15 @@ function createDifficultyCalibrator(challenges) {
     var skipScore = stats.skipRate * 100;
 
     // Time factor: normalize against all challenges
-    var allMedians = [];
-    Object.keys(_responses).forEach(function (id) {
-      var s = getStats(id);
-      if (s && s.medianTimeMs > 0) allMedians.push(s.medianTimeMs);
-    });
+    // Use precomputed medians if available, otherwise compute
+    var allMedians = precomputedMedians;
+    if (!allMedians) {
+      allMedians = [];
+      Object.keys(_responses).forEach(function (id) {
+        var s = getStats(id);
+        if (s && s.medianTimeMs > 0) allMedians.push(s.medianTimeMs);
+      });
+    }
 
     var timeScore = 50; // default
     if (allMedians.length > 1 && stats.medianTimeMs > 0) {
@@ -1076,10 +1119,17 @@ function createDifficultyCalibrator(challenges) {
    *                    calibratedDifficulty: number, stats: Object, delta: number }>}
    */
   function calibrateAll() {
+    // Precompute median times once for all challenges
+    var allMedians = [];
+    Object.keys(_responses).forEach(function (id) {
+      var s = getStats(id);
+      if (s && s.medianTimeMs > 0) allMedians.push(s.medianTimeMs);
+    });
+
     var results = [];
     _challenges.forEach(function (ch) {
       var id = ch.id || ch.title;
-      var calibrated = calibrateDifficulty(id);
+      var calibrated = calibrateDifficulty(id, allMedians);
       if (calibrated !== null) {
         var original = typeof ch.difficulty === "number" ? ch.difficulty : 50;
         results.push({

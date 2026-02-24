@@ -1243,6 +1243,576 @@ function createDifficultyCalibrator(challenges) {
   };
 }
 
+// ── Security Scorer ─────────────────────────────────────────────────
+
+/**
+ * createSecurityScorer(challenges) — evaluates a CAPTCHA challenge set's
+ * resistance to automated solving across 6 security dimensions.
+ */
+function createSecurityScorer(challenges) {
+  // ── input validation ──
+  function validateChallenges(ch) {
+    if (!Array.isArray(ch) || ch.length === 0) {
+      throw new Error("challenges must be a non-empty array");
+    }
+    for (var i = 0; i < ch.length; i++) {
+      if (ch[i] == null || typeof ch[i] !== "object") {
+        throw new Error("each challenge must be an object");
+      }
+      if (ch[i].id == null || ch[i].id === "") {
+        throw new Error("each challenge must have an id");
+      }
+      if (ch[i].humanAnswer == null || ch[i].humanAnswer === "") {
+        throw new Error("each challenge must have a humanAnswer");
+      }
+    }
+  }
+
+  validateChallenges(challenges);
+
+  // defensive copy
+  var _challenges = challenges.map(function (c) {
+    return Object.assign({}, c, {
+      keywords: Array.isArray(c.keywords) ? c.keywords.slice() : [],
+    });
+  });
+
+  var _dimensions = null;
+
+  // ── helpers ──
+  function clamp(v) {
+    return Math.max(0, Math.min(100, v));
+  }
+
+  function getWords(text) {
+    return text.toLowerCase().split(/\s+/).filter(function (w) { return w.length > 0; });
+  }
+
+  // ── dimension scorers ──
+
+  function scoreAnswerDiversity() {
+    var answers = _challenges.map(function (c) { return c.humanAnswer; });
+    var allWords = [];
+    var lengths = [];
+    for (var i = 0; i < answers.length; i++) {
+      var words = getWords(answers[i]);
+      lengths.push(words.length);
+      for (var j = 0; j < words.length; j++) {
+        allWords.push(words[j]);
+      }
+    }
+
+    var totalWords = allWords.length;
+    var uniqueSet = {};
+    for (var i = 0; i < allWords.length; i++) {
+      uniqueSet[allWords[i]] = true;
+    }
+    var uniqueCount = Object.keys(uniqueSet).length;
+    var uniqueWordRatio = totalWords > 0 ? uniqueCount / totalWords : 0;
+
+    // coefficient of variation for answer lengths
+    var mean = 0;
+    for (var i = 0; i < lengths.length; i++) mean += lengths[i];
+    mean = lengths.length > 0 ? mean / lengths.length : 0;
+
+    var variance = 0;
+    for (var i = 0; i < lengths.length; i++) {
+      variance += (lengths[i] - mean) * (lengths[i] - mean);
+    }
+    variance = lengths.length > 1 ? variance / lengths.length : 0;
+    var stddev = Math.sqrt(variance);
+    var coefficientOfVariation = mean > 0 ? stddev / mean : 0;
+
+    var avgAnswerLength = mean;
+
+    // score: blend unique ratio and CV
+    // uniqueWordRatio close to 1 = very diverse, close to 0 = repetitive
+    // CV > 0.5 = good variance in length
+    var ratioScore = uniqueWordRatio * 100;
+    var cvScore = Math.min(coefficientOfVariation / 0.5, 1) * 100;
+    var lengthScore = Math.min(avgAnswerLength / 10, 1) * 100;
+
+    var score = clamp(ratioScore * 0.5 + cvScore * 0.25 + lengthScore * 0.25);
+
+    return {
+      name: "Answer Diversity",
+      score: Math.round(score),
+      weight: 0.20,
+      details: {
+        uniqueWordRatio: uniqueWordRatio,
+        coefficientOfVariation: coefficientOfVariation,
+        avgAnswerLength: avgAnswerLength,
+        totalWords: totalWords,
+        uniqueWords: uniqueCount,
+      },
+    };
+  }
+
+  function scoreAIResistance() {
+    var withAI = [];
+    for (var i = 0; i < _challenges.length; i++) {
+      if (_challenges[i].aiAnswer != null && _challenges[i].aiAnswer !== "") {
+        withAI.push(_challenges[i]);
+      }
+    }
+
+    if (withAI.length === 0) {
+      return {
+        name: "AI Resistance",
+        score: 50,
+        weight: 0.25,
+        details: {
+          avgSimilarity: 0,
+          challengesWithAI: 0,
+          totalChallenges: _challenges.length,
+          perChallenge: [],
+        },
+      };
+    }
+
+    var totalDissimilarity = 0;
+    var perChallenge = [];
+    for (var i = 0; i < withAI.length; i++) {
+      var sim = textSimilarity(withAI[i].humanAnswer, withAI[i].aiAnswer);
+      perChallenge.push({ id: withAI[i].id, similarity: sim });
+      totalDissimilarity += (1 - sim);
+    }
+    var avgDissimilarity = totalDissimilarity / withAI.length;
+    var avgSimilarity = 1 - avgDissimilarity;
+
+    return {
+      name: "AI Resistance",
+      score: clamp(Math.round(avgDissimilarity * 100)),
+      weight: 0.25,
+      details: {
+        avgSimilarity: avgSimilarity,
+        challengesWithAI: withAI.length,
+        totalChallenges: _challenges.length,
+        perChallenge: perChallenge,
+      },
+    };
+  }
+
+  function scoreKeywordSpecificity() {
+    var WEAK = { video: 1, gif: 1, image: 1, picture: 1, animation: 1, clip: 1, funny: 1, cool: 1, thing: 1, stuff: 1 };
+
+    var allKeywords = [];
+    for (var i = 0; i < _challenges.length; i++) {
+      var kw = _challenges[i].keywords;
+      if (Array.isArray(kw)) {
+        for (var j = 0; j < kw.length; j++) {
+          allKeywords.push(kw[j].toLowerCase());
+        }
+      }
+    }
+
+    if (allKeywords.length === 0) {
+      return {
+        name: "Keyword Specificity",
+        score: 50,
+        weight: 0.15,
+        details: {
+          uniqueKeywordRatio: 0,
+          avgKeywordLength: 0,
+          weakKeywordRatio: 0,
+          totalKeywords: 0,
+          uniqueKeywords: 0,
+        },
+      };
+    }
+
+    var uniqueSet = {};
+    var weakCount = 0;
+    var totalLen = 0;
+    for (var i = 0; i < allKeywords.length; i++) {
+      uniqueSet[allKeywords[i]] = true;
+      if (WEAK[allKeywords[i]]) weakCount++;
+      totalLen += allKeywords[i].length;
+    }
+    var uniqueCount = Object.keys(uniqueSet).length;
+    var uniqueRatio = uniqueCount / allKeywords.length;
+    var avgLen = totalLen / allKeywords.length;
+    var weakRatio = weakCount / allKeywords.length;
+
+    // avg keyword length score: 6+ chars is good
+    var lengthScore = Math.min(avgLen / 6, 1) * 100;
+    var uScore = uniqueRatio * 100;
+    var weakScore = (1 - weakRatio) * 100;
+
+    var score = clamp(Math.round(uScore * 0.35 + lengthScore * 0.30 + weakScore * 0.35));
+
+    return {
+      name: "Keyword Specificity",
+      score: score,
+      weight: 0.15,
+      details: {
+        uniqueKeywordRatio: uniqueRatio,
+        avgKeywordLength: avgLen,
+        weakKeywordRatio: weakRatio,
+        totalKeywords: allKeywords.length,
+        uniqueKeywords: uniqueCount,
+      },
+    };
+  }
+
+  function scoreDifficultyCoverage() {
+    var withDiff = [];
+    for (var i = 0; i < _challenges.length; i++) {
+      if (_challenges[i].difficulty != null && typeof _challenges[i].difficulty === "number") {
+        withDiff.push(_challenges[i].difficulty);
+      }
+    }
+
+    if (withDiff.length === 0) {
+      return {
+        name: "Difficulty Coverage",
+        score: 50,
+        weight: 0.15,
+        details: {
+          easy: 0,
+          medium: 0,
+          hard: 0,
+          challengesWithDifficulty: 0,
+          totalChallenges: _challenges.length,
+        },
+      };
+    }
+
+    var easy = 0, medium = 0, hard = 0;
+    for (var i = 0; i < withDiff.length; i++) {
+      var d = withDiff[i];
+      if (d <= 33) easy++;
+      else if (d <= 66) medium++;
+      else hard++;
+    }
+
+    var bucketsFilled = (easy > 0 ? 1 : 0) + (medium > 0 ? 1 : 0) + (hard > 0 ? 1 : 0);
+    var coverageScore = (bucketsFilled / 3) * 100;
+
+    // evenness: ideal is 1/3 each
+    var total = withDiff.length;
+    var easyP = easy / total, medP = medium / total, hardP = hard / total;
+    var ideal = 1 / 3;
+    var deviation = Math.abs(easyP - ideal) + Math.abs(medP - ideal) + Math.abs(hardP - ideal);
+    // max deviation is ~1.33 (all in one bucket)
+    var evennessScore = (1 - deviation / 1.334) * 100;
+
+    var score = clamp(Math.round(coverageScore * 0.5 + evennessScore * 0.5));
+
+    return {
+      name: "Difficulty Coverage",
+      score: score,
+      weight: 0.15,
+      details: {
+        easy: easy,
+        medium: medium,
+        hard: hard,
+        challengesWithDifficulty: withDiff.length,
+        totalChallenges: _challenges.length,
+      },
+    };
+  }
+
+  function scoreCognitiveComplexity() {
+    var TEMPORAL = ["then", "after", "before", "while", "suddenly", "until", "finally", "next"];
+    var CAUSAL = ["because", "so", "causes", "makes"];
+    var CAUSAL_PHRASES = ["leads to", "results in"];
+
+    var totalWordCount = 0;
+    var temporalCount = 0;
+    var causalCount = 0;
+
+    for (var i = 0; i < _challenges.length; i++) {
+      var answer = _challenges[i].humanAnswer.toLowerCase();
+      var words = getWords(answer);
+      totalWordCount += words.length;
+
+      for (var j = 0; j < words.length; j++) {
+        if (TEMPORAL.indexOf(words[j]) !== -1) temporalCount++;
+        if (CAUSAL.indexOf(words[j]) !== -1) causalCount++;
+      }
+      for (var k = 0; k < CAUSAL_PHRASES.length; k++) {
+        if (answer.indexOf(CAUSAL_PHRASES[k]) !== -1) causalCount++;
+      }
+    }
+
+    var avgWordCount = _challenges.length > 0 ? totalWordCount / _challenges.length : 0;
+    var totalAnswerWords = totalWordCount;
+    var temporalDensity = totalAnswerWords > 0 ? temporalCount / totalAnswerWords : 0;
+    var causalDensity = totalAnswerWords > 0 ? causalCount / totalAnswerWords : 0;
+
+    // wordCountScore: 15+ words is good
+    var wordCountScore = Math.min(avgWordCount / 15, 1) * 100;
+    // temporal density: 0.05+ is good
+    var temporalScore = Math.min(temporalDensity / 0.05, 1) * 100;
+    // causal density: 0.03+ is good
+    var causalScore = Math.min(causalDensity / 0.03, 1) * 100;
+
+    var score = clamp(Math.round(wordCountScore * 0.50 + temporalScore * 0.25 + causalScore * 0.25));
+
+    return {
+      name: "Cognitive Complexity",
+      score: score,
+      weight: 0.15,
+      details: {
+        avgWordCount: avgWordCount,
+        temporalWords: temporalCount,
+        causalWords: causalCount,
+        temporalDensity: temporalDensity,
+        causalDensity: causalDensity,
+      },
+    };
+  }
+
+  function scorePatternPredictability() {
+    var answers = _challenges.map(function (c) { return c.humanAnswer; });
+
+    if (answers.length <= 1) {
+      return {
+        name: "Pattern Predictability",
+        score: 50,
+        weight: 0.10,
+        details: {
+          firstWordDiversity: 1,
+          avgBigramUniqueness: 1,
+          mostCommonFirstWordRatio: answers.length === 1 ? 1 : 0,
+        },
+      };
+    }
+
+    // first-word diversity
+    var firstWords = {};
+    var firstWordCounts = {};
+    for (var i = 0; i < answers.length; i++) {
+      var w = getWords(answers[i]);
+      if (w.length > 0) {
+        var fw = w[0];
+        firstWords[fw] = true;
+        firstWordCounts[fw] = (firstWordCounts[fw] || 0) + 1;
+      }
+    }
+    var firstWordDiversity = Object.keys(firstWords).length / answers.length;
+
+    // most common first word ratio (structural similarity)
+    var maxFirstWordCount = 0;
+    var fwKeys = Object.keys(firstWordCounts);
+    for (var i = 0; i < fwKeys.length; i++) {
+      if (firstWordCounts[fwKeys[i]] > maxFirstWordCount) {
+        maxFirstWordCount = firstWordCounts[fwKeys[i]];
+      }
+    }
+    var mostCommonFirstWordRatio = maxFirstWordCount / answers.length;
+
+    // bigram uniqueness
+    var totalBigrams = 0;
+    var uniqueBigrams = {};
+    for (var i = 0; i < answers.length; i++) {
+      var words = getWords(answers[i]);
+      for (var j = 0; j < words.length - 1; j++) {
+        var bigram = words[j] + " " + words[j + 1];
+        uniqueBigrams[bigram] = true;
+        totalBigrams++;
+      }
+    }
+    var bigramUniqueness = totalBigrams > 0 ? Object.keys(uniqueBigrams).length / totalBigrams : 1;
+
+    // score: high diversity + high bigram uniqueness + low structural similarity = good
+    var diversityScore = firstWordDiversity * 100;
+    var bigramScore = bigramUniqueness * 100;
+    var structureScore = (1 - mostCommonFirstWordRatio) * 100;
+
+    var score = clamp(Math.round(diversityScore * 0.40 + bigramScore * 0.30 + structureScore * 0.30));
+
+    return {
+      name: "Pattern Predictability",
+      score: score,
+      weight: 0.10,
+      details: {
+        firstWordDiversity: firstWordDiversity,
+        avgBigramUniqueness: bigramUniqueness,
+        mostCommonFirstWordRatio: mostCommonFirstWordRatio,
+      },
+    };
+  }
+
+  // ── compute all dimensions ──
+
+  function computeDimensions() {
+    _dimensions = [
+      scoreAnswerDiversity(),
+      scoreAIResistance(),
+      scoreKeywordSpecificity(),
+      scoreDifficultyCoverage(),
+      scoreCognitiveComplexity(),
+      scorePatternPredictability(),
+    ];
+  }
+
+  function ensureComputed() {
+    if (!_dimensions) computeDimensions();
+  }
+
+  // ── grade ──
+  function computeGrade(score) {
+    if (score >= 80) return "A";
+    if (score >= 65) return "B";
+    if (score >= 50) return "C";
+    if (score >= 35) return "D";
+    return "F";
+  }
+
+  // ── public API ──
+
+  function getDimensions() {
+    ensureComputed();
+    return _dimensions.slice();
+  }
+
+  function getDimension(name) {
+    ensureComputed();
+    var nameMap = {
+      answerDiversity: "Answer Diversity",
+      aiResistance: "AI Resistance",
+      keywordSpecificity: "Keyword Specificity",
+      difficultyCoverage: "Difficulty Coverage",
+      cognitiveComplexity: "Cognitive Complexity",
+      patternPredictability: "Pattern Predictability",
+    };
+    var fullName = nameMap[name] || name;
+    for (var i = 0; i < _dimensions.length; i++) {
+      if (_dimensions[i].name === fullName) return _dimensions[i];
+    }
+    return null;
+  }
+
+  function getVulnerabilities() {
+    ensureComputed();
+    var vulns = [];
+    for (var i = 0; i < _dimensions.length; i++) {
+      var d = _dimensions[i];
+      if (d.score < 60) {
+        var severity = d.score < 20 ? "critical" : d.score < 40 ? "high" : "medium";
+        var descriptions = {
+          "Answer Diversity": "Human answers lack diversity — bots can pattern-match common phrasing",
+          "AI Resistance": "AI-generated answers closely match human answers — weak bot discrimination",
+          "Keyword Specificity": "Keywords are too generic — bots can guess challenge content",
+          "Difficulty Coverage": "Challenge difficulty is not well-distributed across easy, medium, and hard",
+          "Cognitive Complexity": "Answers lack cognitive complexity — simple patterns are easy for bots",
+          "Pattern Predictability": "Answers follow predictable structural patterns — bots can exploit this",
+        };
+        vulns.push({
+          dimension: d.name,
+          score: d.score,
+          severity: severity,
+          description: descriptions[d.name] || "This dimension scores below secure threshold",
+        });
+      }
+    }
+    return vulns;
+  }
+
+  function getRecommendations() {
+    ensureComputed();
+    var vulns = getVulnerabilities();
+    var recs = [];
+
+    var recTexts = {
+      "Answer Diversity": "Add challenges with longer, more varied descriptions to increase answer diversity",
+      "AI Resistance": "Replace challenges where AI answers closely match human answers — these provide weak bot discrimination",
+      "Keyword Specificity": "Replace generic keywords (video, gif, funny) with specific, descriptive terms",
+      "Difficulty Coverage": "Include challenges across easy, medium, and hard difficulty levels",
+      "Cognitive Complexity": "Add challenges requiring temporal or causal reasoning (sequences, cause-effect)",
+      "Pattern Predictability": "Vary answer structure — avoid starting all answers with the same phrase",
+    };
+
+    for (var i = 0; i < vulns.length; i++) {
+      recs.push({
+        priority: vulns[i].severity,
+        dimension: vulns[i].dimension,
+        text: recTexts[vulns[i].dimension] || "Improve this dimension to strengthen security",
+      });
+    }
+
+    // general recommendation based on overall score
+    var overall = computeOverallScore();
+    var generalPriority = overall >= 80 ? "low" : overall >= 65 ? "medium" : overall >= 50 ? "high" : "critical";
+    var generalText = overall >= 80
+      ? "Challenge set has strong security — maintain current diversity and complexity levels"
+      : overall >= 65
+        ? "Challenge set is reasonably secure — address flagged vulnerabilities for improvement"
+        : overall >= 50
+          ? "Challenge set has moderate security gaps — prioritize fixing high-severity vulnerabilities"
+          : "Challenge set has significant security weaknesses — comprehensive improvements needed";
+    recs.push({
+      priority: generalPriority,
+      dimension: "overall",
+      text: generalText,
+    });
+
+    return recs;
+  }
+
+  function computeOverallScore() {
+    ensureComputed();
+    var score = 0;
+    for (var i = 0; i < _dimensions.length; i++) {
+      score += _dimensions[i].score * _dimensions[i].weight;
+    }
+    return clamp(Math.round(score));
+  }
+
+  function getReport() {
+    ensureComputed();
+    var score = computeOverallScore();
+    var grade = computeGrade(score);
+    var dims = getDimensions();
+    var vulns = getVulnerabilities();
+    var recs = getRecommendations();
+
+    var summary = "Security score: " + score + "/100 (Grade " + grade + "). ";
+    if (vulns.length === 0) {
+      summary += "No vulnerabilities detected across " + dims.length + " dimensions.";
+    } else {
+      summary += vulns.length + " vulnerability" + (vulns.length > 1 ? "ies" : "") + " detected: " +
+        vulns.map(function (v) { return v.dimension + " (" + v.severity + ")"; }).join(", ") + ".";
+    }
+
+    return {
+      score: score,
+      grade: grade,
+      dimensions: dims,
+      vulnerabilities: vulns,
+      recommendations: recs,
+      summary: summary,
+    };
+  }
+
+  function isSecure(threshold) {
+    if (threshold == null) threshold = 60;
+    return computeOverallScore() >= threshold;
+  }
+
+  function reset(newChallenges) {
+    validateChallenges(newChallenges);
+    _challenges = newChallenges.map(function (c) {
+      return Object.assign({}, c, {
+        keywords: Array.isArray(c.keywords) ? c.keywords.slice() : [],
+      });
+    });
+    _dimensions = null;
+  }
+
+  return {
+    getReport: getReport,
+    getDimensions: getDimensions,
+    getDimension: getDimension,
+    getVulnerabilities: getVulnerabilities,
+    getRecommendations: getRecommendations,
+    isSecure: isSecure,
+    reset: reset,
+  };
+}
+
 // ── Exports ─────────────────────────────────────────────────────────
 
 var gifCaptcha = {
@@ -1259,6 +1829,7 @@ var gifCaptcha = {
   secureRandomInt: secureRandomInt,
   createSetAnalyzer: createSetAnalyzer,
   createDifficultyCalibrator: createDifficultyCalibrator,
+  createSecurityScorer: createSecurityScorer,
   GIF_MAX_RETRIES: GIF_MAX_RETRIES,
   GIF_RETRY_DELAY_MS: GIF_RETRY_DELAY_MS,
 };

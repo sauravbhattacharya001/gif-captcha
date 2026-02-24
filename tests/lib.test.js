@@ -255,11 +255,193 @@ describe("module exports", () => {
   it("should export all expected functions", () => {
     assert.equal(typeof gifCaptcha.sanitize, "function");
     assert.equal(typeof gifCaptcha.createSanitizer, "function");
+    assert.equal(typeof gifCaptcha.isSafeUrl, "function");
     assert.equal(typeof gifCaptcha.loadGifWithRetry, "function");
     assert.equal(typeof gifCaptcha.textSimilarity, "function");
     assert.equal(typeof gifCaptcha.validateAnswer, "function");
     assert.equal(typeof gifCaptcha.createChallenge, "function");
     assert.equal(typeof gifCaptcha.pickChallenges, "function");
     assert.equal(typeof gifCaptcha.installRoundRectPolyfill, "function");
+  });
+});
+
+// ── isSafeUrl ───────────────────────────────────────────────────────
+
+describe("isSafeUrl", () => {
+  // ── Valid URLs ──
+
+  it("should accept https URLs", () => {
+    assert.equal(gifCaptcha.isSafeUrl("https://example.com/image.gif"), true);
+  });
+
+  it("should accept http URLs", () => {
+    assert.equal(gifCaptcha.isSafeUrl("http://example.com/image.gif"), true);
+  });
+
+  it("should accept protocol-relative URLs", () => {
+    assert.equal(gifCaptcha.isSafeUrl("//cdn.example.com/image.gif"), true);
+  });
+
+  it("should accept absolute paths", () => {
+    assert.equal(gifCaptcha.isSafeUrl("/images/captcha.gif"), true);
+  });
+
+  it("should accept relative paths", () => {
+    assert.equal(gifCaptcha.isSafeUrl("images/captcha.gif"), true);
+  });
+
+  it("should accept URLs with query strings", () => {
+    assert.equal(gifCaptcha.isSafeUrl("https://example.com/img.gif?retry=1"), true);
+  });
+
+  it("should accept URLs with fragments", () => {
+    assert.equal(gifCaptcha.isSafeUrl("https://example.com/img.gif#top"), true);
+  });
+
+  it("should accept URLs with ports", () => {
+    assert.equal(gifCaptcha.isSafeUrl("https://example.com:8080/img.gif"), true);
+  });
+
+  // ── Dangerous schemes ──
+
+  it("should reject javascript: URLs", () => {
+    assert.equal(gifCaptcha.isSafeUrl("javascript:alert(1)"), false);
+  });
+
+  it("should reject JAVASCRIPT: URLs (case-insensitive)", () => {
+    assert.equal(gifCaptcha.isSafeUrl("JAVASCRIPT:alert(1)"), false);
+  });
+
+  it("should reject jAvAsCrIpT: URLs (mixed case)", () => {
+    assert.equal(gifCaptcha.isSafeUrl("jAvAsCrIpT:alert(1)"), false);
+  });
+
+  it("should reject data: URLs", () => {
+    assert.equal(gifCaptcha.isSafeUrl("data:text/html,<script>alert(1)</script>"), false);
+  });
+
+  it("should reject data: image URLs (even base64)", () => {
+    assert.equal(gifCaptcha.isSafeUrl("data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"), false);
+  });
+
+  it("should reject vbscript: URLs", () => {
+    assert.equal(gifCaptcha.isSafeUrl("vbscript:msgbox('xss')"), false);
+  });
+
+  it("should reject blob: URLs", () => {
+    assert.equal(gifCaptcha.isSafeUrl("blob:https://example.com/uuid"), false);
+  });
+
+  it("should reject file: URLs", () => {
+    assert.equal(gifCaptcha.isSafeUrl("file:///etc/passwd"), false);
+  });
+
+  it("should reject ftp: URLs", () => {
+    assert.equal(gifCaptcha.isSafeUrl("ftp://example.com/file"), false);
+  });
+
+  // ── Bypass attempts ──
+
+  it("should reject javascript: with leading whitespace", () => {
+    assert.equal(gifCaptcha.isSafeUrl("  javascript:alert(1)"), false);
+  });
+
+  it("should reject javascript: with leading tab", () => {
+    assert.equal(gifCaptcha.isSafeUrl("\tjavascript:alert(1)"), false);
+  });
+
+  it("should reject javascript: with leading newline", () => {
+    assert.equal(gifCaptcha.isSafeUrl("\njavascript:alert(1)"), false);
+  });
+
+  it("should reject javascript: with leading null byte", () => {
+    assert.equal(gifCaptcha.isSafeUrl("\x00javascript:alert(1)"), false);
+  });
+
+  it("should reject javascript: with leading control chars", () => {
+    assert.equal(gifCaptcha.isSafeUrl("\x01\x02\x03javascript:alert(1)"), false);
+  });
+
+  // ── Invalid inputs ──
+
+  it("should reject null", () => {
+    assert.equal(gifCaptcha.isSafeUrl(null), false);
+  });
+
+  it("should reject undefined", () => {
+    assert.equal(gifCaptcha.isSafeUrl(undefined), false);
+  });
+
+  it("should reject empty string", () => {
+    assert.equal(gifCaptcha.isSafeUrl(""), false);
+  });
+
+  it("should reject whitespace-only string", () => {
+    assert.equal(gifCaptcha.isSafeUrl("   "), false);
+  });
+
+  it("should reject non-string types", () => {
+    assert.equal(gifCaptcha.isSafeUrl(42), false);
+    assert.equal(gifCaptcha.isSafeUrl(true), false);
+    assert.equal(gifCaptcha.isSafeUrl({}), false);
+  });
+});
+
+// ── createChallenge URL validation ──────────────────────────────────
+
+describe("createChallenge URL validation", () => {
+  it("should reject javascript: gifUrl", () => {
+    assert.throws(
+      () => gifCaptcha.createChallenge({ id: 1, gifUrl: "javascript:alert(1)", humanAnswer: "test" }),
+      /safe HTTP/
+    );
+  });
+
+  it("should reject data: gifUrl", () => {
+    assert.throws(
+      () => gifCaptcha.createChallenge({ id: 1, gifUrl: "data:image/gif;base64,abc", humanAnswer: "test" }),
+      /safe HTTP/
+    );
+  });
+
+  it("should accept valid https gifUrl", () => {
+    const challenge = gifCaptcha.createChallenge({
+      id: 1,
+      gifUrl: "https://example.com/cat.gif",
+      humanAnswer: "a cat",
+    });
+    assert.equal(challenge.gifUrl, "https://example.com/cat.gif");
+  });
+
+  it("should reject javascript: sourceUrl", () => {
+    assert.throws(
+      () => gifCaptcha.createChallenge({
+        id: 1,
+        gifUrl: "https://example.com/cat.gif",
+        humanAnswer: "a cat",
+        sourceUrl: "javascript:alert(1)",
+      }),
+      /sourceUrl must be a safe/
+    );
+  });
+
+  it("should accept # as sourceUrl (default fallback)", () => {
+    const challenge = gifCaptcha.createChallenge({
+      id: 1,
+      gifUrl: "https://example.com/cat.gif",
+      humanAnswer: "a cat",
+      sourceUrl: "#",
+    });
+    assert.equal(challenge.sourceUrl, "#");
+  });
+
+  it("should accept valid https sourceUrl", () => {
+    const challenge = gifCaptcha.createChallenge({
+      id: 1,
+      gifUrl: "https://example.com/cat.gif",
+      humanAnswer: "a cat",
+      sourceUrl: "https://giphy.com/cat",
+    });
+    assert.equal(challenge.sourceUrl, "https://giphy.com/cat");
   });
 });

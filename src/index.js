@@ -49,6 +49,34 @@ function sanitize(str) {
   return _defaultSanitizer.sanitize(str);
 }
 
+// ── URL Validation ──────────────────────────────────────────────────
+
+/**
+ * Validate that a URL is safe for use as an image source.
+ * Rejects javascript:, data:, vbscript:, and other dangerous schemes.
+ * Only allows http: and https: protocols.
+ *
+ * @param {string} url - URL to validate
+ * @returns {boolean} True if the URL is safe for img.src
+ */
+function isSafeUrl(url) {
+  if (!url || typeof url !== "string") return false;
+  var trimmed = url.trim();
+  if (trimmed.length === 0) return false;
+  // Strip leading control characters and whitespace (bypass prevention)
+  var cleaned = trimmed.replace(/^[\x00-\x1f\s]+/, "");
+  // Reject known dangerous schemes (case-insensitive)
+  var lower = cleaned.toLowerCase();
+  if (/^(javascript|data|vbscript|blob|file|ftp):/.test(lower)) return false;
+  // Must start with http: or https: or be a relative/protocol-relative URL
+  if (/^https?:\/\//i.test(cleaned)) return true;
+  // Allow protocol-relative URLs (//example.com/image.gif)
+  if (/^\/\//.test(cleaned)) return true;
+  // Allow relative paths (/images/foo.gif, images/foo.gif)
+  if (/^[a-zA-Z0-9\/._-]/.test(cleaned)) return true;
+  return false;
+}
+
 // ── GIF Loading ─────────────────────────────────────────────────────
 
 /** Maximum number of retries for GIF loading. */
@@ -70,6 +98,14 @@ var GIF_RETRY_DELAY_MS = 1500;
  */
 function loadGifWithRetry(container, challenge, attempt) {
   attempt = attempt || 0;
+
+  // Validate URL before setting img.src (prevent javascript: / data: XSS)
+  if (!isSafeUrl(challenge.gifUrl)) {
+    container.innerHTML =
+      '<div class="gif-error"><p>\u26a0\ufe0f Invalid GIF URL.</p></div>';
+    return;
+  }
+
   var img = document.createElement("img");
   img.alt = (challenge.title || "CAPTCHA") + " GIF";
 
@@ -89,7 +125,7 @@ function loadGifWithRetry(container, challenge, attempt) {
       return;
     }
 
-    var hasSource = challenge.sourceUrl && challenge.sourceUrl !== "#";
+    var hasSource = challenge.sourceUrl && challenge.sourceUrl !== "#" && isSafeUrl(challenge.sourceUrl);
     var errorHtml =
       '<div class="gif-error">' +
       "<p>\u26a0\ufe0f GIF couldn't load (CDN may be blocking direct access).</p>";
@@ -194,6 +230,12 @@ function createChallenge(opts) {
   if (!opts || !opts.id || !opts.gifUrl || !opts.humanAnswer) {
     throw new Error("Challenge requires id, gifUrl, and humanAnswer");
   }
+  if (!isSafeUrl(opts.gifUrl)) {
+    throw new Error("Challenge gifUrl must be a safe HTTP(S) or relative URL");
+  }
+  if (opts.sourceUrl && opts.sourceUrl !== "#" && !isSafeUrl(opts.sourceUrl)) {
+    throw new Error("Challenge sourceUrl must be a safe HTTP(S) or relative URL");
+  }
   return {
     id: opts.id,
     title: opts.title || "Challenge " + opts.id,
@@ -258,6 +300,7 @@ function installRoundRectPolyfill() {
 var gifCaptcha = {
   sanitize: sanitize,
   createSanitizer: createSanitizer,
+  isSafeUrl: isSafeUrl,
   loadGifWithRetry: loadGifWithRetry,
   textSimilarity: textSimilarity,
   validateAnswer: validateAnswer,

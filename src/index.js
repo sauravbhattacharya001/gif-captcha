@@ -526,6 +526,383 @@ function installRoundRectPolyfill() {
   }
 }
 
+// ── Challenge Set Analyzer ──────────────────────────────────────────
+
+/**
+ * Create an analyzer for a set of CAPTCHA challenges.
+ * Computes aggregate statistics about challenge quality, diversity,
+ * and potential issues.
+ *
+ * @param {Object[]} challenges - Array of challenge objects (from createChallenge)
+ * @returns {Object} SetAnalyzer instance
+ */
+function createSetAnalyzer(challenges) {
+  if (!Array.isArray(challenges) || challenges.length === 0) {
+    throw new Error("challenges must be a non-empty array");
+  }
+
+  // Validate all are proper challenge objects
+  challenges.forEach(function (c, i) {
+    if (!c || !c.id || !c.humanAnswer) {
+      throw new Error("Invalid challenge at index " + i + ": requires id and humanAnswer");
+    }
+  });
+
+  var _challenges = challenges.slice(); // defensive copy
+
+  /**
+   * Compute answer length statistics.
+   * @returns {{ min: number, max: number, mean: number, median: number, stdDev: number }}
+   */
+  function answerLengthStats() {
+    var lengths = _challenges.map(function (c) { return c.humanAnswer.length; });
+    lengths.sort(function (a, b) { return a - b; });
+    var n = lengths.length;
+    var min = lengths[0];
+    var max = lengths[n - 1];
+    var sum = lengths.reduce(function (s, v) { return s + v; }, 0);
+    var mean = sum / n;
+    var median;
+    if (n % 2 === 1) {
+      median = lengths[Math.floor(n / 2)];
+    } else {
+      median = (lengths[n / 2 - 1] + lengths[n / 2]) / 2;
+    }
+    var variance = lengths.reduce(function (s, v) {
+      return s + (v - mean) * (v - mean);
+    }, 0);
+    var stdDev = n > 1 ? Math.sqrt(variance / (n - 1)) : 0;
+    return { min: min, max: max, mean: mean, median: median, stdDev: stdDev };
+  }
+
+  /**
+   * Compute keyword coverage — which keywords appear across challenges
+   * and how frequently.
+   * @returns {{ totalKeywords: number, uniqueKeywords: number,
+   *             keywordFrequency: Object<string, number>,
+   *             challengesWithKeywords: number,
+   *             challengesWithoutKeywords: number,
+   *             coverageRatio: number }}
+   */
+  function keywordCoverage() {
+    var totalKeywords = 0;
+    var keywordFrequency = {};
+    var challengesWithKeywords = 0;
+    var challengesWithoutKeywords = 0;
+
+    _challenges.forEach(function (c) {
+      var kws = c.keywords || [];
+      if (kws.length > 0) {
+        challengesWithKeywords++;
+      } else {
+        challengesWithoutKeywords++;
+      }
+      kws.forEach(function (kw) {
+        totalKeywords++;
+        var lower = kw.toLowerCase();
+        keywordFrequency[lower] = (keywordFrequency[lower] || 0) + 1;
+      });
+    });
+
+    var uniqueKeywords = Object.keys(keywordFrequency).length;
+    var coverageRatio = challengesWithKeywords / _challenges.length;
+
+    return {
+      totalKeywords: totalKeywords,
+      uniqueKeywords: uniqueKeywords,
+      keywordFrequency: keywordFrequency,
+      challengesWithKeywords: challengesWithKeywords,
+      challengesWithoutKeywords: challengesWithoutKeywords,
+      coverageRatio: coverageRatio,
+    };
+  }
+
+  /**
+   * Find pairs of challenges with similar human answers.
+   * Uses textSimilarity() from the library.
+   * @param {number} [threshold=0.6] - Similarity threshold (0-1)
+   * @returns {Array<{ idA: string|number, idB: string|number, similarity: number }>}
+   */
+  function findSimilarPairs(threshold) {
+    if (threshold === undefined || threshold === null) threshold = 0.6;
+    var pairs = [];
+    for (var i = 0; i < _challenges.length; i++) {
+      for (var j = i + 1; j < _challenges.length; j++) {
+        var sim = textSimilarity(_challenges[i].humanAnswer, _challenges[j].humanAnswer);
+        if (sim >= threshold) {
+          pairs.push({ idA: _challenges[i].id, idB: _challenges[j].id, similarity: sim });
+        }
+      }
+    }
+    pairs.sort(function (a, b) { return b.similarity - a.similarity; });
+    return pairs;
+  }
+
+  /**
+   * Detect potential duplicates (very high similarity > 0.85).
+   * @returns {Array<{ idA: string|number, idB: string|number, similarity: number }>}
+   */
+  function detectDuplicates() {
+    return findSimilarPairs(0.85);
+  }
+
+  /**
+   * Compute diversity score (0-100) based on:
+   * - Answer variety (low similarity between answers)
+   * - Keyword spread (different keywords across challenges)
+   * - Title uniqueness
+   * @returns {{ score: number, breakdown: { answerDiversity: number, keywordSpread: number, titleUniqueness: number }}}
+   */
+  function diversityScore() {
+    // answerDiversity: mean pairwise dissimilarity × 100
+    var totalDissimilarity = 0;
+    var pairCount = 0;
+    for (var i = 0; i < _challenges.length; i++) {
+      for (var j = i + 1; j < _challenges.length; j++) {
+        var sim = textSimilarity(_challenges[i].humanAnswer, _challenges[j].humanAnswer);
+        totalDissimilarity += (1 - sim);
+        pairCount++;
+      }
+    }
+    var answerDiversity = pairCount > 0 ? (totalDissimilarity / pairCount) * 100 : 100;
+
+    // keywordSpread: uniqueKeywords / (challengeCount × 2) × 100, capped at 100
+    var kc = keywordCoverage();
+    var keywordSpread = Math.min(100, (kc.uniqueKeywords / (_challenges.length * 2)) * 100);
+
+    // titleUniqueness: uniqueTitles / totalChallenges × 100
+    var titleSet = {};
+    _challenges.forEach(function (c) {
+      var t = (c.title || "").toLowerCase();
+      titleSet[t] = true;
+    });
+    var uniqueTitles = Object.keys(titleSet).length;
+    var titleUniqueness = (uniqueTitles / _challenges.length) * 100;
+
+    // Overall: weighted average
+    var score = answerDiversity * 0.5 + keywordSpread * 0.3 + titleUniqueness * 0.2;
+
+    return {
+      score: score,
+      breakdown: {
+        answerDiversity: answerDiversity,
+        keywordSpread: keywordSpread,
+        titleUniqueness: titleUniqueness,
+      },
+    };
+  }
+
+  /**
+   * Analyze answer complexity for each challenge.
+   * @returns {Array<{ id: string|number, wordCount: number,
+   *                    uniqueWords: number, avgWordLength: number,
+   *                    complexity: string }>}
+   * complexity is "simple" (<5 words), "moderate" (5-15), "complex" (>15)
+   */
+  function answerComplexity() {
+    return _challenges.map(function (c) {
+      var words = c.humanAnswer.split(/\s+/).filter(Boolean);
+      var wordCount = words.length;
+      var lowerWords = {};
+      words.forEach(function (w) { lowerWords[w.toLowerCase()] = true; });
+      var uniqueWords = Object.keys(lowerWords).length;
+      var totalWordLen = words.reduce(function (s, w) { return s + w.length; }, 0);
+      var avgWordLength = wordCount > 0 ? totalWordLen / wordCount : 0;
+      var complexity;
+      if (wordCount < 5) {
+        complexity = "simple";
+      } else if (wordCount <= 15) {
+        complexity = "moderate";
+      } else {
+        complexity = "complex";
+      }
+      return {
+        id: c.id,
+        wordCount: wordCount,
+        uniqueWords: uniqueWords,
+        avgWordLength: avgWordLength,
+        complexity: complexity,
+      };
+    });
+  }
+
+  /**
+   * Check for common quality issues in the challenge set.
+   * @returns {Array<{ type: string, severity: string, message: string, challengeIds: Array }>}
+   */
+  function qualityIssues() {
+    var issues = [];
+
+    // duplicate_answers
+    var dups = detectDuplicates();
+    if (dups.length > 0) {
+      var dupIds = [];
+      dups.forEach(function (d) {
+        if (dupIds.indexOf(d.idA) === -1) dupIds.push(d.idA);
+        if (dupIds.indexOf(d.idB) === -1) dupIds.push(d.idB);
+      });
+      issues.push({
+        type: "duplicate_answers",
+        severity: "error",
+        message: "Found " + dups.length + " pair(s) with very similar answers",
+        challengeIds: dupIds,
+      });
+    }
+
+    // missing_keywords
+    var missingKw = _challenges.filter(function (c) {
+      return !c.keywords || c.keywords.length === 0;
+    });
+    if (missingKw.length > 0) {
+      issues.push({
+        type: "missing_keywords",
+        severity: "warning",
+        message: missingKw.length + " challenge(s) have no keywords",
+        challengeIds: missingKw.map(function (c) { return c.id; }),
+      });
+    }
+
+    // short_answers
+    var shortAns = _challenges.filter(function (c) {
+      return c.humanAnswer.length < 10;
+    });
+    if (shortAns.length > 0) {
+      issues.push({
+        type: "short_answers",
+        severity: "warning",
+        message: shortAns.length + " challenge(s) have answers under 10 characters",
+        challengeIds: shortAns.map(function (c) { return c.id; }),
+      });
+    }
+
+    // identical_titles
+    var titleCount = {};
+    _challenges.forEach(function (c) {
+      var t = (c.title || "").toLowerCase();
+      titleCount[t] = (titleCount[t] || 0) + 1;
+    });
+    var dupTitleIds = [];
+    Object.keys(titleCount).forEach(function (t) {
+      if (titleCount[t] > 1) {
+        _challenges.forEach(function (c) {
+          if ((c.title || "").toLowerCase() === t) {
+            dupTitleIds.push(c.id);
+          }
+        });
+      }
+    });
+    if (dupTitleIds.length > 0) {
+      issues.push({
+        type: "identical_titles",
+        severity: "warning",
+        message: "Some challenges share identical titles",
+        challengeIds: dupTitleIds,
+      });
+    }
+
+    // small_set
+    if (_challenges.length < 5) {
+      issues.push({
+        type: "small_set",
+        severity: "info",
+        message: "Challenge set has fewer than 5 challenges",
+        challengeIds: _challenges.map(function (c) { return c.id; }),
+      });
+    }
+
+    // no_ai_answers
+    var noAi = _challenges.filter(function (c) {
+      return !c.aiAnswer || c.aiAnswer === "";
+    });
+    if (noAi.length > 0) {
+      issues.push({
+        type: "no_ai_answers",
+        severity: "info",
+        message: noAi.length + " challenge(s) have no AI answer",
+        challengeIds: noAi.map(function (c) { return c.id; }),
+      });
+    }
+
+    // unbalanced_complexity
+    var comp = answerComplexity();
+    var counts = { simple: 0, moderate: 0, complex: 0 };
+    comp.forEach(function (c) { counts[c.complexity]++; });
+    var total = _challenges.length;
+    var dominant = null;
+    Object.keys(counts).forEach(function (k) {
+      if (counts[k] / total > 0.7) dominant = k;
+    });
+    if (dominant) {
+      issues.push({
+        type: "unbalanced_complexity",
+        severity: "info",
+        message: "Over 70% of challenges are " + dominant + " complexity",
+        challengeIds: comp.filter(function (c) { return c.complexity === dominant; }).map(function (c) { return c.id; }),
+      });
+    }
+
+    return issues;
+  }
+
+  /**
+   * Generate a comprehensive quality report.
+   * @returns {{ challengeCount: number, answerStats: Object, keywords: Object,
+   *   similarPairs: Array, duplicates: Array, diversity: Object,
+   *   complexity: Array, issues: Array,
+   *   overallQuality: { score: number, grade: string } }}
+   */
+  function generateReport() {
+    var issuesList = qualityIssues();
+
+    var score = 100;
+    issuesList.forEach(function (issue) {
+      if (issue.severity === "error") score -= 20;
+      else if (issue.severity === "warning") score -= 10;
+      else if (issue.severity === "info") score -= 5;
+    });
+    if (score < 0) score = 0;
+
+    var grade;
+    if (score >= 90) grade = "A";
+    else if (score >= 75) grade = "B";
+    else if (score >= 60) grade = "C";
+    else if (score >= 40) grade = "D";
+    else grade = "F";
+
+    return {
+      challengeCount: _challenges.length,
+      answerStats: answerLengthStats(),
+      keywords: keywordCoverage(),
+      similarPairs: findSimilarPairs(),
+      duplicates: detectDuplicates(),
+      diversity: diversityScore(),
+      complexity: answerComplexity(),
+      issues: issuesList,
+      overallQuality: { score: score, grade: grade },
+    };
+  }
+
+  /**
+   * Get the challenge count.
+   * @returns {number}
+   */
+  function size() {
+    return _challenges.length;
+  }
+
+  return {
+    answerLengthStats: answerLengthStats,
+    keywordCoverage: keywordCoverage,
+    findSimilarPairs: findSimilarPairs,
+    detectDuplicates: detectDuplicates,
+    diversityScore: diversityScore,
+    answerComplexity: answerComplexity,
+    qualityIssues: qualityIssues,
+    generateReport: generateReport,
+    size: size,
+  };
+}
+
 // ── Exports ─────────────────────────────────────────────────────────
 
 var gifCaptcha = {
@@ -540,6 +917,7 @@ var gifCaptcha = {
   createAttemptTracker: createAttemptTracker,
   installRoundRectPolyfill: installRoundRectPolyfill,
   secureRandomInt: secureRandomInt,
+  createSetAnalyzer: createSetAnalyzer,
   GIF_MAX_RETRIES: GIF_MAX_RETRIES,
   GIF_RETRY_DELAY_MS: GIF_RETRY_DELAY_MS,
 };

@@ -903,6 +903,346 @@ function createSetAnalyzer(challenges) {
   };
 }
 
+// ── Difficulty Calibrator ────────────────────────────────────────────
+
+/**
+ * Create a difficulty calibrator for CAPTCHA challenges.
+ * Ingests real human response data and recalibrates challenge difficulty
+ * ratings based on statistical performance analysis.
+ *
+ * @param {Object[]} challenges - Array of challenge objects
+ * @returns {Object} DifficultyCalibrator instance
+ */
+function createDifficultyCalibrator(challenges) {
+  if (!Array.isArray(challenges) || challenges.length === 0) {
+    throw new Error("challenges must be a non-empty array");
+  }
+
+  var _challenges = challenges.slice();
+  var _responses = {};
+
+  /**
+   * Record a response for a challenge.
+   * @param {string} challengeId
+   * @param {{ timeMs: number, correct: boolean, skipped?: boolean }} response
+   */
+  function recordResponse(challengeId, response) {
+    if (!challengeId || typeof challengeId !== "string") {
+      throw new Error("challengeId must be a non-empty string");
+    }
+    if (!response || typeof response !== "object") {
+      throw new Error("response must be an object");
+    }
+    if (typeof response.timeMs !== "number" || response.timeMs < 0) {
+      throw new Error("response.timeMs must be a non-negative number");
+    }
+    if (typeof response.correct !== "boolean") {
+      throw new Error("response.correct must be a boolean");
+    }
+    if (!_responses[challengeId]) _responses[challengeId] = [];
+    _responses[challengeId].push({
+      timeMs: response.timeMs,
+      correct: response.correct,
+      skipped: Boolean(response.skipped),
+    });
+  }
+
+  /**
+   * Record multiple responses at once.
+   * @param {Array<{ challengeId: string, timeMs: number, correct: boolean, skipped?: boolean }>} responses
+   */
+  function recordBatch(responses) {
+    if (!Array.isArray(responses)) {
+      throw new Error("responses must be an array");
+    }
+    responses.forEach(function (r) {
+      recordResponse(r.challengeId, r);
+    });
+  }
+
+  /**
+   * Get response statistics for a challenge.
+   * @param {string} challengeId
+   * @returns {{ totalResponses: number, correctCount: number, skipCount: number,
+   *             accuracy: number, skipRate: number, avgTimeMs: number,
+   *             medianTimeMs: number, minTimeMs: number, maxTimeMs: number,
+   *             stdDevTimeMs: number }|null}
+   */
+  function getStats(challengeId) {
+    var data = _responses[challengeId];
+    if (!data || data.length === 0) {
+      return null;
+    }
+
+    var correctCount = 0;
+    var skipCount = 0;
+    var times = [];
+
+    data.forEach(function (r) {
+      if (r.correct) correctCount++;
+      if (r.skipped) skipCount++;
+      if (!r.skipped) times.push(r.timeMs);
+    });
+
+    times.sort(function (a, b) { return a - b; });
+
+    var avgTime = 0;
+    var medianTime = 0;
+    var minTime = 0;
+    var maxTime = 0;
+    var stdDev = 0;
+
+    if (times.length > 0) {
+      var sum = 0;
+      times.forEach(function (t) { sum += t; });
+      avgTime = sum / times.length;
+
+      var mid = Math.floor(times.length / 2);
+      medianTime = times.length % 2 === 0
+        ? (times[mid - 1] + times[mid]) / 2
+        : times[mid];
+
+      minTime = times[0];
+      maxTime = times[times.length - 1];
+
+      var sqDiffSum = 0;
+      times.forEach(function (t) {
+        var diff = t - avgTime;
+        sqDiffSum += diff * diff;
+      });
+      stdDev = Math.sqrt(sqDiffSum / times.length);
+    }
+
+    return {
+      totalResponses: data.length,
+      correctCount: correctCount,
+      skipCount: skipCount,
+      accuracy: data.length > 0 ? correctCount / data.length : 0,
+      skipRate: data.length > 0 ? skipCount / data.length : 0,
+      avgTimeMs: Math.round(avgTime),
+      medianTimeMs: Math.round(medianTime),
+      minTimeMs: minTime,
+      maxTimeMs: maxTime,
+      stdDevTimeMs: Math.round(stdDev),
+    };
+  }
+
+  /**
+   * Calculate calibrated difficulty score (0-100) for a challenge.
+   * Factors: accuracy (40%), skip rate (20%), response time percentile (40%).
+   * Lower accuracy = higher difficulty, higher skip rate = higher difficulty,
+   * longer response time = higher difficulty.
+   * @param {string} challengeId
+   * @returns {number|null} Calibrated difficulty 0-100, null if no data
+   */
+  function calibrateDifficulty(challengeId) {
+    var stats = getStats(challengeId);
+    if (!stats) return null;
+
+    // Accuracy factor: 0% accuracy = 100 difficulty, 100% accuracy = 0
+    var accuracyScore = (1 - stats.accuracy) * 100;
+
+    // Skip factor: 100% skip rate = 100 difficulty
+    var skipScore = stats.skipRate * 100;
+
+    // Time factor: normalize against all challenges
+    var allMedians = [];
+    Object.keys(_responses).forEach(function (id) {
+      var s = getStats(id);
+      if (s && s.medianTimeMs > 0) allMedians.push(s.medianTimeMs);
+    });
+
+    var timeScore = 50; // default
+    if (allMedians.length > 1 && stats.medianTimeMs > 0) {
+      allMedians.sort(function (a, b) { return a - b; });
+      // Percentile rank
+      var rank = 0;
+      allMedians.forEach(function (m) {
+        if (m <= stats.medianTimeMs) rank++;
+      });
+      timeScore = (rank / allMedians.length) * 100;
+    } else if (allMedians.length === 1 && stats.medianTimeMs > 0) {
+      timeScore = 50;
+    }
+
+    // Weighted combination
+    var difficulty = (accuracyScore * 0.4) + (skipScore * 0.2) + (timeScore * 0.4);
+    return Math.round(Math.min(100, Math.max(0, difficulty)));
+  }
+
+  /**
+   * Get calibration results for all challenges with data.
+   * @returns {Array<{ challengeId: string, originalDifficulty: number,
+   *                    calibratedDifficulty: number, stats: Object, delta: number }>}
+   */
+  function calibrateAll() {
+    var results = [];
+    _challenges.forEach(function (ch) {
+      var id = ch.id || ch.title;
+      var calibrated = calibrateDifficulty(id);
+      if (calibrated !== null) {
+        var original = typeof ch.difficulty === "number" ? ch.difficulty : 50;
+        results.push({
+          challengeId: id,
+          originalDifficulty: original,
+          calibratedDifficulty: calibrated,
+          stats: getStats(id),
+          delta: calibrated - original,
+        });
+      }
+    });
+    // Sort by largest delta (biggest calibration adjustment first)
+    results.sort(function (a, b) {
+      return Math.abs(b.delta) - Math.abs(a.delta);
+    });
+    return results;
+  }
+
+  /**
+   * Identify outlier challenges — ones where original difficulty
+   * differs significantly from calibrated difficulty.
+   * @param {number} [threshold=20] - Delta threshold to flag as outlier
+   * @returns {Array<{ challengeId: string, originalDifficulty: number,
+   *                    calibratedDifficulty: number, delta: number, direction: string }>}
+   */
+  function findOutliers(threshold) {
+    if (threshold === undefined) threshold = 20;
+    if (typeof threshold !== "number" || threshold < 0) {
+      throw new Error("threshold must be a non-negative number");
+    }
+    var all = calibrateAll();
+    return all
+      .filter(function (r) { return Math.abs(r.delta) >= threshold; })
+      .map(function (r) {
+        return {
+          challengeId: r.challengeId,
+          originalDifficulty: r.originalDifficulty,
+          calibratedDifficulty: r.calibratedDifficulty,
+          delta: r.delta,
+          direction: r.delta > 0 ? "harder_than_rated" : "easier_than_rated",
+        };
+      });
+  }
+
+  /**
+   * Get difficulty distribution buckets.
+   * @returns {{ easy: number, medium: number, hard: number }}
+   */
+  function getDifficultyDistribution() {
+    var dist = { easy: 0, medium: 0, hard: 0 };
+    _challenges.forEach(function (ch) {
+      var id = ch.id || ch.title;
+      var d = calibrateDifficulty(id);
+      if (d === null) return;
+      if (d < 33) dist.easy++;
+      else if (d < 67) dist.medium++;
+      else dist.hard++;
+    });
+    return dist;
+  }
+
+  /**
+   * Generate a calibration summary report.
+   * @returns {{ challengeCount: number, responsesRecorded: number,
+   *             calibratedCount: number, avgDifficulty: number,
+   *             distribution: Object, outlierCount: number,
+   *             recommendations: string[] }}
+   */
+  function generateReport() {
+    var calibrated = calibrateAll();
+    var totalResp = 0;
+    Object.keys(_responses).forEach(function (id) {
+      totalResp += _responses[id].length;
+    });
+
+    var avgDiff = 0;
+    if (calibrated.length > 0) {
+      var sum = 0;
+      calibrated.forEach(function (c) { sum += c.calibratedDifficulty; });
+      avgDiff = Math.round(sum / calibrated.length);
+    }
+
+    var outliers = findOutliers(20);
+    var dist = getDifficultyDistribution();
+
+    var recommendations = [];
+    if (dist.easy === 0 && calibrated.length > 0) {
+      recommendations.push("No easy challenges detected — consider adding simpler CAPTCHAs for better UX.");
+    }
+    if (dist.hard === 0 && calibrated.length > 0) {
+      recommendations.push("No hard challenges — security may be weak against advanced bots.");
+    }
+    if (outliers.length > 0) {
+      var harderCount = outliers.filter(function (o) { return o.direction === "harder_than_rated"; }).length;
+      var easierCount = outliers.length - harderCount;
+      if (harderCount > 0) {
+        recommendations.push(harderCount + " challenge(s) are harder than their rated difficulty — consider adjusting.");
+      }
+      if (easierCount > 0) {
+        recommendations.push(easierCount + " challenge(s) are easier than their rated difficulty — consider adjusting.");
+      }
+    }
+    var totalCh = _challenges.length;
+    if (totalResp < totalCh * 5) {
+      recommendations.push("Insufficient data — collect at least 5 responses per challenge for reliable calibration.");
+    }
+
+    return {
+      challengeCount: totalCh,
+      responsesRecorded: totalResp,
+      calibratedCount: calibrated.length,
+      avgDifficulty: avgDiff,
+      distribution: dist,
+      outlierCount: outliers.length,
+      recommendations: recommendations,
+    };
+  }
+
+  /**
+   * Clear all recorded responses.
+   */
+  function reset() {
+    Object.keys(_responses).forEach(function (k) {
+      delete _responses[k];
+    });
+  }
+
+  /**
+   * Get the number of responses recorded for a challenge.
+   * @param {string} challengeId
+   * @returns {number}
+   */
+  function responseCount(challengeId) {
+    return (_responses[challengeId] || []).length;
+  }
+
+  /**
+   * Get total responses across all challenges.
+   * @returns {number}
+   */
+  function totalResponses() {
+    var count = 0;
+    Object.keys(_responses).forEach(function (id) {
+      count += _responses[id].length;
+    });
+    return count;
+  }
+
+  return {
+    recordResponse: recordResponse,
+    recordBatch: recordBatch,
+    getStats: getStats,
+    calibrateDifficulty: calibrateDifficulty,
+    calibrateAll: calibrateAll,
+    findOutliers: findOutliers,
+    getDifficultyDistribution: getDifficultyDistribution,
+    generateReport: generateReport,
+    reset: reset,
+    responseCount: responseCount,
+    totalResponses: totalResponses,
+  };
+}
+
 // ── Exports ─────────────────────────────────────────────────────────
 
 var gifCaptcha = {
@@ -918,6 +1258,7 @@ var gifCaptcha = {
   installRoundRectPolyfill: installRoundRectPolyfill,
   secureRandomInt: secureRandomInt,
   createSetAnalyzer: createSetAnalyzer,
+  createDifficultyCalibrator: createDifficultyCalibrator,
   GIF_MAX_RETRIES: GIF_MAX_RETRIES,
   GIF_RETRY_DELAY_MS: GIF_RETRY_DELAY_MS,
 };

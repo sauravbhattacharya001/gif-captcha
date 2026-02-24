@@ -9,6 +9,32 @@
 
 "use strict";
 
+// ── Crypto-secure Randomness ────────────────────────────────────────
+
+var _crypto = null;
+try {
+  if (typeof require !== 'undefined') _crypto = require('crypto');
+} catch (e) { /* not available */ }
+
+/**
+ * Generate a cryptographically secure random integer in [0, max).
+ * Falls back to Math.random() if no crypto API is available.
+ *
+ * @param {number} max - Exclusive upper bound (must be > 0)
+ * @returns {number} Random integer in [0, max)
+ */
+function secureRandomInt(max) {
+  if (_crypto && typeof _crypto.randomInt === 'function') {
+    return _crypto.randomInt(max);
+  }
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    var arr = new Uint32Array(1);
+    crypto.getRandomValues(arr);
+    return arr[0] % max;
+  }
+  return Math.floor(Math.random() * max);
+}
+
 // ── Text Sanitizer ──────────────────────────────────────────────────
 
 /**
@@ -236,7 +262,7 @@ function createChallenge(opts) {
   if (opts.sourceUrl && opts.sourceUrl !== "#" && !isSafeUrl(opts.sourceUrl)) {
     throw new Error("Challenge sourceUrl must be a safe HTTP(S) or relative URL");
   }
-  return {
+  return Object.freeze({
     id: opts.id,
     title: opts.title || "Challenge " + opts.id,
     gifUrl: opts.gifUrl,
@@ -244,7 +270,7 @@ function createChallenge(opts) {
     humanAnswer: opts.humanAnswer,
     aiAnswer: opts.aiAnswer || "",
     keywords: opts.keywords || [],
-  };
+  });
 }
 
 /**
@@ -260,7 +286,7 @@ function pickChallenges(pool, count) {
   var shuffled = pool.slice();
   // Fisher-Yates shuffle
   for (var i = shuffled.length - 1; i > 0; i--) {
-    var j = Math.floor(Math.random() * (i + 1));
+    var j = secureRandomInt(i + 1);
     var temp = shuffled[i];
     shuffled[i] = shuffled[j];
     shuffled[j] = temp;
@@ -513,6 +539,7 @@ var gifCaptcha = {
   pickChallenges: pickChallenges,
   createAttemptTracker: createAttemptTracker,
   installRoundRectPolyfill: installRoundRectPolyfill,
+  secureRandomInt: secureRandomInt,
   GIF_MAX_RETRIES: GIF_MAX_RETRIES,
   GIF_RETRY_DELAY_MS: GIF_RETRY_DELAY_MS,
 };

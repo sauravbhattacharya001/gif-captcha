@@ -268,6 +268,211 @@ function pickChallenges(pool, count) {
   return shuffled.slice(0, count);
 }
 
+// ── Attempt Tracking / Rate Limiting ────────────────────────────────
+
+/**
+ * Create an attempt tracker for rate-limiting CAPTCHA validation.
+ * Tracks attempts per challenge ID with configurable limits and lockout.
+ *
+ * @param {Object} [options] - Tracker configuration
+ * @param {number} [options.maxAttempts=5] - Maximum attempts before lockout
+ * @param {number} [options.lockoutMs=30000] - Base lockout duration in ms
+ * @param {boolean} [options.exponentialBackoff=true] - Double lockout on each subsequent violation
+ * @param {number} [options.maxLockoutMs=300000] - Maximum lockout duration (5 minutes)
+ * @returns {Object} AttemptTracker instance
+ */
+function createAttemptTracker(options) {
+  options = options || {};
+  var maxAttempts = (typeof options.maxAttempts === "number" && options.maxAttempts > 0)
+    ? Math.floor(options.maxAttempts) : 5;
+  var baseLockoutMs = (typeof options.lockoutMs === "number" && options.lockoutMs > 0)
+    ? options.lockoutMs : 30000;
+  var exponentialBackoff = options.exponentialBackoff !== false;
+  var maxLockoutMs = (typeof options.maxLockoutMs === "number" && options.maxLockoutMs > 0)
+    ? options.maxLockoutMs : 300000;
+
+  // Internal state: Map<challengeId, { attempts: number, timestamps: number[], lockoutUntil: number, lockoutCount: number }>
+  var challenges = {};
+
+  function _now() {
+    return Date.now();
+  }
+
+  function _getEntry(challengeId) {
+    var id = String(challengeId);
+    if (!challenges[id]) {
+      challenges[id] = { attempts: 0, timestamps: [], lockoutUntil: 0, lockoutCount: 0 };
+    }
+    return challenges[id];
+  }
+
+  function _computeLockoutMs(lockoutCount) {
+    if (!exponentialBackoff) return baseLockoutMs;
+    // 2^(lockoutCount-1) * baseLockoutMs, capped at maxLockoutMs
+    var multiplier = Math.pow(2, Math.max(0, lockoutCount - 1));
+    return Math.min(baseLockoutMs * multiplier, maxLockoutMs);
+  }
+
+  /**
+   * Check if a challenge is currently locked out.
+   *
+   * @param {string|number} challengeId - Challenge identifier
+   * @returns {{ locked: boolean, lockoutRemainingMs: number }}
+   */
+  function isLocked(challengeId) {
+    var entry = _getEntry(challengeId);
+    var now = _now();
+    if (entry.lockoutUntil > now) {
+      return { locked: true, lockoutRemainingMs: entry.lockoutUntil - now };
+    }
+    // Lockout expired — reset attempts for this lockout period
+    if (entry.lockoutUntil > 0 && entry.lockoutUntil <= now) {
+      entry.attempts = 0;
+      entry.timestamps = [];
+      entry.lockoutUntil = 0;
+    }
+    return { locked: false, lockoutRemainingMs: 0 };
+  }
+
+  /**
+   * Record an attempt and check for lockout.
+   *
+   * @param {string|number} challengeId - Challenge identifier
+   * @returns {{ allowed: boolean, attemptsRemaining: number, lockoutRemainingMs: number, attemptNumber: number }}
+   */
+  function recordAttempt(challengeId) {
+    var lockStatus = isLocked(challengeId);
+    if (lockStatus.locked) {
+      var entry = _getEntry(challengeId);
+      return {
+        allowed: false,
+        attemptsRemaining: 0,
+        lockoutRemainingMs: lockStatus.lockoutRemainingMs,
+        attemptNumber: entry.attempts,
+      };
+    }
+
+    var entry = _getEntry(challengeId);
+    entry.attempts++;
+    entry.timestamps.push(_now());
+
+    if (entry.attempts >= maxAttempts) {
+      // Trigger lockout
+      entry.lockoutCount++;
+      var lockMs = _computeLockoutMs(entry.lockoutCount);
+      entry.lockoutUntil = _now() + lockMs;
+      return {
+        allowed: false,
+        attemptsRemaining: 0,
+        lockoutRemainingMs: lockMs,
+        attemptNumber: entry.attempts,
+      };
+    }
+
+    return {
+      allowed: true,
+      attemptsRemaining: maxAttempts - entry.attempts,
+      lockoutRemainingMs: 0,
+      attemptNumber: entry.attempts,
+    };
+  }
+
+  /**
+   * Validate a CAPTCHA answer with attempt tracking.
+   * Wraps the core validateAnswer() with rate limiting.
+   *
+   * @param {string} userAnswer - User's response
+   * @param {string} expectedAnswer - Expected answer
+   * @param {string|number} challengeId - Challenge identifier for tracking
+   * @param {Object} [validationOptions] - Options passed to validateAnswer()
+   * @returns {{ passed: boolean, score: number, hasKeywords: boolean, locked: boolean, attemptsRemaining: number, lockoutRemainingMs: number }}
+   */
+  function trackedValidate(userAnswer, expectedAnswer, challengeId, validationOptions) {
+    if (challengeId == null) {
+      throw new Error("challengeId is required for tracked validation");
+    }
+
+    var attempt = recordAttempt(challengeId);
+    if (!attempt.allowed) {
+      return {
+        passed: false,
+        score: 0,
+        hasKeywords: false,
+        locked: true,
+        attemptsRemaining: attempt.attemptsRemaining,
+        lockoutRemainingMs: attempt.lockoutRemainingMs,
+      };
+    }
+
+    var result = validateAnswer(userAnswer, expectedAnswer, validationOptions);
+    return {
+      passed: result.passed,
+      score: result.score,
+      hasKeywords: result.hasKeywords,
+      locked: false,
+      attemptsRemaining: attempt.attemptsRemaining,
+      lockoutRemainingMs: 0,
+    };
+  }
+
+  /**
+   * Reset tracking for a specific challenge.
+   *
+   * @param {string|number} challengeId - Challenge to reset
+   */
+  function resetChallenge(challengeId) {
+    delete challenges[String(challengeId)];
+  }
+
+  /**
+   * Reset all tracking state.
+   */
+  function resetAll() {
+    challenges = {};
+  }
+
+  /**
+   * Get tracking stats for a challenge.
+   *
+   * @param {string|number} challengeId - Challenge identifier
+   * @returns {{ attempts: number, lockoutCount: number, isLocked: boolean, lockoutRemainingMs: number }}
+   */
+  function getStats(challengeId) {
+    var entry = _getEntry(challengeId);
+    var lockStatus = isLocked(challengeId);
+    return {
+      attempts: entry.attempts,
+      lockoutCount: entry.lockoutCount,
+      isLocked: lockStatus.locked,
+      lockoutRemainingMs: lockStatus.lockoutRemainingMs,
+    };
+  }
+
+  /**
+   * Get the tracker configuration.
+   *
+   * @returns {{ maxAttempts: number, lockoutMs: number, exponentialBackoff: boolean, maxLockoutMs: number }}
+   */
+  function getConfig() {
+    return {
+      maxAttempts: maxAttempts,
+      lockoutMs: baseLockoutMs,
+      exponentialBackoff: exponentialBackoff,
+      maxLockoutMs: maxLockoutMs,
+    };
+  }
+
+  return {
+    isLocked: isLocked,
+    recordAttempt: recordAttempt,
+    validateAnswer: trackedValidate,
+    resetChallenge: resetChallenge,
+    resetAll: resetAll,
+    getStats: getStats,
+    getConfig: getConfig,
+  };
+}
+
 // ── Canvas Polyfill ─────────────────────────────────────────────────
 
 /**
@@ -306,6 +511,7 @@ var gifCaptcha = {
   validateAnswer: validateAnswer,
   createChallenge: createChallenge,
   pickChallenges: pickChallenges,
+  createAttemptTracker: createAttemptTracker,
   installRoundRectPolyfill: installRoundRectPolyfill,
   GIF_MAX_RETRIES: GIF_MAX_RETRIES,
   GIF_RETRY_DELAY_MS: GIF_RETRY_DELAY_MS,

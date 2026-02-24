@@ -445,3 +445,287 @@ describe("createChallenge URL validation", () => {
     assert.equal(challenge.sourceUrl, "https://giphy.com/cat");
   });
 });
+
+// ── createAttemptTracker ────────────────────────────────────────────
+
+describe("createAttemptTracker", () => {
+  // ── Configuration ──
+
+  it("should export createAttemptTracker", () => {
+    assert.equal(typeof gifCaptcha.createAttemptTracker, "function");
+  });
+
+  it("should create tracker with default config", () => {
+    const tracker = gifCaptcha.createAttemptTracker();
+    const config = tracker.getConfig();
+    assert.equal(config.maxAttempts, 5);
+    assert.equal(config.lockoutMs, 30000);
+    assert.equal(config.exponentialBackoff, true);
+    assert.equal(config.maxLockoutMs, 300000);
+  });
+
+  it("should accept custom config", () => {
+    const tracker = gifCaptcha.createAttemptTracker({
+      maxAttempts: 3,
+      lockoutMs: 10000,
+      exponentialBackoff: false,
+      maxLockoutMs: 60000,
+    });
+    const config = tracker.getConfig();
+    assert.equal(config.maxAttempts, 3);
+    assert.equal(config.lockoutMs, 10000);
+    assert.equal(config.exponentialBackoff, false);
+    assert.equal(config.maxLockoutMs, 60000);
+  });
+
+  it("should reject invalid maxAttempts (zero, negative)", () => {
+    const t1 = gifCaptcha.createAttemptTracker({ maxAttempts: 0 });
+    assert.equal(t1.getConfig().maxAttempts, 5);
+    const t2 = gifCaptcha.createAttemptTracker({ maxAttempts: -1 });
+    assert.equal(t2.getConfig().maxAttempts, 5);
+  });
+
+  it("should floor non-integer maxAttempts", () => {
+    const tracker = gifCaptcha.createAttemptTracker({ maxAttempts: 3.7 });
+    assert.equal(tracker.getConfig().maxAttempts, 3);
+  });
+
+  // ── recordAttempt ──
+
+  it("should allow attempts below limit", () => {
+    const tracker = gifCaptcha.createAttemptTracker({ maxAttempts: 3 });
+
+    const r1 = tracker.recordAttempt("c1");
+    assert.equal(r1.allowed, true);
+    assert.equal(r1.attemptsRemaining, 2);
+    assert.equal(r1.attemptNumber, 1);
+
+    const r2 = tracker.recordAttempt("c1");
+    assert.equal(r2.allowed, true);
+    assert.equal(r2.attemptsRemaining, 1);
+    assert.equal(r2.attemptNumber, 2);
+  });
+
+  it("should lock out after max attempts", () => {
+    const tracker = gifCaptcha.createAttemptTracker({ maxAttempts: 2, lockoutMs: 5000 });
+
+    tracker.recordAttempt("c1");
+    const r2 = tracker.recordAttempt("c1");
+    assert.equal(r2.allowed, false);
+    assert.equal(r2.attemptsRemaining, 0);
+    assert.ok(r2.lockoutRemainingMs > 0);
+  });
+
+  it("should track challenges independently", () => {
+    const tracker = gifCaptcha.createAttemptTracker({ maxAttempts: 2, lockoutMs: 5000 });
+
+    tracker.recordAttempt("c1");
+    tracker.recordAttempt("c1"); // locked
+
+    const r = tracker.recordAttempt("c2");
+    assert.equal(r.allowed, true); // c2 is independent
+    assert.equal(r.attemptsRemaining, 1);
+  });
+
+  it("should reject attempts during lockout", () => {
+    const tracker = gifCaptcha.createAttemptTracker({ maxAttempts: 1, lockoutMs: 60000 });
+
+    tracker.recordAttempt("c1"); // triggers lockout
+    const r = tracker.recordAttempt("c1");
+    assert.equal(r.allowed, false);
+    assert.ok(r.lockoutRemainingMs > 0);
+  });
+
+  // ── isLocked ──
+
+  it("should not be locked initially", () => {
+    const tracker = gifCaptcha.createAttemptTracker();
+    const status = tracker.isLocked("c1");
+    assert.equal(status.locked, false);
+    assert.equal(status.lockoutRemainingMs, 0);
+  });
+
+  it("should be locked after max attempts", () => {
+    const tracker = gifCaptcha.createAttemptTracker({ maxAttempts: 1, lockoutMs: 60000 });
+    tracker.recordAttempt("c1");
+    const status = tracker.isLocked("c1");
+    assert.equal(status.locked, true);
+    assert.ok(status.lockoutRemainingMs > 0);
+  });
+
+  // ── trackedValidate ──
+
+  it("should validate and track in one call", () => {
+    const tracker = gifCaptcha.createAttemptTracker({ maxAttempts: 3 });
+
+    const r = tracker.validateAnswer("the cat fell off the table", "a cat falls off a table", "c1");
+    assert.equal(r.locked, false);
+    assert.equal(typeof r.score, "number");
+    assert.equal(typeof r.passed, "boolean");
+    assert.equal(r.attemptsRemaining, 2);
+  });
+
+  it("should return locked=true when attempts exceeded", () => {
+    const tracker = gifCaptcha.createAttemptTracker({ maxAttempts: 1, lockoutMs: 60000 });
+
+    tracker.validateAnswer("guess", "answer", "c1");
+    const r = tracker.validateAnswer("guess2", "answer", "c1");
+    assert.equal(r.locked, true);
+    assert.equal(r.passed, false);
+    assert.equal(r.score, 0);
+    assert.ok(r.lockoutRemainingMs > 0);
+  });
+
+  it("should throw without challengeId", () => {
+    const tracker = gifCaptcha.createAttemptTracker();
+    assert.throws(
+      () => tracker.validateAnswer("guess", "answer"),
+      /challengeId is required/
+    );
+  });
+
+  it("should throw with null challengeId", () => {
+    const tracker = gifCaptcha.createAttemptTracker();
+    assert.throws(
+      () => tracker.validateAnswer("guess", "answer", null),
+      /challengeId is required/
+    );
+  });
+
+  it("should pass validation options through", () => {
+    const tracker = gifCaptcha.createAttemptTracker({ maxAttempts: 5 });
+    const r = tracker.validateAnswer(
+      "the cat is fluffy",
+      "a fluffy cat sits on a mat",
+      "c1",
+      { threshold: 0.9, requiredKeywords: ["cat"] }
+    );
+    assert.equal(r.hasKeywords, true);
+    // With threshold 0.9, partial match should fail
+    assert.equal(r.passed, false);
+    assert.equal(r.locked, false);
+  });
+
+  // ── Exponential backoff ──
+
+  it("should compute exponential lockout durations", () => {
+    const tracker = gifCaptcha.createAttemptTracker({
+      maxAttempts: 1,
+      lockoutMs: 1000,
+      exponentialBackoff: true,
+      maxLockoutMs: 100000,
+    });
+
+    // First lockout: 1000ms
+    const r1 = tracker.recordAttempt("c1");
+    assert.equal(r1.lockoutRemainingMs, 1000);
+
+    // Simulate expiry by resetting and re-triggering
+    // (can't easily time-travel, but getStats tracks lockoutCount)
+    const stats = tracker.getStats("c1");
+    assert.equal(stats.lockoutCount, 1);
+  });
+
+  it("should use flat lockout when exponentialBackoff=false", () => {
+    const tracker = gifCaptcha.createAttemptTracker({
+      maxAttempts: 1,
+      lockoutMs: 5000,
+      exponentialBackoff: false,
+    });
+
+    const r = tracker.recordAttempt("c1");
+    assert.equal(r.lockoutRemainingMs, 5000);
+  });
+
+  // ── resetChallenge ──
+
+  it("should reset a specific challenge", () => {
+    const tracker = gifCaptcha.createAttemptTracker({ maxAttempts: 2 });
+
+    tracker.recordAttempt("c1");
+    tracker.recordAttempt("c1"); // locked
+    assert.equal(tracker.isLocked("c1").locked, true);
+
+    tracker.resetChallenge("c1");
+    assert.equal(tracker.isLocked("c1").locked, false);
+    assert.equal(tracker.getStats("c1").attempts, 0);
+  });
+
+  it("should not affect other challenges on reset", () => {
+    const tracker = gifCaptcha.createAttemptTracker({ maxAttempts: 1, lockoutMs: 60000 });
+
+    tracker.recordAttempt("c1"); // locked
+    tracker.recordAttempt("c2"); // locked
+
+    tracker.resetChallenge("c1");
+    assert.equal(tracker.isLocked("c1").locked, false);
+    assert.equal(tracker.isLocked("c2").locked, true);
+  });
+
+  // ── resetAll ──
+
+  it("should clear all tracking state", () => {
+    const tracker = gifCaptcha.createAttemptTracker({ maxAttempts: 1, lockoutMs: 60000 });
+
+    tracker.recordAttempt("c1"); // locked
+    tracker.recordAttempt("c2"); // locked
+
+    tracker.resetAll();
+    assert.equal(tracker.isLocked("c1").locked, false);
+    assert.equal(tracker.isLocked("c2").locked, false);
+  });
+
+  // ── getStats ──
+
+  it("should return stats for a challenge", () => {
+    const tracker = gifCaptcha.createAttemptTracker({ maxAttempts: 3 });
+
+    tracker.recordAttempt("c1");
+    tracker.recordAttempt("c1");
+
+    const stats = tracker.getStats("c1");
+    assert.equal(stats.attempts, 2);
+    assert.equal(stats.lockoutCount, 0);
+    assert.equal(stats.isLocked, false);
+  });
+
+  it("should track lockout count", () => {
+    const tracker = gifCaptcha.createAttemptTracker({ maxAttempts: 1, lockoutMs: 60000 });
+
+    tracker.recordAttempt("c1"); // triggers lockout
+
+    const stats = tracker.getStats("c1");
+    assert.equal(stats.lockoutCount, 1);
+    assert.equal(stats.isLocked, true);
+  });
+
+  it("should return default stats for unknown challenge", () => {
+    const tracker = gifCaptcha.createAttemptTracker();
+    const stats = tracker.getStats("unknown");
+    assert.equal(stats.attempts, 0);
+    assert.equal(stats.lockoutCount, 0);
+    assert.equal(stats.isLocked, false);
+  });
+
+  // ── Numeric challenge IDs ──
+
+  it("should handle numeric challenge IDs", () => {
+    const tracker = gifCaptcha.createAttemptTracker({ maxAttempts: 2 });
+
+    const r = tracker.recordAttempt(42);
+    assert.equal(r.allowed, true);
+    assert.equal(r.attemptsRemaining, 1);
+  });
+
+  // ── Multiple trackers are independent ──
+
+  it("should keep separate state per tracker instance", () => {
+    const t1 = gifCaptcha.createAttemptTracker({ maxAttempts: 1, lockoutMs: 60000 });
+    const t2 = gifCaptcha.createAttemptTracker({ maxAttempts: 5 });
+
+    t1.recordAttempt("c1"); // t1 locked
+    const r = t2.recordAttempt("c1"); // t2 still OK
+    assert.equal(t1.isLocked("c1").locked, true);
+    assert.equal(r.allowed, true);
+  });
+});

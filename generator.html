@@ -93,7 +93,6 @@
             transition: border-color 0.2s;
         }
         .challenge-card:hover { border-color: var(--accent); }
-        .challenge-card.editing { border-color: var(--accent); }
         .challenge-card .card-row {
             display: flex;
             align-items: center;
@@ -166,15 +165,6 @@
         .icon-btn:hover { color: var(--text); border-color: var(--text); }
         .icon-btn.danger:hover { color: var(--red); border-color: var(--red); }
         .icon-btn.up:hover, .icon-btn.down:hover { color: var(--accent); border-color: var(--accent); }
-
-        /* Editor form (within card) */
-        .card-editor {
-            display: none;
-            padding: 1rem;
-            border-top: 1px solid var(--border);
-            background: var(--bg);
-        }
-        .challenge-card.editing .card-editor { display: block; }
 
         /* Empty state */
         .empty-state {

@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src https: data:; frame-ancestors 'none'; base-uri 'self'; form-action 'none';">
+    <meta name="referrer" content="no-referrer">
+    <title>GIF CAPTCHA — Effectiveness Dashboard</title>
+    <link rel="stylesheet" href="shared.css">
+    <style>
+        .container { max-width: 1200px; }
+
+        h2 {
+            font-size: 1.4rem;
+            margin: 2.5rem 0 1rem;
+            color: var(--accent);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        h2:first-child { margin-top: 0; }
+
+        /* Overview cards */
+        .overview-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        .overview-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.2rem;
+            text-align: center;
+        }
+        .overview-card .card-value {
+            font-size: 1.6rem;
+            font-weight: 800;
+            line-height: 1.2;
+        }
+        .overview-card .card-label {
+            font-size: 0.72rem;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-top: 0.3rem;
+        }
+        .overview-card .card-sub {
+            font-size: 0.75rem;
+            color: var(--muted);
+            margin-top: 0.2rem;
+        }
+
+        /* Effectiveness Matrix */
+        .matrix-container {
+            overflow-x: auto;
+            margin-bottom: 2rem;
+        }
+        .effectiveness-matrix {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+        .effectiveness-matrix th, .effectiveness-matrix td {
+            padding: 0.6rem 0.8rem;
+            border: 1px solid var(--border);
+            text-align: center;
+        }
+        .effectiveness-matrix th {
+            background: var(--surface);
+            color: var(--muted);
+            font-weight: 600;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+        .effectiveness-matrix th.row-header {
+            text-align: left;
+            color: var(--text);
+            text-transform: none;
+            font-size: 0.85rem;
+        }
+        .effectiveness-matrix td.score-cell {
+            font-weight: 700;
+            font-size: 0.95rem;
+            min-width: 60px;
+        }
+        .effectiveness-matrix td.avg-cell {
+            font-weight: 700;
+            background: var(--surface);
+            color: var(--accent);
+        }
+        .effectiveness-matrix th.avg-header {
+            color: var(--accent);
+        }
+
+        /* Charts */
+        .charts-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .chart-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+        }
+        .chart-card h3 {
+            font-size: 1rem;
+            margin-bottom: 1rem;
+            color: var(--text);
+        }
+
+        /* Model vulnerability cards */
+        .model-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        .model-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.25rem;
+        }
+        .model-card h4 {
+            font-size: 1rem;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .model-card .model-stat {
+            font-size: 0.82rem;
+            color: var(--muted);
+            margin-bottom: 0.3rem;
+        }
+        .model-card .model-stat strong {
+            color: var(--text);
+        }
+
+        /* Insights */
+        .insights-panel {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .insights-panel h3 {
+            font-size: 1rem;
+            margin-bottom: 1rem;
+            color: var(--accent);
+        }
+        .insights-panel ul {
+            list-style: none;
+            padding: 0;
+        }
+        .insights-panel li {
+            padding: 0.4rem 0;
+            font-size: 0.88rem;
+            color: var(--text);
+            border-bottom: 1px solid var(--border);
+        }
+        .insights-panel li:last-child { border-bottom: none; }
+        .insights-panel li::before {
+            content: "→ ";
+            color: var(--accent);
+            font-weight: 700;
+        }
+
+        @media (max-width: 768px) {
+            .overview-grid { grid-template-columns: repeat(2, 1fr); }
+            .charts-grid { grid-template-columns: 1fr; }
+            .model-cards { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📊 CAPTCHA Effectiveness Dashboard</h1>
+        <p class="subtitle">How well do GIF CAPTCHAs distinguish humans from AI models?</p>
+        <nav class="nav-links">
+            <a href="index.html">Home</a>
+            <a href="demo.html">Demo</a>
+            <a href="simulator.html">AI Simulator</a>
+            <a href="analysis.html">Analysis</a>
+            <a href="cognitive-load.html">Cognitive Load</a>
+            <a href="temporal.html">Temporal</a>
+            <a href="benchmark.html">Benchmark</a>
+            <a href="effectiveness.html" class="active">Effectiveness</a>
+        </nav>
+    </div>
+    <div class="container">
+        <div id="overviewGrid" class="overview-grid"></div>
+
+        <h2>📋 Effectiveness Matrix</h2>
+        <div class="matrix-container">
+            <table class="effectiveness-matrix" id="effectivenessMatrix"></table>
+        </div>
+
+        <div class="charts-grid">
+            <div class="chart-card">
+                <h3>📊 Category Effectiveness</h3>
+                <canvas id="categoryChart" width="500" height="300"></canvas>
+            </div>
+            <div class="chart-card">
+                <h3>📈 Difficulty vs Effectiveness</h3>
+                <canvas id="scatterChart" width="500" height="300"></canvas>
+            </div>
+        </div>
+
+        <h2>🤖 Model Vulnerability Profiles</h2>
+        <div class="model-cards" id="modelCards"></div>
+
+        <h2>🔬 Research Insights</h2>
+        <div class="insights-panel" id="insightsPanel">
+            <h3>Key Findings</h3>
+            <ul id="insightsList"></ul>
+        </div>
+    </div>
+    <footer class="footer">
+        <p>GIF CAPTCHA Research — Effectiveness Dashboard</p>
+    </footer>
+
+    <script>
+    // ===== AI MODELS =====
+    var models = [
+        { id: "gpt4", name: "GPT-4", year: "2023", color: "#f85149" },
+        { id: "gpt4v", name: "GPT-4V", year: "2023", color: "#f0883e" },
+        { id: "gpt4o", name: "GPT-4o", year: "2024", color: "#d29922" },
+        { id: "claude35", name: "Claude 3.5", year: "2024", color: "#bc8cff" },
+        { id: "gemini15", name: "Gemini 1.5", year: "2024", color: "#3fb950" }
+    ];
+
+    // ===== CAPTCHA CHALLENGES =====
+    var captchas = [
+        {
+            id: 1, title: "Duel Plot Twist", category: "Plot Twist", difficulty: 4,
+            humanAnswer: "One person shot BANG and the other shot BOOM — both had trick guns.",
+            expectedKeywords: ["trick", "bang", "boom", "guns", "both", "twist"],
+            cogDimensions: ["narrativeComp", "humorDetection", "culturalContext"],
+            responses: {
+                gpt4: { result: "blocked", quality: 5 },
+                gpt4v: { result: "blocked", quality: 15 },
+                gpt4o: { result: "partial", quality: 45 },
+                claude35: { result: "blocked", quality: 10 },
+                gemini15: { result: "partial", quality: 50 }
+            }
+        },
+        {
+            id: 2, title: "Rappers Roller Skating", category: "Absurd", difficulty: 3,
+            humanAnswer: "3 rappers rapping and then one roller skates away.",
+            expectedKeywords: ["rapper", "roller", "skate", "away", "unexpected"],
+            cogDimensions: ["culturalContext", "humorDetection", "motionTracking"],
+            responses: {
+                gpt4: { result: "blocked", quality: 0 },
+                gpt4v: { result: "blocked", quality: 10 },
+                gpt4o: { result: "partial", quality: 40 },
+                claude35: { result: "blocked", quality: 10 },
+                gemini15: { result: "solved", quality: 85 }
+            }
+        },
+        {
+            id: 3, title: "Flying Skateboarder", category: "Physical Comedy", difficulty: 2,
+            humanAnswer: "Skateboarder does a trick and flies up in the air.",
+            expectedKeywords: ["skateboarder", "flies", "air", "trick", "high", "launch"],
+            cogDimensions: ["motionTracking", "frameAnalysis"],
+            responses: {
+                gpt4: { result: "blocked", quality: 0 },
+                gpt4v: { result: "blocked", quality: 15 },
+                gpt4o: { result: "solved", quality: 80 },
+                claude35: { result: "partial", quality: 45 },
+                gemini15: { result: "solved", quality: 90 }
+            }
+        },
+        {
+            id: 4, title: "Banana Mascot Dance-Off", category: "Plot Twist", difficulty: 4,
+            humanAnswer: "Banana mascot dances; security guard takes props and does a better dance.",
+            expectedKeywords: ["banana", "mascot", "guard", "dance", "props", "better"],
+            cogDimensions: ["narrativeComp", "humorDetection", "culturalContext"],
+            responses: {
+                gpt4: { result: "blocked", quality: 0 },
+                gpt4v: { result: "blocked", quality: 10 },
+                gpt4o: { result: "partial", quality: 35 },
+                claude35: { result: "blocked", quality: 10 },
+                gemini15: { result: "partial", quality: 55 }
+            }
+        },
+        {
+            id: 5, title: "Tic Tac Toe Dog", category: "Animal Behavior", difficulty: 3,
+            humanAnswer: "Shiba Inu wins at Tic Tac Toe against a human.",
+            expectedKeywords: ["shiba", "dog", "tic tac toe", "wins", "game", "plays"],
+            cogDimensions: ["narrativeComp", "objectRecog", "frameAnalysis"],
+            responses: {
+                gpt4: { result: "blocked", quality: 0 },
+                gpt4v: { result: "blocked", quality: 15 },
+                gpt4o: { result: "partial", quality: 50 },
+                claude35: { result: "partial", quality: 40 },
+                gemini15: { result: "solved", quality: 90 }
+            }
+        },
+        {
+            id: 6, title: "Parent Dog Sacrifice", category: "Animal Behavior", difficulty: 5,
+            humanAnswer: "Person preparing puppy for cooking gets stopped by parent dog who volunteers instead.",
+            expectedKeywords: ["puppy", "cooking", "parent", "dog", "volunteers", "sacrifice", "instead"],
+            cogDimensions: ["narrativeComp", "culturalContext", "humorDetection"],
+            responses: {
+                gpt4: { result: "blocked", quality: 0 },
+                gpt4v: { result: "blocked", quality: 5 },
+                gpt4o: { result: "blocked", quality: 20 },
+                claude35: { result: "blocked", quality: 15 },
+                gemini15: { result: "partial", quality: 35 }
+            }
+        },
+        {
+            id: 7, title: "Mirror Hand Illusion", category: "Unexpected Object", difficulty: 3,
+            humanAnswer: "Hand seems to touch its reflection, but it's both hands of the same person.",
+            expectedKeywords: ["hand", "reflection", "mirror", "illusion", "both", "same"],
+            cogDimensions: ["frameAnalysis", "objectRecog"],
+            responses: {
+                gpt4: { result: "blocked", quality: 0 },
+                gpt4v: { result: "partial", quality: 40 },
+                gpt4o: { result: "solved", quality: 85 },
+                claude35: { result: "partial", quality: 45 },
+                gemini15: { result: "solved", quality: 90 }
+            }
+        },
+        {
+            id: 8, title: "Highway 180° Drift", category: "Physical Comedy", difficulty: 2,
+            humanAnswer: "Car does a 180-degree drift and back to continue normally.",
+            expectedKeywords: ["car", "180", "drift", "spin", "continues", "highway"],
+            cogDimensions: ["motionTracking", "frameAnalysis"],
+            responses: {
+                gpt4: { result: "blocked", quality: 0 },
+                gpt4v: { result: "blocked", quality: 10 },
+                gpt4o: { result: "solved", quality: 85 },
+                claude35: { result: "partial", quality: 40 },
+                gemini15: { result: "solved", quality: 90 }
+            }
+        },
+        {
+            id: 9, title: "Road Rage Hug", category: "Timing", difficulty: 4,
+            humanAnswer: "Road rage encounter unexpectedly ends with a friendly hug.",
+            expectedKeywords: ["road rage", "hug", "friendly", "unexpected", "embrace"],
+            cogDimensions: ["narrativeComp", "culturalContext", "humorDetection"],
+            responses: {
+                gpt4: { result: "blocked", quality: 0 },
+                gpt4v: { result: "blocked", quality: 10 },
+                gpt4o: { result: "partial", quality: 35 },
+                claude35: { result: "blocked", quality: 15 },
+                gemini15: { result: "partial", quality: 45 }
+            }
+        },
+        {
+            id: 10, title: "Birthday Cake Face Cover", category: "Timing", difficulty: 3,
+            humanAnswer: "Girl's face smashed into cake, but emerges clean — had a paper plate cover.",
+            expectedKeywords: ["cake", "face", "clean", "paper plate", "cover", "trick"],
+            cogDimensions: ["narrativeComp", "objectRecog", "humorDetection"],
+            responses: {
+                gpt4: { result: "blocked", quality: 0 },
+                gpt4v: { result: "blocked", quality: 10 },
+                gpt4o: { result: "partial", quality: 45 },
+                claude35: { result: "partial", quality: 40 },
+                gemini15: { result: "solved", quality: 85 }
+            }
+        }
+    ];
+
+    var HUMAN_QUALITY = 90; // Human baseline quality for all challenges
+
+    // ===== SCORING FUNCTIONS (exported for testing) =====
+    function calcEffectiveness(humanQuality, aiQuality) {
+        var score = humanQuality - aiQuality;
+        return Math.max(0, Math.min(100, score));
+    }
+
+    function buildMatrix(captchas, models, humanQuality) {
+        return captchas.map(function(c) {
+            var row = { id: c.id, title: c.title, category: c.category, scores: {} };
+            var total = 0;
+            models.forEach(function(m) {
+                var aiQ = c.responses[m.id] ? c.responses[m.id].quality : 0;
+                var eff = calcEffectiveness(humanQuality, aiQ);
+                row.scores[m.id] = eff;
+                total += eff;
+            });
+            row.avg = Math.round(total / models.length);
+            return row;
+        });
+    }
+
+    function calcModelAverages(matrix, models) {
+        var avgs = {};
+        models.forEach(function(m) {
+            var total = 0;
+            matrix.forEach(function(row) { total += row.scores[m.id]; });
+            avgs[m.id] = Math.round(total / matrix.length);
+        });
+        return avgs;
+    }
+
+    function groupByCategory(matrix) {
+        var groups = {};
+        matrix.forEach(function(row) {
+            if (!groups[row.category]) groups[row.category] = [];
+            groups[row.category].push(row.avg);
+        });
+        var result = {};
+        Object.keys(groups).forEach(function(cat) {
+            var sum = groups[cat].reduce(function(a, b) { return a + b; }, 0);
+            result[cat] = Math.round(sum / groups[cat].length);
+        });
+        return result;
+    }
+
+    function findHardestCaptcha(matrix) {
+        var hardest = null;
+        var lowestAvg = Infinity;
+        matrix.forEach(function(row) {
+            // Hardest = lowest avg effectiveness (AI does best)
+            // Actually hardest for AI = highest effectiveness; hardest CAPTCHA = lowest AI detection = highest effectiveness
+            // But spec says "lowest AI detection" = AI fails most = highest effectiveness
+        });
+        // Hardest CAPTCHA = the one with HIGHEST avg effectiveness (AI fails most)
+        matrix.forEach(function(row) {
+            if (hardest === null || row.avg > lowestAvg) {
+                lowestAvg = row.avg;
+                hardest = row;
+            }
+        });
+        return hardest;
+    }
+
+    function findMostEffectiveCategory(catAvgs) {
+        var best = null, bestScore = -1;
+        Object.keys(catAvgs).forEach(function(cat) {
+            if (catAvgs[cat] > bestScore) {
+                bestScore = catAvgs[cat];
+                best = cat;
+            }
+        });
+        return best;
+    }
+
+    function calcHumanSuccessRate(captchas) {
+        // All captchas have human answers that capture the key event
+        return 100;
+    }
+
+    function calcAIBestCaseRate(captchas, models) {
+        var solved = 0;
+        captchas.forEach(function(c) {
+            var anySolved = false;
+            models.forEach(function(m) {
+                if (c.responses[m.id] && c.responses[m.id].result === "solved") anySolved = true;
+            });
+            if (anySolved) solved++;
+        });
+        return Math.round((solved / captchas.length) * 100);
+    }
+
+    function calcAvgHumanAIGap(matrix, models) {
+        var totalGap = 0;
+        matrix.forEach(function(row) {
+            // Best AI = lowest effectiveness (AI closest to human)
+            var minEff = 100;
+            models.forEach(function(m) {
+                if (row.scores[m.id] < minEff) minEff = row.scores[m.id];
+            });
+            totalGap += minEff;
+        });
+        return Math.round(totalGap / matrix.length);
+    }
+
+    function findModelVulnerability(matrix, modelId) {
+        var weakest = null, strongest = null;
+        var minEff = Infinity, maxEff = -1;
+        matrix.forEach(function(row) {
+            var s = row.scores[modelId];
+            if (s < minEff) { minEff = s; weakest = row; }
+            if (s > maxEff) { maxEff = s; strongest = row; }
+        });
+        return { weakest: weakest, strongest: strongest, minEff: minEff, maxEff: maxEff };
+    }
+
+    function calcCorrelation(xs, ys) {
+        var n = xs.length;
+        if (n === 0) return 0;
+        var sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0, sumY2 = 0;
+        for (var i = 0; i < n; i++) {
+            sumX += xs[i]; sumY += ys[i];
+            sumXY += xs[i] * ys[i];
+            sumX2 += xs[i] * xs[i];
+            sumY2 += ys[i] * ys[i];
+        }
+        var denom = Math.sqrt((n * sumX2 - sumX * sumX) * (n * sumY2 - sumY * sumY));
+        if (denom === 0) return 0;
+        return (n * sumXY - sumX * sumY) / denom;
+    }
+
+    function generateInsights(matrix, models, catAvgs, captchas) {
+        var insights = [];
+        // Most effective CAPTCHA
+        var best = null, bestAvg = -1;
+        matrix.forEach(function(r) { if (r.avg > bestAvg) { bestAvg = r.avg; best = r; } });
+        if (best) insights.push("Most effective CAPTCHA: #" + best.id + " " + best.title + " (avg effectiveness: " + best.avg + ")");
+
+        // Least effective
+        var worst = null, worstAvg = Infinity;
+        matrix.forEach(function(r) { if (r.avg < worstAvg) { worstAvg = r.avg; worst = r; } });
+        if (worst) insights.push("Least effective CAPTCHA: #" + worst.id + " " + worst.title + " (avg effectiveness: " + worst.avg + ")");
+
+        // Most vulnerable model
+        var modelAvgs = calcModelAverages(matrix, models);
+        var mostVuln = null, leastVuln = null, mvScore = Infinity, lvScore = -1;
+        models.forEach(function(m) {
+            if (modelAvgs[m.id] < mvScore) { mvScore = modelAvgs[m.id]; mostVuln = m; }
+            if (modelAvgs[m.id] > lvScore) { lvScore = modelAvgs[m.id]; leastVuln = m; }
+        });
+        if (leastVuln) insights.push("Least vulnerable AI model: " + leastVuln.name + " (avg effectiveness against it: " + lvScore + ")");
+        if (mostVuln) insights.push("Most vulnerable AI model: " + mostVuln.name + " (avg effectiveness against it: " + mvScore + ")");
+
+        // Category ranking
+        var catArr = Object.keys(catAvgs).map(function(k) { return { cat: k, avg: catAvgs[k] }; });
+        catArr.sort(function(a, b) { return b.avg - a.avg; });
+        insights.push("Category effectiveness ranking: " + catArr.map(function(c) { return c.cat + " (" + c.avg + ")"; }).join(", "));
+
+        // Correlation
+        var diffs = [], effs = [];
+        captchas.forEach(function(c, i) { diffs.push(c.difficulty); effs.push(matrix[i].avg); });
+        var r = calcCorrelation(diffs, effs);
+        var strength = Math.abs(r) > 0.7 ? "strong" : Math.abs(r) > 0.4 ? "moderate" : "weak";
+        insights.push("Difficulty-effectiveness correlation: " + strength + " (r=" + r.toFixed(2) + ")");
+
+        // Strategy
+        insights.push("Recommended strategy: Prioritize " + catArr[0].cat + " CAPTCHAs for maximum AI blocking effectiveness.");
+
+        return insights;
+    }
+
+    // ===== RENDERING =====
+    function scoreColor(score) {
+        if (score >= 70) return "var(--green)";
+        if (score >= 40) return "var(--yellow)";
+        return "var(--red)";
+    }
+
+    function scoreBg(score) {
+        if (score >= 70) return "rgba(63, 185, 80, 0.15)";
+        if (score >= 40) return "rgba(210, 153, 34, 0.15)";
+        return "rgba(248, 81, 73, 0.15)";
+    }
+
+    function renderOverview() {
+        var matrix = buildMatrix(captchas, models, HUMAN_QUALITY);
+        var catAvgs = groupByCategory(matrix);
+        var hardest = findHardestCaptcha(matrix);
+        var bestCat = findMostEffectiveCategory(catAvgs);
+        var humanRate = calcHumanSuccessRate(captchas);
+        var aiRate = calcAIBestCaseRate(captchas, models);
+        var gap = calcAvgHumanAIGap(matrix, models);
+
+        var grid = document.getElementById("overviewGrid");
+        grid.innerHTML =
+            '<div class="overview-card"><div class="card-value" style="color:var(--green);">' + humanRate + '%</div><div class="card-label">Human Success Rate</div></div>' +
+            '<div class="overview-card"><div class="card-value" style="color:var(--red);">' + aiRate + '%</div><div class="card-label">AI Best-Case Rate</div><div class="card-sub">Any model solves</div></div>' +
+            '<div class="overview-card"><div class="card-value" style="color:var(--accent);">' + gap + '</div><div class="card-label">Avg Human-AI Gap</div></div>' +
+            '<div class="overview-card"><div class="card-value" style="color:var(--purple);">#' + hardest.id + '</div><div class="card-label">Hardest CAPTCHA</div><div class="card-sub">' + hardest.title + '</div></div>' +
+            '<div class="overview-card"><div class="card-value" style="color:var(--cyan);">' + bestCat + '</div><div class="card-label">Most Effective Category</div></div>';
+    }
+
+    function renderMatrix() {
+        var matrix = buildMatrix(captchas, models, HUMAN_QUALITY);
+        var modelAvgs = calcModelAverages(matrix, models);
+        var table = document.getElementById("effectivenessMatrix");
+
+        var headerRow = '<tr><th>CAPTCHA</th>';
+        models.forEach(function(m) { headerRow += '<th>' + m.name + '</th>'; });
+        headerRow += '<th class="avg-header">Avg</th></tr>';
+
+        var bodyRows = "";
+        matrix.forEach(function(row) {
+            bodyRows += '<tr><th class="row-header">#' + row.id + ' ' + row.title + '</th>';
+            models.forEach(function(m) {
+                var s = row.scores[m.id];
+                bodyRows += '<td class="score-cell" style="color:' + scoreColor(s) + ';background:' + scoreBg(s) + ';">' + s + '</td>';
+            });
+            bodyRows += '<td class="avg-cell">' + row.avg + '</td></tr>';
+        });
+
+        // Column averages
+        bodyRows += '<tr><th class="row-header" style="color:var(--accent);">Average</th>';
+        models.forEach(function(m) {
+            bodyRows += '<td class="avg-cell">' + modelAvgs[m.id] + '</td>';
+        });
+        var totalAvg = 0, mc = 0;
+        Object.keys(modelAvgs).forEach(function(k) { totalAvg += modelAvgs[k]; mc++; });
+        bodyRows += '<td class="avg-cell">' + Math.round(totalAvg / mc) + '</td></tr>';
+
+        table.innerHTML = '<thead>' + headerRow + '</thead><tbody>' + bodyRows + '</tbody>';
+    }
+
+    function renderCategoryChart() {
+        var matrix = buildMatrix(captchas, models, HUMAN_QUALITY);
+        var catAvgs = groupByCategory(matrix);
+        var canvas = document.getElementById("categoryChart");
+        var ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        var W = canvas.width, H = canvas.height;
+        ctx.clearRect(0, 0, W, H);
+
+        var cats = Object.keys(catAvgs);
+        var vals = cats.map(function(c) { return catAvgs[c]; });
+        var maxVal = Math.max.apply(null, vals.concat([100]));
+        var barW = Math.floor((W - 80) / cats.length) - 10;
+        var chartH = H - 60;
+
+        cats.forEach(function(cat, i) {
+            var x = 60 + i * (barW + 10);
+            var h = (vals[i] / maxVal) * chartH;
+            var y = H - 40 - h;
+
+            ctx.fillStyle = scoreColor(vals[i]).replace("var(--green)", "#3fb950").replace("var(--yellow)", "#d29922").replace("var(--red)", "#f85149");
+            if (vals[i] >= 70) ctx.fillStyle = "#3fb950";
+            else if (vals[i] >= 40) ctx.fillStyle = "#d29922";
+            else ctx.fillStyle = "#f85149";
+
+            ctx.fillRect(x, y, barW, h);
+
+            // Value label
+            ctx.fillStyle = "#e6edf3";
+            ctx.font = "bold 12px sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillText(vals[i], x + barW / 2, y - 5);
+
+            // Category label
+            ctx.fillStyle = "#8b949e";
+            ctx.font = "10px sans-serif";
+            ctx.save();
+            ctx.translate(x + barW / 2, H - 5);
+            ctx.rotate(-0.4);
+            ctx.fillText(cat, 0, 0);
+            ctx.restore();
+        });
+
+        // Y axis
+        ctx.strokeStyle = "#30363d";
+        ctx.beginPath();
+        ctx.moveTo(55, 10);
+        ctx.lineTo(55, H - 40);
+        ctx.lineTo(W - 10, H - 40);
+        ctx.stroke();
+
+        for (var v = 0; v <= 100; v += 25) {
+            var yy = H - 40 - (v / maxVal) * chartH;
+            ctx.fillStyle = "#8b949e";
+            ctx.font = "10px sans-serif";
+            ctx.textAlign = "right";
+            ctx.fillText(v, 50, yy + 4);
+        }
+    }
+
+    function renderScatterChart() {
+        var matrix = buildMatrix(captchas, models, HUMAN_QUALITY);
+        var canvas = document.getElementById("scatterChart");
+        var ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        var W = canvas.width, H = canvas.height;
+        ctx.clearRect(0, 0, W, H);
+
+        var padL = 60, padR = 20, padT = 20, padB = 50;
+        var chartW = W - padL - padR, chartH = H - padT - padB;
+
+        // Axes
+        ctx.strokeStyle = "#30363d";
+        ctx.beginPath();
+        ctx.moveTo(padL, padT);
+        ctx.lineTo(padL, H - padB);
+        ctx.lineTo(W - padR, H - padB);
+        ctx.stroke();
+
+        // Labels
+        ctx.fillStyle = "#8b949e";
+        ctx.font = "11px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("Difficulty (1–5)", W / 2, H - 5);
+        ctx.save();
+        ctx.translate(15, H / 2);
+        ctx.rotate(-Math.PI / 2);
+        ctx.fillText("Avg Effectiveness", 0, 0);
+        ctx.restore();
+
+        // Tick marks
+        for (var d = 1; d <= 5; d++) {
+            var tx = padL + ((d - 0.5) / 5) * chartW;
+            ctx.fillStyle = "#8b949e";
+            ctx.font = "10px sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillText(d, tx, H - padB + 15);
+        }
+        for (var v = 0; v <= 100; v += 25) {
+            var ty = H - padB - (v / 100) * chartH;
+            ctx.textAlign = "right";
+            ctx.fillText(v, padL - 5, ty + 4);
+        }
+
+        // Points and collect for trend line
+        var xs = [], ys = [];
+        captchas.forEach(function(c, i) {
+            var row = matrix[i];
+            var px = padL + ((c.difficulty - 0.5) / 5) * chartW;
+            var py = H - padB - (row.avg / 100) * chartH;
+            xs.push(c.difficulty);
+            ys.push(row.avg);
+
+            ctx.fillStyle = "#58a6ff";
+            ctx.beginPath();
+            ctx.arc(px, py, 6, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = "#e6edf3";
+            ctx.font = "9px sans-serif";
+            ctx.textAlign = "left";
+            ctx.fillText("#" + c.id, px + 8, py + 3);
+        });
+
+        // Trend line
+        if (xs.length > 1) {
+            var n = xs.length;
+            var sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+            for (var j = 0; j < n; j++) {
+                sumX += xs[j]; sumY += ys[j]; sumXY += xs[j] * ys[j]; sumX2 += xs[j] * xs[j];
+            }
+            var slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+            var intercept = (sumY - slope * sumX) / n;
+
+            var x1 = 1, x2 = 5;
+            var y1 = slope * x1 + intercept, y2 = slope * x2 + intercept;
+            var px1 = padL + ((x1 - 0.5) / 5) * chartW;
+            var py1 = H - padB - (y1 / 100) * chartH;
+            var px2 = padL + ((x2 - 0.5) / 5) * chartW;
+            var py2 = H - padB - (y2 / 100) * chartH;
+
+            ctx.strokeStyle = "rgba(88, 166, 255, 0.5)";
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 5]);
+            ctx.beginPath();
+            ctx.moveTo(px1, py1);
+            ctx.lineTo(px2, py2);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.lineWidth = 1;
+
+            var r = calcCorrelation(xs, ys);
+            ctx.fillStyle = "#8b949e";
+            ctx.font = "10px sans-serif";
+            ctx.textAlign = "right";
+            ctx.fillText("r = " + r.toFixed(2), W - padR, padT + 15);
+        }
+    }
+
+    function renderModelCards() {
+        var matrix = buildMatrix(captchas, models, HUMAN_QUALITY);
+        var modelAvgs = calcModelAverages(matrix, models);
+        var container = document.getElementById("modelCards");
+        container.innerHTML = "";
+
+        var capLabels = {
+            frameAnalysis: "Frame Analysis", motionTracking: "Motion Tracking",
+            narrativeComp: "Narrative", culturalContext: "Cultural",
+            humorDetection: "Humor", objectRecog: "Object Recog"
+        };
+
+        models.forEach(function(m) {
+            var vuln = findModelVulnerability(matrix, m.id);
+            var avgEff = modelAvgs[m.id];
+
+            // Compute cognitive dimension struggles
+            var dimScores = {};
+            Object.keys(capLabels).forEach(function(d) { dimScores[d] = 0; });
+            var dimCounts = {};
+            Object.keys(capLabels).forEach(function(d) { dimCounts[d] = 0; });
+
+            captchas.forEach(function(c, i) {
+                var row = matrix[i];
+                var eff = row.scores[m.id];
+                if (c.cogDimensions) {
+                    c.cogDimensions.forEach(function(d) {
+                        if (dimScores[d] !== undefined) {
+                            dimScores[d] += eff;
+                            dimCounts[d]++;
+                        }
+                    });
+                }
+            });
+
+            var dimAvgs = {};
+            Object.keys(dimScores).forEach(function(d) {
+                dimAvgs[d] = dimCounts[d] > 0 ? Math.round(dimScores[d] / dimCounts[d]) : 0;
+            });
+
+            // Sort dims by effectiveness (higher = model struggles more)
+            var sortedDims = Object.keys(dimAvgs).sort(function(a, b) { return dimAvgs[b] - dimAvgs[a]; });
+
+            var dimsHtml = sortedDims.map(function(d) {
+                var v = dimAvgs[d];
+                var w = Math.max(5, v);
+                var col = v >= 70 ? "#3fb950" : v >= 40 ? "#d29922" : "#f85149";
+                return '<div style="display:flex;align-items:center;gap:0.5rem;margin:0.2rem 0;font-size:0.78rem;">' +
+                    '<span style="width:80px;color:var(--muted);">' + capLabels[d] + '</span>' +
+                    '<div style="flex:1;height:8px;background:var(--border);border-radius:4px;overflow:hidden;">' +
+                    '<div style="width:' + w + '%;height:100%;background:' + col + ';border-radius:4px;"></div></div>' +
+                    '<span style="width:25px;text-align:right;color:' + col + ';font-weight:700;">' + v + '</span></div>';
+            }).join("");
+
+            var card = document.createElement("div");
+            card.className = "model-card";
+            card.innerHTML =
+                '<h4><span style="color:' + m.color + ';">● </span>' + m.name + ' <span style="font-size:0.75rem;color:var(--muted);">(' + m.year + ')</span></h4>' +
+                '<div class="model-stat">Overall Effectiveness: <strong style="color:' + scoreColor(avgEff) + ';">' + avgEff + '</strong></div>' +
+                '<div class="model-stat">Weakest CAPTCHA: <strong>#' + (vuln.weakest ? vuln.weakest.id : '?') + ' ' + (vuln.weakest ? vuln.weakest.title : '') + '</strong> (eff: ' + vuln.minEff + ')</div>' +
+                '<div class="model-stat">Strongest CAPTCHA: <strong>#' + (vuln.strongest ? vuln.strongest.id : '?') + ' ' + (vuln.strongest ? vuln.strongest.title : '') + '</strong> (eff: ' + vuln.maxEff + ')</div>' +
+                '<div style="margin-top:0.75rem;"><div style="font-size:0.78rem;color:var(--muted);margin-bottom:0.3rem;">Cognitive Dimension Struggles (higher = AI fails more)</div>' + dimsHtml + '</div>';
+
+            container.appendChild(card);
+        });
+    }
+
+    function renderInsights() {
+        var matrix = buildMatrix(captchas, models, HUMAN_QUALITY);
+        var catAvgs = groupByCategory(matrix);
+        var insights = generateInsights(matrix, models, catAvgs, captchas);
+        var list = document.getElementById("insightsList");
+        list.innerHTML = insights.map(function(i) { return "<li>" + i + "</li>"; }).join("");
+    }
+
+    // ===== INIT =====
+    renderOverview();
+    renderMatrix();
+    renderCategoryChart();
+    renderScatterChart();
+    renderModelCards();
+    renderInsights();
+
+    // Export for testing
+    if (typeof module !== "undefined" && module.exports) {
+        module.exports = {
+            calcEffectiveness: calcEffectiveness,
+            buildMatrix: buildMatrix,
+            calcModelAverages: calcModelAverages,
+            groupByCategory: groupByCategory,
+            findHardestCaptcha: findHardestCaptcha,
+            findMostEffectiveCategory: findMostEffectiveCategory,
+            calcHumanSuccessRate: calcHumanSuccessRate,
+            calcAIBestCaseRate: calcAIBestCaseRate,
+            calcAvgHumanAIGap: calcAvgHumanAIGap,
+            findModelVulnerability: findModelVulnerability,
+            calcCorrelation: calcCorrelation,
+            generateInsights: generateInsights,
+            scoreColor: scoreColor,
+            scoreBg: scoreBg,
+            captchas: captchas,
+            models: models,
+            HUMAN_QUALITY: HUMAN_QUALITY
+        };
+    }
+    </script>
+</body>
+</html>

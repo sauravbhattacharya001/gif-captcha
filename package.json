@@ -1,44 +1,44 @@
 {
-  "name": "gif-captcha",
-  "version": "1.0.0",
-  "description": "GIF-based CAPTCHA system that uses visual comprehension to distinguish humans from bots",
-  "main": "src/index.js",
-  "browser": "src/index.js",
-  "files": [
-    "src/",
-    "shared.js",
-    "shared.css",
-    "LICENSE",
-    "README.md"
-  ],
-  "scripts": {
-    "test": "node --test tests/*.test.js",
-    "test:coverage": "c8 --reporter=text --reporter=lcov --reporter=json-summary node --test tests/*.test.js",
-    "coverage": "c8 --reporter=text --reporter=lcov node --test tests/*.test.js",
-    "coverage:check": "c8 check-coverage --lines 70 --functions 70 --branches 70"
-  },
-  "keywords": [
-    "captcha",
-    "gif",
-    "security",
-    "bot-detection",
-    "human-verification",
-    "visual-captcha",
-    "anti-bot",
-    "challenge-response"
-  ],
-  "author": "Saurav Bhattacharya",
-  "license": "MIT",
-  "homepage": "https://sauravbhattacharya001.github.io/gif-captcha/",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/sauravbhattacharya001/gif-captcha.git"
-  },
-  "bugs": {
-    "url": "https://github.com/sauravbhattacharya001/gif-captcha/issues"
-  },
-  "devDependencies": {
-    "c8": "^10.1.0",
-    "jsdom": "^25.0.1"
-  }
+    "name":  "gif-captcha",
+    "version":  "1.1.0",
+    "description":  "GIF-based CAPTCHA system that uses visual comprehension to distinguish humans from bots",
+    "main":  "src/index.js",
+    "browser":  "src/index.js",
+    "files":  [
+                  "src/",
+                  "shared.js",
+                  "shared.css",
+                  "LICENSE",
+                  "README.md"
+              ],
+    "scripts":  {
+                    "test":  "node --test tests/*.test.js",
+                    "test:coverage":  "c8 --reporter=text --reporter=lcov --reporter=json-summary node --test tests/*.test.js",
+                    "coverage":  "c8 --reporter=text --reporter=lcov node --test tests/*.test.js",
+                    "coverage:check":  "c8 check-coverage --lines 70 --functions 70 --branches 70"
+                },
+    "keywords":  [
+                     "captcha",
+                     "gif",
+                     "security",
+                     "bot-detection",
+                     "human-verification",
+                     "visual-captcha",
+                     "anti-bot",
+                     "challenge-response"
+                 ],
+    "author":  "Saurav Bhattacharya",
+    "license":  "MIT",
+    "homepage":  "https://sauravbhattacharya001.github.io/gif-captcha/",
+    "repository":  {
+                       "type":  "git",
+                       "url":  "git+https://github.com/sauravbhattacharya001/gif-captcha.git"
+                   },
+    "bugs":  {
+                 "url":  "https://github.com/sauravbhattacharya001/gif-captcha/issues"
+             },
+    "devDependencies":  {
+                            "c8":  "^10.1.0",
+                            "jsdom":  "^25.0.1"
+                        }
 }

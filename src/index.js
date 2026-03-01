@@ -810,20 +810,17 @@ function createSetAnalyzer(challenges) {
       });
     }
 
-    // identical_titles
-    var titleCount = {};
+    // identical_titles — group by title in single pass
+    var titleGroups = {};
     _challenges.forEach(function (c) {
       var t = (c.title || "").toLowerCase();
-      titleCount[t] = (titleCount[t] || 0) + 1;
+      if (!titleGroups[t]) titleGroups[t] = [];
+      titleGroups[t].push(c.id);
     });
     var dupTitleIds = [];
-    Object.keys(titleCount).forEach(function (t) {
-      if (titleCount[t] > 1) {
-        _challenges.forEach(function (c) {
-          if ((c.title || "").toLowerCase() === t) {
-            dupTitleIds.push(c.id);
-          }
-        });
+    Object.keys(titleGroups).forEach(function (t) {
+      if (titleGroups[t].length > 1) {
+        dupTitleIds = dupTitleIds.concat(titleGroups[t]);
       }
     });
     if (dupTitleIds.length > 0) {
@@ -1630,22 +1627,20 @@ function createSecurityScorer(challenges) {
       };
     }
 
-    // first-word diversity
-    var firstWords = {};
+    // first-word diversity — single object tracks both counts and diversity
     var firstWordCounts = {};
     for (var i = 0; i < answers.length; i++) {
       var w = getWords(answers[i]);
       if (w.length > 0) {
         var fw = w[0];
-        firstWords[fw] = true;
         firstWordCounts[fw] = (firstWordCounts[fw] || 0) + 1;
       }
     }
-    var firstWordDiversity = Object.keys(firstWords).length / answers.length;
+    var fwKeys = Object.keys(firstWordCounts);
+    var firstWordDiversity = fwKeys.length / answers.length;
 
     // most common first word ratio (structural similarity)
     var maxFirstWordCount = 0;
-    var fwKeys = Object.keys(firstWordCounts);
     for (var i = 0; i < fwKeys.length; i++) {
       if (firstWordCounts[fwKeys[i]] > maxFirstWordCount) {
         maxFirstWordCount = firstWordCounts[fwKeys[i]];
@@ -1912,7 +1907,7 @@ function createSessionManager(options) {
     var chars = "abcdefghijklmnopqrstuvwxyz0123456789";
     var id = "";
     for (var i = 0; i < 16; i++) {
-      id += chars.charAt(Math.floor(Math.random() * chars.length));
+      id += chars.charAt(secureRandomInt(chars.length));
     }
     return "sess_" + id + "_" + _now().toString(36);
   }

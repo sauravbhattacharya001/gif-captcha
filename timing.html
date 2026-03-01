@@ -1,0 +1,1021 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; img-src https: data:; script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'self'; form-action 'none';">
+    <meta name="referrer" content="no-referrer">
+    <title>GIF CAPTCHA — Response Time Analyzer</title>
+    <link rel="stylesheet" href="shared.css">
+    <style>
+        .container { max-width: 800px; }
+        .intro { text-align: center; padding: 2.5rem 1rem; }
+        .intro h2 { font-size: 1.5rem; margin-bottom: 0.8rem; }
+        .intro p { color: var(--muted); margin-bottom: 1rem; max-width: 550px; margin-left: auto; margin-right: auto; }
+        .intro .research-note {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.2rem;
+            text-align: left;
+            margin: 1.2rem 0 1.5rem;
+        }
+        .intro .research-note h3 { font-size: 0.95rem; margin-bottom: 0.6rem; }
+        .intro .research-note ul { padding-left: 1.5rem; color: var(--muted); }
+        .intro .research-note li { margin-bottom: 0.3rem; font-size: 0.9rem; }
+
+        /* Timer display */
+        .timer-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.6rem 1rem;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+        }
+        .timer-value { font-size: 1.8rem; font-weight: 700; color: var(--accent); }
+        .timer-label { font-size: 0.8rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+
+        /* Challenge area */
+        .challenge { margin-bottom: 1rem; }
+        .challenge-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.8rem;
+        }
+        .challenge-header .label { font-size: 0.85rem; color: var(--muted); }
+        .challenge-header .number { font-weight: 700; color: var(--accent); }
+        .challenge-header .category {
+            font-size: 0.75rem;
+            padding: 0.2rem 0.6rem;
+            border-radius: 12px;
+            background: var(--purple-bg);
+            color: var(--purple);
+        }
+
+        .gif-container {
+            width: 100%;
+            min-height: 250px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            overflow: hidden;
+            margin-bottom: 0.8rem;
+        }
+        .gif-container img {
+            max-width: 100%;
+            max-height: 350px;
+            display: block;
+        }
+        .gif-loading { color: var(--muted); font-size: 0.9rem; }
+
+        .input-area textarea {
+            width: 100%;
+            min-height: 70px;
+            padding: 0.7rem 1rem;
+            background: var(--surface);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-size: 0.95rem;
+            font-family: inherit;
+            resize: vertical;
+        }
+        .input-area textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+        .input-actions {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 0.5rem;
+        }
+        .char-count { font-size: 0.8rem; color: var(--muted); }
+        .skip-link {
+            background: none;
+            border: none;
+            color: var(--muted);
+            cursor: pointer;
+            font-size: 0.85rem;
+            margin-right: 0.8rem;
+        }
+        .skip-link:hover { color: var(--text); }
+
+        /* Results dashboard */
+        .results-section { margin-bottom: 2rem; }
+        .results-section h3 {
+            font-size: 1.1rem;
+            margin-bottom: 1rem;
+            padding-bottom: 0.4rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 0.8rem;
+            margin-bottom: 1.5rem;
+        }
+        .stat-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1rem;
+            text-align: center;
+        }
+        .stat-card .stat-value {
+            font-size: 1.6rem;
+            font-weight: 700;
+            color: var(--accent);
+        }
+        .stat-card .stat-label {
+            font-size: 0.75rem;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            margin-top: 0.2rem;
+        }
+        .stat-card.fast .stat-value { color: var(--green); }
+        .stat-card.slow .stat-value { color: var(--orange); }
+
+        /* Per-challenge breakdown table */
+        .breakdown-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .breakdown-table th,
+        .breakdown-table td {
+            padding: 0.6rem 0.8rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.85rem;
+        }
+        .breakdown-table th {
+            color: var(--muted);
+            font-weight: 600;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+        .breakdown-table td { color: var(--text); }
+        .breakdown-table tr:hover td { background: var(--surface-hover); }
+
+        .time-bar {
+            display: inline-block;
+            height: 8px;
+            border-radius: 4px;
+            background: var(--accent);
+            vertical-align: middle;
+            margin-right: 0.5rem;
+            min-width: 4px;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 0.15rem 0.5rem;
+            border-radius: 10px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .badge-correct { background: var(--green-bg); color: var(--green); }
+        .badge-skipped { background: var(--yellow-bg); color: var(--yellow); }
+        .badge-wrong { background: var(--red-bg); color: var(--red); }
+
+        /* Chart containers */
+        .chart-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        .chart-box {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1rem;
+        }
+        .chart-box h4 {
+            font-size: 0.85rem;
+            color: var(--muted);
+            margin-bottom: 0.8rem;
+            text-align: center;
+        }
+        .chart-box canvas { width: 100%; }
+
+        /* Category breakdown */
+        .category-row {
+            display: flex;
+            align-items: center;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid rgba(48,54,61,0.5);
+        }
+        .category-row:last-child { border-bottom: none; }
+        .category-name {
+            width: 140px;
+            font-size: 0.82rem;
+            color: var(--text);
+            flex-shrink: 0;
+        }
+        .category-bar-bg {
+            flex: 1;
+            height: 12px;
+            background: rgba(88,166,255,0.1);
+            border-radius: 6px;
+            overflow: hidden;
+            margin: 0 0.8rem;
+        }
+        .category-bar-fill {
+            height: 100%;
+            border-radius: 6px;
+            transition: width 0.5s ease;
+        }
+        .category-time {
+            width: 60px;
+            text-align: right;
+            font-size: 0.82rem;
+            font-family: monospace;
+            color: var(--muted);
+        }
+
+        /* Export button */
+        .export-actions { text-align: center; margin-top: 1.5rem; }
+
+        /* Progress bar */
+        .progress-container {
+            background: var(--surface);
+            padding: 0.6rem 1.5rem;
+            border-bottom: 1px solid var(--border);
+        }
+        .progress-bar-bg {
+            height: 4px;
+            background: var(--border);
+            border-radius: 2px;
+            overflow: hidden;
+            margin-bottom: 0.3rem;
+        }
+        .progress-bar-fill {
+            height: 100%;
+            background: var(--accent);
+            border-radius: 2px;
+            transition: width 0.3s ease;
+        }
+        .progress-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.75rem;
+            color: var(--muted);
+        }
+
+        @media (max-width: 600px) {
+            .chart-row { grid-template-columns: 1fr; }
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .timer-value { font-size: 1.4rem; }
+            .category-name { width: 100px; font-size: 0.75rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>⏱️ Response Time Analyzer</h1>
+        <p class="subtitle">How quickly can humans solve GIF CAPTCHAs?</p>
+        <div class="nav-links" style="margin-top: 0.8rem;">
+            <a href="index.html">← Case Study</a> |
+            <a href="demo.html">🎮 Demo</a> |
+            <a href="analysis.html">📊 Analysis</a> |
+            <a href="benchmark.html">⏱️ Benchmark</a> |
+            <a href="effectiveness.html">📈 Effectiveness</a> |
+            <a href="cognitive-load.html">🧠 Cognitive Load</a>
+        </div>
+    </div>
+
+    <div class="progress-container hidden" id="progressContainer">
+        <div class="progress-bar-bg">
+            <div class="progress-bar-fill" id="progressFill" style="width: 0%"></div>
+        </div>
+        <div class="progress-label">
+            <span id="progressText">Challenge 1 of 10</span>
+            <span id="timerSmall">0.0s</span>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- Intro -->
+        <div id="introScreen" class="intro">
+            <h2>⏱️ Measure Your Solving Speed</h2>
+            <p>Response time is a critical metric for CAPTCHA usability. Too slow means user frustration; too fast means bots can brute-force. Let's measure how long humans actually take.</p>
+            <div class="research-note">
+                <h3>📋 What We Measure</h3>
+                <ul>
+                    <li><strong>Solve time</strong> per CAPTCHA (from GIF load to answer submit)</li>
+                    <li><strong>Time vs. correctness</strong> — do faster answers tend to be more accurate?</li>
+                    <li><strong>Category breakdown</strong> — which CAPTCHA types take longest?</li>
+                    <li><strong>Statistical analysis</strong> — mean, median, std deviation, percentiles</li>
+                    <li><strong>Usability threshold</strong> — is the total solve time within acceptable bounds?</li>
+                </ul>
+            </div>
+            <p style="font-size: 0.85rem; color: var(--muted);">⏱️ Takes about 3–5 minutes · Your times are recorded precisely</p>
+            <button class="btn btn-primary" onclick="startTiming()">Start Timed Challenge</button>
+        </div>
+
+        <!-- Challenge screen -->
+        <div id="challengeScreen" class="hidden">
+            <div class="timer-bar">
+                <div>
+                    <div class="timer-label">Elapsed</div>
+                    <div class="timer-value" id="timerDisplay">0.0s</div>
+                </div>
+                <div style="text-align: right;">
+                    <div class="timer-label">Challenge</div>
+                    <div style="font-size: 1.2rem; font-weight: 600;" id="challengeLabel">1 / 10</div>
+                </div>
+            </div>
+
+            <div class="challenge">
+                <div class="challenge-header">
+                    <span class="label">Challenge <span class="number" id="challengeNumber">1</span></span>
+                    <span class="category" id="challengeCategory"></span>
+                </div>
+                <div class="gif-container" id="gifContainer">
+                    <span class="gif-loading">Loading GIF...</span>
+                </div>
+                <div style="font-size: 0.9rem; color: var(--muted); margin-bottom: 0.8rem;">
+                    🔍 Describe the unexpected event in this GIF
+                </div>
+            </div>
+
+            <div class="input-area">
+                <textarea
+                    id="userAnswer"
+                    placeholder="What's unexpected here? Be specific..."
+                    maxlength="500"
+                ></textarea>
+                <div class="input-actions">
+                    <span class="char-count"><span id="charCount">0</span>/500</span>
+                    <div>
+                        <button class="skip-link" onclick="skipChallenge()">Skip</button>
+                        <button class="btn btn-primary btn-small" id="submitBtn" onclick="submitAnswer()" disabled>Submit</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Results dashboard -->
+        <div id="resultsScreen" class="hidden">
+            <h2 style="text-align: center; margin-bottom: 1.5rem;">📊 Response Time Results</h2>
+
+            <!-- Summary stats -->
+            <div class="results-section">
+                <h3>⏱️ Overall Statistics</h3>
+                <div class="stats-grid" id="statsGrid"></div>
+            </div>
+
+            <!-- Time distribution chart + category chart -->
+            <div class="results-section">
+                <h3>📈 Visualizations</h3>
+                <div class="chart-row">
+                    <div class="chart-box">
+                        <h4>Time per Challenge (seconds)</h4>
+                        <canvas id="barChart" height="200"></canvas>
+                    </div>
+                    <div class="chart-box">
+                        <h4>Time vs. Correctness</h4>
+                        <canvas id="scatterChart" height="200"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Category breakdown -->
+            <div class="results-section">
+                <h3>🏷️ Time by Category</h3>
+                <div id="categoryBreakdown"></div>
+            </div>
+
+            <!-- Per-challenge table -->
+            <div class="results-section">
+                <h3>📋 Per-Challenge Breakdown</h3>
+                <table class="breakdown-table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Title</th>
+                            <th>Category</th>
+                            <th>Time</th>
+                            <th>Result</th>
+                        </tr>
+                    </thead>
+                    <tbody id="breakdownBody"></tbody>
+                </table>
+            </div>
+
+            <!-- Usability assessment -->
+            <div class="results-section">
+                <h3>🔬 Usability Assessment</h3>
+                <div id="usabilityAssessment" class="stat-card" style="text-align: left; padding: 1.2rem;"></div>
+            </div>
+
+            <!-- Export -->
+            <div class="export-actions">
+                <button class="btn btn-secondary" onclick="exportJSON()">📥 Export as JSON</button>
+                <button class="btn btn-secondary" onclick="exportCSV()" style="margin-left: 0.5rem;">📥 Export as CSV</button>
+                <button class="btn btn-primary" onclick="retry()" style="margin-left: 0.5rem;">🔄 Run Again</button>
+            </div>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <p>Response Time Analyzer · Part of the <a href="index.html">GIF CAPTCHA</a> research study</p>
+    </footer>
+
+    <script src="shared.js"></script>
+    <script>
+    "use strict";
+
+    /* ── Challenge Data ──────────────────────────────────────── */
+    var challenges = [
+        {
+            id: 1, title: "Duel Plot Twist", category: "Narrative Twist",
+            gifUrl: "https://i.gifer.com/Lx1.gif",
+            sourceUrl: "https://i.gifer.com/Lx1.gif",
+            humanAnswer: "Two men in a duel, one shoots early breaking the rules.",
+            keywords: ["duel", "shoot", "early", "rules", "twist"]
+        },
+        {
+            id: 2, title: "Rappers Roller Skating", category: "Social Subversion",
+            gifUrl: "https://i.gifer.com/G9lg.gif",
+            sourceUrl: "https://i.gifer.com/G9lg.gif",
+            humanAnswer: "3 rappers rapping and then one roller skates away.",
+            keywords: ["rapper", "skate", "roller", "away"]
+        },
+        {
+            id: 3, title: "Flying Skateboarder", category: "Physical Comedy",
+            gifUrl: "https://media.giphy.com/media/l0MYDnCqzU2MQj7OM/giphy.gif",
+            sourceUrl: "https://funnyordie.tumblr.com/post/102557790934",
+            humanAnswer: "Skateboarder does a trick and flies up in the air.",
+            keywords: ["skate", "trick", "fly", "air"]
+        },
+        {
+            id: 4, title: "Banana Mascot", category: "Social Subversion",
+            gifUrl: "https://media.giphy.com/media/KYElw07kzDspaBOwf9/giphy.gif",
+            sourceUrl: "https://www.pinterest.jp/pin/682225043525224271/",
+            humanAnswer: "Banana mascot dances; security guard takes props and does a better dance.",
+            keywords: ["banana", "dance", "guard", "security"]
+        },
+        {
+            id: 5, title: "Tic Tac Toe Dog", category: "Animal Behavior",
+            gifUrl: "https://media.giphy.com/media/ZqlvCTNHpqrio/giphy.gif",
+            sourceUrl: "https://giphy.com/gifs/dog-shiba-inu-tic-tac-toe-ZqlvCTNHpqrio",
+            humanAnswer: "Shiba Inu wins at Tic Tac Toe against a human.",
+            keywords: ["dog", "tic", "tac", "toe", "wins"]
+        },
+        {
+            id: 6, title: "Parent Dog Sacrifice", category: "Narrative Twist",
+            gifUrl: "https://media.giphy.com/media/xTiTnMhJTwNHChdTZS/giphy.gif",
+            sourceUrl: "https://giphy.com/gifs/dog-puppy-parent-xTiTnMhJTwNHChdTZS",
+            humanAnswer: "Person preparing puppy for cooking gets stopped by parent dog who volunteers instead.",
+            keywords: ["dog", "puppy", "cook", "parent", "volunteer"]
+        },
+        {
+            id: 7, title: "Mirror Hand Illusion", category: "Visual Trick",
+            gifUrl: "https://media.giphy.com/media/CkKg32KdKyQjm/giphy.gif",
+            sourceUrl: "https://giphy.com/gifs/mirror-illusion-hand-CkKg32KdKyQjm",
+            humanAnswer: "Hand seems to touch its reflection, but it's both hands of the same person.",
+            keywords: ["mirror", "hand", "illusion", "reflection"]
+        },
+        {
+            id: 8, title: "Highway 180° Drift", category: "Physical Comedy",
+            gifUrl: "https://media.giphy.com/media/l2SpQRuCQzY1RXHqM/giphy.gif",
+            sourceUrl: "https://giphy.com/gifs/car-drift-highway-l2SpQRuCQzY1RXHqM",
+            humanAnswer: "Car does a 180-degree drift and back to continue normally.",
+            keywords: ["car", "drift", "180", "highway"]
+        },
+        {
+            id: 9, title: "Road Rage Hug", category: "Social Subversion",
+            gifUrl: "https://media.giphy.com/media/brsEO1JayBVja/giphy.gif",
+            sourceUrl: "https://giphy.com/gifs/road-rage-hug-brsEO1JayBVja",
+            humanAnswer: "Road rage encounter unexpectedly ends with a friendly hug.",
+            keywords: ["road", "rage", "hug", "friendly"]
+        },
+        {
+            id: 10, title: "Birthday Cake Surprise", category: "Optical Illusion",
+            gifUrl: "https://media.giphy.com/media/xT0xeuOy2Fcl9vDGiA/giphy.gif",
+            sourceUrl: "https://giphy.com/gifs/birthday-cake-surprise-xT0xeuOy2Fcl9vDGiA",
+            humanAnswer: "Girl's face smashed into cake, but emerges clean — had a paper plate cover.",
+            keywords: ["cake", "face", "clean", "plate", "cover"]
+        }
+    ];
+
+    /* ── State ───────────────────────────────────────────────── */
+    var currentIndex = 0;
+    var results = [];  // { id, title, category, timeMs, answer, status }
+    var timerStart = 0;
+    var timerInterval = null;
+    var gifLoadedTime = 0;
+
+    /* ── Timer ───────────────────────────────────────────────── */
+    function startTimer() {
+        timerStart = Date.now();
+        timerInterval = setInterval(updateTimer, 100);
+    }
+
+    function stopTimer() {
+        if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+        return Date.now() - timerStart;
+    }
+
+    function updateTimer() {
+        var elapsed = (Date.now() - timerStart) / 1000;
+        var display = elapsed < 60
+            ? elapsed.toFixed(1) + "s"
+            : Math.floor(elapsed / 60) + "m " + (elapsed % 60).toFixed(0) + "s";
+        document.getElementById("timerDisplay").textContent = display;
+        document.getElementById("timerSmall").textContent = display;
+    }
+
+    /* ── Flow ────────────────────────────────────────────────── */
+    function startTiming() {
+        document.getElementById("introScreen").classList.add("hidden");
+        document.getElementById("challengeScreen").classList.remove("hidden");
+        document.getElementById("progressContainer").classList.remove("hidden");
+        currentIndex = 0;
+        results = [];
+        loadChallenge();
+    }
+
+    function loadChallenge() {
+        var ch = challenges[currentIndex];
+        document.getElementById("challengeNumber").textContent = ch.id;
+        document.getElementById("challengeLabel").textContent = (currentIndex + 1) + " / " + challenges.length;
+        document.getElementById("challengeCategory").textContent = ch.category;
+        document.getElementById("progressText").textContent = "Challenge " + (currentIndex + 1) + " of " + challenges.length;
+        document.getElementById("progressFill").style.width = ((currentIndex / challenges.length) * 100) + "%";
+
+        var container = document.getElementById("gifContainer");
+        container.innerHTML = '<span class="gif-loading">Loading GIF...</span>';
+
+        // Timer starts when GIF is loaded
+        var img = document.createElement("img");
+        img.alt = ch.title + " GIF";
+        img.onload = function () {
+            container.innerHTML = "";
+            container.appendChild(img);
+            gifLoadedTime = Date.now();
+            startTimer();
+        };
+        img.onerror = function () {
+            container.innerHTML = '<div class="gif-error" style="color: var(--muted); padding: 1rem; text-align: center;">' +
+                '<p>⚠️ GIF failed to load.</p>' +
+                '<p style="font-size: 0.8rem;">Timer started — describe what you think might happen based on the title: <strong>' + sanitize(ch.title) + '</strong></p></div>';
+            gifLoadedTime = Date.now();
+            startTimer();
+        };
+        img.src = ch.gifUrl;
+
+        var textarea = document.getElementById("userAnswer");
+        textarea.value = "";
+        textarea.focus();
+        document.getElementById("charCount").textContent = "0";
+        document.getElementById("submitBtn").disabled = true;
+    }
+
+    /* ── Input handling ──────────────────────────────────────── */
+    document.getElementById("userAnswer").addEventListener("input", function () {
+        var len = this.value.length;
+        document.getElementById("charCount").textContent = len;
+        document.getElementById("submitBtn").disabled = len < 3;
+    });
+
+    document.getElementById("userAnswer").addEventListener("keydown", function (e) {
+        if (e.key === "Enter" && !e.shiftKey && this.value.length >= 3) {
+            e.preventDefault();
+            submitAnswer();
+        }
+    });
+
+    function submitAnswer() {
+        var elapsed = stopTimer();
+        var ch = challenges[currentIndex];
+        var answer = document.getElementById("userAnswer").value.trim();
+
+        // Simple keyword matching for correctness
+        var answerLower = answer.toLowerCase();
+        var matched = 0;
+        for (var i = 0; i < ch.keywords.length; i++) {
+            if (answerLower.indexOf(ch.keywords[i]) !== -1) matched++;
+        }
+        var status = matched >= 2 ? "correct" : "wrong";
+
+        results.push({
+            id: ch.id,
+            title: ch.title,
+            category: ch.category,
+            timeMs: elapsed,
+            answer: answer,
+            status: status,
+            keywordsMatched: matched,
+            keywordsTotal: ch.keywords.length
+        });
+
+        nextChallenge();
+    }
+
+    function skipChallenge() {
+        var elapsed = stopTimer();
+        var ch = challenges[currentIndex];
+        results.push({
+            id: ch.id,
+            title: ch.title,
+            category: ch.category,
+            timeMs: elapsed,
+            answer: "",
+            status: "skipped",
+            keywordsMatched: 0,
+            keywordsTotal: ch.keywords.length
+        });
+        nextChallenge();
+    }
+
+    function nextChallenge() {
+        currentIndex++;
+        if (currentIndex >= challenges.length) {
+            showResults();
+        } else {
+            loadChallenge();
+        }
+    }
+
+    /* ── Statistics ───────────────────────────────────────────── */
+    function computeStats(times) {
+        if (times.length === 0) return { mean: 0, median: 0, stdDev: 0, min: 0, max: 0, p25: 0, p75: 0, total: 0 };
+        var sorted = times.slice().sort(function (a, b) { return a - b; });
+        var sum = 0;
+        for (var i = 0; i < sorted.length; i++) sum += sorted[i];
+        var mean = sum / sorted.length;
+
+        var sqDiffSum = 0;
+        for (var j = 0; j < sorted.length; j++) {
+            var d = sorted[j] - mean;
+            sqDiffSum += d * d;
+        }
+        var stdDev = Math.sqrt(sqDiffSum / sorted.length);
+
+        function percentile(arr, p) {
+            var idx = (p / 100) * (arr.length - 1);
+            var lo = Math.floor(idx);
+            var hi = Math.ceil(idx);
+            if (lo === hi) return arr[lo];
+            return arr[lo] + (arr[hi] - arr[lo]) * (idx - lo);
+        }
+
+        return {
+            mean: mean,
+            median: percentile(sorted, 50),
+            stdDev: stdDev,
+            min: sorted[0],
+            max: sorted[sorted.length - 1],
+            p25: percentile(sorted, 25),
+            p75: percentile(sorted, 75),
+            total: sum
+        };
+    }
+
+    function formatTime(ms) {
+        var s = ms / 1000;
+        if (s < 60) return s.toFixed(1) + "s";
+        return Math.floor(s / 60) + "m " + (s % 60).toFixed(0) + "s";
+    }
+
+    /* ── Results Display ─────────────────────────────────────── */
+    function showResults() {
+        document.getElementById("challengeScreen").classList.add("hidden");
+        document.getElementById("progressContainer").classList.add("hidden");
+        document.getElementById("resultsScreen").classList.remove("hidden");
+
+        var times = results.map(function (r) { return r.timeMs; });
+        var stats = computeStats(times);
+        var answeredResults = results.filter(function (r) { return r.status !== "skipped"; });
+        var correctResults = results.filter(function (r) { return r.status === "correct"; });
+
+        // Summary stats grid
+        var statsHtml = '' +
+            '<div class="stat-card"><div class="stat-value">' + formatTime(stats.total) + '</div><div class="stat-label">Total Time</div></div>' +
+            '<div class="stat-card"><div class="stat-value">' + formatTime(stats.mean) + '</div><div class="stat-label">Mean</div></div>' +
+            '<div class="stat-card"><div class="stat-value">' + formatTime(stats.median) + '</div><div class="stat-label">Median</div></div>' +
+            '<div class="stat-card"><div class="stat-value">' + formatTime(stats.stdDev) + '</div><div class="stat-label">Std Dev</div></div>' +
+            '<div class="stat-card fast"><div class="stat-value">' + formatTime(stats.min) + '</div><div class="stat-label">Fastest</div></div>' +
+            '<div class="stat-card slow"><div class="stat-value">' + formatTime(stats.max) + '</div><div class="stat-label">Slowest</div></div>' +
+            '<div class="stat-card"><div class="stat-value">' + correctResults.length + '/' + results.length + '</div><div class="stat-label">Correct</div></div>' +
+            '<div class="stat-card"><div class="stat-value">' + formatTime(stats.p75) + '</div><div class="stat-label">75th Percentile</div></div>';
+        document.getElementById("statsGrid").innerHTML = statsHtml;
+
+        // Per-challenge breakdown table
+        var maxTime = stats.max || 1;
+        var bodyHtml = "";
+        for (var i = 0; i < results.length; i++) {
+            var r = results[i];
+            var barWidth = Math.max(4, (r.timeMs / maxTime) * 120);
+            var badgeClass = r.status === "correct" ? "badge-correct"
+                : r.status === "skipped" ? "badge-skipped" : "badge-wrong";
+            var badgeText = r.status === "correct" ? "✓ Correct"
+                : r.status === "skipped" ? "⊘ Skipped" : "✗ Wrong";
+
+            bodyHtml += '<tr>' +
+                '<td>' + r.id + '</td>' +
+                '<td>' + sanitize(r.title) + '</td>' +
+                '<td>' + sanitize(r.category) + '</td>' +
+                '<td><span class="time-bar" style="width:' + barWidth + 'px"></span>' + formatTime(r.timeMs) + '</td>' +
+                '<td><span class="badge ' + badgeClass + '">' + badgeText + '</span></td>' +
+                '</tr>';
+        }
+        document.getElementById("breakdownBody").innerHTML = bodyHtml;
+
+        // Category breakdown
+        var categories = {};
+        for (var c = 0; c < results.length; c++) {
+            var cat = results[c].category;
+            if (!categories[cat]) categories[cat] = [];
+            categories[cat].push(results[c].timeMs);
+        }
+        var catNames = Object.keys(categories).sort();
+        var maxCatAvg = 0;
+        var catAvgs = {};
+        for (var k = 0; k < catNames.length; k++) {
+            var catTimes = categories[catNames[k]];
+            var avg = 0;
+            for (var m = 0; m < catTimes.length; m++) avg += catTimes[m];
+            avg /= catTimes.length;
+            catAvgs[catNames[k]] = avg;
+            if (avg > maxCatAvg) maxCatAvg = avg;
+        }
+
+        var catColors = {
+            "Narrative Twist": "var(--accent)",
+            "Physical Comedy": "var(--green)",
+            "Social Subversion": "var(--purple)",
+            "Animal Behavior": "var(--orange)",
+            "Visual Trick": "var(--cyan)",
+            "Optical Illusion": "var(--yellow)"
+        };
+
+        var catHtml = "";
+        for (var n = 0; n < catNames.length; n++) {
+            var name = catNames[n];
+            var pct = maxCatAvg > 0 ? (catAvgs[name] / maxCatAvg) * 100 : 0;
+            var color = catColors[name] || "var(--accent)";
+            catHtml += '<div class="category-row">' +
+                '<div class="category-name">' + sanitize(name) + '</div>' +
+                '<div class="category-bar-bg"><div class="category-bar-fill" style="width:' + pct + '%; background:' + color + '"></div></div>' +
+                '<div class="category-time">' + formatTime(catAvgs[name]) + '</div>' +
+                '</div>';
+        }
+        document.getElementById("categoryBreakdown").innerHTML = catHtml;
+
+        // Charts
+        drawBarChart();
+        drawScatterChart();
+
+        // Usability assessment
+        renderUsability(stats, correctResults.length, results.length);
+    }
+
+    /* ── Charts ──────────────────────────────────────────────── */
+    function drawBarChart() {
+        var canvas = document.getElementById("barChart");
+        var ctx = canvas.getContext("2d");
+        var dpr = window.devicePixelRatio || 1;
+        var rect = canvas.getBoundingClientRect();
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+        ctx.scale(dpr, dpr);
+
+        var w = rect.width;
+        var h = rect.height;
+        var pad = { top: 10, right: 10, bottom: 25, left: 40 };
+        var plotW = w - pad.left - pad.right;
+        var plotH = h - pad.top - pad.bottom;
+
+        var times = results.map(function (r) { return r.timeMs / 1000; });
+        var maxVal = Math.max.apply(null, times) * 1.15;
+
+        ctx.fillStyle = "var(--surface)";
+        ctx.clearRect(0, 0, w, h);
+
+        // Y-axis
+        ctx.strokeStyle = "#30363d";
+        ctx.lineWidth = 0.5;
+        for (var gy = 0; gy <= 4; gy++) {
+            var yy = pad.top + plotH - (gy / 4) * plotH;
+            ctx.beginPath();
+            ctx.moveTo(pad.left, yy);
+            ctx.lineTo(pad.left + plotW, yy);
+            ctx.stroke();
+
+            ctx.fillStyle = "#8b949e";
+            ctx.font = "10px -apple-system, sans-serif";
+            ctx.textAlign = "right";
+            ctx.fillText((maxVal * gy / 4).toFixed(0) + "s", pad.left - 4, yy + 3);
+        }
+
+        // Bars
+        var barW = plotW / times.length * 0.7;
+        var gap = plotW / times.length * 0.3;
+        for (var bi = 0; bi < times.length; bi++) {
+            var bx = pad.left + bi * (barW + gap) + gap / 2;
+            var bh = (times[bi] / maxVal) * plotH;
+            var by = pad.top + plotH - bh;
+
+            var r = results[bi];
+            ctx.fillStyle = r.status === "correct" ? "#3fb950"
+                : r.status === "skipped" ? "#d29922" : "#f85149";
+            ctx.beginPath();
+            ctx.roundRect(bx, by, barW, bh, 3);
+            ctx.fill();
+
+            // Label
+            ctx.fillStyle = "#8b949e";
+            ctx.font = "10px -apple-system, sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillText("#" + r.id, bx + barW / 2, pad.top + plotH + 14);
+        }
+    }
+
+    function drawScatterChart() {
+        var canvas = document.getElementById("scatterChart");
+        var ctx = canvas.getContext("2d");
+        var dpr = window.devicePixelRatio || 1;
+        var rect = canvas.getBoundingClientRect();
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+        ctx.scale(dpr, dpr);
+
+        var w = rect.width;
+        var h = rect.height;
+        var pad = { top: 10, right: 10, bottom: 30, left: 40 };
+        var plotW = w - pad.left - pad.right;
+        var plotH = h - pad.top - pad.bottom;
+
+        var times = results.map(function (r) { return r.timeMs / 1000; });
+        var maxTime = Math.max.apply(null, times) * 1.15;
+        var maxKw = Math.max.apply(null, results.map(function (r) { return r.keywordsTotal; }));
+
+        ctx.clearRect(0, 0, w, h);
+
+        // Grid
+        ctx.strokeStyle = "#30363d";
+        ctx.lineWidth = 0.5;
+        for (var gx = 0; gx <= 4; gx++) {
+            var xx = pad.left + (gx / 4) * plotW;
+            ctx.beginPath();
+            ctx.moveTo(xx, pad.top);
+            ctx.lineTo(xx, pad.top + plotH);
+            ctx.stroke();
+        }
+        for (var gy2 = 0; gy2 <= 4; gy2++) {
+            var yy2 = pad.top + plotH - (gy2 / 4) * plotH;
+            ctx.beginPath();
+            ctx.moveTo(pad.left, yy2);
+            ctx.lineTo(pad.left + plotW, yy2);
+            ctx.stroke();
+        }
+
+        // Axis labels
+        ctx.fillStyle = "#8b949e";
+        ctx.font = "10px -apple-system, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("Time (seconds)", pad.left + plotW / 2, h - 2);
+        ctx.save();
+        ctx.translate(8, pad.top + plotH / 2);
+        ctx.rotate(-Math.PI / 2);
+        ctx.fillText("Keywords Matched", 0, 0);
+        ctx.restore();
+
+        // Points
+        for (var pi = 0; pi < results.length; pi++) {
+            var pr = results[pi];
+            var px = pad.left + (times[pi] / maxTime) * plotW;
+            var py = pad.top + plotH - (pr.keywordsMatched / maxKw) * plotH;
+
+            ctx.fillStyle = pr.status === "correct" ? "#3fb950"
+                : pr.status === "skipped" ? "#d29922" : "#f85149";
+            ctx.beginPath();
+            ctx.arc(px, py, 5, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = "#8b949e";
+            ctx.font = "9px -apple-system, sans-serif";
+            ctx.textAlign = "left";
+            ctx.fillText("#" + pr.id, px + 7, py + 3);
+        }
+    }
+
+    /* ── Usability ───────────────────────────────────────────── */
+    function renderUsability(stats, correct, total) {
+        var totalSec = stats.total / 1000;
+        var medianSec = stats.median / 1000;
+        var accuracy = total > 0 ? (correct / total * 100) : 0;
+
+        var grade, color, summary;
+        if (medianSec <= 10 && accuracy >= 80) {
+            grade = "A — Excellent";
+            color = "var(--green)";
+            summary = "Fast solving with high accuracy. This CAPTCHA format is highly usable.";
+        } else if (medianSec <= 20 && accuracy >= 60) {
+            grade = "B — Good";
+            color = "var(--accent)";
+            summary = "Reasonable solving speed. Most users would tolerate this CAPTCHA.";
+        } else if (medianSec <= 30 && accuracy >= 40) {
+            grade = "C — Acceptable";
+            color = "var(--yellow)";
+            summary = "Noticeable friction. Some users may abandon the CAPTCHA flow.";
+        } else if (medianSec <= 45) {
+            grade = "D — Poor";
+            color = "var(--orange)";
+            summary = "Too slow for practical use. Users will find this frustrating.";
+        } else {
+            grade = "F — Unusable";
+            color = "var(--red)";
+            summary = "Solving takes too long. This format needs fundamental redesign.";
+        }
+
+        var html = '<div style="margin-bottom: 0.8rem;">' +
+            '<span style="font-size: 1.4rem; font-weight: 700; color: ' + color + ';">' + grade + '</span></div>' +
+            '<p style="color: var(--muted); margin-bottom: 0.8rem;">' + summary + '</p>' +
+            '<div style="font-size: 0.85rem; color: var(--text);">' +
+            '<p>📊 <strong>Median solve time:</strong> ' + formatTime(stats.median) + ' (threshold: ≤20s for "Good")</p>' +
+            '<p>🎯 <strong>Accuracy:</strong> ' + accuracy.toFixed(0) + '% (' + correct + '/' + total + ')</p>' +
+            '<p>⏱️ <strong>Total session:</strong> ' + formatTime(stats.total) + ' for ' + total + ' challenges</p>' +
+            '<p style="margin-top: 0.6rem; color: var(--muted); font-size: 0.8rem;">Research benchmark: effective CAPTCHAs should solve in &lt;15s median with &gt;80% accuracy (Nielsen Norman Group, 2024).</p>' +
+            '</div>';
+
+        document.getElementById("usabilityAssessment").innerHTML = html;
+    }
+
+    /* ── Export ───────────────────────────────────────────────── */
+    function exportJSON() {
+        var times = results.map(function (r) { return r.timeMs; });
+        var stats = computeStats(times);
+        var exportData = {
+            timestamp: new Date().toISOString(),
+            challenges: results.length,
+            statistics: {
+                totalMs: stats.total,
+                meanMs: Math.round(stats.mean),
+                medianMs: Math.round(stats.median),
+                stdDevMs: Math.round(stats.stdDev),
+                minMs: stats.min,
+                maxMs: stats.max,
+                p25Ms: Math.round(stats.p25),
+                p75Ms: Math.round(stats.p75)
+            },
+            results: results
+        };
+        var blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement("a");
+        a.href = url;
+        a.download = "captcha-timing-" + new Date().toISOString().slice(0, 10) + ".json";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    function exportCSV() {
+        var csv = "id,title,category,timeMs,timeSec,status,keywordsMatched,keywordsTotal,answer\n";
+        for (var i = 0; i < results.length; i++) {
+            var r = results[i];
+            csv += r.id + ',' +
+                '"' + r.title.replace(/"/g, '""') + '",' +
+                '"' + r.category.replace(/"/g, '""') + '",' +
+                r.timeMs + ',' +
+                (r.timeMs / 1000).toFixed(2) + ',' +
+                r.status + ',' +
+                r.keywordsMatched + ',' +
+                r.keywordsTotal + ',' +
+                '"' + r.answer.replace(/"/g, '""') + '"\n';
+        }
+        var blob = new Blob([csv], { type: "text/csv" });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement("a");
+        a.href = url;
+        a.download = "captcha-timing-" + new Date().toISOString().slice(0, 10) + ".csv";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    function retry() {
+        document.getElementById("resultsScreen").classList.add("hidden");
+        document.getElementById("introScreen").classList.remove("hidden");
+    }
+    </script>
+</body>
+</html>

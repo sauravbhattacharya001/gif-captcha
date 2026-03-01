@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'unsafe-inline'; img-src https:; frame-ancestors 'none'; base-uri 'self'; form-action 'none';">
+    <meta name="referrer" content="no-referrer">
+    <title>GIF CAPTCHA — A/B Testing Configurator</title>
+    <link rel="stylesheet" href="shared.css">
+    <style>
+        .container { max-width: 960px; }
+
+        .config-section {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .config-section h2 {
+            font-size: 1.1rem;
+            margin-bottom: 1rem;
+            color: var(--accent);
+        }
+        .config-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+        @media (max-width: 600px) {
+            .config-grid { grid-template-columns: 1fr; }
+        }
+        .form-group { display: flex; flex-direction: column; gap: 0.3rem; }
+        .form-group label {
+            font-size: 0.8rem;
+            color: var(--muted);
+            font-weight: 500;
+        }
+        .form-group .hint {
+            font-size: 0.7rem;
+            color: var(--muted);
+            opacity: 0.7;
+        }
+        input[type="number"], select {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 0.5rem 0.7rem;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            font-family: inherit;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        input:focus, select:focus { border-color: var(--accent); }
+
+        /* Variant Cards */
+        .variant-cards {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        @media (max-width: 600px) {
+            .variant-cards { grid-template-columns: 1fr; }
+        }
+        .variant-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.2rem;
+            text-align: center;
+            transition: border-color 0.2s;
+        }
+        .variant-card.active { border-color: var(--accent); }
+        .variant-card .variant-label {
+            font-size: 0.75rem;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.3rem;
+        }
+        .variant-card .variant-name {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 0.8rem;
+        }
+        .variant-card select {
+            width: 100%;
+            margin-bottom: 0.5rem;
+        }
+        .variant-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.5rem;
+            margin-top: 0.8rem;
+        }
+        .variant-stat {
+            text-align: center;
+        }
+        .variant-stat .stat-value {
+            font-size: 1.3rem;
+            font-weight: 700;
+        }
+        .variant-stat .stat-label {
+            font-size: 0.7rem;
+            color: var(--muted);
+        }
+
+        /* Results */
+        .results-panel {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-top: 1.5rem;
+            display: none;
+        }
+        .results-panel.visible { display: block; }
+        .results-panel h2 {
+            font-size: 1.1rem;
+            margin-bottom: 1rem;
+            color: var(--accent);
+        }
+
+        .metric-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.6rem 0;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.9rem;
+        }
+        .metric-row:last-child { border-bottom: none; }
+        .metric-name { color: var(--muted); }
+        .metric-value { font-weight: 600; }
+
+        .sample-size-result {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.2rem;
+            text-align: center;
+            margin: 1rem 0;
+        }
+        .sample-size-result .big-number {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: var(--accent);
+        }
+        .sample-size-result .big-label {
+            font-size: 0.85rem;
+            color: var(--muted);
+            margin-top: 0.3rem;
+        }
+
+        .verdict {
+            border-radius: 10px;
+            padding: 1rem;
+            margin-top: 1rem;
+            font-size: 0.9rem;
+            line-height: 1.6;
+        }
+        .verdict-positive {
+            background: var(--green-bg);
+            border: 1px solid rgba(63, 185, 80, 0.3);
+            color: var(--green);
+        }
+        .verdict-neutral {
+            background: var(--yellow-bg);
+            border: 1px solid rgba(210, 153, 34, 0.3);
+            color: var(--yellow);
+        }
+        .verdict-negative {
+            background: var(--red-bg);
+            border: 1px solid rgba(248, 81, 73, 0.3);
+            color: var(--red);
+        }
+
+        .timeline-chart {
+            margin: 1rem 0;
+        }
+        .timeline-bar {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin: 0.4rem 0;
+        }
+        .timeline-label {
+            width: 80px;
+            font-size: 0.8rem;
+            color: var(--muted);
+            text-align: right;
+            flex-shrink: 0;
+        }
+        .timeline-track {
+            flex: 1;
+            height: 24px;
+            background: var(--bg);
+            border-radius: 4px;
+            overflow: hidden;
+            position: relative;
+        }
+        .timeline-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.5s ease;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding-right: 0.4rem;
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: #fff;
+        }
+        .timeline-fill-a { background: var(--accent); }
+        .timeline-fill-b { background: var(--purple); }
+
+        .comparison-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 0.8rem;
+            margin: 1rem 0;
+        }
+        @media (max-width: 600px) {
+            .comparison-grid { grid-template-columns: 1fr; }
+        }
+        .comparison-cell {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.8rem;
+            text-align: center;
+        }
+        .comparison-cell .cell-label {
+            font-size: 0.7rem;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+        .comparison-cell .cell-value {
+            font-size: 1.4rem;
+            font-weight: 700;
+            margin: 0.2rem 0;
+        }
+        .winner { border-color: var(--green); }
+        .winner .cell-value { color: var(--green); }
+
+        .btn-row {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 1.5rem;
+            flex-wrap: wrap;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🧪 A/B Testing Configurator</h1>
+        <p class="subtitle">Plan and analyze CAPTCHA A/B experiments with statistical rigor</p>
+        <div class="nav-links">
+            <a href="index.html">📋 Study</a>
+            <a href="demo.html">🎮 Demo</a>
+            <a href="analysis.html">📊 Analysis</a>
+            <a href="generator.html">🛠️ Workshop</a>
+            <a href="simulator.html">🤖 Simulator</a>
+            <a href="benchmark.html">⏱️ Benchmark</a>
+            <a href="cognitive-load.html">🧠 Cognitive</a>
+            <a href="effectiveness.html">📈 Effectiveness</a>
+            <a href="abtest.html" style="font-weight:600;">🧪 A/B Test</a>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- Variant Selection -->
+        <div class="variant-cards" id="variantCards">
+            <div class="variant-card active" id="variantA">
+                <div class="variant-label">Control (A)</div>
+                <div class="variant-name" id="variantAName">GIF CAPTCHA</div>
+                <select id="typeA" aria-label="CAPTCHA type for variant A">
+                    <option value="gif" selected>🎞️ GIF CAPTCHA</option>
+                    <option value="text">🔤 Text CAPTCHA (reCAPTCHA v2)</option>
+                    <option value="image">🖼️ Image Grid (reCAPTCHA v2)</option>
+                    <option value="audio">🔊 Audio CAPTCHA</option>
+                    <option value="slider">↔️ Slider CAPTCHA</option>
+                    <option value="invisible">👻 Invisible (reCAPTCHA v3)</option>
+                    <option value="hcaptcha">🤖 hCaptcha</option>
+                    <option value="turnstile">☁️ Cloudflare Turnstile</option>
+                </select>
+                <div class="variant-stats" id="statsA"></div>
+            </div>
+            <div class="variant-card" id="variantB">
+                <div class="variant-label">Treatment (B)</div>
+                <div class="variant-name" id="variantBName">Text CAPTCHA</div>
+                <select id="typeB" aria-label="CAPTCHA type for variant B">
+                    <option value="gif">🎞️ GIF CAPTCHA</option>
+                    <option value="text" selected>🔤 Text CAPTCHA (reCAPTCHA v2)</option>
+                    <option value="image">🖼️ Image Grid (reCAPTCHA v2)</option>
+                    <option value="audio">🔊 Audio CAPTCHA</option>
+                    <option value="slider">↔️ Slider CAPTCHA</option>
+                    <option value="invisible">👻 Invisible (reCAPTCHA v3)</option>
+                    <option value="hcaptcha">🤖 hCaptcha</option>
+                    <option value="turnstile">☁️ Cloudflare Turnstile</option>
+                </select>
+                <div class="variant-stats" id="statsB"></div>
+            </div>
+        </div>
+
+        <!-- Test Configuration -->
+        <div class="config-section">
+            <h2>⚙️ Test Configuration</h2>
+            <div class="config-grid">
+                <div class="form-group">
+                    <label for="dailyTraffic">Daily Form Submissions</label>
+                    <input type="number" id="dailyTraffic" value="1000" min="10" max="10000000">
+                    <span class="hint">How many users hit your form per day</span>
+                </div>
+                <div class="form-group">
+                    <label for="baselineConversion">Baseline Conversion Rate (%)</label>
+                    <input type="number" id="baselineConversion" value="3.5" min="0.1" max="100" step="0.1">
+                    <span class="hint">Current conversion rate with existing CAPTCHA</span>
+                </div>
+                <div class="form-group">
+                    <label for="mde">Minimum Detectable Effect (%)</label>
+                    <input type="number" id="mde" value="10" min="1" max="100" step="1">
+                    <span class="hint">Smallest % change worth detecting (relative)</span>
+                </div>
+                <div class="form-group">
+                    <label for="significance">Significance Level</label>
+                    <select id="significance">
+                        <option value="0.10">90% confidence (α = 0.10)</option>
+                        <option value="0.05" selected>95% confidence (α = 0.05)</option>
+                        <option value="0.01">99% confidence (α = 0.01)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="power">Statistical Power</label>
+                    <select id="power">
+                        <option value="0.80" selected>80% power (standard)</option>
+                        <option value="0.90">90% power (higher)</option>
+                        <option value="0.95">95% power (very high)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="trafficSplit">Traffic Split</label>
+                    <select id="trafficSplit">
+                        <option value="50" selected>50/50 (standard)</option>
+                        <option value="70">70/30 (conservative)</option>
+                        <option value="80">80/20 (minimal risk)</option>
+                        <option value="90">90/10 (pilot)</option>
+                    </select>
+                </div>
+            </div>
+            <div class="btn-row">
+                <button class="btn btn-primary" id="calculateBtn">🧮 Calculate & Compare</button>
+                <button class="btn btn-secondary" id="resetBtn">Reset</button>
+            </div>
+        </div>
+
+        <!-- Results -->
+        <div class="results-panel" id="results">
+            <h2>📊 Sample Size & Duration</h2>
+
+            <div class="sample-size-result">
+                <div class="big-number" id="sampleSize">—</div>
+                <div class="big-label">total participants needed (both groups)</div>
+            </div>
+
+            <div class="timeline-chart" id="timeline"></div>
+
+            <div class="metric-row">
+                <span class="metric-name">Per-group sample</span>
+                <span class="metric-value" id="perGroup">—</span>
+            </div>
+            <div class="metric-row">
+                <span class="metric-name">Estimated duration</span>
+                <span class="metric-value" id="duration">—</span>
+            </div>
+            <div class="metric-row">
+                <span class="metric-name">Control (A) conversion rate</span>
+                <span class="metric-value" id="crA">—</span>
+            </div>
+            <div class="metric-row">
+                <span class="metric-name">Treatment (B) expected range</span>
+                <span class="metric-value" id="crB">—</span>
+            </div>
+
+            <h2 style="margin-top:1.5rem;">⚔️ CAPTCHA Comparison</h2>
+
+            <div class="comparison-grid" id="comparisonGrid"></div>
+
+            <h2 style="margin-top:1.5rem;">🏆 Recommendation</h2>
+            <div id="verdict"></div>
+
+            <h2 style="margin-top:1.5rem;">📋 Test Plan Summary</h2>
+            <div id="testPlan" style="font-size:0.85rem;color:var(--muted);line-height:1.8;"></div>
+        </div>
+    </div>
+
+    <footer>
+        <p>
+            <a href="index.html">← Back to Study</a> ·
+            <a href="https://github.com/sauravbhattacharya001/gif-captcha">View on GitHub</a>
+        </p>
+    </footer>
+
+    <script>
+    (function() {
+        'use strict';
+
+        // ── CAPTCHA Type Profiles ──
+        // Based on published benchmarks and research data
+        var CAPTCHA_PROFILES = {
+            gif: {
+                name: 'GIF CAPTCHA',
+                humanPassRate: 0.92,
+                botBlockRate: 0.97,
+                avgSolveTime: 8.2,
+                dropoffRate: 0.08,
+                accessibilityScore: 0.45,
+                implementationCost: 'Medium',
+                strengths: ['High bot resistance', 'Novel (no solver ecosystems)', 'Engaging UX'],
+                weaknesses: ['Lower accessibility', 'Requires GIF assets', 'Not standardized']
+            },
+            text: {
+                name: 'Text CAPTCHA',
+                humanPassRate: 0.85,
+                botBlockRate: 0.65,
+                avgSolveTime: 9.8,
+                dropoffRate: 0.12,
+                accessibilityScore: 0.30,
+                implementationCost: 'Low',
+                strengths: ['Well-understood', 'Easy to implement', 'Widespread adoption'],
+                weaknesses: ['Largely solved by AI', 'Poor accessibility', 'Frustrating UX']
+            },
+            image: {
+                name: 'Image Grid',
+                humanPassRate: 0.88,
+                botBlockRate: 0.78,
+                avgSolveTime: 12.5,
+                dropoffRate: 0.15,
+                accessibilityScore: 0.35,
+                implementationCost: 'Low',
+                strengths: ['Good visual challenge', 'Google-backed', 'Familiar to users'],
+                weaknesses: ['AI vision solvers exist', 'Slow solve time', 'Privacy concerns']
+            },
+            audio: {
+                name: 'Audio CAPTCHA',
+                humanPassRate: 0.72,
+                botBlockRate: 0.60,
+                avgSolveTime: 22.0,
+                dropoffRate: 0.25,
+                accessibilityScore: 0.55,
+                implementationCost: 'Medium',
+                strengths: ['Screen reader compatible', 'Alternative modality'],
+                weaknesses: ['Very slow', 'High drop-off', 'Speech recognition solvers']
+            },
+            slider: {
+                name: 'Slider CAPTCHA',
+                humanPassRate: 0.95,
+                botBlockRate: 0.55,
+                avgSolveTime: 3.5,
+                dropoffRate: 0.03,
+                accessibilityScore: 0.60,
+                implementationCost: 'Low',
+                strengths: ['Very fast', 'Low friction', 'Good accessibility'],
+                weaknesses: ['Low security', 'Easily automated', 'Puzzle image recognition']
+            },
+            invisible: {
+                name: 'Invisible (reCAPTCHA v3)',
+                humanPassRate: 0.99,
+                botBlockRate: 0.82,
+                avgSolveTime: 0,
+                dropoffRate: 0.01,
+                accessibilityScore: 0.95,
+                implementationCost: 'Low',
+                strengths: ['Zero friction', 'Great UX', 'Excellent accessibility'],
+                weaknesses: ['Score-based (needs tuning)', 'Privacy concerns', 'Fingerprinting']
+            },
+            hcaptcha: {
+                name: 'hCaptcha',
+                humanPassRate: 0.90,
+                botBlockRate: 0.80,
+                avgSolveTime: 10.0,
+                dropoffRate: 0.10,
+                accessibilityScore: 0.40,
+                implementationCost: 'Low',
+                strengths: ['Privacy-focused', 'Pays website owners', 'Good security'],
+                weaknesses: ['Similar to image grid', 'Some solver services', 'Moderate UX']
+            },
+            turnstile: {
+                name: 'Cloudflare Turnstile',
+                humanPassRate: 0.98,
+                botBlockRate: 0.88,
+                avgSolveTime: 1.5,
+                dropoffRate: 0.02,
+                accessibilityScore: 0.90,
+                implementationCost: 'Low',
+                strengths: ['Minimal friction', 'Strong bot detection', 'Good privacy'],
+                weaknesses: ['Cloudflare dependency', 'Newer (less data)', 'Edge cases']
+            }
+        };
+
+        // ── DOM refs ──
+        var typeA = document.getElementById('typeA');
+        var typeB = document.getElementById('typeB');
+        var dailyTraffic = document.getElementById('dailyTraffic');
+        var baselineConversion = document.getElementById('baselineConversion');
+        var mde = document.getElementById('mde');
+        var significance = document.getElementById('significance');
+        var power = document.getElementById('power');
+        var trafficSplit = document.getElementById('trafficSplit');
+        var calculateBtn = document.getElementById('calculateBtn');
+        var resetBtn = document.getElementById('resetBtn');
+        var resultsPanel = document.getElementById('results');
+
+        // ── Update variant cards ──
+        function updateVariantCards() {
+            var a = CAPTCHA_PROFILES[typeA.value];
+            var b = CAPTCHA_PROFILES[typeB.value];
+            document.getElementById('variantAName').textContent = a.name;
+            document.getElementById('variantBName').textContent = b.name;
+            renderVariantStats('statsA', a);
+            renderVariantStats('statsB', b);
+        }
+
+        function renderVariantStats(containerId, profile) {
+            var el = document.getElementById(containerId);
+            el.innerHTML =
+                '<div class="variant-stat"><div class="stat-value" style="color:var(--green)">' +
+                pct(profile.humanPassRate) + '</div><div class="stat-label">Pass Rate</div></div>' +
+                '<div class="variant-stat"><div class="stat-value" style="color:var(--accent)">' +
+                pct(profile.botBlockRate) + '</div><div class="stat-label">Bot Block</div></div>' +
+                '<div class="variant-stat"><div class="stat-value" style="color:var(--yellow)">' +
+                profile.avgSolveTime.toFixed(1) + 's</div><div class="stat-label">Solve Time</div></div>' +
+                '<div class="variant-stat"><div class="stat-value" style="color:var(--red)">' +
+                pct(profile.dropoffRate) + '</div><div class="stat-label">Drop-off</div></div>';
+        }
+
+        typeA.addEventListener('change', updateVariantCards);
+        typeB.addEventListener('change', updateVariantCards);
+        updateVariantCards();
+
+        // ── Sample Size Calculation (two-proportion z-test) ──
+        function calcSampleSize(p1, p2, alpha, beta) {
+            var za = normalQuantile(1 - alpha / 2);
+            var zb = normalQuantile(beta);
+            var pBar = (p1 + p2) / 2;
+            var num = Math.pow(za * Math.sqrt(2 * pBar * (1 - pBar)) +
+                       zb * Math.sqrt(p1 * (1 - p1) + p2 * (1 - p2)), 2);
+            var denom = Math.pow(p1 - p2, 2);
+            return Math.ceil(num / denom);
+        }
+
+        // Approximation of the standard normal inverse CDF
+        function normalQuantile(p) {
+            // Rational approximation (Abramowitz & Stegun 26.2.23)
+            if (p <= 0) return -Infinity;
+            if (p >= 1) return Infinity;
+            if (p === 0.5) return 0;
+            var sign = p < 0.5 ? -1 : 1;
+            var t = p < 0.5 ? p : 1 - p;
+            t = Math.sqrt(-2 * Math.log(t));
+            var c0 = 2.515517, c1 = 0.802853, c2 = 0.010328;
+            var d1 = 1.432788, d2 = 0.189269, d3 = 0.001308;
+            return sign * (t - (c0 + c1 * t + c2 * t * t) /
+                   (1 + d1 * t + d2 * t * t + d3 * t * t * t));
+        }
+
+        // ── Calculate ──
+        calculateBtn.addEventListener('click', function() {
+            var a = CAPTCHA_PROFILES[typeA.value];
+            var b = CAPTCHA_PROFILES[typeB.value];
+
+            var traffic = parseInt(dailyTraffic.value, 10) || 1000;
+            var baseCR = parseFloat(baselineConversion.value) / 100 || 0.035;
+            var mdeVal = parseFloat(mde.value) / 100 || 0.10;
+            var alpha = parseFloat(significance.value);
+            var beta = parseFloat(power.value);
+            var split = parseInt(trafficSplit.value, 10) / 100;
+
+            // Adjusted conversion rates based on CAPTCHA drop-off
+            var crA = baseCR * (1 - a.dropoffRate);
+            var crB = baseCR * (1 - b.dropoffRate);
+            // MDE applied to detect the difference
+            var crBHigh = crA * (1 + mdeVal);
+            var crBLow = crA * (1 - mdeVal);
+
+            // Use the MDE-adjusted rate for sample size
+            var p1 = crA;
+            var p2 = crA * (1 + mdeVal); // detect this much lift
+            var perGroup = calcSampleSize(p1, p2, alpha, beta);
+            var totalSample = perGroup * 2;
+
+            // Duration estimate based on traffic split
+            var minGroupTraffic = traffic * Math.min(split, 1 - split);
+            var durationDays = Math.ceil(perGroup / minGroupTraffic);
+
+            // Display results
+            document.getElementById('sampleSize').textContent = totalSample.toLocaleString();
+            document.getElementById('perGroup').textContent = perGroup.toLocaleString() + ' per group';
+            document.getElementById('duration').textContent = formatDuration(durationDays);
+            document.getElementById('crA').textContent = (crA * 100).toFixed(2) + '%';
+            document.getElementById('crB').textContent = (crBLow * 100).toFixed(2) + '% – ' + (crBHigh * 100).toFixed(2) + '%';
+
+            // Timeline
+            renderTimeline(durationDays, split, traffic, totalSample);
+
+            // Comparison grid
+            renderComparison(a, b);
+
+            // Verdict
+            renderVerdict(a, b, durationDays, totalSample, traffic);
+
+            // Test plan
+            renderTestPlan(a, b, traffic, baseCR, mdeVal, alpha, beta, split, perGroup, totalSample, durationDays);
+
+            resultsPanel.classList.add('visible');
+        });
+
+        // ── Reset ──
+        resetBtn.addEventListener('click', function() {
+            dailyTraffic.value = '1000';
+            baselineConversion.value = '3.5';
+            mde.value = '10';
+            significance.value = '0.05';
+            power.value = '0.80';
+            trafficSplit.value = '50';
+            typeA.value = 'gif';
+            typeB.value = 'text';
+            updateVariantCards();
+            resultsPanel.classList.remove('visible');
+        });
+
+        // ── Renderers ──
+
+        function renderTimeline(days, split, traffic, total) {
+            var el = document.getElementById('timeline');
+            var phases = [
+                { name: 'Setup', days: 1, pct: 0 },
+                { name: 'Ramp-up', days: Math.max(1, Math.ceil(days * 0.1)), pct: 0 },
+                { name: 'Collection', days: days, pct: 0 },
+                { name: 'Analysis', days: 2, pct: 0 }
+            ];
+            var totalDays = phases.reduce(function(s, p) { return s + p.days; }, 0);
+            phases.forEach(function(p) { p.pct = (p.days / totalDays) * 100; });
+
+            var colors = ['var(--muted)', 'var(--yellow)', 'var(--accent)', 'var(--green)'];
+            var html = '';
+            for (var i = 0; i < phases.length; i++) {
+                html += '<div class="timeline-bar">' +
+                    '<span class="timeline-label">' + phases[i].name + '</span>' +
+                    '<div class="timeline-track">' +
+                    '<div class="timeline-fill" style="width:' + phases[i].pct + '%;background:' + colors[i] + '">' +
+                    phases[i].days + 'd</div></div></div>';
+            }
+            html += '<div style="font-size:0.75rem;color:var(--muted);margin-top:0.5rem;text-align:right;">Total: ' +
+                    totalDays + ' days (' + Math.ceil(totalDays / 7) + ' weeks)</div>';
+            el.innerHTML = html;
+        }
+
+        function renderComparison(a, b) {
+            var el = document.getElementById('comparisonGrid');
+            var metrics = [
+                { name: 'Bot Block Rate', aVal: a.botBlockRate, bVal: b.botBlockRate, fmt: pct, higher: true },
+                { name: 'Human Pass Rate', aVal: a.humanPassRate, bVal: b.humanPassRate, fmt: pct, higher: true },
+                { name: 'Solve Time', aVal: a.avgSolveTime, bVal: b.avgSolveTime, fmt: function(v) { return v.toFixed(1) + 's'; }, higher: false },
+                { name: 'Drop-off Rate', aVal: a.dropoffRate, bVal: b.dropoffRate, fmt: pct, higher: false },
+                { name: 'Accessibility', aVal: a.accessibilityScore, bVal: b.accessibilityScore, fmt: pct, higher: true },
+                { name: 'Cost', aVal: a.implementationCost, bVal: b.implementationCost, fmt: function(v) { return v; }, higher: null }
+            ];
+
+            var html = '';
+            for (var i = 0; i < metrics.length; i++) {
+                var m = metrics[i];
+                var aWins = false, bWins = false;
+                if (m.higher !== null && typeof m.aVal === 'number') {
+                    if (m.higher) { aWins = m.aVal > m.bVal; bWins = m.bVal > m.aVal; }
+                    else { aWins = m.aVal < m.bVal; bWins = m.bVal < m.aVal; }
+                }
+
+                html += '<div class="comparison-cell"><div class="cell-label">' + m.name + '</div>' +
+                    '<div class="cell-value" style="color:var(--accent)">' + m.fmt(m.aVal) + '</div></div>' +
+                    '<div class="comparison-cell ' + (aWins ? 'winner' : bWins ? '' : '') + '">' +
+                    '<div class="cell-label">' + (aWins ? '👈 A wins' : bWins ? 'B wins 👉' : '—') + '</div>' +
+                    '<div class="cell-value">' + (aWins ? '✅' : bWins ? '✅' : '🤝') + '</div></div>' +
+                    '<div class="comparison-cell"><div class="cell-label">' + m.name + '</div>' +
+                    '<div class="cell-value" style="color:var(--purple)">' + m.fmt(m.bVal) + '</div></div>';
+            }
+            el.innerHTML = html;
+        }
+
+        function renderVerdict(a, b, days, total, traffic) {
+            var el = document.getElementById('verdict');
+            // Score each CAPTCHA on security-UX tradeoff
+            var scoreA = a.botBlockRate * 0.4 + a.humanPassRate * 0.2 +
+                         (1 - a.dropoffRate) * 0.25 + a.accessibilityScore * 0.15;
+            var scoreB = b.botBlockRate * 0.4 + b.humanPassRate * 0.2 +
+                         (1 - b.dropoffRate) * 0.25 + b.accessibilityScore * 0.15;
+
+            var diff = scoreA - scoreB;
+            var cls, text;
+
+            if (Math.abs(diff) < 0.03) {
+                cls = 'verdict-neutral';
+                text = '🤝 <strong>Close call.</strong> ' + a.name + ' and ' + b.name +
+                    ' are comparable overall. The A/B test will help distinguish real-world performance. ' +
+                    'With ' + traffic.toLocaleString() + ' daily submissions, you\'ll reach statistical significance in <strong>' +
+                    days + ' days</strong> (' + total.toLocaleString() + ' participants).';
+            } else if (diff > 0) {
+                cls = 'verdict-positive';
+                text = '✅ <strong>' + a.name + ' has the edge.</strong> It scores higher on the security-UX composite (' +
+                    (scoreA * 100).toFixed(0) + ' vs ' + (scoreB * 100).toFixed(0) + '). ' +
+                    'Key advantage: ' + a.strengths[0].toLowerCase() + '. ' +
+                    'Run the test for <strong>' + days + ' days</strong> to confirm with real users.';
+            } else {
+                cls = 'verdict-positive';
+                text = '✅ <strong>' + b.name + ' has the edge.</strong> It scores higher on the security-UX composite (' +
+                    (scoreB * 100).toFixed(0) + ' vs ' + (scoreA * 100).toFixed(0) + '). ' +
+                    'Key advantage: ' + b.strengths[0].toLowerCase() + '. ' +
+                    'Run the test for <strong>' + days + ' days</strong> to confirm with real users.';
+            }
+
+            // Feasibility warning
+            if (days > 90) {
+                cls = 'verdict-negative';
+                text += '<br><br>⚠️ <strong>Duration warning:</strong> ' + days + ' days is very long. ' +
+                    'Consider increasing traffic, loosening the MDE, or reducing confidence level to shorten the test.';
+            }
+
+            el.innerHTML = '<div class="verdict ' + cls + '">' + text + '</div>';
+        }
+
+        function renderTestPlan(a, b, traffic, baseCR, mdeVal, alpha, beta, split, perGroup, total, days) {
+            var el = document.getElementById('testPlan');
+            var splitPct = Math.round(split * 100);
+            var html =
+                '<p><strong>Hypothesis:</strong> Switching from ' + a.name + ' to ' + b.name +
+                ' will change the form conversion rate by at least ' + (mdeVal * 100).toFixed(0) + '% (relative).</p>' +
+                '<p><strong>Control (A):</strong> ' + a.name + ' — ' + splitPct + '% of traffic (' +
+                Math.round(traffic * split).toLocaleString() + '/day)</p>' +
+                '<p><strong>Treatment (B):</strong> ' + b.name + ' — ' + (100 - splitPct) + '% of traffic (' +
+                Math.round(traffic * (1 - split)).toLocaleString() + '/day)</p>' +
+                '<p><strong>Primary metric:</strong> Form completion rate (baseline: ' + (baseCR * 100).toFixed(1) + '%)</p>' +
+                '<p><strong>Secondary metrics:</strong> Bot block rate, solve time, abandonment rate</p>' +
+                '<p><strong>Statistical parameters:</strong> α = ' + alpha + ', power = ' + (beta * 100) + '%, two-tailed</p>' +
+                '<p><strong>Required sample:</strong> ' + perGroup.toLocaleString() + ' per group (' + total.toLocaleString() + ' total)</p>' +
+                '<p><strong>Estimated duration:</strong> ' + days + ' days at ' + traffic.toLocaleString() + ' submissions/day</p>' +
+                '<p><strong>Stop criteria:</strong> Reached required sample size OR p-value < ' + alpha + ' at interim analysis</p>';
+            el.innerHTML = html;
+        }
+
+        // ── Helpers ──
+        function pct(v) { return (v * 100).toFixed(0) + '%'; }
+
+        function formatDuration(days) {
+            if (days <= 1) return '1 day';
+            if (days < 7) return days + ' days';
+            var weeks = Math.ceil(days / 7);
+            return days + ' days (~' + weeks + ' week' + (weeks === 1 ? '' : 's') + ')';
+        }
+    })();
+    </script>
+</body>
+</html>

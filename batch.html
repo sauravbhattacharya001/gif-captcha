@@ -1,0 +1,1030 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; img-src https: data:; script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'self'; form-action 'none';">
+    <meta name="referrer" content="no-referrer">
+    <title>GIF CAPTCHA — Batch Validator</title>
+    <link rel="stylesheet" href="shared.css">
+    <style>
+        .container { max-width: 1100px; }
+
+        .overview-cards {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        .overview-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.25rem;
+            text-align: center;
+        }
+        .overview-card .card-value {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 0.3rem;
+        }
+        .overview-card .card-label {
+            font-size: 0.8rem;
+            color: var(--muted);
+        }
+        .card-pass .card-value { color: var(--success, #22c55e); }
+        .card-fail .card-value { color: var(--danger, #ef4444); }
+        .card-rate .card-value { color: var(--accent, #3b82f6); }
+
+        .section-title {
+            font-size: 1.3rem;
+            margin: 2.5rem 0 0.5rem;
+            color: var(--text);
+        }
+        .section-desc {
+            color: var(--muted);
+            font-size: 0.9rem;
+            margin-bottom: 1.5rem;
+        }
+
+        /* Import area */
+        .import-area {
+            background: var(--surface);
+            border: 2px dashed var(--border);
+            border-radius: 12px;
+            padding: 2rem;
+            text-align: center;
+            margin-bottom: 2rem;
+            transition: border-color 0.2s, background 0.2s;
+            cursor: pointer;
+        }
+        .import-area:hover,
+        .import-area.drag-over {
+            border-color: var(--accent, #3b82f6);
+            background: color-mix(in srgb, var(--accent, #3b82f6) 5%, var(--surface));
+        }
+        .import-area .icon { font-size: 2.5rem; margin-bottom: 0.5rem; }
+        .import-area .hint { color: var(--muted); font-size: 0.85rem; margin-top: 0.5rem; }
+
+        .import-tabs {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .import-tab {
+            padding: 0.5rem 1rem;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--surface);
+            color: var(--text);
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: all 0.2s;
+        }
+        .import-tab:hover { border-color: var(--accent, #3b82f6); }
+        .import-tab.active {
+            background: var(--accent, #3b82f6);
+            color: #fff;
+            border-color: var(--accent, #3b82f6);
+        }
+
+        .paste-area {
+            width: 100%;
+            min-height: 180px;
+            background: var(--bg, #0d1117);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem;
+            font-family: 'SF Mono', 'Cascadia Code', monospace;
+            font-size: 0.85rem;
+            resize: vertical;
+            margin-bottom: 1rem;
+        }
+
+        .sample-btn {
+            display: inline-block;
+            padding: 0.4rem 0.8rem;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: var(--surface);
+            color: var(--accent, #3b82f6);
+            cursor: pointer;
+            font-size: 0.8rem;
+            margin-right: 0.5rem;
+            transition: all 0.2s;
+        }
+        .sample-btn:hover { background: var(--accent, #3b82f6); color: #fff; }
+
+        .run-btn {
+            display: inline-block;
+            padding: 0.6rem 1.5rem;
+            border: none;
+            border-radius: 8px;
+            background: var(--accent, #3b82f6);
+            color: #fff;
+            cursor: pointer;
+            font-size: 0.95rem;
+            font-weight: 600;
+            transition: opacity 0.2s;
+        }
+        .run-btn:hover { opacity: 0.85; }
+        .run-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        /* Config */
+        .config-row {
+            display: flex;
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+        }
+        .config-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .config-item label {
+            font-size: 0.85rem;
+            color: var(--muted);
+            white-space: nowrap;
+        }
+        .config-item input[type="number"],
+        .config-item select {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.3rem 0.5rem;
+            color: var(--text);
+            font-size: 0.85rem;
+            width: 80px;
+        }
+
+        /* Results table */
+        .results-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 2rem;
+        }
+        .results-table th,
+        .results-table td {
+            padding: 0.75rem 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.85rem;
+        }
+        .results-table th {
+            color: var(--muted);
+            font-weight: 600;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+        .results-table tr:hover td { background: color-mix(in srgb, var(--surface) 80%, var(--bg)); }
+        .badge {
+            display: inline-block;
+            padding: 0.15rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .badge-pass { background: color-mix(in srgb, #22c55e 20%, transparent); color: #22c55e; }
+        .badge-fail { background: color-mix(in srgb, #ef4444 20%, transparent); color: #ef4444; }
+        .badge-partial { background: color-mix(in srgb, #f59e0b 20%, transparent); color: #f59e0b; }
+
+        /* Charts */
+        .chart-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .chart-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.25rem;
+        }
+        .chart-card h3 {
+            font-size: 0.95rem;
+            margin-bottom: 1rem;
+            color: var(--text);
+        }
+        .chart-card canvas {
+            width: 100% !important;
+            height: 250px !important;
+        }
+
+        /* Per-challenge bar */
+        .bar-row {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 0.6rem;
+        }
+        .bar-label {
+            width: 120px;
+            font-size: 0.8rem;
+            color: var(--text);
+            text-align: right;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .bar-track {
+            flex: 1;
+            height: 22px;
+            background: color-mix(in srgb, var(--border) 40%, transparent);
+            border-radius: 4px;
+            overflow: hidden;
+            position: relative;
+        }
+        .bar-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.5s ease;
+        }
+        .bar-fill-pass { background: #22c55e; }
+        .bar-fill-fail { background: #ef4444; }
+        .bar-pct {
+            width: 50px;
+            font-size: 0.8rem;
+            color: var(--muted);
+            text-align: right;
+        }
+
+        /* Export */
+        .export-bar {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .hidden { display: none !important; }
+
+        @media (max-width: 768px) {
+            .overview-cards { grid-template-columns: repeat(2, 1fr); }
+            .chart-grid { grid-template-columns: 1fr; }
+            .bar-label { width: 80px; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <a href="index.html" class="back-link">← Back to Study</a>
+        <h1>📋 Batch Validator</h1>
+        <p class="subtitle">Import response data, validate against challenges in bulk, and analyze pass/fail patterns</p>
+    </header>
+
+    <!-- Import Section -->
+    <h2 class="section-title">1. Import Response Data</h2>
+    <p class="section-desc">Paste or drag-drop response data in CSV or JSON format. Each response needs a challenge ID and the user's answer.</p>
+
+    <div class="import-tabs">
+        <button class="import-tab active" data-tab="csv" onclick="switchTab('csv')">CSV</button>
+        <button class="import-tab" data-tab="json" onclick="switchTab('json')">JSON</button>
+        <button class="import-tab" data-tab="file" onclick="switchTab('file')">File Upload</button>
+    </div>
+
+    <div id="csvTab">
+        <textarea id="csvInput" class="paste-area" placeholder="challenge_id,respondent_id,answer,response_time_ms
+1,user_001,One person shot BANG and the other shot BOOM,3200
+2,user_001,3 rappers rapping and then one roller skates away,4100
+..."></textarea>
+        <div style="margin-bottom: 1rem;">
+            <button class="sample-btn" onclick="loadSampleCSV()">📄 Load Sample CSV</button>
+            <button class="sample-btn" onclick="clearInput()">🗑️ Clear</button>
+        </div>
+    </div>
+
+    <div id="jsonTab" class="hidden">
+        <textarea id="jsonInput" class="paste-area" placeholder='[
+  {"challenge_id": 1, "respondent_id": "user_001", "answer": "One shot BANG...", "response_time_ms": 3200},
+  {"challenge_id": 2, "respondent_id": "user_001", "answer": "3 rappers...", "response_time_ms": 4100}
+]'></textarea>
+        <div style="margin-bottom: 1rem;">
+            <button class="sample-btn" onclick="loadSampleJSON()">📄 Load Sample JSON</button>
+            <button class="sample-btn" onclick="clearInput()">🗑️ Clear</button>
+        </div>
+    </div>
+
+    <div id="fileTab" class="hidden">
+        <div class="import-area" id="dropZone" onclick="document.getElementById('fileInput').click()">
+            <div class="icon">📁</div>
+            <div>Drop a CSV or JSON file here, or click to browse</div>
+            <div class="hint">Supports .csv and .json files</div>
+        </div>
+        <input type="file" id="fileInput" accept=".csv,.json" style="display:none" onchange="handleFile(event)">
+    </div>
+
+    <!-- Config -->
+    <h2 class="section-title">2. Validation Settings</h2>
+    <div class="config-row">
+        <div class="config-item">
+            <label for="threshold">Similarity Threshold</label>
+            <input type="number" id="threshold" value="0.4" min="0" max="1" step="0.05">
+        </div>
+        <div class="config-item">
+            <label for="keywordMode">Keyword Mode</label>
+            <select id="keywordMode">
+                <option value="any">Any keyword</option>
+                <option value="all">All keywords</option>
+            </select>
+        </div>
+        <div class="config-item">
+            <label for="caseSensitive">Case Sensitive</label>
+            <select id="caseSensitive">
+                <option value="no" selected>No</option>
+                <option value="yes">Yes</option>
+            </select>
+        </div>
+    </div>
+
+    <button class="run-btn" id="runBtn" onclick="runValidation()">▶ Run Batch Validation</button>
+
+    <!-- Results (hidden until run) -->
+    <div id="results" class="hidden">
+        <h2 class="section-title">3. Results Overview</h2>
+        <div class="overview-cards" id="overviewCards"></div>
+
+        <!-- Charts -->
+        <div class="chart-grid">
+            <div class="chart-card">
+                <h3>Pass / Fail Distribution</h3>
+                <canvas id="pieChart"></canvas>
+            </div>
+            <div class="chart-card">
+                <h3>Pass Rate by Challenge</h3>
+                <div id="barChart"></div>
+            </div>
+        </div>
+
+        <!-- Per-respondent breakdown -->
+        <h2 class="section-title">Respondent Breakdown</h2>
+        <p class="section-desc">How each respondent performed across challenges.</p>
+        <div class="chart-card" style="margin-bottom: 2rem;">
+            <div id="respondentBars"></div>
+        </div>
+
+        <!-- Similarity heatmap -->
+        <h2 class="section-title">Similarity Scores</h2>
+        <p class="section-desc">Text similarity between each response and the expected answer. Higher = closer match.</p>
+        <div class="chart-card" style="margin-bottom: 2rem; overflow-x: auto;">
+            <canvas id="heatmapChart"></canvas>
+        </div>
+
+        <!-- Detail table -->
+        <h2 class="section-title">Detailed Results</h2>
+        <div class="export-bar">
+            <button class="sample-btn" onclick="exportCSV()">📥 Export CSV</button>
+            <button class="sample-btn" onclick="exportJSON()">📥 Export JSON</button>
+        </div>
+        <table class="results-table" id="resultsTable">
+            <thead>
+                <tr>
+                    <th>Challenge</th>
+                    <th>Respondent</th>
+                    <th>Answer</th>
+                    <th>Similarity</th>
+                    <th>Time (ms)</th>
+                    <th>Result</th>
+                </tr>
+            </thead>
+            <tbody id="resultsBody"></tbody>
+        </table>
+
+        <!-- Aggregate stats -->
+        <h2 class="section-title">Aggregate Statistics</h2>
+        <div id="aggregateStats" class="chart-card" style="margin-bottom: 2rem;"></div>
+    </div>
+</div>
+
+<script src="src/index.js"></script>
+<script>
+    // ── Challenge data (same as other pages) ──
+    var challenges = [
+        { id: 1, title: "Duel Plot Twist", humanAnswer: "One person shot BANG and the other shot BOOM — both had trick guns.", requiredKeywords: ["shot", "gun"] },
+        { id: 2, title: "Rappers", humanAnswer: "3 rappers rapping and then one roller skates away.", requiredKeywords: ["rapper", "skate"] },
+        { id: 3, title: "Skateboarder", humanAnswer: "Skateboarder does a trick and flies up in the air.", requiredKeywords: ["skate", "fly"] },
+        { id: 4, title: "Banana Mascot", humanAnswer: "Banana mascot dances; security guard takes props and does a better dance.", requiredKeywords: ["banana", "dance"] },
+        { id: 5, title: "Tic Tac Toe Dog", humanAnswer: "Shiba Inu wins at Tic Tac Toe against a human.", requiredKeywords: ["dog", "tic tac toe"] },
+        { id: 6, title: "Parent Dog", humanAnswer: "Person preparing puppy for cooking gets stopped by parent dog who volunteers instead.", requiredKeywords: ["dog", "cook"] },
+        { id: 7, title: "Mirror Illusion", humanAnswer: "Hand seems to touch its reflection, but it's both hands of the same person.", requiredKeywords: ["mirror", "hand"] },
+        { id: 8, title: "Highway Drift", humanAnswer: "Car does a 180° drift on highway.", requiredKeywords: ["car", "drift"] },
+        { id: 9, title: "Road Rage Hug", humanAnswer: "Drivers get out of cars aggressively but end up hugging.", requiredKeywords: ["hug", "road"] },
+        { id: 10, title: "Birthday Cake", humanAnswer: "Person's face gets pushed into birthday cake.", requiredKeywords: ["birthday", "cake"] }
+    ];
+
+    var challengeMap = {};
+    challenges.forEach(function(c) { challengeMap[c.id] = c; });
+
+    var validationResults = [];
+    var activeTab = "csv";
+
+    // ── Tab switching ──
+    function switchTab(tab) {
+        activeTab = tab;
+        document.querySelectorAll(".import-tab").forEach(function(t) {
+            t.classList.toggle("active", t.getAttribute("data-tab") === tab);
+        });
+        document.getElementById("csvTab").classList.toggle("hidden", tab !== "csv");
+        document.getElementById("jsonTab").classList.toggle("hidden", tab !== "json");
+        document.getElementById("fileTab").classList.toggle("hidden", tab !== "file");
+    }
+
+    // ── Sample data ──
+    function loadSampleCSV() {
+        document.getElementById("csvInput").value =
+            "challenge_id,respondent_id,answer,response_time_ms\n" +
+            "1,human_01,One person shot a gun that said BANG and the other shot one that said BOOM,3200\n" +
+            "2,human_01,Three rappers performing and one suddenly roller skates away,4100\n" +
+            "3,human_01,A skateboarder does a flip trick and goes flying into the sky,2800\n" +
+            "4,human_01,A banana costume mascot dances then a guard steals the show with a better dance,5200\n" +
+            "5,human_01,A shiba inu dog plays tic tac toe and wins against its owner,3900\n" +
+            "1,human_02,Two people dueling with trick guns that shoot flags,4500\n" +
+            "2,human_02,Rappers on stage and one rolls away on skates,3800\n" +
+            "3,human_02,Guy on skateboard jumps really high,2100\n" +
+            "1,bot_01,I cannot view animated GIF images to describe their content,200\n" +
+            "2,bot_01,I am unable to process animated image content,180\n" +
+            "3,bot_01,As an AI I cannot see GIF animations,150\n" +
+            "4,bot_01,I cannot analyze animated images,170\n" +
+            "5,bot_01,Unable to process this type of visual content,160\n" +
+            "6,human_02,A puppy is about to be cooked but the parent dog offers itself instead,6100\n" +
+            "7,human_02,It looks like a hand touching a mirror but it is actually two hands,3400\n" +
+            "8,human_02,Car drifting on the highway doing a 180 spin,2900\n" +
+            "9,human_02,Two road rage drivers get out and end up hugging each other,4700\n" +
+            "10,human_02,Someone gets their face smashed into a birthday cake,3100\n" +
+            "6,human_01,Dog stops person from cooking puppy and takes its place,5500\n" +
+            "7,human_01,Optical illusion where a hand touches its mirror reflection but its two hands,3000\n";
+    }
+
+    function loadSampleJSON() {
+        var sample = [
+            { challenge_id: 1, respondent_id: "human_01", answer: "One person shot a gun that said BANG and the other shot one that said BOOM", response_time_ms: 3200 },
+            { challenge_id: 2, respondent_id: "human_01", answer: "Three rappers performing and one suddenly roller skates away", response_time_ms: 4100 },
+            { challenge_id: 3, respondent_id: "human_01", answer: "A skateboarder does a flip trick and goes flying into the sky", response_time_ms: 2800 },
+            { challenge_id: 1, respondent_id: "bot_01", answer: "I cannot view animated GIF images to describe their content", response_time_ms: 200 },
+            { challenge_id: 2, respondent_id: "bot_01", answer: "I am unable to process animated image content", response_time_ms: 180 },
+            { challenge_id: 3, respondent_id: "bot_01", answer: "As an AI I cannot see GIF animations", response_time_ms: 150 }
+        ];
+        document.getElementById("jsonInput").value = JSON.stringify(sample, null, 2);
+    }
+
+    function clearInput() {
+        document.getElementById("csvInput").value = "";
+        document.getElementById("jsonInput").value = "";
+    }
+
+    // ── File handling ──
+    var dropZone = document.getElementById("dropZone");
+    if (dropZone) {
+        dropZone.addEventListener("dragover", function(e) {
+            e.preventDefault();
+            dropZone.classList.add("drag-over");
+        });
+        dropZone.addEventListener("dragleave", function() {
+            dropZone.classList.remove("drag-over");
+        });
+        dropZone.addEventListener("drop", function(e) {
+            e.preventDefault();
+            dropZone.classList.remove("drag-over");
+            if (e.dataTransfer.files.length > 0) processFile(e.dataTransfer.files[0]);
+        });
+    }
+
+    function handleFile(event) {
+        if (event.target.files.length > 0) processFile(event.target.files[0]);
+    }
+
+    function processFile(file) {
+        var reader = new FileReader();
+        reader.onload = function(e) {
+            var content = e.target.result;
+            if (file.name.endsWith(".json")) {
+                switchTab("json");
+                document.getElementById("jsonInput").value = content;
+            } else {
+                switchTab("csv");
+                document.getElementById("csvInput").value = content;
+            }
+        };
+        reader.readAsText(file);
+    }
+
+    // ── Parse input ──
+    function parseCSV(text) {
+        var lines = text.trim().split("\n");
+        if (lines.length < 2) return [];
+        var headers = lines[0].split(",").map(function(h) { return h.trim().toLowerCase(); });
+        var idIdx = headers.indexOf("challenge_id");
+        var respIdx = headers.indexOf("respondent_id");
+        var ansIdx = headers.indexOf("answer");
+        var timeIdx = headers.indexOf("response_time_ms");
+
+        if (idIdx < 0 || ansIdx < 0) {
+            alert("CSV must have at least 'challenge_id' and 'answer' columns.");
+            return [];
+        }
+
+        var results = [];
+        for (var i = 1; i < lines.length; i++) {
+            var line = lines[i].trim();
+            if (!line) continue;
+            // Handle quoted CSV fields
+            var cols = parseCSVLine(line);
+            if (cols.length <= Math.max(idIdx, ansIdx)) continue;
+            results.push({
+                challenge_id: parseInt(cols[idIdx], 10),
+                respondent_id: respIdx >= 0 ? cols[respIdx] : "unknown",
+                answer: cols[ansIdx],
+                response_time_ms: timeIdx >= 0 ? parseInt(cols[timeIdx], 10) || 0 : 0
+            });
+        }
+        return results;
+    }
+
+    function parseCSVLine(line) {
+        var result = [];
+        var current = "";
+        var inQuotes = false;
+        for (var i = 0; i < line.length; i++) {
+            var ch = line[i];
+            if (inQuotes) {
+                if (ch === '"' && i + 1 < line.length && line[i + 1] === '"') {
+                    current += '"';
+                    i++;
+                } else if (ch === '"') {
+                    inQuotes = false;
+                } else {
+                    current += ch;
+                }
+            } else {
+                if (ch === '"') {
+                    inQuotes = true;
+                } else if (ch === ',') {
+                    result.push(current.trim());
+                    current = "";
+                } else {
+                    current += ch;
+                }
+            }
+        }
+        result.push(current.trim());
+        return result;
+    }
+
+    function parseJSON(text) {
+        try {
+            var data = JSON.parse(text);
+            if (!Array.isArray(data)) {
+                alert("JSON must be an array of response objects.");
+                return [];
+            }
+            return data.map(function(item) {
+                return {
+                    challenge_id: parseInt(item.challenge_id, 10),
+                    respondent_id: item.respondent_id || "unknown",
+                    answer: item.answer || "",
+                    response_time_ms: parseInt(item.response_time_ms, 10) || 0
+                };
+            });
+        } catch (e) {
+            alert("Invalid JSON: " + e.message);
+            return [];
+        }
+    }
+
+    // ── Validation ──
+    function runValidation() {
+        var responses;
+        if (activeTab === "csv") {
+            responses = parseCSV(document.getElementById("csvInput").value);
+        } else if (activeTab === "json") {
+            responses = parseJSON(document.getElementById("jsonInput").value);
+        } else {
+            // File tab — check which input has content
+            var csv = document.getElementById("csvInput").value;
+            var json = document.getElementById("jsonInput").value;
+            responses = json ? parseJSON(json) : parseCSV(csv);
+        }
+
+        if (!responses || responses.length === 0) {
+            alert("No valid responses to validate. Check your input format.");
+            return;
+        }
+
+        var threshold = parseFloat(document.getElementById("threshold").value) || 0.4;
+        var keywordMode = document.getElementById("keywordMode").value;
+        var caseSensitive = document.getElementById("caseSensitive").value === "yes";
+
+        validationResults = responses.map(function(resp) {
+            var challenge = challengeMap[resp.challenge_id];
+            if (!challenge) {
+                return {
+                    challenge_id: resp.challenge_id,
+                    challenge_title: "Unknown (#" + resp.challenge_id + ")",
+                    respondent_id: resp.respondent_id,
+                    answer: resp.answer,
+                    response_time_ms: resp.response_time_ms,
+                    similarity: 0,
+                    keywordMatch: false,
+                    passed: false,
+                    reason: "Unknown challenge ID"
+                };
+            }
+
+            var similarity = gifCaptcha.textSimilarity(resp.answer, challenge.humanAnswer);
+
+            // Keyword check
+            var answerLower = caseSensitive ? resp.answer : resp.answer.toLowerCase();
+            var keywords = challenge.requiredKeywords || [];
+            var keywordMatches = keywords.filter(function(kw) {
+                var kwCheck = caseSensitive ? kw : kw.toLowerCase();
+                return answerLower.indexOf(kwCheck) >= 0;
+            });
+            var keywordMatch;
+            if (keywords.length === 0) {
+                keywordMatch = true;
+            } else if (keywordMode === "all") {
+                keywordMatch = keywordMatches.length === keywords.length;
+            } else {
+                keywordMatch = keywordMatches.length > 0;
+            }
+
+            var passed = similarity >= threshold && keywordMatch;
+
+            var reason;
+            if (passed) {
+                reason = "Pass";
+            } else if (similarity < threshold && !keywordMatch) {
+                reason = "Low similarity + missing keywords";
+            } else if (similarity < threshold) {
+                reason = "Low similarity (" + (similarity * 100).toFixed(0) + "%)";
+            } else {
+                reason = "Missing keywords: " + keywords.filter(function(kw) {
+                    return keywordMatches.indexOf(kw) < 0;
+                }).join(", ");
+            }
+
+            return {
+                challenge_id: resp.challenge_id,
+                challenge_title: challenge.title,
+                respondent_id: resp.respondent_id,
+                answer: resp.answer,
+                response_time_ms: resp.response_time_ms,
+                similarity: similarity,
+                keywordMatch: keywordMatch,
+                passed: passed,
+                reason: reason
+            };
+        });
+
+        renderResults();
+    }
+
+    // ── Rendering ──
+    function renderResults() {
+        document.getElementById("results").classList.remove("hidden");
+
+        var total = validationResults.length;
+        var passed = validationResults.filter(function(r) { return r.passed; }).length;
+        var failed = total - passed;
+        var passRate = total > 0 ? (passed / total * 100) : 0;
+
+        // Overview cards
+        var cardsHtml =
+            '<div class="overview-card"><div class="card-value">' + total + '</div><div class="card-label">Total Responses</div></div>' +
+            '<div class="overview-card card-pass"><div class="card-value">' + passed + '</div><div class="card-label">Passed</div></div>' +
+            '<div class="overview-card card-fail"><div class="card-value">' + failed + '</div><div class="card-label">Failed</div></div>' +
+            '<div class="overview-card card-rate"><div class="card-value">' + passRate.toFixed(1) + '%</div><div class="card-label">Pass Rate</div></div>';
+        document.getElementById("overviewCards").innerHTML = cardsHtml;
+
+        renderPieChart(passed, failed);
+        renderBarChart();
+        renderRespondentBars();
+        renderHeatmap();
+        renderTable();
+        renderAggregateStats();
+
+        // Scroll to results
+        document.getElementById("results").scrollIntoView({ behavior: "smooth" });
+    }
+
+    // ── Pie Chart (Canvas) ──
+    function renderPieChart(passed, failed) {
+        var canvas = document.getElementById("pieChart");
+        var ctx = canvas.getContext("2d");
+        var dpr = window.devicePixelRatio || 1;
+        var size = Math.min(canvas.parentElement.clientWidth - 40, 250);
+        canvas.width = size * dpr;
+        canvas.height = size * dpr;
+        canvas.style.width = size + "px";
+        canvas.style.height = size + "px";
+        ctx.scale(dpr, dpr);
+
+        var total = passed + failed;
+        if (total === 0) return;
+
+        var cx = size / 2, cy = size / 2;
+        var outerR = size / 2 - 25;
+        var innerR = outerR * 0.55;
+        var slices = [
+            { value: passed, color: "#22c55e", label: "Pass" },
+            { value: failed, color: "#ef4444", label: "Fail" }
+        ];
+
+        var startAngle = -Math.PI / 2;
+        slices.forEach(function(slice) {
+            if (slice.value === 0) return;
+            var sliceAngle = (slice.value / total) * Math.PI * 2;
+            ctx.beginPath();
+            ctx.arc(cx, cy, outerR, startAngle, startAngle + sliceAngle);
+            ctx.arc(cx, cy, innerR, startAngle + sliceAngle, startAngle, true);
+            ctx.closePath();
+            ctx.fillStyle = slice.color;
+            ctx.fill();
+
+            // Label
+            var midAngle = startAngle + sliceAngle / 2;
+            var labelR = (outerR + innerR) / 2;
+            var lx = cx + Math.cos(midAngle) * labelR;
+            var ly = cy + Math.sin(midAngle) * labelR;
+            if (sliceAngle > 0.4) {
+                ctx.fillStyle = "#fff";
+                ctx.font = "bold 13px -apple-system, sans-serif";
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+                ctx.fillText(slice.value.toString(), lx, ly);
+            }
+            startAngle += sliceAngle;
+        });
+
+        // Center
+        ctx.fillStyle = getComputedStyle(document.body).getPropertyValue("--text") || "#e6edf3";
+        ctx.font = "bold 22px -apple-system, sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText((passed / total * 100).toFixed(0) + "%", cx, cy - 4);
+        ctx.font = "11px -apple-system, sans-serif";
+        ctx.fillStyle = getComputedStyle(document.body).getPropertyValue("--muted") || "#8b949e";
+        ctx.fillText("pass rate", cx, cy + 14);
+    }
+
+    // ── Bar Chart (per challenge) ──
+    function renderBarChart() {
+        var perChallenge = {};
+        validationResults.forEach(function(r) {
+            if (!perChallenge[r.challenge_id]) {
+                perChallenge[r.challenge_id] = { title: r.challenge_title, passed: 0, failed: 0 };
+            }
+            if (r.passed) perChallenge[r.challenge_id].passed++;
+            else perChallenge[r.challenge_id].failed++;
+        });
+
+        var html = "";
+        Object.keys(perChallenge).sort(function(a, b) { return parseInt(a) - parseInt(b); }).forEach(function(id) {
+            var c = perChallenge[id];
+            var total = c.passed + c.failed;
+            var pct = total > 0 ? (c.passed / total * 100) : 0;
+            html +=
+                '<div class="bar-row">' +
+                '<div class="bar-label" title="' + gifCaptcha.sanitize(c.title) + '">' + gifCaptcha.sanitize(c.title) + '</div>' +
+                '<div class="bar-track">' +
+                '<div class="bar-fill bar-fill-pass" style="width:' + pct + '%"></div>' +
+                '</div>' +
+                '<div class="bar-pct">' + pct.toFixed(0) + '%</div>' +
+                '</div>';
+        });
+        document.getElementById("barChart").innerHTML = html;
+    }
+
+    // ── Respondent bars ──
+    function renderRespondentBars() {
+        var perRespondent = {};
+        validationResults.forEach(function(r) {
+            if (!perRespondent[r.respondent_id]) {
+                perRespondent[r.respondent_id] = { passed: 0, failed: 0, totalTime: 0, count: 0 };
+            }
+            if (r.passed) perRespondent[r.respondent_id].passed++;
+            else perRespondent[r.respondent_id].failed++;
+            perRespondent[r.respondent_id].totalTime += r.response_time_ms;
+            perRespondent[r.respondent_id].count++;
+        });
+
+        var html = "";
+        Object.keys(perRespondent).sort().forEach(function(id) {
+            var r = perRespondent[id];
+            var total = r.passed + r.failed;
+            var pct = total > 0 ? (r.passed / total * 100) : 0;
+            var avgTime = r.count > 0 ? (r.totalTime / r.count) : 0;
+            html +=
+                '<div class="bar-row">' +
+                '<div class="bar-label" title="' + gifCaptcha.sanitize(id) + '">' + gifCaptcha.sanitize(id) + '</div>' +
+                '<div class="bar-track">' +
+                '<div class="bar-fill bar-fill-pass" style="width:' + pct + '%"></div>' +
+                '</div>' +
+                '<div class="bar-pct">' + pct.toFixed(0) + '% <span style="color:var(--muted);font-size:0.7rem;">(' + avgTime.toFixed(0) + 'ms)</span></div>' +
+                '</div>';
+        });
+        document.getElementById("respondentBars").innerHTML = html;
+    }
+
+    // ── Similarity Heatmap (Canvas) ──
+    function renderHeatmap() {
+        var canvas = document.getElementById("heatmapChart");
+        var ctx = canvas.getContext("2d");
+
+        // Group by respondent × challenge
+        var respondents = [];
+        var respondentSet = {};
+        validationResults.forEach(function(r) {
+            if (!respondentSet[r.respondent_id]) {
+                respondentSet[r.respondent_id] = true;
+                respondents.push(r.respondent_id);
+            }
+        });
+
+        var cellSize = 40;
+        var labelW = 100;
+        var labelH = 80;
+        var w = labelW + challenges.length * cellSize + 20;
+        var h = labelH + respondents.length * cellSize + 20;
+        var dpr = window.devicePixelRatio || 1;
+        canvas.width = w * dpr;
+        canvas.height = h * dpr;
+        canvas.style.width = w + "px";
+        canvas.style.height = h + "px";
+        ctx.scale(dpr, dpr);
+
+        var textColor = getComputedStyle(document.body).getPropertyValue("--text") || "#e6edf3";
+        var mutedColor = getComputedStyle(document.body).getPropertyValue("--muted") || "#8b949e";
+
+        // Build lookup
+        var lookup = {};
+        validationResults.forEach(function(r) {
+            lookup[r.respondent_id + "_" + r.challenge_id] = r.similarity;
+        });
+
+        // Column headers (challenge titles)
+        ctx.font = "11px -apple-system, sans-serif";
+        ctx.fillStyle = mutedColor;
+        ctx.textAlign = "right";
+        challenges.forEach(function(c, i) {
+            ctx.save();
+            ctx.translate(labelW + i * cellSize + cellSize / 2, labelH - 5);
+            ctx.rotate(-Math.PI / 4);
+            ctx.fillText(c.title, 0, 0);
+            ctx.restore();
+        });
+
+        // Rows
+        respondents.forEach(function(resp, ri) {
+            var y = labelH + ri * cellSize;
+            // Row label
+            ctx.fillStyle = textColor;
+            ctx.font = "11px -apple-system, sans-serif";
+            ctx.textAlign = "right";
+            ctx.textBaseline = "middle";
+            ctx.fillText(resp, labelW - 8, y + cellSize / 2);
+
+            // Cells
+            challenges.forEach(function(c, ci) {
+                var x = labelW + ci * cellSize;
+                var sim = lookup[resp + "_" + c.id];
+                var color;
+                if (sim === undefined) {
+                    color = "rgba(128,128,128,0.1)";
+                } else {
+                    // Green gradient: higher = greener, lower = redder
+                    var r = Math.round(239 - sim * 200);
+                    var g = Math.round(68 + sim * 130);
+                    var b = Math.round(68);
+                    color = "rgb(" + r + "," + g + "," + b + ")";
+                }
+                ctx.fillStyle = color;
+                ctx.fillRect(x + 1, y + 1, cellSize - 2, cellSize - 2);
+
+                // Value text
+                if (sim !== undefined) {
+                    ctx.fillStyle = sim > 0.5 ? "#fff" : textColor;
+                    ctx.font = "bold 11px -apple-system, sans-serif";
+                    ctx.textAlign = "center";
+                    ctx.textBaseline = "middle";
+                    ctx.fillText((sim * 100).toFixed(0), x + cellSize / 2, y + cellSize / 2);
+                }
+            });
+        });
+    }
+
+    // ── Results table ──
+    function renderTable() {
+        var html = "";
+        validationResults.forEach(function(r) {
+            var badgeClass = r.passed ? "badge-pass" : "badge-fail";
+            var badgeText = r.passed ? "PASS" : "FAIL";
+            var truncAnswer = r.answer.length > 60 ? r.answer.substring(0, 57) + "..." : r.answer;
+            html +=
+                "<tr>" +
+                "<td>" + gifCaptcha.sanitize(r.challenge_title) + "</td>" +
+                "<td>" + gifCaptcha.sanitize(r.respondent_id) + "</td>" +
+                '<td title="' + gifCaptcha.sanitize(r.answer) + '">' + gifCaptcha.sanitize(truncAnswer) + "</td>" +
+                "<td>" + (r.similarity * 100).toFixed(1) + "%</td>" +
+                "<td>" + (r.response_time_ms > 0 ? r.response_time_ms.toLocaleString() : "—") + "</td>" +
+                '<td><span class="badge ' + badgeClass + '">' + badgeText + "</span></td>" +
+                "</tr>";
+        });
+        document.getElementById("resultsBody").innerHTML = html;
+    }
+
+    // ── Aggregate stats ──
+    function renderAggregateStats() {
+        var times = validationResults.filter(function(r) { return r.response_time_ms > 0; }).map(function(r) { return r.response_time_ms; });
+        var sims = validationResults.map(function(r) { return r.similarity; });
+
+        var avgTime = times.length > 0 ? times.reduce(function(a, b) { return a + b; }, 0) / times.length : 0;
+        var avgSim = sims.length > 0 ? sims.reduce(function(a, b) { return a + b; }, 0) / sims.length : 0;
+        var maxSim = sims.length > 0 ? Math.max.apply(null, sims) : 0;
+        var minSim = sims.length > 0 ? Math.min.apply(null, sims) : 0;
+
+        // Response time stats for pass vs fail
+        var passTimes = validationResults.filter(function(r) { return r.passed && r.response_time_ms > 0; }).map(function(r) { return r.response_time_ms; });
+        var failTimes = validationResults.filter(function(r) { return !r.passed && r.response_time_ms > 0; }).map(function(r) { return r.response_time_ms; });
+        var avgPassTime = passTimes.length > 0 ? passTimes.reduce(function(a, b) { return a + b; }, 0) / passTimes.length : 0;
+        var avgFailTime = failTimes.length > 0 ? failTimes.reduce(function(a, b) { return a + b; }, 0) / failTimes.length : 0;
+
+        // Unique respondents
+        var respondentSet = {};
+        validationResults.forEach(function(r) { respondentSet[r.respondent_id] = true; });
+        var uniqueRespondents = Object.keys(respondentSet).length;
+
+        // Unique challenges tested
+        var challengeSet = {};
+        validationResults.forEach(function(r) { challengeSet[r.challenge_id] = true; });
+        var uniqueChallenges = Object.keys(challengeSet).length;
+
+        var html =
+            '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;">' +
+            '<div><div style="color:var(--muted);font-size:0.75rem;text-transform:uppercase;">Unique Respondents</div><div style="font-size:1.3rem;font-weight:700;">' + uniqueRespondents + '</div></div>' +
+            '<div><div style="color:var(--muted);font-size:0.75rem;text-transform:uppercase;">Challenges Tested</div><div style="font-size:1.3rem;font-weight:700;">' + uniqueChallenges + ' / ' + challenges.length + '</div></div>' +
+            '<div><div style="color:var(--muted);font-size:0.75rem;text-transform:uppercase;">Avg Response Time</div><div style="font-size:1.3rem;font-weight:700;">' + avgTime.toFixed(0) + ' ms</div></div>' +
+            '<div><div style="color:var(--muted);font-size:0.75rem;text-transform:uppercase;">Avg Similarity</div><div style="font-size:1.3rem;font-weight:700;">' + (avgSim * 100).toFixed(1) + '%</div></div>' +
+            '<div><div style="color:var(--muted);font-size:0.75rem;text-transform:uppercase;">Similarity Range</div><div style="font-size:1.3rem;font-weight:700;">' + (minSim * 100).toFixed(0) + '% – ' + (maxSim * 100).toFixed(0) + '%</div></div>' +
+            '<div><div style="color:var(--muted);font-size:0.75rem;text-transform:uppercase;">Avg Pass vs Fail Time</div><div style="font-size:1.3rem;font-weight:700;color:#22c55e;">' + avgPassTime.toFixed(0) + 'ms <span style="color:var(--muted);font-weight:400;">vs</span> <span style="color:#ef4444;">' + avgFailTime.toFixed(0) + 'ms</span></div></div>' +
+            '</div>';
+        document.getElementById("aggregateStats").innerHTML = html;
+    }
+
+    // ── Export ──
+    function exportCSV() {
+        if (validationResults.length === 0) return;
+        var lines = ["challenge_id,challenge_title,respondent_id,answer,response_time_ms,similarity,keyword_match,passed,reason"];
+        validationResults.forEach(function(r) {
+            lines.push([
+                r.challenge_id,
+                '"' + r.challenge_title.replace(/"/g, '""') + '"',
+                '"' + r.respondent_id.replace(/"/g, '""') + '"',
+                '"' + r.answer.replace(/"/g, '""') + '"',
+                r.response_time_ms,
+                r.similarity.toFixed(4),
+                r.keywordMatch,
+                r.passed,
+                '"' + r.reason.replace(/"/g, '""') + '"'
+            ].join(","));
+        });
+        downloadFile("batch-validation-results.csv", lines.join("\n"), "text/csv");
+    }
+
+    function exportJSON() {
+        if (validationResults.length === 0) return;
+        var data = validationResults.map(function(r) {
+            return {
+                challenge_id: r.challenge_id,
+                challenge_title: r.challenge_title,
+                respondent_id: r.respondent_id,
+                answer: r.answer,
+                response_time_ms: r.response_time_ms,
+                similarity: parseFloat(r.similarity.toFixed(4)),
+                keyword_match: r.keywordMatch,
+                passed: r.passed,
+                reason: r.reason
+            };
+        });
+        downloadFile("batch-validation-results.json", JSON.stringify(data, null, 2), "application/json");
+    }
+
+    function downloadFile(filename, content, mimeType) {
+        var blob = new Blob([content], { type: mimeType });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+</script>
+
+</body>
+</html>

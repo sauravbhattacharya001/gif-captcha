@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src https: data: blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'none';">
+    <meta name="referrer" content="no-referrer">
+    <title>GIF CAPTCHA — Frame Inspector</title>
+    <link rel="stylesheet" href="shared.css">
+    <style>
+        body { padding: 2rem; max-width: 1100px; margin: 0 auto; }
+        h1 { font-size: 1.8rem; margin-bottom: 0.5rem; }
+        .subtitle { color: var(--muted); margin-bottom: 2rem; }
+
+        .input-row {
+            display: flex; gap: 0.75rem; margin-bottom: 1.5rem;
+        }
+        .input-row input {
+            flex: 1; padding: 0.6rem 1rem; border-radius: 6px;
+            border: 1px solid var(--border); background: var(--surface);
+            color: var(--text); font-size: 0.95rem; font-family: inherit;
+        }
+        .input-row input:focus { outline: none; border-color: var(--accent); }
+        .input-row button {
+            padding: 0.6rem 1.5rem; border-radius: 6px; border: none;
+            background: var(--accent); color: #fff; font-weight: 600;
+            cursor: pointer; font-size: 0.95rem; white-space: nowrap;
+        }
+        .input-row button:hover { background: var(--accent-hover); }
+        .input-row button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .status-bar {
+            padding: 0.75rem 1rem; border-radius: 6px; margin-bottom: 1.5rem;
+            font-size: 0.9rem; display: none;
+        }
+        .status-bar.info { display: block; background: var(--purple-bg); color: var(--purple); }
+        .status-bar.error { display: block; background: var(--red-bg); color: var(--red); }
+        .status-bar.success { display: block; background: var(--green-bg); color: var(--green); }
+
+        .summary {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 1rem; margin-bottom: 2rem;
+        }
+        .stat-card {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 8px; padding: 1rem; text-align: center;
+        }
+        .stat-card .value { font-size: 1.5rem; font-weight: 700; color: var(--accent); }
+        .stat-card .label { font-size: 0.8rem; color: var(--muted); margin-top: 0.25rem; }
+
+        .controls-bar {
+            display: flex; gap: 0.75rem; align-items: center;
+            margin-bottom: 1rem; flex-wrap: wrap;
+        }
+        .controls-bar button {
+            padding: 0.4rem 1rem; border-radius: 6px; border: 1px solid var(--border);
+            background: var(--surface); color: var(--text); cursor: pointer;
+            font-size: 0.85rem;
+        }
+        .controls-bar button:hover { background: var(--surface-hover); }
+        .controls-bar button.active { border-color: var(--accent); color: var(--accent); }
+        .controls-bar .spacer { flex: 1; }
+        .controls-bar select {
+            padding: 0.4rem 0.6rem; border-radius: 6px; border: 1px solid var(--border);
+            background: var(--surface); color: var(--text); font-size: 0.85rem;
+        }
+
+        .timeline {
+            width: 100%; height: 60px; background: var(--surface);
+            border: 1px solid var(--border); border-radius: 8px;
+            margin-bottom: 1.5rem; position: relative; overflow: hidden;
+            cursor: pointer;
+        }
+        .timeline-bar {
+            position: absolute; top: 0; height: 100%;
+            background: var(--accent); opacity: 0.15;
+            transition: opacity 0.1s;
+        }
+        .timeline-bar:hover { opacity: 0.35; }
+        .timeline-bar.selected { opacity: 0.5; border-left: 2px solid var(--accent); }
+        .timeline-bar.tagged { background: var(--yellow); }
+        .timeline-marker {
+            position: absolute; top: 0; width: 2px; height: 100%;
+            background: var(--red); pointer-events: none;
+        }
+        .timeline-label {
+            position: absolute; bottom: 4px; font-size: 0.65rem;
+            color: var(--muted); pointer-events: none;
+        }
+
+        .frames-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 0.75rem; margin-bottom: 2rem;
+        }
+        .frame-card {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 8px; overflow: hidden; cursor: pointer;
+            transition: border-color 0.15s;
+        }
+        .frame-card:hover { border-color: var(--accent); }
+        .frame-card.selected { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(88,166,255,0.3); }
+        .frame-card.tagged { border-color: var(--yellow); box-shadow: 0 0 0 2px rgba(210,153,34,0.3); }
+        .frame-card canvas { width: 100%; display: block; }
+        .frame-info {
+            padding: 0.5rem 0.75rem; display: flex; justify-content: space-between;
+            align-items: center; font-size: 0.8rem;
+        }
+        .frame-info .idx { font-weight: 600; }
+        .frame-info .delay { color: var(--muted); }
+        .frame-tag-btn {
+            background: none; border: none; cursor: pointer;
+            font-size: 1rem; padding: 0; line-height: 1;
+        }
+
+        .detail-panel {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 8px; padding: 1.5rem; margin-bottom: 2rem;
+            display: none;
+        }
+        .detail-panel.visible { display: flex; gap: 1.5rem; flex-wrap: wrap; }
+        .detail-panel canvas { max-width: 400px; border-radius: 6px; flex-shrink: 0; }
+        .detail-meta { flex: 1; min-width: 200px; }
+        .detail-meta h3 { margin-bottom: 0.75rem; }
+        .detail-meta table { width: 100%; font-size: 0.85rem; }
+        .detail-meta td { padding: 0.3rem 0; }
+        .detail-meta td:first-child { color: var(--muted); width: 110px; }
+        .detail-meta textarea {
+            width: 100%; margin-top: 0.75rem; padding: 0.5rem;
+            background: var(--bg); border: 1px solid var(--border);
+            border-radius: 6px; color: var(--text); font-family: inherit;
+            font-size: 0.85rem; resize: vertical; min-height: 60px;
+        }
+
+        .export-section { margin-top: 1rem; }
+
+        @media (max-width: 600px) {
+            .input-row { flex-direction: column; }
+            .frames-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+            .detail-panel.visible { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+    <h1>🔬 Frame Inspector</h1>
+    <p class="subtitle">Decompose GIFs into individual frames to analyze CAPTCHA difficulty and identify critical "twist" frames.</p>
+
+    <div class="input-row">
+        <input type="text" id="gifUrl" placeholder="Paste a GIF URL (https://...)" />
+        <button id="inspectBtn" onclick="inspectGif()">Inspect</button>
+    </div>
+
+    <div id="statusBar" class="status-bar"></div>
+
+    <div id="summarySection" class="summary" style="display:none;">
+        <div class="stat-card"><div class="value" id="statFrames">—</div><div class="label">Frames</div></div>
+        <div class="stat-card"><div class="value" id="statDuration">—</div><div class="label">Duration</div></div>
+        <div class="stat-card"><div class="value" id="statAvgDelay">—</div><div class="label">Avg Delay</div></div>
+        <div class="stat-card"><div class="value" id="statSize">—</div><div class="label">Dimensions</div></div>
+        <div class="stat-card"><div class="value" id="statTagged">0</div><div class="label">Tagged</div></div>
+    </div>
+
+    <div id="controlsBar" class="controls-bar" style="display:none;">
+        <button onclick="playFrames()" id="playBtn">▶ Play</button>
+        <button onclick="toggleTagMode()" id="tagModeBtn">🏷️ Tag Mode</button>
+        <div class="spacer"></div>
+        <label style="font-size:0.85rem;color:var(--muted);">Speed:</label>
+        <select id="speedSelect" onchange="updateSpeed()">
+            <option value="0.25">0.25×</option>
+            <option value="0.5">0.5×</option>
+            <option value="1" selected>1×</option>
+            <option value="2">2×</option>
+        </select>
+        <button onclick="exportAnalysis()">📋 Export Analysis</button>
+    </div>
+
+    <div id="timeline" class="timeline" style="display:none;"></div>
+
+    <div id="detailPanel" class="detail-panel">
+        <canvas id="detailCanvas"></canvas>
+        <div class="detail-meta">
+            <h3 id="detailTitle">Frame —</h3>
+            <table>
+                <tr><td>Delay</td><td id="detailDelay">—</td></tr>
+                <tr><td>Disposal</td><td id="detailDisposal">—</td></tr>
+                <tr><td>Position</td><td id="detailPos">—</td></tr>
+                <tr><td>Frame Size</td><td id="detailSize">—</td></tr>
+                <tr><td>Cumulative</td><td id="detailCumTime">—</td></tr>
+            </table>
+            <textarea id="detailNotes" placeholder="Notes about this frame (e.g., 'twist happens here')..." oninput="saveNote()"></textarea>
+        </div>
+    </div>
+
+    <div id="framesGrid" class="frames-grid"></div>
+
+    <footer style="margin-top:2rem;padding-top:1.5rem;border-top:1px solid var(--border);text-align:center;">
+        <p style="color:var(--muted);font-size:0.85rem;">
+            <a href="index.html">← Back to Case Study</a> ·
+            <a href="generator.html">Workshop</a> ·
+            <a href="analysis.html">Analysis</a>
+        </p>
+    </footer>
+
+    <script>
+    // Minimal GIF parser (extracts frames from raw binary)
+    var frames = [];
+    var tagMode = false;
+    var selectedIdx = -1;
+    var playTimer = null;
+    var playing = false;
+    var notes = {};
+
+    function setStatus(msg, type) {
+        var el = document.getElementById('statusBar');
+        el.textContent = msg;
+        el.className = 'status-bar ' + type;
+    }
+
+    function inspectGif() {
+        var url = document.getElementById('gifUrl').value.trim();
+        if (!url) return;
+        var btn = document.getElementById('inspectBtn');
+        btn.disabled = true;
+        setStatus('Fetching GIF...', 'info');
+        frames = []; notes = {}; selectedIdx = -1;
+        document.getElementById('framesGrid').innerHTML = '';
+        document.getElementById('summarySection').style.display = 'none';
+        document.getElementById('controlsBar').style.display = 'none';
+        document.getElementById('timeline').style.display = 'none';
+        document.getElementById('detailPanel').className = 'detail-panel';
+
+        fetch(url).then(function(r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.arrayBuffer();
+        }).then(function(buf) {
+            setStatus('Parsing frames...', 'info');
+            parseGif(new Uint8Array(buf));
+            btn.disabled = false;
+        }).catch(function(e) {
+            setStatus('Error: ' + e.message, 'error');
+            btn.disabled = false;
+        });
+    }
+
+    function parseGif(data) {
+        // Verify GIF header
+        var header = String.fromCharCode.apply(null, data.subarray(0, 6));
+        if (header.indexOf('GIF') !== 0) { setStatus('Not a valid GIF file.', 'error'); return; }
+
+        var width = data[6] | (data[7] << 8);
+        var height = data[8] | (data[9] << 8);
+        var packed = data[10];
+        var gctFlag = (packed >> 7) & 1;
+        var gctSize = gctFlag ? 3 * (1 << ((packed & 7) + 1)) : 0;
+        var pos = 13 + gctSize;
+
+        var gce = null; // graphic control extension
+        var rawFrames = [];
+
+        while (pos < data.length) {
+            var block = data[pos++];
+            if (block === 0x21) { // Extension
+                var label = data[pos++];
+                if (label === 0xF9) { // GCE
+                    pos++; // block size (always 4)
+                    var gcPacked = data[pos++];
+                    var delay = (data[pos] | (data[pos+1] << 8)) * 10; // to ms
+                    pos += 2;
+                    pos++; // transparent color index
+                    pos++; // terminator
+                    gce = { delay: delay || 100, disposal: (gcPacked >> 2) & 7 };
+                } else {
+                    // skip sub-blocks
+                    while (pos < data.length) {
+                        var sz = data[pos++];
+                        if (sz === 0) break;
+                        pos += sz;
+                    }
+                }
+            } else if (block === 0x2C) { // Image descriptor
+                var fx = data[pos] | (data[pos+1] << 8);
+                var fy = data[pos+2] | (data[pos+3] << 8);
+                var fw = data[pos+4] | (data[pos+5] << 8);
+                var fh = data[pos+6] | (data[pos+7] << 8);
+                var fPacked = data[pos+8];
+                pos += 9;
+                var lctFlag = (fPacked >> 7) & 1;
+                var lctSize = lctFlag ? 3 * (1 << ((fPacked & 7) + 1)) : 0;
+                var lct = lctFlag ? data.subarray(pos, pos + lctSize) : null;
+                pos += lctSize;
+
+                var minCodeSize = data[pos++];
+                var imageDataStart = pos;
+                // Skip LZW sub-blocks
+                while (pos < data.length) {
+                    var bs = data[pos++];
+                    if (bs === 0) break;
+                    pos += bs;
+                }
+
+                rawFrames.push({
+                    x: fx, y: fy, w: fw, h: fh,
+                    delay: gce ? gce.delay : 100,
+                    disposal: gce ? gce.disposal : 0,
+                    lct: lct, minCodeSize: minCodeSize,
+                    dataStart: imageDataStart, dataEnd: pos - 1
+                });
+                gce = null;
+            } else if (block === 0x3B) { // Trailer
+                break;
+            } else {
+                // Unknown block, try to skip
+                while (pos < data.length) {
+                    var s = data[pos++];
+                    if (s === 0) break;
+                    pos += s;
+                }
+            }
+        }
+
+        if (rawFrames.length === 0) {
+            setStatus('No frames found in GIF.', 'error');
+            return;
+        }
+
+        // Decode frames using a compositing canvas
+        var compositeCanvas = document.createElement('canvas');
+        compositeCanvas.width = width;
+        compositeCanvas.height = height;
+        var compCtx = compositeCanvas.getContext('2d');
+
+        // Build global color table
+        var gct = gctFlag ? data.subarray(13, 13 + gctSize) : null;
+
+        for (var i = 0; i < rawFrames.length; i++) {
+            var rf = rawFrames[i];
+            var ct = rf.lct || gct;
+            if (!ct) continue;
+
+            // Decode LZW
+            var pixels = decodeLZW(data, rf.dataStart, rf.dataEnd, rf.minCodeSize, rf.w * rf.h);
+            if (!pixels) continue;
+
+            // Create frame image data
+            var imgData = compCtx.createImageData(rf.w, rf.h);
+            for (var p = 0; p < pixels.length; p++) {
+                var ci = pixels[p] * 3;
+                imgData.data[p * 4] = ct[ci];
+                imgData.data[p * 4 + 1] = ct[ci + 1];
+                imgData.data[p * 4 + 2] = ct[ci + 2];
+                imgData.data[p * 4 + 3] = 255;
+            }
+
+            // Handle disposal before drawing
+            if (rf.disposal === 2) {
+                compCtx.clearRect(rf.x, rf.y, rf.w, rf.h);
+            }
+
+            // Draw frame onto composite
+            var tempCanvas = document.createElement('canvas');
+            tempCanvas.width = rf.w; tempCanvas.height = rf.h;
+            tempCanvas.getContext('2d').putImageData(imgData, 0, 0);
+            compCtx.drawImage(tempCanvas, rf.x, rf.y);
+
+            // Snapshot the composite
+            var snapshot = document.createElement('canvas');
+            snapshot.width = width; snapshot.height = height;
+            snapshot.getContext('2d').drawImage(compositeCanvas, 0, 0);
+
+            frames.push({
+                canvas: snapshot, x: rf.x, y: rf.y, w: rf.w, h: rf.h,
+                delay: rf.delay, disposal: rf.disposal, index: i, tagged: false
+            });
+        }
+
+        renderFrames(width, height);
+    }
+
+    function decodeLZW(data, start, end, minCodeSize, pixelCount) {
+        // Collect sub-block data
+        var raw = [];
+        var p = start;
+        while (p <= end) {
+            var bs = data[p++];
+            if (bs === 0) break;
+            for (var b = 0; b < bs && p <= end; b++) raw.push(data[p++]);
+        }
+        if (raw.length === 0) return null;
+
+        var clearCode = 1 << minCodeSize;
+        var eoiCode = clearCode + 1;
+        var codeSize = minCodeSize + 1;
+        var codeMask = (1 << codeSize) - 1;
+        var nextCode = eoiCode + 1;
+        var table = [];
+        for (var i = 0; i < clearCode; i++) table[i] = [i];
+
+        var bitBuf = 0, bitCount = 0, byteIdx = 0;
+        function readCode() {
+            while (bitCount < codeSize && byteIdx < raw.length) {
+                bitBuf |= raw[byteIdx++] << bitCount;
+                bitCount += 8;
+            }
+            var code = bitBuf & codeMask;
+            bitBuf >>= codeSize;
+            bitCount -= codeSize;
+            return code;
+        }
+
+        var pixels = [];
+        var code = readCode(); // should be clear code
+        if (code !== clearCode) return null;
+
+        // Re-init
+        codeSize = minCodeSize + 1;
+        codeMask = (1 << codeSize) - 1;
+        nextCode = eoiCode + 1;
+        table.length = clearCode;
+        for (var i = 0; i < clearCode; i++) table[i] = [i];
+
+        var prev = null;
+        while (pixels.length < pixelCount) {
+            code = readCode();
+            if (code === eoiCode || code === undefined) break;
+            if (code === clearCode) {
+                codeSize = minCodeSize + 1;
+                codeMask = (1 << codeSize) - 1;
+                nextCode = eoiCode + 1;
+                table.length = clearCode;
+                for (var j = 0; j < clearCode; j++) table[j] = [j];
+                prev = null;
+                continue;
+            }
+
+            var entry;
+            if (code < nextCode) {
+                entry = table[code];
+            } else if (code === nextCode && prev) {
+                entry = prev.concat(prev[0]);
+            } else {
+                break; // corrupt
+            }
+
+            for (var k = 0; k < entry.length && pixels.length < pixelCount; k++) {
+                pixels.push(entry[k]);
+            }
+
+            if (prev && nextCode < 4096) {
+                table[nextCode++] = prev.concat(entry[0]);
+                if (nextCode > codeMask && codeSize < 12) {
+                    codeSize++;
+                    codeMask = (1 << codeSize) - 1;
+                }
+            }
+            prev = entry;
+        }
+        return pixels;
+    }
+
+    function renderFrames(gw, gh) {
+        var totalDuration = 0;
+        for (var i = 0; i < frames.length; i++) totalDuration += frames[i].delay;
+        var avgDelay = Math.round(totalDuration / frames.length);
+
+        document.getElementById('statFrames').textContent = frames.length;
+        document.getElementById('statDuration').textContent = (totalDuration / 1000).toFixed(1) + 's';
+        document.getElementById('statAvgDelay').textContent = avgDelay + 'ms';
+        document.getElementById('statSize').textContent = gw + '×' + gh;
+        document.getElementById('summarySection').style.display = 'grid';
+        document.getElementById('controlsBar').style.display = 'flex';
+
+        // Timeline
+        var tlEl = document.getElementById('timeline');
+        tlEl.style.display = 'block';
+        tlEl.innerHTML = '';
+        var cumTime = 0;
+        for (var i = 0; i < frames.length; i++) {
+            var pct = (frames[i].delay / totalDuration) * 100;
+            var left = (cumTime / totalDuration) * 100;
+            var bar = document.createElement('div');
+            bar.className = 'timeline-bar';
+            bar.style.left = left + '%';
+            bar.style.width = Math.max(pct, 0.5) + '%';
+            bar.dataset.idx = i;
+            bar.onclick = (function(idx) { return function() { selectFrame(idx); }; })(i);
+            tlEl.appendChild(bar);
+            cumTime += frames[i].delay;
+        }
+
+        // Frame grid
+        var grid = document.getElementById('framesGrid');
+        grid.innerHTML = '';
+        for (var i = 0; i < frames.length; i++) {
+            var card = document.createElement('div');
+            card.className = 'frame-card';
+            card.dataset.idx = i;
+            card.onclick = (function(idx) { return function() { selectFrame(idx); }; })(i);
+
+            var c = document.createElement('canvas');
+            c.width = gw; c.height = gh;
+            c.getContext('2d').drawImage(frames[i].canvas, 0, 0);
+            card.appendChild(c);
+
+            var info = document.createElement('div');
+            info.className = 'frame-info';
+            info.innerHTML = '<span class="idx">#' + (i + 1) + '</span>' +
+                '<span class="delay">' + frames[i].delay + 'ms</span>' +
+                '<button class="frame-tag-btn" onclick="event.stopPropagation();toggleTag(' + i + ')" title="Tag as critical frame">⚑</button>';
+            card.appendChild(info);
+            grid.appendChild(card);
+        }
+
+        setStatus('Extracted ' + frames.length + ' frames (' + (totalDuration / 1000).toFixed(1) + 's total)', 'success');
+    }
+
+    function selectFrame(idx) {
+        if (tagMode) { toggleTag(idx); return; }
+        selectedIdx = idx;
+        var f = frames[idx];
+        var panel = document.getElementById('detailPanel');
+        panel.className = 'detail-panel visible';
+
+        var dc = document.getElementById('detailCanvas');
+        dc.width = f.canvas.width; dc.height = f.canvas.height;
+        dc.getContext('2d').drawImage(f.canvas, 0, 0);
+
+        document.getElementById('detailTitle').textContent = 'Frame #' + (idx + 1);
+        document.getElementById('detailDelay').textContent = f.delay + 'ms';
+        var disposalNames = ['None', 'Keep', 'Restore BG', 'Restore Prev'];
+        document.getElementById('detailDisposal').textContent = disposalNames[f.disposal] || f.disposal;
+        document.getElementById('detailPos').textContent = f.x + ', ' + f.y;
+        document.getElementById('detailSize').textContent = f.w + '×' + f.h;
+
+        var cum = 0;
+        for (var i = 0; i <= idx; i++) cum += frames[i].delay;
+        document.getElementById('detailCumTime').textContent = (cum / 1000).toFixed(2) + 's';
+
+        document.getElementById('detailNotes').value = notes[idx] || '';
+
+        // Highlight in grid
+        var cards = document.querySelectorAll('.frame-card');
+        for (var i = 0; i < cards.length; i++) {
+            cards[i].classList.toggle('selected', parseInt(cards[i].dataset.idx) === idx);
+        }
+
+        // Highlight in timeline
+        var bars = document.querySelectorAll('.timeline-bar');
+        for (var i = 0; i < bars.length; i++) {
+            bars[i].classList.toggle('selected', parseInt(bars[i].dataset.idx) === idx);
+        }
+    }
+
+    function saveNote() {
+        if (selectedIdx >= 0) notes[selectedIdx] = document.getElementById('detailNotes').value;
+    }
+
+    function toggleTag(idx) {
+        frames[idx].tagged = !frames[idx].tagged;
+        var cards = document.querySelectorAll('.frame-card');
+        cards[idx].classList.toggle('tagged', frames[idx].tagged);
+        var bars = document.querySelectorAll('.timeline-bar');
+        if (bars[idx]) bars[idx].classList.toggle('tagged', frames[idx].tagged);
+        var count = frames.filter(function(f) { return f.tagged; }).length;
+        document.getElementById('statTagged').textContent = count;
+    }
+
+    function toggleTagMode() {
+        tagMode = !tagMode;
+        document.getElementById('tagModeBtn').classList.toggle('active', tagMode);
+    }
+
+    function playFrames() {
+        if (playing) { stopPlay(); return; }
+        if (frames.length === 0) return;
+        playing = true;
+        document.getElementById('playBtn').textContent = '⏸ Pause';
+        var idx = selectedIdx >= 0 ? selectedIdx : 0;
+        var speed = parseFloat(document.getElementById('speedSelect').value) || 1;
+
+        function step() {
+            if (!playing) return;
+            selectFrame(idx);
+            idx = (idx + 1) % frames.length;
+            playTimer = setTimeout(step, frames[idx >= frames.length ? 0 : idx] ? frames[idx].delay / speed : 100);
+        }
+        step();
+    }
+
+    function stopPlay() {
+        playing = false;
+        clearTimeout(playTimer);
+        document.getElementById('playBtn').textContent = '▶ Play';
+    }
+
+    function updateSpeed() { if (playing) { stopPlay(); playFrames(); } }
+
+    function exportAnalysis() {
+        if (frames.length === 0) return;
+        var lines = ['GIF Frame Inspector Analysis', '===========================', ''];
+        lines.push('Total Frames: ' + frames.length);
+        var total = frames.reduce(function(s, f) { return s + f.delay; }, 0);
+        lines.push('Total Duration: ' + (total / 1000).toFixed(1) + 's');
+        lines.push('');
+
+        var tagged = frames.filter(function(f) { return f.tagged; });
+        if (tagged.length > 0) {
+            lines.push('Tagged Critical Frames:');
+            tagged.forEach(function(f) {
+                var cum = 0;
+                for (var i = 0; i <= f.index; i++) cum += frames[i].delay;
+                var note = notes[f.index] ? ' — ' + notes[f.index] : '';
+                lines.push('  Frame #' + (f.index + 1) + ' at ' + (cum / 1000).toFixed(2) + 's' + note);
+            });
+            lines.push('');
+        }
+
+        lines.push('All Frames:');
+        frames.forEach(function(f, i) {
+            var cum = 0;
+            for (var j = 0; j <= i; j++) cum += frames[j].delay;
+            var tag = f.tagged ? ' [TAGGED]' : '';
+            var note = notes[i] ? ' — ' + notes[i] : '';
+            lines.push('  #' + (i + 1) + ': ' + f.delay + 'ms (at ' + (cum / 1000).toFixed(2) + 's)' + tag + note);
+        });
+
+        var text = lines.join('\n');
+        navigator.clipboard.writeText(text).then(function() {
+            setStatus('Analysis copied to clipboard!', 'success');
+        }).catch(function() {
+            // Fallback
+            var ta = document.createElement('textarea');
+            ta.value = text; document.body.appendChild(ta);
+            ta.select(); document.execCommand('copy');
+            document.body.removeChild(ta);
+            setStatus('Analysis copied to clipboard!', 'success');
+        });
+    }
+
+    // Allow Enter key in URL input
+    document.getElementById('gifUrl').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') inspectGif();
+    });
+    </script>
+</body>
+</html>

@@ -1863,6 +1863,328 @@ function createSecurityScorer(challenges) {
   };
 }
 
+// ── Session Manager ─────────────────────────────────────────────────
+
+/**
+ * Creates a CAPTCHA session manager for multi-step verification flows.
+ * Manages sessions where users must pass multiple challenges with
+ * configurable difficulty escalation, timeouts, and pass thresholds.
+ *
+ * @param {Object} [options]
+ * @param {number} [options.challengesPerSession=3] - Challenges required per session
+ * @param {number} [options.passThreshold=0.67] - Fraction of correct answers to pass (0-1)
+ * @param {number} [options.sessionTimeoutMs=300000] - Session expiry in ms (default 5 min)
+ * @param {boolean} [options.escalateDifficulty=true] - Increase difficulty after each correct answer
+ * @param {number} [options.difficultyStep=15] - Difficulty increase per correct answer (0-100)
+ * @param {number} [options.baseDifficulty=30] - Starting difficulty (0-100)
+ * @param {number} [options.maxDifficulty=95] - Maximum difficulty cap (0-100)
+ * @param {number} [options.maxSessions=1000] - Maximum concurrent sessions before cleanup
+ * @returns {Object} Session manager instance
+ */
+function createSessionManager(options) {
+  options = options || {};
+
+  var challengesPerSession = (typeof options.challengesPerSession === "number" && options.challengesPerSession > 0)
+    ? Math.floor(options.challengesPerSession) : 3;
+  var passThreshold = (typeof options.passThreshold === "number" && options.passThreshold >= 0 && options.passThreshold <= 1)
+    ? options.passThreshold : 0.67;
+  var sessionTimeoutMs = (typeof options.sessionTimeoutMs === "number" && options.sessionTimeoutMs > 0)
+    ? options.sessionTimeoutMs : 300000;
+  var escalateDifficulty = options.escalateDifficulty !== false;
+  var difficultyStep = (typeof options.difficultyStep === "number" && options.difficultyStep >= 0)
+    ? options.difficultyStep : 15;
+  var baseDifficulty = (typeof options.baseDifficulty === "number" && options.baseDifficulty >= 0 && options.baseDifficulty <= 100)
+    ? options.baseDifficulty : 30;
+  var maxDifficulty = (typeof options.maxDifficulty === "number" && options.maxDifficulty >= 0 && options.maxDifficulty <= 100)
+    ? options.maxDifficulty : 95;
+  var maxSessions = (typeof options.maxSessions === "number" && options.maxSessions > 0)
+    ? Math.floor(options.maxSessions) : 1000;
+
+  // Internal state: Map<sessionId, SessionState>
+  var sessions = {};
+  var sessionCount = 0;
+
+  function _now() {
+    return Date.now();
+  }
+
+  function _generateId() {
+    var chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+    var id = "";
+    for (var i = 0; i < 16; i++) {
+      id += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return "sess_" + id + "_" + _now().toString(36);
+  }
+
+  /**
+   * Remove expired sessions to bound memory usage.
+   */
+  function _cleanup() {
+    var now = _now();
+    var keys = Object.keys(sessions);
+    for (var i = 0; i < keys.length; i++) {
+      var s = sessions[keys[i]];
+      if (s.status !== "active" || now - s.createdAt > sessionTimeoutMs) {
+        if (s.status === "active") {
+          s.status = "expired";
+          s.completedAt = now;
+        }
+        // Only delete completed/expired sessions older than 2x timeout
+        if (now - s.createdAt > sessionTimeoutMs * 2) {
+          delete sessions[keys[i]];
+          sessionCount--;
+        }
+      }
+    }
+  }
+
+  /**
+   * Start a new CAPTCHA verification session.
+   *
+   * @param {Object} [metadata] - Optional metadata to attach (userId, ip, etc.)
+   * @returns {{ sessionId: string, difficulty: number, challengeIndex: number, totalChallenges: number }}
+   */
+  function startSession(metadata) {
+    // Cleanup if we're at capacity
+    if (sessionCount >= maxSessions) {
+      _cleanup();
+    }
+
+    var id = _generateId();
+    var now = _now();
+
+    sessions[id] = {
+      status: "active",
+      createdAt: now,
+      completedAt: null,
+      currentIndex: 0,
+      results: [],
+      currentDifficulty: baseDifficulty,
+      metadata: metadata || {},
+    };
+    sessionCount++;
+
+    return {
+      sessionId: id,
+      difficulty: baseDifficulty,
+      challengeIndex: 0,
+      totalChallenges: challengesPerSession,
+    };
+  }
+
+  /**
+   * Submit a challenge response for a session.
+   *
+   * @param {string} sessionId - Session identifier
+   * @param {boolean} correct - Whether the user answered correctly
+   * @param {number} [responseTimeMs] - Optional response time in ms
+   * @returns {{ done: boolean, passed: boolean|null, nextDifficulty: number|null, challengeIndex: number, correctCount: number, totalAnswered: number }}
+   */
+  function submitResponse(sessionId, correct, responseTimeMs) {
+    var session = sessions[sessionId];
+    if (!session) {
+      return { error: "session_not_found" };
+    }
+    if (session.status !== "active") {
+      return { error: "session_" + session.status };
+    }
+
+    // Check timeout
+    var now = _now();
+    if (now - session.createdAt > sessionTimeoutMs) {
+      session.status = "expired";
+      session.completedAt = now;
+      return { error: "session_expired" };
+    }
+
+    // Record result
+    session.results.push({
+      index: session.currentIndex,
+      correct: !!correct,
+      difficulty: session.currentDifficulty,
+      responseTimeMs: (typeof responseTimeMs === "number" && responseTimeMs >= 0) ? responseTimeMs : null,
+      timestamp: now,
+    });
+    session.currentIndex++;
+
+    // Escalate or reset difficulty
+    if (escalateDifficulty) {
+      if (correct) {
+        session.currentDifficulty = Math.min(session.currentDifficulty + difficultyStep, maxDifficulty);
+      } else {
+        // On wrong answer, reduce difficulty slightly (half step)
+        session.currentDifficulty = Math.max(session.currentDifficulty - Math.floor(difficultyStep / 2), baseDifficulty);
+      }
+    }
+
+    var correctCount = 0;
+    for (var i = 0; i < session.results.length; i++) {
+      if (session.results[i].correct) correctCount++;
+    }
+
+    // Check if session is complete
+    if (session.currentIndex >= challengesPerSession) {
+      var passRate = correctCount / challengesPerSession;
+      var passed = passRate >= passThreshold;
+      session.status = passed ? "passed" : "failed";
+      session.completedAt = now;
+
+      return {
+        done: true,
+        passed: passed,
+        nextDifficulty: null,
+        challengeIndex: session.currentIndex,
+        correctCount: correctCount,
+        totalAnswered: session.results.length,
+        passRate: Math.round(passRate * 1000) / 1000,
+      };
+    }
+
+    return {
+      done: false,
+      passed: null,
+      nextDifficulty: session.currentDifficulty,
+      challengeIndex: session.currentIndex,
+      correctCount: correctCount,
+      totalAnswered: session.results.length,
+    };
+  }
+
+  /**
+   * Get the current state of a session.
+   *
+   * @param {string} sessionId
+   * @returns {Object|null} Session state or null if not found
+   */
+  function getSession(sessionId) {
+    var session = sessions[sessionId];
+    if (!session) return null;
+
+    // Check timeout for active sessions
+    if (session.status === "active" && _now() - session.createdAt > sessionTimeoutMs) {
+      session.status = "expired";
+      session.completedAt = _now();
+    }
+
+    var correctCount = 0;
+    var totalResponseMs = 0;
+    var responseCount = 0;
+    for (var i = 0; i < session.results.length; i++) {
+      if (session.results[i].correct) correctCount++;
+      if (session.results[i].responseTimeMs !== null) {
+        totalResponseMs += session.results[i].responseTimeMs;
+        responseCount++;
+      }
+    }
+
+    return {
+      sessionId: sessionId,
+      status: session.status,
+      challengeIndex: session.currentIndex,
+      totalChallenges: challengesPerSession,
+      correctCount: correctCount,
+      currentDifficulty: session.currentDifficulty,
+      avgResponseTimeMs: responseCount > 0 ? Math.round(totalResponseMs / responseCount) : null,
+      results: session.results.slice(),
+      metadata: session.metadata,
+      createdAt: session.createdAt,
+      completedAt: session.completedAt,
+      remainingMs: session.status === "active"
+        ? Math.max(0, sessionTimeoutMs - (_now() - session.createdAt))
+        : 0,
+    };
+  }
+
+  /**
+   * Invalidate / cancel a session early.
+   *
+   * @param {string} sessionId
+   * @returns {boolean} True if invalidated, false if not found
+   */
+  function invalidateSession(sessionId) {
+    var session = sessions[sessionId];
+    if (!session) return false;
+    if (session.status === "active") {
+      session.status = "cancelled";
+      session.completedAt = _now();
+    }
+    return true;
+  }
+
+  /**
+   * Get aggregate statistics across all sessions.
+   *
+   * @returns {Object} Stats summary
+   */
+  function getStats() {
+    var keys = Object.keys(sessions);
+    var total = keys.length;
+    var active = 0, passed = 0, failed = 0, expired = 0, cancelled = 0;
+    var totalResponseMs = 0;
+    var responseCount = 0;
+    var difficultySum = 0;
+    var completedSessions = 0;
+
+    for (var i = 0; i < keys.length; i++) {
+      var s = sessions[keys[i]];
+      switch (s.status) {
+        case "active": active++; break;
+        case "passed": passed++; completedSessions++; break;
+        case "failed": failed++; completedSessions++; break;
+        case "expired": expired++; break;
+        case "cancelled": cancelled++; break;
+      }
+      for (var j = 0; j < s.results.length; j++) {
+        difficultySum += s.results[j].difficulty;
+        if (s.results[j].responseTimeMs !== null) {
+          totalResponseMs += s.results[j].responseTimeMs;
+          responseCount++;
+        }
+      }
+    }
+
+    return {
+      totalSessions: total,
+      active: active,
+      passed: passed,
+      failed: failed,
+      expired: expired,
+      cancelled: cancelled,
+      passRate: completedSessions > 0 ? Math.round((passed / completedSessions) * 1000) / 1000 : 0,
+      avgResponseTimeMs: responseCount > 0 ? Math.round(totalResponseMs / responseCount) : null,
+      avgDifficulty: responseCount > 0 ? Math.round((difficultySum / responseCount) * 10) / 10 : null,
+    };
+  }
+
+  /**
+   * Get current configuration.
+   *
+   * @returns {Object} Configuration values
+   */
+  function getConfig() {
+    return {
+      challengesPerSession: challengesPerSession,
+      passThreshold: passThreshold,
+      sessionTimeoutMs: sessionTimeoutMs,
+      escalateDifficulty: escalateDifficulty,
+      difficultyStep: difficultyStep,
+      baseDifficulty: baseDifficulty,
+      maxDifficulty: maxDifficulty,
+      maxSessions: maxSessions,
+    };
+  }
+
+  return {
+    startSession: startSession,
+    submitResponse: submitResponse,
+    getSession: getSession,
+    invalidateSession: invalidateSession,
+    getStats: getStats,
+    getConfig: getConfig,
+  };
+}
+
 // ── Exports ─────────────────────────────────────────────────────────
 
 var gifCaptcha = {
@@ -1880,6 +2202,7 @@ var gifCaptcha = {
   createSetAnalyzer: createSetAnalyzer,
   createDifficultyCalibrator: createDifficultyCalibrator,
   createSecurityScorer: createSecurityScorer,
+  createSessionManager: createSessionManager,
   GIF_MAX_RETRIES: GIF_MAX_RETRIES,
   GIF_RETRY_DELAY_MS: GIF_RETRY_DELAY_MS,
 };

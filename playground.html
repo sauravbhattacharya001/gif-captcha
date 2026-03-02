@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src https: data:; frame-ancestors 'none'; base-uri 'self'; form-action 'none';">
+    <meta name="referrer" content="no-referrer">
+    <title>GIF CAPTCHA — Challenge Playground</title>
+    <link rel="stylesheet" href="shared.css">
+    <style>
+        /* playground.html — page-specific styles */
+        .playground-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            margin: 2rem 0;
+        }
+        @media (max-width: 900px) {
+            .playground-grid { grid-template-columns: 1fr; }
+        }
+        .panel {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+        }
+        .panel h3 {
+            font-size: 1rem;
+            margin-bottom: 1rem;
+            color: var(--accent);
+        }
+        .form-group {
+            margin-bottom: 1rem;
+        }
+        .form-group label {
+            display: block;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--muted);
+            margin-bottom: 0.3rem;
+        }
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 0.6rem 0.8rem;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text);
+            font-family: inherit;
+            font-size: 0.9rem;
+        }
+        .form-group textarea {
+            min-height: 60px;
+            resize: vertical;
+        }
+        .form-group input:focus,
+        .form-group textarea:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+        .challenge-list {
+            list-style: none;
+            margin: 1rem 0;
+        }
+        .challenge-list li {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.6rem 0.8rem;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            margin-bottom: 0.5rem;
+            background: var(--bg);
+            font-size: 0.85rem;
+        }
+        .challenge-list li .title {
+            font-weight: 600;
+            color: var(--text);
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .challenge-list li .meta {
+            color: var(--muted);
+            font-size: 0.8rem;
+            margin-left: 0.5rem;
+            flex-shrink: 0;
+        }
+        .challenge-list li .actions {
+            display: flex;
+            gap: 0.3rem;
+            margin-left: 0.5rem;
+            flex-shrink: 0;
+        }
+        .icon-btn {
+            background: none;
+            border: 1px solid var(--border);
+            color: var(--muted);
+            border-radius: 4px;
+            padding: 0.2rem 0.4rem;
+            cursor: pointer;
+            font-size: 0.8rem;
+        }
+        .icon-btn:hover { color: var(--accent); border-color: var(--accent); }
+        .icon-btn.danger:hover { color: var(--red); border-color: var(--red); }
+
+        /* Test area */
+        .test-area {
+            text-align: center;
+        }
+        .test-area .gif-container {
+            width: 100%;
+            max-width: 480px;
+            min-height: 200px;
+            margin: 1rem auto;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+        .test-area .gif-container img {
+            max-width: 100%;
+            max-height: 350px;
+            display: block;
+        }
+        .test-area .gif-container .placeholder {
+            color: var(--muted);
+            font-size: 0.9rem;
+        }
+        .score-result {
+            display: inline-block;
+            padding: 0.4rem 1rem;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            margin-top: 0.5rem;
+        }
+        .score-result.pass { background: var(--green-bg); color: var(--green); }
+        .score-result.fail { background: var(--red-bg); color: var(--red); }
+        .score-result.partial { background: var(--yellow-bg); color: var(--yellow); }
+
+        /* Export area */
+        .export-box {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 1rem;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 0.8rem;
+            color: var(--muted);
+            max-height: 300px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        .btn-row {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            margin-top: 0.5rem;
+        }
+        .stats-bar {
+            display: flex;
+            gap: 1.5rem;
+            margin: 1rem 0;
+            flex-wrap: wrap;
+        }
+        .stat-item {
+            text-align: center;
+        }
+        .stat-item .stat-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--accent);
+        }
+        .stat-item .stat-label {
+            font-size: 0.75rem;
+            color: var(--muted);
+        }
+        .empty-state {
+            text-align: center;
+            padding: 2rem;
+            color: var(--muted);
+            font-size: 0.9rem;
+        }
+        .difficulty-badge {
+            display: inline-block;
+            padding: 0.1rem 0.5rem;
+            border-radius: 10px;
+            font-size: 0.7rem;
+            font-weight: 600;
+        }
+        .difficulty-badge.easy { background: var(--green-bg); color: var(--green); }
+        .difficulty-badge.medium { background: var(--yellow-bg); color: var(--yellow); }
+        .difficulty-badge.hard { background: var(--red-bg); color: var(--red); }
+        .full-width { grid-column: 1 / -1; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🎮 Challenge Playground</h1>
+        <p class="subtitle">Create, test, and export custom GIF CAPTCHA challenge sets</p>
+        <a href="index.html" class="back-link">← Back to Case Study</a>
+    </div>
+
+    <div style="max-width: 1100px; margin: 0 auto; padding: 0 1.5rem 3rem;">
+
+        <!-- Stats Bar -->
+        <div class="stats-bar" id="stats-bar">
+            <div class="stat-item">
+                <div class="stat-value" id="stat-total">0</div>
+                <div class="stat-label">Challenges</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="stat-tested">0</div>
+                <div class="stat-label">Tested</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="stat-avg-score">—</div>
+                <div class="stat-label">Avg Score</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="stat-avg-difficulty">—</div>
+                <div class="stat-label">Avg Difficulty</div>
+            </div>
+        </div>
+
+        <div class="playground-grid">
+
+            <!-- Left: Add Challenge -->
+            <div class="panel">
+                <h3>➕ Add Challenge</h3>
+                <div class="form-group">
+                    <label>Title</label>
+                    <input type="text" id="inp-title" placeholder="e.g. Dancing cat surprise">
+                </div>
+                <div class="form-group">
+                    <label>GIF URL</label>
+                    <input type="url" id="inp-gif" placeholder="https://media.giphy.com/...">
+                </div>
+                <div class="form-group">
+                    <label>Expected Answer</label>
+                    <textarea id="inp-answer" placeholder="Describe the unexpected event..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Hint (optional)</label>
+                    <input type="text" id="inp-hint" placeholder="Watch the left side carefully">
+                </div>
+                <div class="form-group">
+                    <label>Difficulty</label>
+                    <select id="inp-difficulty">
+                        <option value="1">Easy (1)</option>
+                        <option value="2">Medium (2)</option>
+                        <option value="3" selected>Standard (3)</option>
+                        <option value="4">Hard (4)</option>
+                        <option value="5">Expert (5)</option>
+                    </select>
+                </div>
+                <button class="btn" onclick="addChallenge()">Add to Set</button>
+            </div>
+
+            <!-- Right: Test Challenge -->
+            <div class="panel test-area">
+                <h3>🧪 Test a Challenge</h3>
+                <div id="test-content">
+                    <div class="empty-state">Add challenges and click ▶ to test them</div>
+                </div>
+            </div>
+
+            <!-- Challenge Set (full width) -->
+            <div class="panel full-width">
+                <h3>📋 Challenge Set (<span id="set-count">0</span>)</h3>
+                <ul class="challenge-list" id="challenge-list">
+                    <li class="empty-state">No challenges yet. Add one above!</li>
+                </ul>
+            </div>
+
+            <!-- Export / Import (full width) -->
+            <div class="panel full-width">
+                <h3>📦 Export / Import</h3>
+                <div class="btn-row">
+                    <button class="btn" onclick="exportJSON()">Export JSON</button>
+                    <button class="btn btn-outline" onclick="copyExport()">Copy to Clipboard</button>
+                    <button class="btn btn-outline" onclick="downloadExport()">Download .json</button>
+                    <label class="btn btn-outline" style="cursor:pointer;">
+                        Import JSON
+                        <input type="file" accept=".json" onchange="importJSON(event)" style="display:none;">
+                    </label>
+                    <button class="btn btn-outline" onclick="loadSamples()">Load Sample Set</button>
+                </div>
+                <div class="export-box" id="export-box">Click "Export JSON" to generate your challenge set...</div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <p>Part of the <a href="index.html">GIF CAPTCHA</a> research project.
+        Explore: <a href="demo.html">Demo</a> · <a href="generator.html">Workshop</a> · <a href="simulator.html">Simulator</a> · <a href="playground.html"><strong>Playground</strong></a></p>
+    </footer>
+
+    <script src="shared.js"></script>
+    <script>
+    (function () {
+        "use strict";
+
+        var challenges = [];
+        var testResults = {}; // id -> { score, userAnswer }
+        var nextId = 1;
+
+        // ── Text Similarity (from core library) ─────────────
+        function textSimilarity(a, b) {
+            a = a.toLowerCase().trim();
+            b = b.toLowerCase().trim();
+            if (a === b) return 1;
+            if (!a || !b) return 0;
+
+            var wordsA = a.split(/\s+/);
+            var wordsB = b.split(/\s+/);
+            var setA = {};
+            var setB = {};
+            var i;
+            for (i = 0; i < wordsA.length; i++) setA[wordsA[i]] = true;
+            for (i = 0; i < wordsB.length; i++) setB[wordsB[i]] = true;
+
+            var intersection = 0;
+            var union = {};
+            for (var w in setA) { union[w] = true; if (setB[w]) intersection++; }
+            for (var w2 in setB) { union[w2] = true; }
+            var unionCount = Object.keys(union).length;
+            return unionCount > 0 ? intersection / unionCount : 0;
+        }
+
+        // ── UI Helpers ──────────────────────────────────────
+        function $(id) { return document.getElementById(id); }
+
+        function difficultyLabel(d) {
+            var labels = { 1: "easy", 2: "easy", 3: "medium", 4: "hard", 5: "hard" };
+            var names = { 1: "Easy", 2: "Medium", 3: "Standard", 4: "Hard", 5: "Expert" };
+            return '<span class="difficulty-badge ' + labels[d] + '">' + names[d] + '</span>';
+        }
+
+        function updateStats() {
+            $("stat-total").textContent = challenges.length;
+            $("set-count").textContent = challenges.length;
+
+            var tested = 0;
+            var scoreSum = 0;
+            var diffSum = 0;
+            for (var i = 0; i < challenges.length; i++) {
+                diffSum += challenges[i].difficulty;
+                if (testResults[challenges[i].id]) {
+                    tested++;
+                    scoreSum += testResults[challenges[i].id].score;
+                }
+            }
+            $("stat-tested").textContent = tested;
+            $("stat-avg-score").textContent = tested > 0 ? Math.round(scoreSum / tested * 100) + "%" : "—";
+            $("stat-avg-difficulty").textContent = challenges.length > 0 ? (diffSum / challenges.length).toFixed(1) : "—";
+        }
+
+        function renderList() {
+            var list = $("challenge-list");
+            if (challenges.length === 0) {
+                list.innerHTML = '<li class="empty-state">No challenges yet. Add one above!</li>';
+                updateStats();
+                return;
+            }
+            var html = "";
+            for (var i = 0; i < challenges.length; i++) {
+                var c = challenges[i];
+                var result = testResults[c.id];
+                var scoreTag = "";
+                if (result) {
+                    var cls = result.score >= 0.5 ? "pass" : result.score >= 0.25 ? "partial" : "fail";
+                    scoreTag = ' <span class="score-result ' + cls + '" style="font-size:0.7rem;padding:0.1rem 0.5rem;">' + Math.round(result.score * 100) + '%</span>';
+                }
+                html += '<li>' +
+                    '<span class="title">' + sanitize(c.title) + '</span>' +
+                    '<span class="meta">' + difficultyLabel(c.difficulty) + scoreTag + '</span>' +
+                    '<span class="actions">' +
+                        '<button class="icon-btn" onclick="testChallenge(' + i + ')" title="Test">▶</button>' +
+                        '<button class="icon-btn danger" onclick="removeChallenge(' + i + ')" title="Remove">✕</button>' +
+                    '</span>' +
+                    '</li>';
+            }
+            list.innerHTML = html;
+            updateStats();
+            saveToStorage();
+        }
+
+        // ── Core Actions ────────────────────────────────────
+        window.addChallenge = function () {
+            var title = $("inp-title").value.trim();
+            var gif = $("inp-gif").value.trim();
+            var answer = $("inp-answer").value.trim();
+            var hint = $("inp-hint").value.trim();
+            var difficulty = parseInt($("inp-difficulty").value, 10);
+
+            if (!title || !gif || !answer) {
+                alert("Title, GIF URL, and Expected Answer are required.");
+                return;
+            }
+
+            challenges.push({
+                id: nextId++,
+                title: title,
+                gifUrl: gif,
+                expectedAnswer: answer,
+                hint: hint || null,
+                difficulty: difficulty
+            });
+
+            // Clear form
+            $("inp-title").value = "";
+            $("inp-gif").value = "";
+            $("inp-answer").value = "";
+            $("inp-hint").value = "";
+            $("inp-difficulty").value = "3";
+
+            renderList();
+        };
+
+        window.removeChallenge = function (idx) {
+            var removed = challenges.splice(idx, 1)[0];
+            if (removed) delete testResults[removed.id];
+            renderList();
+        };
+
+        window.testChallenge = function (idx) {
+            var c = challenges[idx];
+            var container = $("test-content");
+            container.innerHTML =
+                '<h4 style="margin-bottom:0.5rem;color:var(--text);">' + sanitize(c.title) + '</h4>' +
+                (c.hint ? '<p style="font-size:0.8rem;color:var(--muted);margin-bottom:0.5rem;">💡 ' + sanitize(c.hint) + '</p>' : '') +
+                '<div class="gif-container" id="test-gif"></div>' +
+                '<div class="form-group" style="text-align:left;margin-top:1rem;">' +
+                    '<label>Describe the unexpected event:</label>' +
+                    '<textarea id="test-answer" placeholder="What happened in the GIF?"></textarea>' +
+                '</div>' +
+                '<button class="btn" onclick="submitTest(' + idx + ')">Check Answer</button>' +
+                '<div id="test-result" style="margin-top:0.5rem;"></div>';
+
+            var gifContainer = $("test-gif");
+            gifContainer.innerHTML = '<span class="placeholder">Loading GIF...</span>';
+            loadGifWithRetry(gifContainer, c, 0);
+        };
+
+        window.submitTest = function (idx) {
+            var c = challenges[idx];
+            var userAnswer = $("test-answer").value.trim();
+            if (!userAnswer) {
+                alert("Please enter your answer first.");
+                return;
+            }
+
+            var score = textSimilarity(userAnswer, c.expectedAnswer);
+            testResults[c.id] = { score: score, userAnswer: userAnswer };
+
+            var cls = score >= 0.5 ? "pass" : score >= 0.25 ? "partial" : "fail";
+            var label = score >= 0.5 ? "✅ Pass" : score >= 0.25 ? "⚠️ Partial" : "❌ Fail";
+
+            $("test-result").innerHTML =
+                '<div class="score-result ' + cls + '">' + label + ' — ' + Math.round(score * 100) + '% match</div>' +
+                '<p style="font-size:0.8rem;color:var(--muted);margin-top:0.5rem;">' +
+                    '<strong>Expected:</strong> ' + sanitize(c.expectedAnswer) + '<br>' +
+                    '<strong>Your answer:</strong> ' + sanitize(userAnswer) +
+                '</p>';
+
+            renderList();
+        };
+
+        // ── Export / Import ─────────────────────────────────
+        window.exportJSON = function () {
+            var exportData = {
+                name: "Custom Challenge Set",
+                version: "1.0",
+                createdAt: new Date().toISOString(),
+                challengeCount: challenges.length,
+                challenges: challenges.map(function (c) {
+                    return {
+                        title: c.title,
+                        gifUrl: c.gifUrl,
+                        expectedAnswer: c.expectedAnswer,
+                        hint: c.hint,
+                        difficulty: c.difficulty
+                    };
+                })
+            };
+            var json = JSON.stringify(exportData, null, 2);
+            $("export-box").textContent = json;
+        };
+
+        window.copyExport = function () {
+            var text = $("export-box").textContent;
+            if (!text || text.indexOf("Click") === 0) {
+                alert("Export first, then copy.");
+                return;
+            }
+            navigator.clipboard.writeText(text).then(function () {
+                alert("Copied to clipboard!");
+            });
+        };
+
+        window.downloadExport = function () {
+            var text = $("export-box").textContent;
+            if (!text || text.indexOf("Click") === 0) {
+                exportJSON();
+                text = $("export-box").textContent;
+            }
+            var blob = new Blob([text], { type: "application/json" });
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement("a");
+            a.href = url;
+            a.download = "gif-captcha-challenges.json";
+            a.click();
+            URL.revokeObjectURL(url);
+        };
+
+        window.importJSON = function (event) {
+            var file = event.target.files[0];
+            if (!file) return;
+            var reader = new FileReader();
+            reader.onload = function (e) {
+                try {
+                    var data = JSON.parse(e.target.result);
+                    var items = data.challenges || data;
+                    if (!Array.isArray(items)) throw new Error("Invalid format");
+                    for (var i = 0; i < items.length; i++) {
+                        var c = items[i];
+                        if (c.title && c.gifUrl && c.expectedAnswer) {
+                            challenges.push({
+                                id: nextId++,
+                                title: c.title,
+                                gifUrl: c.gifUrl,
+                                expectedAnswer: c.expectedAnswer,
+                                hint: c.hint || null,
+                                difficulty: c.difficulty || 3
+                            });
+                        }
+                    }
+                    renderList();
+                    alert("Imported " + items.length + " challenges!");
+                } catch (err) {
+                    alert("Invalid JSON file: " + err.message);
+                }
+            };
+            reader.readAsText(file);
+            event.target.value = "";
+        };
+
+        window.loadSamples = function () {
+            var samples = [
+                { title: "Duel Plot Twist", gifUrl: "https://media.giphy.com/media/l0HlvtIPdijBhr73q/giphy.gif", expectedAnswer: "The duelist throws the gun away and punches the opponent instead", hint: "Watch what happens at the moment of the duel", difficulty: 2 },
+                { title: "Invisible Box Challenge", gifUrl: "https://media.giphy.com/media/3o7btYc0vx0yAMVOEM/giphy.gif", expectedAnswer: "Person steps over an invisible box by miming stepping on it", hint: "Watch the feet carefully", difficulty: 3 },
+                { title: "Cat vs Cucumber", gifUrl: "https://media.giphy.com/media/flMKXFBHmez8Q/giphy.gif", expectedAnswer: "Cat turns around, sees a cucumber, and jumps in fright", hint: "Something is placed behind the cat", difficulty: 1 },
+                { title: "Basketball Trick Shot", gifUrl: "https://media.giphy.com/media/l0HlBO7eyXzSZkJri/giphy.gif", expectedAnswer: "The ball bounces off multiple surfaces before going in the hoop", hint: "Follow the ball's trajectory", difficulty: 3 },
+                { title: "Magic Trick Fail", gifUrl: "https://media.giphy.com/media/12NUbkX6p4xOO4/giphy.gif", expectedAnswer: "The magician accidentally reveals the trick mechanism", hint: "Watch the magician's hands", difficulty: 4 }
+            ];
+            for (var i = 0; i < samples.length; i++) {
+                samples[i].id = nextId++;
+                challenges.push(samples[i]);
+            }
+            renderList();
+        };
+
+        // ── Local Storage Persistence ───────────────────────
+        function saveToStorage() {
+            try {
+                localStorage.setItem("gifcaptcha-playground", JSON.stringify({ challenges: challenges, nextId: nextId }));
+            } catch (e) { /* storage full or blocked */ }
+        }
+
+        function loadFromStorage() {
+            try {
+                var data = JSON.parse(localStorage.getItem("gifcaptcha-playground"));
+                if (data && data.challenges) {
+                    challenges = data.challenges;
+                    nextId = data.nextId || challenges.length + 1;
+                    renderList();
+                }
+            } catch (e) { /* corrupt data */ }
+        }
+
+        // Init
+        loadFromStorage();
+        updateStats();
+    })();
+    </script>
+</body>
+</html>

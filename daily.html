@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; img-src https: data:; script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'self'; form-action 'none';">
+    <meta name="referrer" content="no-referrer">
+    <title>GIF CAPTCHA — Daily Challenge 📅</title>
+    <link rel="stylesheet" href="shared.css">
+    <style>
+        .container { max-width: 700px; }
+
+        /* Daily header */
+        .daily-header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        .daily-number {
+            font-size: 0.85rem;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 0.3rem;
+        }
+        .daily-date {
+            font-size: 1.1rem;
+            color: var(--accent);
+            font-weight: 600;
+        }
+
+        /* Stats bar */
+        .stats-bar {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            padding: 1rem 1.5rem;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            margin-bottom: 1.5rem;
+            font-variant-numeric: tabular-nums;
+        }
+        .stat-item { text-align: center; }
+        .stat-label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--muted);
+            margin-bottom: 0.2rem;
+        }
+        .stat-value {
+            font-size: 1.4rem;
+            font-weight: 700;
+        }
+        .stat-streak { color: var(--orange); }
+        .stat-played { color: var(--accent); }
+        .stat-solved { color: var(--green); }
+
+        /* Challenge card */
+        .challenge-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .challenge-card h3 {
+            font-size: 1.1rem;
+            margin-bottom: 1rem;
+            text-align: center;
+        }
+        .gif-box {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            min-height: 250px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 1rem;
+            overflow: hidden;
+        }
+        .gif-box img {
+            max-width: 100%;
+            max-height: 400px;
+            border-radius: 6px;
+        }
+        .gif-loading {
+            color: var(--muted);
+            font-size: 0.9rem;
+        }
+
+        /* Input */
+        .answer-area textarea {
+            width: 100%;
+            min-height: 80px;
+            padding: 0.8rem 1rem;
+            background: var(--bg);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 0.95rem;
+            resize: vertical;
+            line-height: 1.5;
+        }
+        .answer-area textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+        .answer-area textarea:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .char-hint {
+            font-size: 0.75rem;
+            color: var(--muted);
+            margin-top: 0.3rem;
+            text-align: right;
+        }
+        .submit-row {
+            display: flex;
+            gap: 0.8rem;
+            margin-top: 0.8rem;
+        }
+
+        /* Hints */
+        .hint-box {
+            margin-top: 1rem;
+            padding: 0.8rem 1rem;
+            background: var(--yellow-bg);
+            border: 1px solid rgba(210, 153, 34, 0.3);
+            border-radius: 8px;
+            font-size: 0.9rem;
+            color: var(--yellow);
+        }
+        .hint-box.hidden { display: none; }
+
+        /* Result */
+        .result-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            text-align: center;
+            margin-bottom: 1.5rem;
+        }
+        .result-card.hidden { display: none; }
+        .result-emoji { font-size: 3rem; margin-bottom: 0.5rem; }
+        .result-title { font-size: 1.3rem; font-weight: 700; margin-bottom: 0.3rem; }
+        .result-subtitle { color: var(--muted); font-size: 0.9rem; margin-bottom: 1rem; }
+
+        .comparison {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            text-align: left;
+            margin: 1rem 0;
+        }
+        .comparison-box {
+            padding: 0.8rem 1rem;
+            border-radius: 8px;
+            font-size: 0.85rem;
+        }
+        .comparison-box.yours {
+            background: var(--purple-bg);
+            border: 1px solid rgba(188, 140, 255, 0.3);
+        }
+        .comparison-box.human {
+            background: var(--green-bg);
+            border: 1px solid rgba(63, 185, 80, 0.3);
+        }
+        .comparison-label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--muted);
+            margin-bottom: 0.3rem;
+        }
+
+        /* Share */
+        .share-block {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 1rem 0;
+            font-family: monospace;
+            font-size: 0.85rem;
+            white-space: pre-line;
+            text-align: left;
+            color: var(--text);
+        }
+        .share-actions {
+            display: flex;
+            gap: 0.8rem;
+            justify-content: center;
+            margin-top: 1rem;
+        }
+
+        /* Countdown */
+        .countdown {
+            text-align: center;
+            margin-top: 1.5rem;
+            color: var(--muted);
+            font-size: 0.9rem;
+        }
+        .countdown-time {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: var(--accent);
+            font-variant-numeric: tabular-nums;
+            margin-top: 0.3rem;
+        }
+
+        /* History */
+        .history-section { margin-top: 2rem; }
+        .history-section h3 {
+            font-size: 1rem;
+            margin-bottom: 1rem;
+            color: var(--muted);
+        }
+        .history-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+            gap: 6px;
+        }
+        .history-cell {
+            aspect-ratio: 1;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            font-weight: 600;
+            cursor: default;
+        }
+        .history-cell.solved {
+            background: var(--green-bg);
+            color: var(--green);
+            border: 1px solid rgba(63, 185, 80, 0.3);
+        }
+        .history-cell.missed {
+            background: var(--red-bg);
+            color: var(--red);
+            border: 1px solid rgba(248, 81, 73, 0.3);
+        }
+        .history-cell.skipped {
+            background: var(--surface);
+            color: var(--muted);
+            border: 1px solid var(--border);
+        }
+
+        @media (max-width: 500px) {
+            .stats-bar { gap: 1rem; padding: 0.8rem 1rem; }
+            .stat-value { font-size: 1.1rem; }
+            .comparison { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📅 Daily Challenge</h1>
+        <p class="subtitle">One GIF. One chance. Same challenge for everyone.</p>
+        <div class="nav-links">
+            <a href="index.html">Home</a>
+            <a href="demo.html">Demo</a>
+            <a href="streak.html">Streak</a>
+            <a href="leaderboard.html">Leaderboard</a>
+            <a href="playground.html">Playground</a>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- Stats -->
+        <div class="stats-bar">
+            <div class="stat-item">
+                <div class="stat-label">Streak</div>
+                <div class="stat-value stat-streak" id="statStreak">0</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Played</div>
+                <div class="stat-value stat-played" id="statPlayed">0</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Solved</div>
+                <div class="stat-value stat-solved" id="statSolved">0</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Solve %</div>
+                <div class="stat-value stat-solved" id="statRate">—</div>
+            </div>
+        </div>
+
+        <!-- Daily header -->
+        <div class="daily-header">
+            <div class="daily-number" id="dailyNumber">Daily #1</div>
+            <div class="daily-date" id="dailyDate"></div>
+        </div>
+
+        <!-- Challenge -->
+        <div id="challengeSection">
+            <div class="challenge-card">
+                <h3 id="gifTitle">Loading...</h3>
+                <div class="gif-box" id="gifContainer">
+                    <span class="gif-loading">Loading GIF...</span>
+                </div>
+                <div class="answer-area" id="answerArea">
+                    <textarea id="userAnswer" placeholder="Describe the unexpected event in this GIF..." maxlength="300"></textarea>
+                    <div class="char-hint"><span id="charCount">0</span>/300</div>
+                    <div class="submit-row">
+                        <button class="btn btn-primary" onclick="submitAnswer()" id="submitBtn">Submit Answer</button>
+                        <button class="btn btn-outline" onclick="useHint()" id="hintBtn">💡 Hint</button>
+                        <button class="btn btn-outline" onclick="skipToday()" id="skipBtn">Skip</button>
+                    </div>
+                </div>
+                <div class="hint-box hidden" id="hintBox"></div>
+            </div>
+        </div>
+
+        <!-- Result (shown after answering) -->
+        <div class="result-card hidden" id="resultCard">
+            <div class="result-emoji" id="resultEmoji"></div>
+            <div class="result-title" id="resultTitle"></div>
+            <div class="result-subtitle" id="resultSubtitle"></div>
+            <div class="comparison">
+                <div class="comparison-box yours">
+                    <div class="comparison-label">Your answer</div>
+                    <div id="yourAnswer"></div>
+                </div>
+                <div class="comparison-box human">
+                    <div class="comparison-label">Expected answer</div>
+                    <div id="humanAnswer"></div>
+                </div>
+            </div>
+
+            <div class="share-block" id="shareBlock"></div>
+            <div class="share-actions">
+                <button class="btn btn-primary" onclick="copyShare()">📋 Copy Result</button>
+            </div>
+
+            <div class="countdown">
+                <div>Next challenge in</div>
+                <div class="countdown-time" id="countdown">--:--:--</div>
+            </div>
+        </div>
+
+        <!-- History grid -->
+        <div class="history-section" id="historySection">
+            <h3>📆 Your History</h3>
+            <div class="history-grid" id="historyGrid"></div>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <p>Part of the <a href="index.html">GIF CAPTCHA</a> research study</p>
+    </footer>
+
+    <script src="shared.js"></script>
+    <script>
+        // ===== Challenge Pool =====
+        var CHALLENGES = [
+            {
+                title: "Duel Plot Twist",
+                gifUrl: "https://media1.tenor.com/m/g50YYgVxFo4AAAAC/unexpected-plot-twist.gif",
+                humanAnswer: "One person shot BANG and the other shot BOOM — both had trick guns.",
+                hint: "Watch what comes out of the guns..."
+            },
+            {
+                title: "Rappers",
+                gifUrl: "https://i.gifer.com/G9lg.gif",
+                humanAnswer: "3 rappers rapping and then one roller skates away.",
+                hint: "Pay attention to how one person leaves..."
+            },
+            {
+                title: "Skateboarder",
+                gifUrl: "https://media.giphy.com/media/l0MYDnCqzU2MQj7OM/giphy.gif",
+                humanAnswer: "Skateboarder does a trick and flies up in the air.",
+                hint: "Look up..."
+            },
+            {
+                title: "Banana Mascot",
+                gifUrl: "https://media.giphy.com/media/KYElw07kzDspaBOwf9/giphy.gif",
+                humanAnswer: "Banana mascot dances; security guard takes props and does a better dance.",
+                hint: "Watch the person in uniform..."
+            },
+            {
+                title: "Tic Tac Toe Dog",
+                gifUrl: "https://media.giphy.com/media/ZqlvCTNHpqrio/giphy.gif",
+                humanAnswer: "Shiba Inu wins at Tic Tac Toe against a human.",
+                hint: "It's a game — who wins?"
+            },
+            {
+                title: "Parent Dog",
+                gifUrl: "https://media.giphy.com/media/xTiTnMhJTwNHChdTZS/giphy.gif",
+                humanAnswer: "Person preparing puppy for cooking gets stopped by parent dog who volunteers instead.",
+                hint: "Watch the larger dog's reaction..."
+            },
+            {
+                title: "Mirror Illusion",
+                gifUrl: "https://media.giphy.com/media/CkKg32KdKyQjm/giphy.gif",
+                humanAnswer: "Hand seems to touch its reflection, but it's both hands of the same person.",
+                hint: "Is it really a mirror?"
+            },
+            {
+                title: "Highway Drift",
+                gifUrl: "https://media.giphy.com/media/l2SpQRuCQzY1RXHqM/giphy.gif",
+                humanAnswer: "Car does a 180-degree drift and back to continue normally.",
+                hint: "Watch the car's rotation..."
+            },
+            {
+                title: "Road Rage Hug",
+                gifUrl: "https://media.giphy.com/media/brsEO1JayBVja/giphy.gif",
+                humanAnswer: "Road rage encounter unexpectedly ends with a friendly hug.",
+                hint: "How does the confrontation end?"
+            },
+            {
+                title: "Birthday Cake",
+                gifUrl: "https://media.giphy.com/media/xT0xeuOy2Fcl9vDGiA/giphy.gif",
+                humanAnswer: "Girl's face smashed into cake, but emerges clean — had a paper plate cover.",
+                hint: "Look closely at her face after..."
+            }
+        ];
+
+        // ===== Daily Number Calculation =====
+        // Epoch: Jan 1, 2026. Each day gets a deterministic challenge.
+        var EPOCH = new Date(2026, 0, 1); // Jan 1 2026
+
+        function getDailyNumber() {
+            var now = new Date();
+            var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            return Math.floor((today - EPOCH) / 86400000) + 1;
+        }
+
+        function getTodayKey() {
+            var now = new Date();
+            return now.getFullYear() + '-' +
+                String(now.getMonth() + 1).padStart(2, '0') + '-' +
+                String(now.getDate()).padStart(2, '0');
+        }
+
+        function getDailyChallenge() {
+            var num = getDailyNumber();
+            return CHALLENGES[(num - 1) % CHALLENGES.length];
+        }
+
+        // ===== Storage =====
+        var STORE_KEY = 'gifcaptcha_daily';
+
+        function loadState() {
+            try {
+                return JSON.parse(localStorage.getItem(STORE_KEY)) || { history: {}, streak: 0, lastDate: null };
+            } catch(e) {
+                return { history: {}, streak: 0, lastDate: null };
+            }
+        }
+
+        function saveState(state) {
+            localStorage.setItem(STORE_KEY, JSON.stringify(state));
+        }
+
+        // ===== Init =====
+        var state = loadState();
+        var todayKey = getTodayKey();
+        var dailyNum = getDailyNumber();
+        var challenge = getDailyChallenge();
+        var todayEntry = state.history[todayKey];
+        var hintUsed = false;
+
+        function init() {
+            // Header
+            document.getElementById('dailyNumber').textContent = 'Daily #' + dailyNum;
+            var d = new Date();
+            document.getElementById('dailyDate').textContent =
+                d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+
+            // Load challenge
+            document.getElementById('gifTitle').textContent = '🎞️ ' + challenge.title;
+            var container = document.getElementById('gifContainer');
+            loadGifWithRetry(container, challenge, 0);
+
+            // Char counter
+            var ta = document.getElementById('userAnswer');
+            ta.addEventListener('input', function() {
+                document.getElementById('charCount').textContent = ta.value.length;
+            });
+
+            // Already played today?
+            if (todayEntry) {
+                showResult(todayEntry);
+            }
+
+            updateStats();
+            renderHistory();
+        }
+
+        // ===== Similarity scoring =====
+        function similarity(a, b) {
+            a = a.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
+            b = b.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
+            var wordsA = a.split(/\s+/);
+            var wordsB = new Set(b.split(/\s+/));
+            var matches = 0;
+            for (var i = 0; i < wordsA.length; i++) {
+                if (wordsB.has(wordsA[i])) matches++;
+            }
+            return wordsA.length > 0 ? matches / Math.max(wordsA.length, wordsB.size) : 0;
+        }
+
+        // ===== Submit =====
+        function submitAnswer() {
+            var answer = document.getElementById('userAnswer').value.trim();
+            if (!answer) return;
+            if (todayEntry) return;
+
+            var score = similarity(answer, challenge.humanAnswer);
+            var solved = score >= 0.25; // generous threshold — just need to capture the gist
+
+            var entry = {
+                answer: answer,
+                solved: solved,
+                score: Math.round(score * 100),
+                hintUsed: hintUsed,
+                timestamp: Date.now()
+            };
+
+            // Update streak
+            var yesterday = new Date();
+            yesterday.setDate(yesterday.getDate() - 1);
+            var yKey = yesterday.getFullYear() + '-' +
+                String(yesterday.getMonth() + 1).padStart(2, '0') + '-' +
+                String(yesterday.getDate()).padStart(2, '0');
+
+            if (solved) {
+                if (state.lastDate === yKey) {
+                    state.streak++;
+                } else if (state.lastDate !== todayKey) {
+                    state.streak = 1;
+                }
+                state.lastDate = todayKey;
+            } else {
+                state.streak = 0;
+                state.lastDate = todayKey;
+            }
+
+            state.history[todayKey] = entry;
+            todayEntry = entry;
+            saveState(state);
+
+            showResult(entry);
+            updateStats();
+            renderHistory();
+        }
+
+        function skipToday() {
+            if (todayEntry) return;
+
+            var entry = {
+                answer: '',
+                solved: false,
+                score: 0,
+                skipped: true,
+                hintUsed: hintUsed,
+                timestamp: Date.now()
+            };
+
+            state.streak = 0;
+            state.lastDate = todayKey;
+            state.history[todayKey] = entry;
+            todayEntry = entry;
+            saveState(state);
+
+            showResult(entry);
+            updateStats();
+            renderHistory();
+        }
+
+        function useHint() {
+            if (todayEntry) return;
+            hintUsed = true;
+            var box = document.getElementById('hintBox');
+            box.textContent = '💡 ' + challenge.hint;
+            box.classList.remove('hidden');
+            document.getElementById('hintBtn').disabled = true;
+        }
+
+        // ===== Show Result =====
+        function showResult(entry) {
+            // Hide input
+            document.getElementById('answerArea').classList.add('hidden');
+            document.getElementById('hintBtn').disabled = true;
+            document.getElementById('skipBtn').disabled = true;
+
+            // Show result card
+            var card = document.getElementById('resultCard');
+            card.classList.remove('hidden');
+
+            if (entry.skipped) {
+                document.getElementById('resultEmoji').textContent = '⏭️';
+                document.getElementById('resultTitle').textContent = 'Skipped!';
+                document.getElementById('resultSubtitle').textContent = 'Come back tomorrow for a new challenge.';
+            } else if (entry.solved) {
+                document.getElementById('resultEmoji').textContent = '🎉';
+                document.getElementById('resultTitle').textContent = 'You got it!';
+                document.getElementById('resultSubtitle').textContent =
+                    'Match score: ' + entry.score + '%' + (entry.hintUsed ? ' (with hint)' : '');
+            } else {
+                document.getElementById('resultEmoji').textContent = '😅';
+                document.getElementById('resultTitle').textContent = 'Not quite!';
+                document.getElementById('resultSubtitle').textContent =
+                    'Match score: ' + entry.score + '% — try again tomorrow!';
+            }
+
+            document.getElementById('yourAnswer').textContent = entry.answer || '(skipped)';
+            document.getElementById('humanAnswer').textContent = challenge.humanAnswer;
+
+            // Share block
+            var emoji = entry.skipped ? '⬛' : (entry.solved ? '🟩' : '🟥');
+            var hintEmoji = entry.hintUsed ? '💡' : '';
+            var shareText = 'GIF CAPTCHA Daily #' + dailyNum + ' ' + emoji + hintEmoji + '\n' +
+                'Score: ' + entry.score + '%' + (entry.hintUsed ? ' (hint)' : '') + '\n' +
+                (state.streak > 1 ? '🔥 Streak: ' + state.streak + '\n' : '') +
+                'https://sauravbhattacharya001.github.io/gif-captcha/daily.html';
+            document.getElementById('shareBlock').textContent = shareText;
+
+            // Start countdown
+            startCountdown();
+        }
+
+        function copyShare() {
+            var text = document.getElementById('shareBlock').textContent;
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(text).then(function() {
+                    var btn = document.querySelector('.share-actions .btn-primary');
+                    btn.textContent = '✅ Copied!';
+                    setTimeout(function() { btn.textContent = '📋 Copy Result'; }, 2000);
+                });
+            }
+        }
+
+        // ===== Countdown =====
+        function startCountdown() {
+            function tick() {
+                var now = new Date();
+                var tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+                var diff = tomorrow - now;
+                var h = Math.floor(diff / 3600000);
+                var m = Math.floor((diff % 3600000) / 60000);
+                var s = Math.floor((diff % 60000) / 1000);
+                document.getElementById('countdown').textContent =
+                    String(h).padStart(2, '0') + ':' +
+                    String(m).padStart(2, '0') + ':' +
+                    String(s).padStart(2, '0');
+            }
+            tick();
+            setInterval(tick, 1000);
+        }
+
+        // ===== Stats =====
+        function updateStats() {
+            var keys = Object.keys(state.history);
+            var played = keys.length;
+            var solved = 0;
+            for (var i = 0; i < keys.length; i++) {
+                if (state.history[keys[i]].solved) solved++;
+            }
+            document.getElementById('statStreak').textContent = state.streak;
+            document.getElementById('statPlayed').textContent = played;
+            document.getElementById('statSolved').textContent = solved;
+            document.getElementById('statRate').textContent = played > 0 ? Math.round(solved / played * 100) + '%' : '—';
+        }
+
+        // ===== History Grid =====
+        function renderHistory() {
+            var grid = document.getElementById('historyGrid');
+            grid.innerHTML = '';
+            // Show last 30 days
+            var now = new Date();
+            for (var i = 29; i >= 0; i--) {
+                var d = new Date(now);
+                d.setDate(d.getDate() - i);
+                var key = d.getFullYear() + '-' +
+                    String(d.getMonth() + 1).padStart(2, '0') + '-' +
+                    String(d.getDate()).padStart(2, '0');
+                var entry = state.history[key];
+                var cell = document.createElement('div');
+                cell.className = 'history-cell';
+                cell.title = key;
+
+                var dayNum = Math.floor((d - EPOCH) / 86400000) + 1;
+                if (dayNum < 1) {
+                    cell.textContent = '';
+                    cell.style.opacity = '0.2';
+                } else if (entry) {
+                    if (entry.solved) {
+                        cell.classList.add('solved');
+                        cell.textContent = '✓';
+                    } else if (entry.skipped) {
+                        cell.classList.add('skipped');
+                        cell.textContent = '–';
+                    } else {
+                        cell.classList.add('missed');
+                        cell.textContent = '✗';
+                    }
+                } else {
+                    cell.classList.add('skipped');
+                    cell.textContent = String(d.getDate());
+                    cell.style.opacity = '0.4';
+                }
+
+                grid.appendChild(cell);
+            }
+
+            // Hide section if no history
+            if (Object.keys(state.history).length === 0) {
+                document.getElementById('historySection').style.display = 'none';
+            }
+        }
+
+        // Go!
+        init();
+    </script>
+</body>
+</html>

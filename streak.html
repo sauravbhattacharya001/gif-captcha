@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; img-src https: data:; script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'self'; form-action 'none';">
+    <meta name="referrer" content="no-referrer">
+    <title>GIF CAPTCHA — Streak Mode 🔥</title>
+    <link rel="stylesheet" href="shared.css">
+    <style>
+        .container { max-width: 700px; }
+
+        /* Streak HUD */
+        .streak-hud {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 1.5rem;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            margin-bottom: 1.5rem;
+            font-variant-numeric: tabular-nums;
+        }
+        .hud-item {
+            text-align: center;
+        }
+        .hud-label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--muted);
+            margin-bottom: 0.25rem;
+        }
+        .hud-value {
+            font-size: 1.6rem;
+            font-weight: 700;
+        }
+        .hud-streak { color: var(--orange); }
+        .hud-timer { color: var(--accent); }
+        .hud-best { color: var(--green); }
+        .hud-avg { color: var(--purple); }
+
+        /* Streak fire animation */
+        @keyframes fireGlow {
+            0%, 100% { text-shadow: 0 0 8px rgba(240,136,62,0.4); }
+            50% { text-shadow: 0 0 20px rgba(240,136,62,0.8), 0 0 40px rgba(248,81,73,0.3); }
+        }
+        .on-fire .hud-streak {
+            animation: fireGlow 0.8s ease-in-out infinite;
+        }
+
+        /* Intro */
+        .intro {
+            text-align: center;
+            padding: 3rem 1rem;
+        }
+        .intro h2 { font-size: 1.5rem; margin-bottom: 1rem; }
+        .intro p { color: var(--muted); margin-bottom: 1.5rem; max-width: 500px; margin-left: auto; margin-right: auto; }
+        .rules-box {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.5rem;
+            text-align: left;
+            margin: 1.5rem auto 2rem;
+            max-width: 480px;
+        }
+        .rules-box h3 { font-size: 1rem; margin-bottom: 0.8rem; }
+        .rules-box ul {
+            padding-left: 1.5rem;
+            color: var(--muted);
+        }
+        .rules-box li { margin-bottom: 0.4rem; }
+
+        /* Challenge card */
+        .challenge { margin-bottom: 1.5rem; }
+        .challenge-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        .label {
+            font-size: 0.85rem;
+            color: var(--muted);
+        }
+        .gif-container {
+            width: 100%;
+            min-height: 280px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            margin-bottom: 1rem;
+        }
+        .gif-container img {
+            max-width: 100%;
+            max-height: 400px;
+            border-radius: 10px;
+        }
+        .gif-loading { color: var(--muted); font-size: 0.9rem; }
+        .challenge-prompt {
+            margin-bottom: 1rem;
+        }
+        .prompt-text {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 0.3rem;
+        }
+        .prompt-hint {
+            font-size: 0.8rem;
+            color: var(--muted);
+        }
+
+        /* Input area */
+        .input-area textarea {
+            width: 100%;
+            min-height: 80px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text);
+            padding: 0.75rem;
+            font-family: inherit;
+            font-size: 0.9rem;
+            resize: vertical;
+        }
+        .input-area textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+        .input-actions {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 0.5rem;
+        }
+        .char-count {
+            font-size: 0.75rem;
+            color: var(--muted);
+        }
+
+        /* Per-challenge timer bar */
+        .timer-bar-bg {
+            height: 4px;
+            background: var(--border);
+            border-radius: 2px;
+            margin-bottom: 1rem;
+            overflow: hidden;
+        }
+        .timer-bar-fill {
+            height: 100%;
+            background: var(--accent);
+            border-radius: 2px;
+            transition: width 0.1s linear;
+        }
+        .timer-bar-fill.danger { background: var(--red); }
+        .timer-bar-fill.warning { background: var(--yellow); }
+
+        /* Game Over */
+        .game-over {
+            text-align: center;
+            padding: 3rem 1rem;
+        }
+        .game-over h2 {
+            font-size: 1.8rem;
+            margin-bottom: 0.5rem;
+        }
+        .final-streak {
+            font-size: 4rem;
+            font-weight: 800;
+            color: var(--orange);
+            margin: 1rem 0;
+        }
+        .new-best {
+            display: inline-block;
+            background: var(--green-bg);
+            color: var(--green);
+            padding: 0.3rem 1rem;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+            margin: 2rem 0;
+        }
+        .stat-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1rem;
+        }
+        .stat-label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--muted);
+            margin-bottom: 0.3rem;
+        }
+        .stat-value {
+            font-size: 1.3rem;
+            font-weight: 700;
+        }
+
+        /* History */
+        .history-section {
+            margin-top: 2rem;
+            text-align: left;
+        }
+        .history-section h3 {
+            font-size: 1rem;
+            margin-bottom: 0.8rem;
+            color: var(--muted);
+        }
+        .history-list {
+            list-style: none;
+            padding: 0;
+        }
+        .history-list li {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.85rem;
+            color: var(--muted);
+        }
+        .history-list .hl-streak { color: var(--orange); font-weight: 600; }
+        .history-list .hl-best { color: var(--green); }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <a href="index.html" class="back-link">← Back to Study</a>
+        <h1>🔥 Streak Mode</h1>
+        <p class="header-subtitle">How many GIFs can you describe in a row? Each wrong skip or timeout breaks your streak.</p>
+        <div style="margin-top: 0.5rem;">
+            <a href="demo.html" style="color: #58a6ff; text-decoration: none; font-size: 0.85rem; margin: 0 0.5rem;">🎮 Standard Demo</a> |
+            <a href="playground.html" style="color: #58a6ff; text-decoration: none; font-size: 0.85rem; margin: 0 0.5rem;">🧪 Playground</a> |
+            <a href="analysis.html" style="color: #58a6ff; text-decoration: none; font-size: 0.85rem; margin: 0 0.5rem;">📊 Analysis</a>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- Intro -->
+        <div id="introScreen" class="intro">
+            <h2>🔥 Streak Challenge</h2>
+            <p>GIFs cycle endlessly. Describe each one before time runs out. How long can you keep your streak alive?</p>
+            <div class="rules-box">
+                <h3>📋 Rules</h3>
+                <ul>
+                    <li>You get <strong>30 seconds</strong> per GIF</li>
+                    <li>Write at least 5 characters to submit</li>
+                    <li>Skipping or timing out <strong>ends your streak</strong></li>
+                    <li>GIFs repeat in shuffled order — stay sharp</li>
+                    <li>Your best streak is saved locally</li>
+                </ul>
+            </div>
+            <div id="previousBest" style="color: var(--muted); font-size: 0.9rem; margin-bottom: 1.5rem;"></div>
+            <button class="btn btn-primary" onclick="startStreak()">Start Streak 🔥</button>
+        </div>
+
+        <!-- Game screen -->
+        <div id="gameScreen" class="hidden">
+            <div class="streak-hud" id="streakHud">
+                <div class="hud-item">
+                    <div class="hud-label">Streak</div>
+                    <div class="hud-value hud-streak" id="hudStreak">0</div>
+                </div>
+                <div class="hud-item">
+                    <div class="hud-label">Time Left</div>
+                    <div class="hud-value hud-timer" id="hudTimer">30s</div>
+                </div>
+                <div class="hud-item">
+                    <div class="hud-label">Best</div>
+                    <div class="hud-value hud-best" id="hudBest">0</div>
+                </div>
+                <div class="hud-item">
+                    <div class="hud-label">Avg Time</div>
+                    <div class="hud-value hud-avg" id="hudAvg">—</div>
+                </div>
+            </div>
+
+            <div class="timer-bar-bg">
+                <div class="timer-bar-fill" id="timerBar" style="width: 100%"></div>
+            </div>
+
+            <div class="challenge">
+                <div class="challenge-header">
+                    <span class="label">Round <span id="roundNumber">1</span></span>
+                    <span class="label" id="gifTitle"></span>
+                </div>
+                <div class="gif-container" id="gifContainer">
+                    <span class="gif-loading">Loading GIF...</span>
+                </div>
+                <div class="challenge-prompt">
+                    <div class="prompt-text">🔍 Describe the unexpected event</div>
+                    <div class="prompt-hint">Quick — what's surprising here?</div>
+                </div>
+            </div>
+
+            <div class="input-area">
+                <textarea
+                    id="userAnswer"
+                    placeholder="What's unexpected? Be quick!"
+                    maxlength="300"
+                ></textarea>
+                <div class="input-actions">
+                    <span class="char-count"><span id="charCount">0</span>/300</span>
+                    <div>
+                        <button class="btn btn-primary btn-small" id="submitBtn" onclick="submitStreak()" disabled>Submit ⚡</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Game Over -->
+        <div id="gameOverScreen" class="hidden game-over">
+            <h2>💥 Streak Over!</h2>
+            <div class="final-streak" id="finalStreak">0</div>
+            <div id="newBestBadge" class="new-best hidden">🏆 New Personal Best!</div>
+            <p id="gameOverReason" style="color: var(--muted); margin-bottom: 1rem;"></p>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-label">Total Time</div>
+                    <div class="stat-value" id="statTime" style="color: var(--accent);">0s</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Avg Response</div>
+                    <div class="stat-value" id="statAvg" style="color: var(--purple);">0s</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">All-Time Best</div>
+                    <div class="stat-value" id="statBest" style="color: var(--green);">0</div>
+                </div>
+            </div>
+
+            <div id="historySection" class="history-section hidden">
+                <h3>📜 Recent Runs</h3>
+                <ul class="history-list" id="historyList"></ul>
+            </div>
+
+            <div style="margin-top: 2rem;">
+                <button class="btn btn-primary" onclick="startStreak()" style="margin-right: 0.5rem;">Try Again 🔥</button>
+                <a href="demo.html" class="btn btn-secondary" style="text-decoration: none;">Standard Mode</a>
+            </div>
+        </div>
+    </div>
+
+    <script src="shared.js"></script>
+    <script>
+        // Challenge data — same as demo.html
+        var challenges = [
+            { id: 1, title: "Duel Plot Twist", gifUrl: "https://media1.tenor.com/m/g50YYgVxFo4AAAAC/unexpected-plot-twist.gif", sourceUrl: "https://tenor.com/view/unexpected-plot-twist-twist-plot-duel-gif-5053664" },
+            { id: 2, title: "Rappers", gifUrl: "https://i.gifer.com/G9lg.gif", sourceUrl: "https://i.gifer.com/G9lg.gif" },
+            { id: 3, title: "Skateboarder", gifUrl: "https://media.giphy.com/media/l0MYDnCqzU2MQj7OM/giphy.gif", sourceUrl: "https://funnyordie.tumblr.com/post/102557790934" },
+            { id: 4, title: "Banana Mascot", gifUrl: "https://media.giphy.com/media/KYElw07kzDspaBOwf9/giphy.gif", sourceUrl: "https://www.pinterest.jp/pin/682225043525224271/" },
+            { id: 5, title: "Tic Tac Toe Dog", gifUrl: "https://media.giphy.com/media/ZqlvCTNHpqrio/giphy.gif", sourceUrl: "https://giphy.com/gifs/dog-shiba-inu-tic-tac-toe-ZqlvCTNHpqrio" },
+            { id: 6, title: "Parent Dog", gifUrl: "https://media.giphy.com/media/xTiTnMhJTwNHChdTZS/giphy.gif", sourceUrl: "https://giphy.com/gifs/dog-puppy-parent-xTiTnMhJTwNHChdTZS" },
+            { id: 7, title: "Mirror Illusion", gifUrl: "https://media.giphy.com/media/CkKg32KdKyQjm/giphy.gif", sourceUrl: "https://giphy.com/gifs/mirror-illusion-hand-CkKg32KdKyQjm" },
+            { id: 8, title: "Highway Drift", gifUrl: "https://media.giphy.com/media/l2SpQRuCQzY1RXHqM/giphy.gif", sourceUrl: "https://giphy.com/gifs/car-drift-highway-l2SpQRuCQzY1RXHqM" },
+            { id: 9, title: "Road Rage Hug", gifUrl: "https://media.giphy.com/media/brsEO1JayBVja/giphy.gif", sourceUrl: "https://giphy.com/gifs/road-rage-hug-brsEO1JayBVja" },
+            { id: 10, title: "Birthday Cake", gifUrl: "https://media.giphy.com/media/xT0xeuOy2Fcl9vDGiA/giphy.gif", sourceUrl: "https://giphy.com/gifs/birthday-cake-surprise-xT0xeuOy2Fcl9vDGiA" }
+        ];
+
+        var ROUND_TIME = 30; // seconds per round
+        var streak = 0;
+        var shuffled = [];
+        var shuffleIndex = 0;
+        var timer = null;
+        var timeLeft = ROUND_TIME;
+        var roundStartTime = 0;
+        var totalTime = 0;
+        var responseTimes = [];
+        var gameActive = false;
+
+        // LocalStorage keys
+        var LS_BEST = "gifcaptcha_streak_best";
+        var LS_HISTORY = "gifcaptcha_streak_history";
+
+        function getBest() {
+            return parseInt(localStorage.getItem(LS_BEST) || "0", 10);
+        }
+        function setBest(val) {
+            localStorage.setItem(LS_BEST, String(val));
+        }
+        function getHistory() {
+            try { return JSON.parse(localStorage.getItem(LS_HISTORY) || "[]"); }
+            catch(e) { return []; }
+        }
+        function addHistory(entry) {
+            var h = getHistory();
+            h.unshift(entry);
+            if (h.length > 10) h = h.slice(0, 10);
+            localStorage.setItem(LS_HISTORY, JSON.stringify(h));
+        }
+
+        // Show previous best on intro
+        function showPreviousBest() {
+            var best = getBest();
+            var el = document.getElementById("previousBest");
+            if (best > 0) {
+                el.textContent = "🏆 Your best streak: " + best;
+            } else {
+                el.textContent = "No previous attempts — set your first record!";
+            }
+        }
+        showPreviousBest();
+
+        // Fisher-Yates shuffle
+        function shuffle(arr) {
+            var a = arr.slice();
+            for (var i = a.length - 1; i > 0; i--) {
+                var j = Math.floor(Math.random() * (i + 1));
+                var t = a[i]; a[i] = a[j]; a[j] = t;
+            }
+            return a;
+        }
+
+        function getNextChallenge() {
+            if (shuffleIndex >= shuffled.length) {
+                shuffled = shuffle(challenges);
+                shuffleIndex = 0;
+            }
+            return shuffled[shuffleIndex++];
+        }
+
+        function startStreak() {
+            streak = 0;
+            totalTime = 0;
+            responseTimes = [];
+            gameActive = true;
+            shuffled = shuffle(challenges);
+            shuffleIndex = 0;
+
+            document.getElementById("introScreen").classList.add("hidden");
+            document.getElementById("gameOverScreen").classList.add("hidden");
+            document.getElementById("gameScreen").classList.remove("hidden");
+
+            updateHUD();
+            loadRound();
+        }
+
+        function loadRound() {
+            var c = getNextChallenge();
+            document.getElementById("roundNumber").textContent = streak + 1;
+            document.getElementById("gifTitle").textContent = c.title;
+
+            var container = document.getElementById("gifContainer");
+            container.innerHTML = '<span class="gif-loading">Loading GIF...</span>';
+            loadGifWithRetry(container, c, 0);
+
+            // Reset input
+            var ta = document.getElementById("userAnswer");
+            ta.value = "";
+            ta.disabled = false;
+            ta.focus();
+            document.getElementById("charCount").textContent = "0";
+            document.getElementById("submitBtn").disabled = true;
+
+            // Start timer
+            timeLeft = ROUND_TIME;
+            roundStartTime = Date.now();
+            updateTimerDisplay();
+            clearInterval(timer);
+            timer = setInterval(tick, 100);
+        }
+
+        function tick() {
+            var elapsed = (Date.now() - roundStartTime) / 1000;
+            timeLeft = Math.max(0, ROUND_TIME - elapsed);
+            updateTimerDisplay();
+
+            if (timeLeft <= 0) {
+                clearInterval(timer);
+                endStreak("⏰ Time's up! You ran out of time.");
+            }
+        }
+
+        function updateTimerDisplay() {
+            var secs = Math.ceil(timeLeft);
+            document.getElementById("hudTimer").textContent = secs + "s";
+
+            var pct = (timeLeft / ROUND_TIME) * 100;
+            var bar = document.getElementById("timerBar");
+            bar.style.width = pct + "%";
+            bar.className = "timer-bar-fill" + (pct < 20 ? " danger" : pct < 40 ? " warning" : "");
+        }
+
+        function updateHUD() {
+            document.getElementById("hudStreak").textContent = streak;
+            document.getElementById("hudBest").textContent = getBest();
+
+            var hud = document.getElementById("streakHud");
+            if (streak >= 5) {
+                hud.classList.add("on-fire");
+            } else {
+                hud.classList.remove("on-fire");
+            }
+
+            if (responseTimes.length > 0) {
+                var avg = responseTimes.reduce(function(a, b) { return a + b; }, 0) / responseTimes.length;
+                document.getElementById("hudAvg").textContent = avg.toFixed(1) + "s";
+            } else {
+                document.getElementById("hudAvg").textContent = "—";
+            }
+        }
+
+        function submitStreak() {
+            var answer = document.getElementById("userAnswer").value.trim();
+            if (answer.length < 5 || !gameActive) return;
+
+            clearInterval(timer);
+            var elapsed = (Date.now() - roundStartTime) / 1000;
+            responseTimes.push(elapsed);
+            totalTime += elapsed;
+            streak++;
+
+            updateHUD();
+            loadRound();
+        }
+
+        function endStreak(reason) {
+            gameActive = false;
+            clearInterval(timer);
+            document.getElementById("userAnswer").disabled = true;
+
+            var best = getBest();
+            var isNewBest = streak > best;
+            if (isNewBest) setBest(streak);
+
+            // Save to history
+            addHistory({
+                streak: streak,
+                totalTime: Math.round(totalTime),
+                avgTime: responseTimes.length > 0 ? (totalTime / responseTimes.length).toFixed(1) : "—",
+                date: new Date().toLocaleDateString()
+            });
+
+            // Show game over
+            document.getElementById("gameScreen").classList.add("hidden");
+            document.getElementById("gameOverScreen").classList.remove("hidden");
+            document.getElementById("finalStreak").textContent = streak;
+            document.getElementById("gameOverReason").textContent = reason;
+
+            if (isNewBest) {
+                document.getElementById("newBestBadge").classList.remove("hidden");
+            } else {
+                document.getElementById("newBestBadge").classList.add("hidden");
+            }
+
+            document.getElementById("statTime").textContent = Math.round(totalTime) + "s";
+            document.getElementById("statAvg").textContent = responseTimes.length > 0
+                ? (totalTime / responseTimes.length).toFixed(1) + "s" : "—";
+            document.getElementById("statBest").textContent = isNewBest ? streak : best;
+
+            // Show history
+            var history = getHistory();
+            if (history.length > 0) {
+                document.getElementById("historySection").classList.remove("hidden");
+                var list = document.getElementById("historyList");
+                list.innerHTML = "";
+                var currentBest = getBest();
+                for (var i = 0; i < history.length; i++) {
+                    var h = history[i];
+                    var li = document.createElement("li");
+                    li.innerHTML = '<span>' + sanitize(h.date) + '</span>' +
+                        '<span class="hl-streak' + (h.streak === currentBest ? ' hl-best' : '') + '">' +
+                        h.streak + ' streak' + (h.streak === currentBest ? ' 🏆' : '') + '</span>' +
+                        '<span>' + sanitize(String(h.avgTime)) + 's avg</span>';
+                    list.appendChild(li);
+                }
+            }
+        }
+
+        // Character counter
+        document.getElementById("userAnswer").addEventListener("input", function() {
+            var len = this.value.trim().length;
+            document.getElementById("charCount").textContent = this.value.length;
+            document.getElementById("submitBtn").disabled = len < 5;
+        });
+
+        // Enter to submit
+        document.getElementById("userAnswer").addEventListener("keydown", function(e) {
+            if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                if (this.value.trim().length >= 5 && gameActive) {
+                    submitStreak();
+                }
+            }
+        });
+    </script>
+</body>
+</html>

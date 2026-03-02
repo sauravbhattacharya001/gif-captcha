@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; img-src https: data:; script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'self'; form-action 'none';">
+    <meta name="referrer" content="no-referrer">
+    <title>GIF CAPTCHA — Leaderboard 🏆</title>
+    <link rel="stylesheet" href="shared.css">
+    <style>
+        .container { max-width: 800px; }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        .stat-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.2rem;
+            text-align: center;
+        }
+        .stat-label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--muted);
+            margin-bottom: 0.3rem;
+        }
+        .stat-value {
+            font-size: 1.8rem;
+            font-weight: 700;
+        }
+        .stat-value.accent { color: var(--accent); }
+        .stat-value.green { color: var(--green); }
+        .stat-value.orange { color: var(--orange); }
+        .stat-value.purple { color: var(--purple); }
+        .stat-value.cyan { color: var(--cyan); }
+
+        /* Chart */
+        .chart-section {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .chart-section h3 {
+            font-size: 1rem;
+            margin-bottom: 1rem;
+        }
+        .chart-canvas {
+            width: 100%;
+            height: 220px;
+            display: block;
+        }
+        .chart-empty {
+            text-align: center;
+            color: var(--muted);
+            padding: 3rem 1rem;
+            font-size: 0.95rem;
+        }
+
+        /* History Table */
+        .history-section {
+            margin-bottom: 2rem;
+        }
+        .history-section h3 {
+            font-size: 1rem;
+            margin-bottom: 1rem;
+        }
+        .history-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+        .history-table th,
+        .history-table td {
+            padding: 0.6rem 0.8rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+        .history-table th {
+            color: var(--muted);
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-weight: 600;
+        }
+        .history-table td { color: var(--text); }
+        .history-table tr:hover td { background: var(--surface-hover); }
+
+        .rank-badge {
+            display: inline-block;
+            width: 24px;
+            height: 24px;
+            line-height: 24px;
+            text-align: center;
+            border-radius: 50%;
+            font-size: 0.75rem;
+            font-weight: 700;
+        }
+        .rank-1 { background: linear-gradient(135deg, #ffd700, #ffaa00); color: #000; }
+        .rank-2 { background: linear-gradient(135deg, #c0c0c0, #a0a0a0); color: #000; }
+        .rank-3 { background: linear-gradient(135deg, #cd7f32, #a0622e); color: #fff; }
+        .rank-other { background: var(--border); color: var(--muted); }
+
+        .streak-bar {
+            height: 6px;
+            border-radius: 3px;
+            background: var(--border);
+            position: relative;
+            min-width: 60px;
+        }
+        .streak-fill {
+            height: 100%;
+            border-radius: 3px;
+            background: linear-gradient(90deg, var(--accent), var(--green));
+        }
+
+        /* Achievements */
+        .achievements {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.8rem;
+            margin-bottom: 2rem;
+        }
+        .achievement {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 0.8rem 1.2rem;
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            font-size: 0.85rem;
+        }
+        .achievement.unlocked { border-color: var(--yellow); }
+        .achievement.locked { opacity: 0.4; }
+        .achievement-icon { font-size: 1.3rem; }
+        .achievement-text { color: var(--text); }
+        .achievement-text small { display: block; color: var(--muted); font-size: 0.7rem; }
+
+        /* Actions */
+        .actions {
+            display: flex;
+            gap: 0.8rem;
+            flex-wrap: wrap;
+            margin-bottom: 2rem;
+        }
+        .btn-danger {
+            background: var(--red-bg);
+            color: var(--red);
+            border: 1px solid var(--red);
+            padding: 0.5rem 1.2rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+        .btn-danger:hover { background: rgba(248, 81, 73, 0.25); }
+        .btn-export {
+            background: var(--surface);
+            color: var(--accent);
+            border: 1px solid var(--border);
+            padding: 0.5rem 1.2rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+        .btn-export:hover { background: var(--surface-hover); }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🏆 Leaderboard</h1>
+            <p class="subtitle">Your personal GIF CAPTCHA performance dashboard</p>
+            <div class="nav-links">
+                <a href="index.html">📋 Case Study</a>
+                <a href="demo.html">🎯 Demo</a>
+                <a href="streak.html">🔥 Streak Mode</a>
+                <a href="playground.html">🧩 Playground</a>
+            </div>
+        </div>
+
+        <!-- Summary Stats -->
+        <h3 style="margin: 1.5rem 0 1rem;">📊 Your Stats</h3>
+        <div class="stats-grid" id="statsGrid">
+            <div class="stat-card">
+                <div class="stat-label">Total Runs</div>
+                <div class="stat-value accent" id="totalRuns">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Best Streak</div>
+                <div class="stat-value green" id="bestStreak">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Avg Streak</div>
+                <div class="stat-value orange" id="avgStreak">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Avg Response</div>
+                <div class="stat-value purple" id="avgResponse">—</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Total Solved</div>
+                <div class="stat-value cyan" id="totalSolved">0</div>
+            </div>
+        </div>
+
+        <!-- Achievements -->
+        <h3 style="margin-bottom: 1rem;">🎖️ Achievements</h3>
+        <div class="achievements" id="achievements"></div>
+
+        <!-- Streak Chart -->
+        <div class="chart-section">
+            <h3>📈 Streak History</h3>
+            <canvas class="chart-canvas" id="streakChart"></canvas>
+            <div class="chart-empty" id="chartEmpty" style="display:none;">
+                No streak history yet. <a href="streak.html">Play Streak Mode</a> to get started!
+            </div>
+        </div>
+
+        <!-- Run History Table -->
+        <div class="history-section">
+            <h3>📜 Run History</h3>
+            <table class="history-table" id="historyTable">
+                <thead>
+                    <tr>
+                        <th>Rank</th>
+                        <th>Streak</th>
+                        <th>Avg Time</th>
+                        <th>Date</th>
+                        <th>Progress</th>
+                    </tr>
+                </thead>
+                <tbody id="historyBody"></tbody>
+            </table>
+            <div class="chart-empty" id="tableEmpty" style="display:none;">
+                No runs recorded yet. <a href="streak.html">Start your first streak!</a>
+            </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="actions">
+            <button class="btn-export" onclick="exportData()">📥 Export as JSON</button>
+            <button class="btn-danger" onclick="clearData()">🗑️ Clear All Data</button>
+        </div>
+
+        <footer>
+            <p>Data stored locally in your browser (localStorage). Nothing is sent to any server.</p>
+        </footer>
+    </div>
+
+    <script src="shared.js"></script>
+    <script>
+    (function() {
+        "use strict";
+
+        // ── LocalStorage Keys (same as streak.html) ──
+        var LS_BEST = "gifcaptcha_streak_best";
+        var LS_HISTORY = "gifcaptcha_streak_history";
+
+        function getBest() {
+            return parseInt(localStorage.getItem(LS_BEST) || "0", 10);
+        }
+
+        function getHistory() {
+            try { return JSON.parse(localStorage.getItem(LS_HISTORY) || "[]"); }
+            catch(e) { return []; }
+        }
+
+        // ── Compute Stats ──
+        function computeStats(history) {
+            var total = history.length;
+            var best = getBest();
+            var totalSolved = 0;
+            var totalAvgTime = 0;
+            var avgTimeCount = 0;
+            var streaks = [];
+
+            for (var i = 0; i < history.length; i++) {
+                var run = history[i];
+                var streak = run.streak || 0;
+                streaks.push(streak);
+                totalSolved += streak;
+                if (run.avgTime && run.avgTime > 0) {
+                    totalAvgTime += run.avgTime;
+                    avgTimeCount++;
+                }
+            }
+
+            var avgStreak = total > 0 ? (totalSolved / total) : 0;
+            var avgResponse = avgTimeCount > 0 ? (totalAvgTime / avgTimeCount) : 0;
+
+            return {
+                total: total,
+                best: best,
+                avgStreak: avgStreak,
+                avgResponse: avgResponse,
+                totalSolved: totalSolved,
+                streaks: streaks
+            };
+        }
+
+        // ── Render Stats ──
+        function renderStats(stats) {
+            document.getElementById("totalRuns").textContent = stats.total;
+            document.getElementById("bestStreak").textContent = stats.best;
+            document.getElementById("avgStreak").textContent = stats.avgStreak.toFixed(1);
+            document.getElementById("avgResponse").textContent = stats.avgResponse > 0
+                ? (stats.avgResponse / 1000).toFixed(1) + "s"
+                : "—";
+            document.getElementById("totalSolved").textContent = stats.totalSolved;
+        }
+
+        // ── Achievements ──
+        var ACHIEVEMENTS = [
+            { id: "first", icon: "🎬", name: "First Try", desc: "Complete your first streak run", check: function(s) { return s.total >= 1; } },
+            { id: "five", icon: "🔥", name: "On Fire", desc: "Reach a streak of 5", check: function(s) { return s.best >= 5; } },
+            { id: "ten", icon: "⚡", name: "Lightning", desc: "Reach a streak of 10", check: function(s) { return s.best >= 10; } },
+            { id: "speed", icon: "🏎️", name: "Speed Demon", desc: "Average response under 3s", check: function(s) { return s.avgResponse > 0 && s.avgResponse < 3000; } },
+            { id: "veteran", icon: "🎖️", name: "Veteran", desc: "Complete 10 runs", check: function(s) { return s.total >= 10; } },
+            { id: "perfect", icon: "💎", name: "Sharp Eye", desc: "Solve 50 total CAPTCHAs", check: function(s) { return s.totalSolved >= 50; } }
+        ];
+
+        function renderAchievements(stats) {
+            var container = document.getElementById("achievements");
+            var html = "";
+            for (var i = 0; i < ACHIEVEMENTS.length; i++) {
+                var a = ACHIEVEMENTS[i];
+                var unlocked = a.check(stats);
+                html += '<div class="achievement ' + (unlocked ? "unlocked" : "locked") + '">' +
+                    '<span class="achievement-icon">' + a.icon + '</span>' +
+                    '<span class="achievement-text">' + a.name +
+                    '<small>' + a.desc + '</small></span></div>';
+            }
+            container.innerHTML = html;
+        }
+
+        // ── Chart (Canvas) ──
+        function drawChart(streaks) {
+            var canvas = document.getElementById("streakChart");
+            var empty = document.getElementById("chartEmpty");
+
+            if (streaks.length === 0) {
+                canvas.style.display = "none";
+                empty.style.display = "block";
+                return;
+            }
+
+            var dpr = window.devicePixelRatio || 1;
+            var rect = canvas.getBoundingClientRect();
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            var ctx = canvas.getContext("2d");
+            ctx.scale(dpr, dpr);
+
+            var w = rect.width;
+            var h = rect.height;
+            var padL = 40, padR = 20, padT = 20, padB = 30;
+            var chartW = w - padL - padR;
+            var chartH = h - padT - padB;
+
+            // Data is newest-first; reverse for chronological display
+            var data = streaks.slice().reverse();
+            var maxVal = Math.max.apply(null, data);
+            if (maxVal === 0) maxVal = 1;
+
+            // Grid lines
+            ctx.strokeStyle = "#30363d";
+            ctx.lineWidth = 1;
+            var gridLines = 4;
+            for (var g = 0; g <= gridLines; g++) {
+                var gy = padT + chartH - (g / gridLines) * chartH;
+                ctx.beginPath();
+                ctx.moveTo(padL, gy);
+                ctx.lineTo(w - padR, gy);
+                ctx.stroke();
+
+                ctx.fillStyle = "#8b949e";
+                ctx.font = "11px -apple-system, sans-serif";
+                ctx.textAlign = "right";
+                ctx.fillText(Math.round((g / gridLines) * maxVal), padL - 6, gy + 4);
+            }
+
+            // Bars
+            var barGap = 4;
+            var barW = Math.max(4, (chartW - barGap * data.length) / data.length);
+            if (barW > 40) barW = 40;
+
+            for (var i = 0; i < data.length; i++) {
+                var val = data[i];
+                var barH = (val / maxVal) * chartH;
+                var x = padL + i * (barW + barGap) + barGap / 2;
+                var y = padT + chartH - barH;
+
+                // Gradient bar
+                var grad = ctx.createLinearGradient(x, y, x, y + barH);
+                grad.addColorStop(0, "#58a6ff");
+                grad.addColorStop(1, "#3fb950");
+                ctx.fillStyle = grad;
+
+                ctx.beginPath();
+                ctx.roundRect(x, y, barW, barH, 2);
+                ctx.fill();
+
+                // Value on top
+                if (barH > 15) {
+                    ctx.fillStyle = "#e6edf3";
+                    ctx.font = "bold 10px -apple-system, sans-serif";
+                    ctx.textAlign = "center";
+                    ctx.fillText(val, x + barW / 2, y - 4);
+                }
+            }
+
+            // X-axis labels
+            ctx.fillStyle = "#8b949e";
+            ctx.font = "10px -apple-system, sans-serif";
+            ctx.textAlign = "center";
+            for (var j = 0; j < data.length; j++) {
+                var lx = padL + j * (barW + barGap) + barGap / 2 + barW / 2;
+                ctx.fillText("#" + (j + 1), lx, h - 8);
+            }
+        }
+
+        // ── History Table ──
+        function renderHistory(history) {
+            var tbody = document.getElementById("historyBody");
+            var empty = document.getElementById("tableEmpty");
+
+            if (history.length === 0) {
+                document.getElementById("historyTable").style.display = "none";
+                empty.style.display = "block";
+                return;
+            }
+
+            // Sort by streak descending for ranking
+            var sorted = history.slice().sort(function(a, b) { return (b.streak || 0) - (a.streak || 0); });
+            var best = sorted.length > 0 ? sorted[0].streak : 1;
+
+            var html = "";
+            for (var i = 0; i < sorted.length; i++) {
+                var run = sorted[i];
+                var rank = i + 1;
+                var rankClass = rank <= 3 ? "rank-" + rank : "rank-other";
+                var streak = run.streak || 0;
+                var pct = best > 0 ? Math.round((streak / best) * 100) : 0;
+                var avgTime = run.avgTime ? ((run.avgTime / 1000).toFixed(1) + "s") : "—";
+                var date = run.date ? new Date(run.date).toLocaleDateString() : "—";
+
+                html += "<tr>" +
+                    '<td><span class="rank-badge ' + rankClass + '">' + rank + "</span></td>" +
+                    "<td><strong>" + streak + "</strong></td>" +
+                    "<td>" + avgTime + "</td>" +
+                    "<td>" + date + "</td>" +
+                    '<td><div class="streak-bar"><div class="streak-fill" style="width:' + pct + '%"></div></div></td>' +
+                    "</tr>";
+            }
+            tbody.innerHTML = html;
+        }
+
+        // ── Export ──
+        window.exportData = function() {
+            var data = {
+                best: getBest(),
+                history: getHistory(),
+                exportedAt: new Date().toISOString()
+            };
+            var blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement("a");
+            a.href = url;
+            a.download = "gifcaptcha-stats-" + new Date().toISOString().slice(0, 10) + ".json";
+            a.click();
+            URL.revokeObjectURL(url);
+        };
+
+        // ── Clear ──
+        window.clearData = function() {
+            if (!confirm("Clear all streak data? This cannot be undone.")) return;
+            localStorage.removeItem(LS_BEST);
+            localStorage.removeItem(LS_HISTORY);
+            init();
+        };
+
+        // ── Init ──
+        function init() {
+            var history = getHistory();
+            var stats = computeStats(history);
+            renderStats(stats);
+            renderAchievements(stats);
+            drawChart(stats.streaks);
+            renderHistory(history);
+        }
+
+        init();
+        window.addEventListener("resize", function() {
+            var stats = computeStats(getHistory());
+            drawChart(stats.streaks);
+        });
+    })();
+    </script>
+</body>
+</html>

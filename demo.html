@@ -71,6 +71,29 @@
             color: var(--muted);
         }
 
+        /* Share card */
+        .share-card-section {
+            margin-top: 2rem;
+            padding: 1.5rem;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+        }
+        .share-preview {
+            margin: 1rem 0;
+            text-align: center;
+        }
+        .share-preview img {
+            max-width: 100%;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+        }
+        .share-actions {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
         /* Reveal panel */
         .reveal {
             border-radius: 10px;
@@ -326,6 +349,19 @@
             <div class="results-insight">
                 <h3>💡 What This Means</h3>
                 <p id="resultsInsight"></p>
+            </div>
+
+            <!-- Share Card -->
+            <div id="shareCardSection" class="share-card-section">
+                <h3 style="margin-bottom: 1rem;">📤 Share Your Results</h3>
+                <canvas id="shareCanvas" width="600" height="340" style="display:none;"></canvas>
+                <div id="sharePreview" class="share-preview"></div>
+                <div class="share-actions">
+                    <button class="btn btn-primary btn-small" onclick="generateShareCard()">🎨 Generate Share Card</button>
+                    <button class="btn btn-secondary btn-small" id="downloadCardBtn" onclick="downloadShareCard()" style="display:none;">⬇️ Download Image</button>
+                    <button class="btn btn-secondary btn-small" id="copyCardBtn" onclick="copyShareCard()" style="display:none;">📋 Copy to Clipboard</button>
+                </div>
+                <div id="shareStatus" style="font-size: 0.8rem; color: var(--muted); margin-top: 0.5rem;"></div>
             </div>
 
             <div style="margin-top: 2rem;">
@@ -606,6 +642,133 @@
 
             document.getElementById("resultsScreen").classList.add("hidden");
             document.getElementById("introScreen").classList.remove("hidden");
+        }
+
+        // ===== Share Card Generator =====
+        function generateShareCard() {
+            var canvas = document.getElementById("shareCanvas");
+            var ctx = canvas.getContext("2d");
+            var w = 600, h = 340;
+
+            // Background gradient
+            var grad = ctx.createLinearGradient(0, 0, w, h);
+            grad.addColorStop(0, "#0d1117");
+            grad.addColorStop(1, "#161b22");
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, w, h);
+
+            // Border
+            ctx.strokeStyle = "#30363d";
+            ctx.lineWidth = 2;
+            ctx.strokeRect(1, 1, w - 2, h - 2);
+
+            // Title
+            ctx.fillStyle = "#e6edf3";
+            ctx.font = "bold 24px -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillText("🎞️ GIF CAPTCHA Results", w / 2, 45);
+
+            // Subtitle
+            ctx.fillStyle = "#8b949e";
+            ctx.font = "14px -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif";
+            ctx.fillText("Can animated GIFs distinguish humans from AI?", w / 2, 70);
+
+            // Score circle
+            var cx = w / 2, cy = 155, r = 50;
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, 0, Math.PI * 2);
+            ctx.fillStyle = "#161b22";
+            ctx.fill();
+            ctx.strokeStyle = "#30363d";
+            ctx.lineWidth = 3;
+            ctx.stroke();
+
+            // Score arc (filled portion)
+            var pct = answered / challenges.length;
+            if (pct > 0) {
+                ctx.beginPath();
+                ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * pct);
+                ctx.strokeStyle = pct >= 0.7 ? "#3fb950" : pct >= 0.4 ? "#d29922" : "#f85149";
+                ctx.lineWidth = 6;
+                ctx.stroke();
+            }
+
+            // Score text
+            ctx.fillStyle = "#e6edf3";
+            ctx.font = "bold 28px -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(answered + "/" + challenges.length, cx, cy);
+
+            // Label under circle
+            ctx.fillStyle = "#8b949e";
+            ctx.font = "12px -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif";
+            ctx.textBaseline = "alphabetic";
+            ctx.fillText("Humanity Score", cx, cy + r + 20);
+
+            // Stats row
+            var statsY = 260;
+            var stats = [
+                { label: "Answered", value: answered + "", color: "#3fb950" },
+                { label: "Skipped", value: skipped + "", color: "#d29922" },
+                { label: "GPT-4", value: "0/10", color: "#f85149" }
+            ];
+            var statSpacing = 160;
+            var startX = (w - statSpacing * (stats.length - 1)) / 2;
+
+            for (var i = 0; i < stats.length; i++) {
+                var sx = startX + i * statSpacing;
+                ctx.fillStyle = stats[i].color;
+                ctx.font = "bold 22px -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif";
+                ctx.fillText(stats[i].value, sx, statsY);
+                ctx.fillStyle = "#8b949e";
+                ctx.font = "11px -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif";
+                ctx.fillText(stats[i].label, sx, statsY + 18);
+            }
+
+            // Footer
+            ctx.fillStyle = "#484f58";
+            ctx.font = "11px -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif";
+            ctx.fillText("sauravbhattacharya001.github.io/gif-captcha", w / 2, h - 15);
+
+            // Show preview
+            var dataUrl = canvas.toDataURL("image/png");
+            var preview = document.getElementById("sharePreview");
+            preview.innerHTML = '<img src="' + dataUrl + '" alt="Share card preview">';
+
+            document.getElementById("downloadCardBtn").style.display = "inline-block";
+            document.getElementById("copyCardBtn").style.display = "inline-block";
+            document.getElementById("shareStatus").textContent = "Card generated! Download or copy to share.";
+        }
+
+        function downloadShareCard() {
+            var canvas = document.getElementById("shareCanvas");
+            var link = document.createElement("a");
+            link.download = "gif-captcha-results.png";
+            link.href = canvas.toDataURL("image/png");
+            link.click();
+            document.getElementById("shareStatus").textContent = "✅ Downloaded!";
+        }
+
+        function copyShareCard() {
+            var canvas = document.getElementById("shareCanvas");
+            canvas.toBlob(function(blob) {
+                if (!blob) {
+                    document.getElementById("shareStatus").textContent = "❌ Copy failed — try downloading instead.";
+                    return;
+                }
+                try {
+                    navigator.clipboard.write([
+                        new ClipboardItem({ "image/png": blob })
+                    ]).then(function() {
+                        document.getElementById("shareStatus").textContent = "✅ Copied to clipboard!";
+                    }).catch(function() {
+                        document.getElementById("shareStatus").textContent = "❌ Copy failed — try downloading instead.";
+                    });
+                } catch (e) {
+                    document.getElementById("shareStatus").textContent = "❌ Clipboard API not supported — try downloading instead.";
+                }
+            }, "image/png");
         }
     </script>
 </body>

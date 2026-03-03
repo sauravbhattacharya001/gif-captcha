@@ -4135,6 +4135,580 @@ function createReputationTracker(options) {
 }
 
 
+/**
+ * createChallengeRouter - intelligent CAPTCHA routing orchestrator.
+ *
+ * Combines reputation, attempt history, and client context to select
+ * the optimal challenge difficulty and type for each request.
+ * Routes suspicious clients to harder CAPTCHAs, trusted clients to
+ * easier ones, and blocks known bad actors outright.
+ *
+ * @param {Object} options
+ * @param {Object} [options.difficulties]     - Difficulty name -> numeric level mapping
+ * @param {number} [options.defaultDifficulty] - Level for unknown clients (default: 2)
+ * @param {number} [options.maxEscalation]    - Max difficulty level (default: 5)
+ * @param {number} [options.escalateAfterFails] - Consecutive fails before escalation (default: 2)
+ * @param {number} [options.deescalateAfterPasses] - Consecutive passes before de-escalation (default: 3)
+ * @param {number} [options.reputationWeight]   - Weight for reputation signal 0-1 (default: 0.6)
+ * @param {number} [options.historyWeight]      - Weight for attempt history signal 0-1 (default: 0.4)
+ * @param {number} [options.blockThreshold]     - Reputation score below which to block (default: 0.15)
+ * @param {number} [options.trustThreshold]     - Reputation score above which to use easy (default: 0.85)
+ * @param {number} [options.hardThreshold]      - Reputation score below which to use hard (default: 0.4)
+ * @param {number} [options.maxDecisionLog]     - Max routing decisions to retain (default: 1000)
+ * @param {Array}  [options.rules]              - Custom routing rules [{name, test, difficulty, priority}]
+ * @returns {Object} Router instance
+ */
+function createChallengeRouter(options) {
+  options = options || {};
+
+  var difficulties = options.difficulties || {
+    trivial: 1,
+    easy: 2,
+    medium: 3,
+    hard: 4,
+    extreme: 5,
+  };
+  var defaultDifficulty = _clampInt(options.defaultDifficulty, 1, 10, 2);
+  var maxEscalation = _clampInt(options.maxEscalation, 1, 10, 5);
+  var escalateAfterFails = _clampInt(options.escalateAfterFails, 1, 20, 2);
+  var deescalateAfterPasses = _clampInt(options.deescalateAfterPasses, 1, 20, 3);
+  var reputationWeight = _clampFloat(options.reputationWeight, 0, 1, 0.6);
+  var historyWeight = _clampFloat(options.historyWeight, 0, 1, 0.4);
+  var blockThreshold = _clampFloat(options.blockThreshold, 0, 1, 0.15);
+  var trustThreshold = _clampFloat(options.trustThreshold, 0, 1, 0.85);
+  var hardThreshold = _clampFloat(options.hardThreshold, 0, 1, 0.4);
+  var maxDecisionLog = _clampInt(options.maxDecisionLog, 10, 100000, 1000);
+  var customRules = _validateRules(options.rules || []);
+
+  // Client state: identifier -> { level, consecutiveFails, consecutivePasses, totalRouted, lastRoutedAt }
+  var clients = Object.create(null);
+  // Routing decision log (circular buffer)
+  var decisionLog = [];
+  var decisionCount = 0;
+  // Aggregate stats
+  var stats = {
+    totalRouted: 0,
+    totalBlocked: 0,
+    totalAllowed: 0,
+    totalEscalated: 0,
+    totalDeescalated: 0,
+    byDifficulty: Object.create(null),
+    byReason: Object.create(null),
+  };
+
+  // --- Helpers ---
+
+  function _clampInt(val, min, max, fallback) {
+    if (typeof val !== "number" || isNaN(val)) return fallback;
+    return Math.max(min, Math.min(max, Math.floor(val)));
+  }
+
+  function _clampFloat(val, min, max, fallback) {
+    if (typeof val !== "number" || isNaN(val)) return fallback;
+    return Math.max(min, Math.min(max, val));
+  }
+
+  function _now() { return Date.now(); }
+
+  function _validateRules(rules) {
+    if (!Array.isArray(rules)) return [];
+    var valid = [];
+    for (var i = 0; i < rules.length; i++) {
+      var r = rules[i];
+      if (r && typeof r === "object" && typeof r.name === "string" &&
+          typeof r.test === "function" && typeof r.difficulty === "number") {
+        valid.push({
+          name: r.name,
+          test: r.test,
+          difficulty: Math.max(1, Math.min(maxEscalation, Math.floor(r.difficulty))),
+          priority: typeof r.priority === "number" ? r.priority : 0,
+        });
+      }
+    }
+    valid.sort(function (a, b) { return b.priority - a.priority; });
+    return valid;
+  }
+
+  function _difficultyName(level) {
+    for (var name in difficulties) {
+      if (difficulties[name] === level) return name;
+    }
+    return "level_" + level;
+  }
+
+  function _getClient(identifier) {
+    var id = String(identifier);
+    if (!clients[id]) {
+      clients[id] = {
+        level: defaultDifficulty,
+        consecutiveFails: 0,
+        consecutivePasses: 0,
+        totalRouted: 0,
+        totalFails: 0,
+        totalPasses: 0,
+        lastRoutedAt: 0,
+      };
+    }
+    return clients[id];
+  }
+
+  function _logDecision(decision) {
+    if (decisionLog.length >= maxDecisionLog) {
+      decisionLog[decisionCount % maxDecisionLog] = decision;
+    } else {
+      decisionLog.push(decision);
+    }
+    decisionCount++;
+  }
+
+  function _incStat(key, subkey) {
+    var obj = stats[key];
+    obj[subkey] = (obj[subkey] || 0) + 1;
+  }
+
+  // --- Core Routing ---
+
+  /**
+   * Route a client to the appropriate challenge difficulty.
+   *
+   * @param {string} identifier - Client identifier (IP, fingerprint, session ID)
+   * @param {Object} [context]  - Optional context for custom rules
+   * @param {number} [context.reputationScore] - Reputation score 0-1 (from reputation tracker)
+   * @param {string} [context.reputationAction] - Action from reputation tracker
+   * @param {string} [context.userAgent]        - User-Agent string
+   * @param {string} [context.country]          - Country code
+   * @param {boolean} [context.isProxy]         - Whether the client is behind a proxy
+   * @param {Object} [context.custom]           - Custom data for custom rules
+   * @returns {{ action: string, difficulty: number, difficultyName: string,
+   *             reason: string, identifier: string, timestamp: number }}
+   */
+  function route(identifier, context) {
+    if (!identifier || typeof identifier !== "string") {
+      throw new Error("identifier must be a non-empty string");
+    }
+    context = context || {};
+    var client = _getClient(identifier);
+    var now = _now();
+
+    // 1. Check custom rules first (highest priority)
+    for (var ri = 0; ri < customRules.length; ri++) {
+      var rule = customRules[ri];
+      try {
+        if (rule.test(identifier, context, client)) {
+          var ruleLevel = rule.difficulty;
+          var ruleDecision = _makeDecision(
+            identifier, "challenge", ruleLevel, "custom_rule:" + rule.name, now
+          );
+          _applyDecision(client, ruleDecision, now);
+          return ruleDecision;
+        }
+      } catch (e) {
+        // Skip broken rules silently
+      }
+    }
+
+    // 2. Check for block via reputation
+    var repScore = typeof context.reputationScore === "number" ? context.reputationScore : null;
+    var repAction = typeof context.reputationAction === "string" ? context.reputationAction : null;
+
+    if (repAction === "block" || (repScore !== null && repScore < blockThreshold)) {
+      var blockDecision = _makeDecision(identifier, "block", 0, "blocked_by_reputation", now);
+      stats.totalBlocked++;
+      _logDecision(blockDecision);
+      return blockDecision;
+    }
+
+    // 3. Check for auto-allow via reputation
+    if (repAction === "allow" || (repScore !== null && repScore > trustThreshold)) {
+      var allowLevel = Math.max(1, defaultDifficulty - 1);
+      var allowDecision = _makeDecision(identifier, "challenge", allowLevel, "trusted_reputation", now);
+      _applyDecision(client, allowDecision, now);
+      stats.totalAllowed++;
+      return allowDecision;
+    }
+
+    // 4. Compute difficulty from signals
+    var baseLevel = client.level;
+
+    // Reputation signal: maps score to difficulty adjustment
+    var repAdjustment = 0;
+    if (repScore !== null) {
+      if (repScore < hardThreshold) {
+        repAdjustment = 2; // push harder
+      } else if (repAction === "challenge_hard") {
+        repAdjustment = 1;
+      } else if (repScore > 0.7) {
+        repAdjustment = -1; // easier
+      }
+    }
+
+    // History signal: consecutive fails/passes adjust difficulty
+    var histAdjustment = 0;
+    if (client.consecutiveFails >= escalateAfterFails) {
+      histAdjustment = Math.min(
+        Math.floor(client.consecutiveFails / escalateAfterFails),
+        maxEscalation - baseLevel
+      );
+    } else if (client.consecutivePasses >= deescalateAfterPasses) {
+      histAdjustment = -Math.min(
+        Math.floor(client.consecutivePasses / deescalateAfterPasses),
+        baseLevel - 1
+      );
+    }
+
+    // Weighted combination
+    var combinedAdjustment = Math.round(
+      reputationWeight * repAdjustment + historyWeight * histAdjustment
+    );
+    var finalLevel = Math.max(1, Math.min(maxEscalation, baseLevel + combinedAdjustment));
+
+    var reason = "computed";
+    if (combinedAdjustment > 0) {
+      reason = "escalated";
+      stats.totalEscalated++;
+    } else if (combinedAdjustment < 0) {
+      reason = "deescalated";
+      stats.totalDeescalated++;
+    }
+
+    var decision = _makeDecision(identifier, "challenge", finalLevel, reason, now);
+    _applyDecision(client, decision, now);
+    return decision;
+  }
+
+  function _makeDecision(identifier, action, difficulty, reason, timestamp) {
+    var diffName = difficulty > 0 ? _difficultyName(difficulty) : "none";
+    return {
+      action: action,
+      difficulty: difficulty,
+      difficultyName: diffName,
+      reason: reason,
+      identifier: identifier,
+      timestamp: timestamp,
+    };
+  }
+
+  function _applyDecision(client, decision, now) {
+    client.level = decision.difficulty || client.level;
+    client.totalRouted++;
+    client.lastRoutedAt = now;
+    stats.totalRouted++;
+    _incStat("byDifficulty", decision.difficultyName);
+    _incStat("byReason", decision.reason);
+    _logDecision(decision);
+  }
+
+  // --- Feedback ---
+
+  /**
+   * Record a solve result to update client routing state.
+   *
+   * @param {string} identifier - Client identifier
+   * @param {boolean} passed    - Whether the client solved the challenge
+   */
+  function recordResult(identifier, passed) {
+    if (!identifier || typeof identifier !== "string") {
+      throw new Error("identifier must be a non-empty string");
+    }
+    var client = _getClient(identifier);
+    if (passed) {
+      client.consecutivePasses++;
+      client.consecutiveFails = 0;
+      client.totalPasses++;
+      // De-escalate if enough consecutive passes
+      if (client.consecutivePasses >= deescalateAfterPasses && client.level > 1) {
+        client.level = Math.max(1, client.level - 1);
+      }
+    } else {
+      client.consecutiveFails++;
+      client.consecutivePasses = 0;
+      client.totalFails++;
+      // Escalate if enough consecutive fails
+      if (client.consecutiveFails >= escalateAfterFails && client.level < maxEscalation) {
+        client.level = Math.min(maxEscalation, client.level + 1);
+      }
+    }
+  }
+
+  // --- Client Info ---
+
+  /**
+   * Get routing info for a specific client.
+   */
+  function getClientInfo(identifier) {
+    if (!identifier || typeof identifier !== "string") return null;
+    var id = String(identifier);
+    var c = clients[id];
+    if (!c) return null;
+    var total = c.totalPasses + c.totalFails;
+    return {
+      level: c.level,
+      levelName: _difficultyName(c.level),
+      consecutiveFails: c.consecutiveFails,
+      consecutivePasses: c.consecutivePasses,
+      totalRouted: c.totalRouted,
+      totalFails: c.totalFails,
+      totalPasses: c.totalPasses,
+      passRate: total > 0 ? c.totalPasses / total : 0,
+      lastRoutedAt: c.lastRoutedAt,
+    };
+  }
+
+  /**
+   * Get list of all known client identifiers.
+   */
+  function getKnownClients() {
+    return Object.keys(clients);
+  }
+
+  /**
+   * Remove a client's routing state.
+   */
+  function forgetClient(identifier) {
+    if (!identifier || typeof identifier !== "string") return false;
+    var id = String(identifier);
+    if (clients[id]) {
+      delete clients[id];
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Reset a client's difficulty to default without clearing stats.
+   */
+  function resetClientLevel(identifier) {
+    if (!identifier || typeof identifier !== "string") return false;
+    var id = String(identifier);
+    var c = clients[id];
+    if (!c) return false;
+    c.level = defaultDifficulty;
+    c.consecutiveFails = 0;
+    c.consecutivePasses = 0;
+    return true;
+  }
+
+  // --- Decision Log ---
+
+  /**
+   * Get recent routing decisions.
+   */
+  function getRecentDecisions(count) {
+    count = _clampInt(count, 1, decisionLog.length || 1, 10);
+    var result = [];
+    var total = Math.min(count, decisionLog.length);
+    for (var i = 0; i < total; i++) {
+      var idx = (decisionCount - 1 - i) % maxDecisionLog;
+      if (idx < 0) idx += maxDecisionLog;
+      if (idx < decisionLog.length) {
+        result.push(decisionLog[idx]);
+      }
+    }
+    return result;
+  }
+
+  /**
+   * Get decisions for a specific client.
+   */
+  function getClientDecisions(identifier, count) {
+    if (!identifier || typeof identifier !== "string") return [];
+    count = _clampInt(count, 1, 1000, 10);
+    var result = [];
+    for (var i = decisionLog.length - 1; i >= 0 && result.length < count; i--) {
+      if (decisionLog[i] && decisionLog[i].identifier === identifier) {
+        result.push(decisionLog[i]);
+      }
+    }
+    return result;
+  }
+
+  // --- Stats ---
+
+  /**
+   * Get aggregate routing statistics.
+   */
+  function getStats() {
+    var clientCount = Object.keys(clients).length;
+    var escalatedClients = 0;
+    var maxLevel = 0;
+    for (var id in clients) {
+      if (clients[id].level > defaultDifficulty) escalatedClients++;
+      if (clients[id].level > maxLevel) maxLevel = clients[id].level;
+    }
+    return {
+      totalRouted: stats.totalRouted,
+      totalBlocked: stats.totalBlocked,
+      totalAllowed: stats.totalAllowed,
+      totalEscalated: stats.totalEscalated,
+      totalDeescalated: stats.totalDeescalated,
+      activeClients: clientCount,
+      escalatedClients: escalatedClients,
+      maxActiveLevel: maxLevel,
+      decisionsLogged: Math.min(decisionCount, maxDecisionLog),
+      byDifficulty: _copyObj(stats.byDifficulty),
+      byReason: _copyObj(stats.byReason),
+    };
+  }
+
+  function _copyObj(obj) {
+    var copy = Object.create(null);
+    for (var k in obj) {
+      copy[k] = obj[k];
+    }
+    return copy;
+  }
+
+  // --- Bulk Operations ---
+
+  /**
+   * Route multiple clients at once.
+   */
+  function routeBatch(requests) {
+    if (!Array.isArray(requests)) {
+      throw new Error("requests must be an array");
+    }
+    var results = [];
+    for (var i = 0; i < requests.length; i++) {
+      var req = requests[i];
+      if (!req || typeof req.identifier !== "string") {
+        results.push({ action: "error", reason: "invalid_request", index: i });
+        continue;
+      }
+      results.push(route(req.identifier, req.context));
+    }
+    return results;
+  }
+
+  // --- Config ---
+
+  /**
+   * Get current router configuration.
+   */
+  function getConfig() {
+    return {
+      difficulties: _copyObj(difficulties),
+      defaultDifficulty: defaultDifficulty,
+      maxEscalation: maxEscalation,
+      escalateAfterFails: escalateAfterFails,
+      deescalateAfterPasses: deescalateAfterPasses,
+      reputationWeight: reputationWeight,
+      historyWeight: historyWeight,
+      blockThreshold: blockThreshold,
+      trustThreshold: trustThreshold,
+      hardThreshold: hardThreshold,
+      maxDecisionLog: maxDecisionLog,
+      customRuleCount: customRules.length,
+    };
+  }
+
+  // --- Persistence ---
+
+  /**
+   * Export router state for persistence.
+   */
+  function exportState() {
+    var clientsCopy = Object.create(null);
+    for (var id in clients) {
+      var c = clients[id];
+      clientsCopy[id] = {
+        level: c.level,
+        consecutiveFails: c.consecutiveFails,
+        consecutivePasses: c.consecutivePasses,
+        totalRouted: c.totalRouted,
+        totalFails: c.totalFails,
+        totalPasses: c.totalPasses,
+        lastRoutedAt: c.lastRoutedAt,
+      };
+    }
+    return {
+      clients: clientsCopy,
+      stats: {
+        totalRouted: stats.totalRouted,
+        totalBlocked: stats.totalBlocked,
+        totalAllowed: stats.totalAllowed,
+        totalEscalated: stats.totalEscalated,
+        totalDeescalated: stats.totalDeescalated,
+        byDifficulty: _copyObj(stats.byDifficulty),
+        byReason: _copyObj(stats.byReason),
+      },
+      decisionCount: decisionCount,
+    };
+  }
+
+  /**
+   * Import previously exported state.
+   */
+  function importState(state) {
+    if (!state || typeof state !== "object") {
+      throw new Error("state must be an object");
+    }
+    if (state.clients && typeof state.clients === "object") {
+      for (var id in state.clients) {
+        var sc = state.clients[id];
+        if (sc && typeof sc === "object") {
+          clients[id] = {
+            level: _clampInt(sc.level, 1, maxEscalation, defaultDifficulty),
+            consecutiveFails: Math.max(0, sc.consecutiveFails || 0),
+            consecutivePasses: Math.max(0, sc.consecutivePasses || 0),
+            totalRouted: Math.max(0, sc.totalRouted || 0),
+            totalFails: Math.max(0, sc.totalFails || 0),
+            totalPasses: Math.max(0, sc.totalPasses || 0),
+            lastRoutedAt: sc.lastRoutedAt || 0,
+          };
+        }
+      }
+    }
+    if (state.stats && typeof state.stats === "object") {
+      var s = state.stats;
+      stats.totalRouted = Math.max(0, s.totalRouted || 0);
+      stats.totalBlocked = Math.max(0, s.totalBlocked || 0);
+      stats.totalAllowed = Math.max(0, s.totalAllowed || 0);
+      stats.totalEscalated = Math.max(0, s.totalEscalated || 0);
+      stats.totalDeescalated = Math.max(0, s.totalDeescalated || 0);
+      if (s.byDifficulty) {
+        for (var dk in s.byDifficulty) stats.byDifficulty[dk] = s.byDifficulty[dk];
+      }
+      if (s.byReason) {
+        for (var rk in s.byReason) stats.byReason[rk] = s.byReason[rk];
+      }
+    }
+    decisionCount = Math.max(0, state.decisionCount || 0);
+  }
+
+  /**
+   * Reset all state (clients, stats, decisions).
+   */
+  function reset() {
+    for (var id in clients) delete clients[id];
+    decisionLog.length = 0;
+    decisionCount = 0;
+    stats.totalRouted = 0;
+    stats.totalBlocked = 0;
+    stats.totalAllowed = 0;
+    stats.totalEscalated = 0;
+    stats.totalDeescalated = 0;
+    for (var dk in stats.byDifficulty) delete stats.byDifficulty[dk];
+    for (var rk in stats.byReason) delete stats.byReason[rk];
+  }
+
+  return {
+    route: route,
+    recordResult: recordResult,
+    getClientInfo: getClientInfo,
+    getKnownClients: getKnownClients,
+    forgetClient: forgetClient,
+    resetClientLevel: resetClientLevel,
+    getRecentDecisions: getRecentDecisions,
+    getClientDecisions: getClientDecisions,
+    getStats: getStats,
+    getConfig: getConfig,
+    routeBatch: routeBatch,
+    exportState: exportState,
+    importState: importState,
+    reset: reset,
+  };
+}
+
 var gifCaptcha = {
   sanitize: sanitize,
   createSanitizer: createSanitizer,
@@ -4156,6 +4730,7 @@ var gifCaptcha = {
   createBotDetector: createBotDetector,
   createTokenVerifier: createTokenVerifier,
   createReputationTracker: createReputationTracker,
+  createChallengeRouter: createChallengeRouter,
   GIF_MAX_RETRIES: GIF_MAX_RETRIES,
   GIF_RETRY_DELAY_MS: GIF_RETRY_DELAY_MS,
 };

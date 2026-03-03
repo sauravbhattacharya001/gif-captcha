@@ -2180,6 +2180,321 @@ function createSessionManager(options) {
   };
 }
 
+// ── Challenge Pool Manager ───────────────────────────────────────────
+
+/**
+ * Create a pool manager for rotating and tracking CAPTCHA challenges.
+ * Tracks usage statistics per challenge, supports weighted selection
+ * (least-used challenges are preferred), and auto-retires overused or
+ * too-easy challenges.
+ *
+ * @param {Object} [options] - Pool configuration
+ * @param {number} [options.maxServes=100] - Retire a challenge after this many serves
+ * @param {number} [options.minPassRate=0.3] - Retire if pass rate drops below this (too hard)
+ * @param {number} [options.maxPassRate=0.95] - Retire if pass rate exceeds this (too easy / leaked)
+ * @param {number} [options.minPoolSize=3] - Never retire below this many active challenges
+ * @returns {Object} PoolManager instance
+ */
+function createPoolManager(options) {
+  options = options || {};
+  var maxServes = (typeof options.maxServes === "number" && options.maxServes > 0)
+    ? Math.floor(options.maxServes) : 100;
+  var minPassRate = (typeof options.minPassRate === "number") ? options.minPassRate : 0.3;
+  var maxPassRate = (typeof options.maxPassRate === "number") ? options.maxPassRate : 0.95;
+  var minPoolSize = (typeof options.minPoolSize === "number" && options.minPoolSize > 0)
+    ? Math.floor(options.minPoolSize) : 3;
+
+  // challenge id → { challenge, serves, passes, fails, retired, addedAt, retiredAt, retireReason }
+  var registry = {};
+  var activeIds = [];
+
+  function _now() { return Date.now(); }
+
+  function _rebuildActive() {
+    activeIds = [];
+    for (var id in registry) {
+      if (registry.hasOwnProperty(id) && !registry[id].retired) {
+        activeIds.push(id);
+      }
+    }
+  }
+
+  /**
+   * Add one or more challenges to the pool.
+   *
+   * @param {Object|Object[]} challenges - Challenge object(s) with at least an `id` property
+   * @returns {number} Number of challenges added (duplicates are skipped)
+   */
+  function add(challenges) {
+    if (!Array.isArray(challenges)) challenges = [challenges];
+    var added = 0;
+    for (var i = 0; i < challenges.length; i++) {
+      var c = challenges[i];
+      if (!c || !c.id) continue;
+      var id = String(c.id);
+      if (registry[id]) continue; // skip duplicates
+      registry[id] = {
+        challenge: c,
+        serves: 0,
+        passes: 0,
+        fails: 0,
+        retired: false,
+        addedAt: _now(),
+        retiredAt: null,
+        retireReason: null,
+      };
+      activeIds.push(id);
+      added++;
+    }
+    return added;
+  }
+
+  /**
+   * Check if a challenge should be retired based on its stats.
+   * @private
+   */
+  function _shouldRetire(entry) {
+    if (entry.serves >= maxServes) return "max_serves";
+    if (entry.serves >= 10) { // need at least 10 serves for meaningful rate
+      var rate = entry.passes / entry.serves;
+      if (rate < minPassRate) return "too_hard";
+      if (rate > maxPassRate) return "too_easy";
+    }
+    return null;
+  }
+
+  /**
+   * Run retirement checks on all active challenges.
+   * Won't retire below minPoolSize.
+   *
+   * @returns {string[]} IDs of newly retired challenges
+   */
+  function enforceRetirement() {
+    var retired = [];
+    // Sort by severity: highest-serve challenges first
+    var candidates = activeIds.slice().sort(function (a, b) {
+      return registry[b].serves - registry[a].serves;
+    });
+    for (var i = 0; i < candidates.length; i++) {
+      if (activeIds.length - retired.length <= minPoolSize) break;
+      var id = candidates[i];
+      var reason = _shouldRetire(registry[id]);
+      if (reason) {
+        registry[id].retired = true;
+        registry[id].retiredAt = _now();
+        registry[id].retireReason = reason;
+        retired.push(id);
+      }
+    }
+    if (retired.length > 0) _rebuildActive();
+    return retired;
+  }
+
+  /**
+   * Pick N challenges using weighted random selection.
+   * Less-served challenges are more likely to be picked.
+   *
+   * @param {number} [count=1] - Number of challenges to pick
+   * @returns {Object[]} Selected challenge objects
+   */
+  function pick(count) {
+    count = Math.min(Math.max(1, count || 1), activeIds.length);
+    if (activeIds.length === 0) return [];
+
+    // Build weights: inverse of (serves + 1)
+    var weights = [];
+    var totalWeight = 0;
+    for (var i = 0; i < activeIds.length; i++) {
+      var w = 1 / (registry[activeIds[i]].serves + 1);
+      weights.push(w);
+      totalWeight += w;
+    }
+
+    var picked = [];
+    var usedIndices = {};
+    for (var n = 0; n < count; n++) {
+      var rand = Math.random() * totalWeight;
+      var cumulative = 0;
+      for (var j = 0; j < weights.length; j++) {
+        if (usedIndices[j]) continue;
+        cumulative += weights[j];
+        if (rand <= cumulative) {
+          var id = activeIds[j];
+          registry[id].serves++;
+          picked.push(registry[id].challenge);
+          totalWeight -= weights[j];
+          usedIndices[j] = true;
+          break;
+        }
+      }
+    }
+
+    return picked;
+  }
+
+  /**
+   * Record a pass or fail result for a challenge.
+   *
+   * @param {string|number} challengeId - Challenge identifier
+   * @param {boolean} passed - Whether the user passed
+   */
+  function recordResult(challengeId, passed) {
+    var id = String(challengeId);
+    if (!registry[id]) return;
+    if (passed) {
+      registry[id].passes++;
+    } else {
+      registry[id].fails++;
+    }
+  }
+
+  /**
+   * Get stats for all challenges or a specific one.
+   *
+   * @param {string|number} [challengeId] - Optional specific challenge ID
+   * @returns {Object|Object[]} Stats object(s)
+   */
+  function getStats(challengeId) {
+    if (challengeId !== undefined) {
+      var id = String(challengeId);
+      var e = registry[id];
+      if (!e) return null;
+      return {
+        id: id,
+        serves: e.serves,
+        passes: e.passes,
+        fails: e.fails,
+        passRate: e.serves > 0 ? e.passes / e.serves : null,
+        retired: e.retired,
+        retireReason: e.retireReason,
+      };
+    }
+    var all = [];
+    for (var rid in registry) {
+      if (registry.hasOwnProperty(rid)) {
+        var entry = registry[rid];
+        all.push({
+          id: rid,
+          serves: entry.serves,
+          passes: entry.passes,
+          fails: entry.fails,
+          passRate: entry.serves > 0 ? entry.passes / entry.serves : null,
+          retired: entry.retired,
+          retireReason: entry.retireReason,
+        });
+      }
+    }
+    return all;
+  }
+
+  /**
+   * Get pool summary: active count, retired count, total serves.
+   *
+   * @returns {{ activeCount: number, retiredCount: number, totalServes: number, totalPasses: number, totalFails: number }}
+   */
+  function getSummary() {
+    var totalServes = 0, totalPasses = 0, totalFails = 0, retiredCount = 0;
+    for (var id in registry) {
+      if (!registry.hasOwnProperty(id)) continue;
+      var e = registry[id];
+      totalServes += e.serves;
+      totalPasses += e.passes;
+      totalFails += e.fails;
+      if (e.retired) retiredCount++;
+    }
+    return {
+      activeCount: activeIds.length,
+      retiredCount: retiredCount,
+      totalServes: totalServes,
+      totalPasses: totalPasses,
+      totalFails: totalFails,
+      overallPassRate: totalServes > 0 ? totalPasses / totalServes : null,
+    };
+  }
+
+  /**
+   * Reinstate a previously retired challenge (e.g., after updating it).
+   *
+   * @param {string|number} challengeId - Challenge to reinstate
+   * @returns {boolean} True if reinstated
+   */
+  function reinstate(challengeId) {
+    var id = String(challengeId);
+    var e = registry[id];
+    if (!e || !e.retired) return false;
+    e.retired = false;
+    e.retiredAt = null;
+    e.retireReason = null;
+    e.serves = 0;
+    e.passes = 0;
+    e.fails = 0;
+    _rebuildActive();
+    return true;
+  }
+
+  /**
+   * Export the pool state as a serializable object (for persistence).
+   *
+   * @returns {Object} Serializable pool state
+   */
+  function exportState() {
+    var entries = [];
+    for (var id in registry) {
+      if (!registry.hasOwnProperty(id)) continue;
+      var e = registry[id];
+      entries.push({
+        id: id,
+        serves: e.serves,
+        passes: e.passes,
+        fails: e.fails,
+        retired: e.retired,
+        addedAt: e.addedAt,
+        retiredAt: e.retiredAt,
+        retireReason: e.retireReason,
+      });
+    }
+    return { entries: entries, exportedAt: _now() };
+  }
+
+  /**
+   * Import previously exported stats (challenges must already be added).
+   *
+   * @param {Object} state - State object from exportState()
+   * @returns {number} Number of entries restored
+   */
+  function importState(state) {
+    if (!state || !Array.isArray(state.entries)) return 0;
+    var restored = 0;
+    for (var i = 0; i < state.entries.length; i++) {
+      var s = state.entries[i];
+      var e = registry[s.id];
+      if (!e) continue;
+      e.serves = s.serves || 0;
+      e.passes = s.passes || 0;
+      e.fails = s.fails || 0;
+      e.retired = !!s.retired;
+      e.addedAt = s.addedAt || e.addedAt;
+      e.retiredAt = s.retiredAt || null;
+      e.retireReason = s.retireReason || null;
+      restored++;
+    }
+    _rebuildActive();
+    return restored;
+  }
+
+  return {
+    add: add,
+    pick: pick,
+    recordResult: recordResult,
+    enforceRetirement: enforceRetirement,
+    reinstate: reinstate,
+    getStats: getStats,
+    getSummary: getSummary,
+    exportState: exportState,
+    importState: importState,
+  };
+}
+
 // ── Exports ─────────────────────────────────────────────────────────
 
 var gifCaptcha = {
@@ -2198,6 +2513,7 @@ var gifCaptcha = {
   createDifficultyCalibrator: createDifficultyCalibrator,
   createSecurityScorer: createSecurityScorer,
   createSessionManager: createSessionManager,
+  createPoolManager: createPoolManager,
   GIF_MAX_RETRIES: GIF_MAX_RETRIES,
   GIF_RETRY_DELAY_MS: GIF_RETRY_DELAY_MS,
 };

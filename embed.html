@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; img-src https: data:; script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'self'; form-action 'none';">
+    <meta name="referrer" content="no-referrer">
+    <title>GIF CAPTCHA — Embed Widget Generator</title>
+    <link rel="stylesheet" href="shared.css">
+    <style>
+        .container { max-width: 900px; }
+
+        .config-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        @media (max-width: 600px) {
+            .config-grid { grid-template-columns: 1fr; }
+        }
+
+        .config-group {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.25rem;
+        }
+        .config-group h3 {
+            font-size: 0.9rem;
+            color: var(--accent);
+            margin-bottom: 0.75rem;
+        }
+        .config-group label {
+            display: block;
+            font-size: 0.85rem;
+            color: var(--muted);
+            margin-bottom: 0.3rem;
+            margin-top: 0.6rem;
+        }
+        .config-group label:first-of-type { margin-top: 0; }
+
+        .config-group select,
+        .config-group input[type="number"],
+        .config-group input[type="text"] {
+            width: 100%;
+            padding: 0.5rem 0.75rem;
+            background: var(--bg);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 0.9rem;
+        }
+        .config-group select:focus,
+        .config-group input:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .preview-section {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .preview-section h3 {
+            font-size: 1rem;
+            margin-bottom: 1rem;
+            color: var(--accent);
+        }
+
+        .preview-frame {
+            background: #ffffff;
+            border-radius: 8px;
+            padding: 1.5rem;
+            min-height: 200px;
+            transition: background 0.3s;
+        }
+        .preview-frame.dark {
+            background: #1a1a2e;
+        }
+        .preview-frame.minimal {
+            background: #f5f5f5;
+        }
+        .preview-frame.minimal.dark-mode {
+            background: #2d2d2d;
+        }
+
+        /* Preview widget styles */
+        .widget-container {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            max-width: 400px;
+            margin: 0 auto;
+        }
+        .widget-header {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+            font-size: 0.95rem;
+            font-weight: 600;
+        }
+        .widget-challenge {
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+        }
+        .widget-challenge-title {
+            font-size: 0.85rem;
+            font-weight: 500;
+            margin-bottom: 0.5rem;
+        }
+        .widget-gif-placeholder {
+            width: 100%;
+            height: 150px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+        }
+        .widget-input {
+            width: 100%;
+            padding: 0.5rem;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+            font-size: 0.85rem;
+        }
+        .widget-btn {
+            display: block;
+            width: 100%;
+            padding: 0.6rem;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 0.75rem;
+        }
+
+        /* Light theme preview */
+        .theme-light .widget-header { color: #333; }
+        .theme-light .widget-challenge { background: #f0f4f8; border: 1px solid #ddd; }
+        .theme-light .widget-challenge-title { color: #555; }
+        .theme-light .widget-gif-placeholder { background: #e0e5ec; color: #999; }
+        .theme-light .widget-input { background: #fff; color: #333; border-color: #ccc; }
+        .theme-light .widget-btn { background: #2563eb; color: #fff; }
+
+        /* Dark theme preview */
+        .theme-dark .widget-header { color: #e0e0e0; }
+        .theme-dark .widget-challenge { background: #16213e; border: 1px solid #334155; }
+        .theme-dark .widget-challenge-title { color: #94a3b8; }
+        .theme-dark .widget-gif-placeholder { background: #0f3460; color: #64748b; }
+        .theme-dark .widget-input { background: #1e293b; color: #e2e8f0; border-color: #334155; }
+        .theme-dark .widget-btn { background: #3b82f6; color: #fff; }
+
+        /* Minimal theme preview */
+        .theme-minimal .widget-header { color: #666; font-weight: 400; }
+        .theme-minimal .widget-challenge { background: transparent; border: 1px solid #e0e0e0; }
+        .theme-minimal .widget-challenge-title { color: #888; }
+        .theme-minimal .widget-gif-placeholder { background: #eee; color: #bbb; }
+        .theme-minimal .widget-input { background: #fff; color: #333; border-color: #ddd; }
+        .theme-minimal .widget-btn { background: #333; color: #fff; border-radius: 3px; }
+
+        .code-section {
+            margin-bottom: 2rem;
+        }
+        .code-section h3 {
+            font-size: 1rem;
+            margin-bottom: 0.75rem;
+            color: var(--accent);
+        }
+        .code-block-wrapper {
+            position: relative;
+        }
+        .code-block {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 0.8rem;
+            color: var(--muted);
+            overflow-x: auto;
+            white-space: pre;
+            line-height: 1.5;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .copy-btn {
+            position: absolute;
+            top: 0.5rem;
+            right: 0.5rem;
+            padding: 0.3rem 0.7rem;
+            background: var(--accent);
+            color: var(--bg);
+            border: none;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        .copy-btn:hover { opacity: 0.85; }
+        .copy-btn.copied {
+            background: var(--green);
+        }
+
+        .tabs {
+            display: flex;
+            gap: 0;
+            margin-bottom: 0;
+        }
+        .tab-btn {
+            padding: 0.5rem 1rem;
+            background: var(--bg);
+            color: var(--muted);
+            border: 1px solid var(--border);
+            border-bottom: none;
+            cursor: pointer;
+            font-size: 0.8rem;
+            font-weight: 500;
+            border-radius: 6px 6px 0 0;
+        }
+        .tab-btn.active {
+            background: var(--surface);
+            color: var(--accent);
+            border-color: var(--border);
+        }
+        .tab-content .code-block {
+            border-top-left-radius: 0;
+        }
+
+        .features-list {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.75rem;
+            margin-top: 1rem;
+        }
+        @media (max-width: 600px) {
+            .features-list { grid-template-columns: 1fr; }
+        }
+        .feature-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.85rem;
+            color: var(--muted);
+        }
+        .feature-item span { color: var(--green); }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <a href="index.html" class="back-link">← Back to Case Study</a>
+            <h1>🧩 Embed Widget Generator</h1>
+            <p class="subtitle">Configure and generate an embeddable GIF CAPTCHA widget for your website</p>
+        </header>
+
+        <div class="config-grid">
+            <div class="config-group">
+                <h3>🎨 Appearance</h3>
+                <label for="cfg-theme">Theme</label>
+                <select id="cfg-theme">
+                    <option value="light">Light</option>
+                    <option value="dark">Dark</option>
+                    <option value="minimal">Minimal</option>
+                </select>
+
+                <label for="cfg-accent">Accent Color</label>
+                <input type="text" id="cfg-accent" value="#2563eb" placeholder="#2563eb">
+
+                <label for="cfg-border-radius">Border Radius (px)</label>
+                <input type="number" id="cfg-border-radius" value="8" min="0" max="24">
+
+                <label for="cfg-width">Max Width (px)</label>
+                <input type="number" id="cfg-width" value="400" min="200" max="800">
+            </div>
+
+            <div class="config-group">
+                <h3>⚙️ Behavior</h3>
+                <label for="cfg-challenges">Number of Challenges</label>
+                <input type="number" id="cfg-challenges" value="1" min="1" max="5">
+
+                <label for="cfg-difficulty">Difficulty</label>
+                <select id="cfg-difficulty">
+                    <option value="easy">Easy — more lenient matching</option>
+                    <option value="medium" selected>Medium — balanced</option>
+                    <option value="hard">Hard — strict matching</option>
+                </select>
+
+                <label for="cfg-retries">Max Retries</label>
+                <input type="number" id="cfg-retries" value="3" min="1" max="10">
+
+                <label for="cfg-lockout">Lockout Duration (seconds)</label>
+                <input type="number" id="cfg-lockout" value="30" min="5" max="300">
+            </div>
+
+            <div class="config-group">
+                <h3>📝 Text</h3>
+                <label for="cfg-title">Widget Title</label>
+                <input type="text" id="cfg-title" value="Verify you're human" placeholder="Verify you're human">
+
+                <label for="cfg-placeholder">Input Placeholder</label>
+                <input type="text" id="cfg-placeholder" value="Describe what happens..." placeholder="Describe what happens...">
+
+                <label for="cfg-btn-text">Button Text</label>
+                <input type="text" id="cfg-btn-text" value="Verify" placeholder="Verify">
+            </div>
+
+            <div class="config-group">
+                <h3>🔒 Security</h3>
+                <label for="cfg-exp-backoff">Exponential Backoff</label>
+                <select id="cfg-exp-backoff">
+                    <option value="true" selected>Enabled</option>
+                    <option value="false">Disabled</option>
+                </select>
+
+                <label for="cfg-callback">Callback Function Name</label>
+                <input type="text" id="cfg-callback" value="onCaptchaVerified" placeholder="onCaptchaVerified">
+
+                <label for="cfg-cdn">Library Source</label>
+                <select id="cfg-cdn">
+                    <option value="npm">npm (self-hosted)</option>
+                    <option value="unpkg" selected>unpkg CDN</option>
+                    <option value="jsdelivr">jsDelivr CDN</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Live Preview -->
+        <div class="preview-section">
+            <h3>👁️ Live Preview</h3>
+            <div id="preview-frame" class="preview-frame">
+                <div id="preview-widget" class="widget-container theme-light"></div>
+            </div>
+        </div>
+
+        <!-- Generated Code -->
+        <div class="code-section">
+            <h3>📋 Generated Embed Code</h3>
+            <div class="tabs">
+                <button class="tab-btn active" data-tab="html">HTML</button>
+                <button class="tab-btn" data-tab="npm">npm / Module</button>
+            </div>
+            <div id="tab-html" class="tab-content">
+                <div class="code-block-wrapper">
+                    <button class="copy-btn" data-target="code-html">Copy</button>
+                    <div id="code-html" class="code-block"></div>
+                </div>
+            </div>
+            <div id="tab-npm" class="tab-content" style="display:none">
+                <div class="code-block-wrapper">
+                    <button class="copy-btn" data-target="code-npm">Copy</button>
+                    <div id="code-npm" class="code-block"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Integration Features -->
+        <div class="preview-section">
+            <h3>✅ What's Included</h3>
+            <div class="features-list">
+                <div class="feature-item"><span>✓</span> GIF loading with retry</div>
+                <div class="feature-item"><span>✓</span> Text similarity validation</div>
+                <div class="feature-item"><span>✓</span> Rate limiting &amp; lockout</div>
+                <div class="feature-item"><span>✓</span> Exponential backoff</div>
+                <div class="feature-item"><span>✓</span> XSS-safe input handling</div>
+                <div class="feature-item"><span>✓</span> Responsive design</div>
+                <div class="feature-item"><span>✓</span> Keyboard accessible</div>
+                <div class="feature-item"><span>✓</span> Customizable callback</div>
+            </div>
+        </div>
+
+        <footer>
+            <p>GIF CAPTCHA — <a href="https://github.com/sauravbhattacharya001/gif-captcha">GitHub</a></p>
+        </footer>
+    </div>
+
+    <script src="shared.js"></script>
+    <script>
+    (function() {
+        // ── Config Inputs ──
+        var inputs = {
+            theme:       document.getElementById('cfg-theme'),
+            accent:      document.getElementById('cfg-accent'),
+            radius:      document.getElementById('cfg-border-radius'),
+            width:       document.getElementById('cfg-width'),
+            challenges:  document.getElementById('cfg-challenges'),
+            difficulty:  document.getElementById('cfg-difficulty'),
+            retries:     document.getElementById('cfg-retries'),
+            lockout:     document.getElementById('cfg-lockout'),
+            title:       document.getElementById('cfg-title'),
+            placeholder: document.getElementById('cfg-placeholder'),
+            btnText:     document.getElementById('cfg-btn-text'),
+            expBackoff:  document.getElementById('cfg-exp-backoff'),
+            callback:    document.getElementById('cfg-callback'),
+            cdn:         document.getElementById('cfg-cdn')
+        };
+
+        var previewFrame = document.getElementById('preview-frame');
+        var previewWidget = document.getElementById('preview-widget');
+        var codeHtml = document.getElementById('code-html');
+        var codeNpm = document.getElementById('code-npm');
+
+        // ── Tabs ──
+        document.querySelectorAll('.tab-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+                document.querySelectorAll('.tab-content').forEach(function(c) { c.style.display = 'none'; });
+                btn.classList.add('active');
+                document.getElementById('tab-' + btn.getAttribute('data-tab')).style.display = '';
+            });
+        });
+
+        // ── Copy Buttons ──
+        document.querySelectorAll('.copy-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var target = document.getElementById(btn.getAttribute('data-target'));
+                var text = target.textContent;
+                navigator.clipboard.writeText(text).then(function() {
+                    btn.textContent = 'Copied!';
+                    btn.classList.add('copied');
+                    setTimeout(function() {
+                        btn.textContent = 'Copy';
+                        btn.classList.remove('copied');
+                    }, 2000);
+                });
+            });
+        });
+
+        // ── Helpers ──
+        function esc(s) { return sanitize(s); }
+
+        function getConfig() {
+            return {
+                theme:       inputs.theme.value,
+                accent:      inputs.accent.value || '#2563eb',
+                radius:      parseInt(inputs.radius.value, 10) || 8,
+                width:       parseInt(inputs.width.value, 10) || 400,
+                challenges:  Math.min(5, Math.max(1, parseInt(inputs.challenges.value, 10) || 1)),
+                difficulty:  inputs.difficulty.value,
+                retries:     parseInt(inputs.retries.value, 10) || 3,
+                lockout:     parseInt(inputs.lockout.value, 10) || 30,
+                title:       inputs.title.value || "Verify you're human",
+                placeholder: inputs.placeholder.value || 'Describe what happens...',
+                btnText:     inputs.btnText.value || 'Verify',
+                expBackoff:  inputs.expBackoff.value === 'true',
+                callback:    inputs.callback.value || 'onCaptchaVerified',
+                cdn:         inputs.cdn.value
+            };
+        }
+
+        function getCdnUrl(cdn) {
+            if (cdn === 'jsdelivr') return 'https://cdn.jsdelivr.net/npm/gif-captcha@latest/src/index.js';
+            if (cdn === 'unpkg') return 'https://unpkg.com/gif-captcha@latest/src/index.js';
+            return './node_modules/gif-captcha/src/index.js';
+        }
+
+        function getDifficultyThreshold(diff) {
+            if (diff === 'easy') return 0.35;
+            if (diff === 'hard') return 0.65;
+            return 0.5;
+        }
+
+        // ── Preview Renderer ──
+        function updatePreview() {
+            var cfg = getConfig();
+
+            // Update frame background based on theme
+            previewFrame.className = 'preview-frame';
+            if (cfg.theme === 'dark') previewFrame.classList.add('dark');
+
+            previewWidget.className = 'widget-container theme-' + cfg.theme;
+            previewWidget.style.maxWidth = cfg.width + 'px';
+
+            var challengesHtml = '';
+            for (var i = 0; i < cfg.challenges; i++) {
+                challengesHtml +=
+                    '<div class="widget-challenge" style="border-radius:' + cfg.radius + 'px">' +
+                        '<div class="widget-challenge-title">Challenge ' + (i + 1) + ': Describe the unexpected event</div>' +
+                        '<div class="widget-gif-placeholder" style="border-radius:' + (cfg.radius - 2) + 'px">🎞️</div>' +
+                        '<input type="text" class="widget-input" placeholder="' + esc(cfg.placeholder) + '" disabled style="border-radius:' + (cfg.radius - 4) + 'px">' +
+                    '</div>';
+            }
+
+            previewWidget.innerHTML =
+                '<div class="widget-header">🔒 ' + esc(cfg.title) + '</div>' +
+                challengesHtml +
+                '<button class="widget-btn" style="background:' + esc(cfg.accent) + ';border-radius:' + cfg.radius + 'px" disabled>' +
+                    esc(cfg.btnText) +
+                '</button>';
+        }
+
+        // ── Code Generator ──
+        function updateCode() {
+            var cfg = getConfig();
+            var cdnUrl = getCdnUrl(cfg.cdn);
+            var threshold = getDifficultyThreshold(cfg.difficulty);
+            var lockoutMs = cfg.lockout * 1000;
+
+            // HTML embed snippet
+            var html =
+'&lt;!-- GIF CAPTCHA Widget --&gt;\n' +
+'&lt;div id="gif-captcha-widget"&gt;&lt;/div&gt;\n' +
+'&lt;script src="' + esc(cdnUrl) + '"&gt;&lt;/script&gt;\n' +
+'&lt;script&gt;\n' +
+'(function() {\n' +
+'  var container = document.getElementById("gif-captcha-widget");\n' +
+'  var config = {\n' +
+'    theme: "' + cfg.theme + '",\n' +
+'    accentColor: "' + esc(cfg.accent) + '",\n' +
+'    borderRadius: ' + cfg.radius + ',\n' +
+'    maxWidth: ' + cfg.width + ',\n' +
+'    challengeCount: ' + cfg.challenges + ',\n' +
+'    similarityThreshold: ' + threshold + ',\n' +
+'    title: "' + esc(cfg.title).replace(/"/g, '\\"') + '",\n' +
+'    placeholder: "' + esc(cfg.placeholder).replace(/"/g, '\\"') + '",\n' +
+'    buttonText: "' + esc(cfg.btnText).replace(/"/g, '\\"') + '",\n' +
+'    maxRetries: ' + cfg.retries + ',\n' +
+'    lockoutMs: ' + lockoutMs + ',\n' +
+'    exponentialBackoff: ' + cfg.expBackoff + ',\n' +
+'    onVerified: function(result) {\n' +
+'      // result = { passed: true, challengeId: "...", score: 0.87 }\n' +
+'      ' + esc(cfg.callback) + '(result);\n' +
+'    },\n' +
+'    onFailed: function(result) {\n' +
+'      // result = { passed: false, attemptsRemaining: 2 }\n' +
+'      console.log("CAPTCHA failed:", result);\n' +
+'    }\n' +
+'  };\n' +
+'\n' +
+'  // Initialize the CAPTCHA\n' +
+'  var challenges = gifCaptcha.pickChallenges(config.challengeCount);\n' +
+'  var tracker = gifCaptcha.createAttemptTracker({\n' +
+'    maxAttempts: config.maxRetries,\n' +
+'    lockoutMs: config.lockoutMs,\n' +
+'    exponentialBackoff: config.exponentialBackoff\n' +
+'  });\n' +
+'\n' +
+'  // Render challenges\n' +
+'  challenges.forEach(function(c) {\n' +
+'    var div = document.createElement("div");\n' +
+'    gifCaptcha.loadGifWithRetry(div, c, 0);\n' +
+'    container.appendChild(div);\n' +
+'  });\n' +
+'})();\n' +
+'&lt;/script&gt;';
+
+            codeHtml.innerHTML = html;
+
+            // npm / module snippet
+            var npmCode =
+'// npm install gif-captcha\n' +
+'const gifCaptcha = require("gif-captcha");\n' +
+'\n' +
+'// Or ES module:\n' +
+'// import gifCaptcha from "gif-captcha";\n' +
+'\n' +
+'const config = {\n' +
+'  challengeCount: ' + cfg.challenges + ',\n' +
+'  similarityThreshold: ' + threshold + ',\n' +
+'  maxRetries: ' + cfg.retries + ',\n' +
+'  lockoutMs: ' + lockoutMs + ',\n' +
+'  exponentialBackoff: ' + cfg.expBackoff + '\n' +
+'};\n' +
+'\n' +
+'// Server-side validation example\n' +
+'const challenges = gifCaptcha.pickChallenges(config.challengeCount);\n' +
+'const tracker = gifCaptcha.createAttemptTracker({\n' +
+'  maxAttempts: config.maxRetries,\n' +
+'  lockoutMs: config.lockoutMs,\n' +
+'  exponentialBackoff: config.exponentialBackoff\n' +
+'});\n' +
+'\n' +
+'function validateResponse(challengeId, userAnswer) {\n' +
+'  const lockStatus = tracker.isLocked(challengeId);\n' +
+'  if (lockStatus.locked) {\n' +
+'    return { passed: false, lockedFor: lockStatus.lockoutRemainingMs };\n' +
+'  }\n' +
+'\n' +
+'  const attempt = tracker.recordAttempt(challengeId);\n' +
+'  if (!attempt.allowed) {\n' +
+'    return { passed: false, lockedFor: attempt.lockoutRemainingMs };\n' +
+'  }\n' +
+'\n' +
+'  const challenge = challenges.find(c =&gt; c.id === challengeId);\n' +
+'  const result = gifCaptcha.validateAnswer(\n' +
+'    userAnswer,\n' +
+'    challenge.expectedKeywords,\n' +
+'    { threshold: ' + threshold + ' }\n' +
+'  );\n' +
+'\n' +
+'  return {\n' +
+'    passed: result.passed,\n' +
+'    score: result.score,\n' +
+'    attemptsRemaining: attempt.attemptsRemaining\n' +
+'  };\n' +
+'}';
+
+            codeNpm.innerHTML = esc(npmCode);
+        }
+
+        // ── Bind Events ──
+        Object.keys(inputs).forEach(function(key) {
+            inputs[key].addEventListener('input', function() {
+                updatePreview();
+                updateCode();
+            });
+            inputs[key].addEventListener('change', function() {
+                updatePreview();
+                updateCode();
+            });
+        });
+
+        // Initial render
+        updatePreview();
+        updateCode();
+    })();
+    </script>
+</body>
+</html>

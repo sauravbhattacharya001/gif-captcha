@@ -570,6 +570,26 @@ function createSetAnalyzer(challenges) {
     return _wordSets;
   }
 
+  // Cache for pairwise similarity matrix — avoids redundant O(n²) recomputation
+  // in findSimilarPairs(), detectDuplicates(), and diversityScore().
+  var _pairwiseSim = null;
+  function _getPairwiseSim() {
+    if (_pairwiseSim) return _pairwiseSim;
+    var sets = _getWordSets();
+    var n = _challenges.length;
+    _pairwiseSim = [];
+    for (var i = 0; i < n; i++) {
+      _pairwiseSim[i] = new Array(n);
+      _pairwiseSim[i][i] = 1; // self-similarity
+      for (var j = 0; j < i; j++) {
+        var sim = _jaccardSets(sets[i], sets[j]);
+        _pairwiseSim[i][j] = sim;
+        _pairwiseSim[j][i] = sim;
+      }
+    }
+    return _pairwiseSim;
+  }
+
   /**
    * Compute Jaccard similarity between two precomputed word sets.
    * @param {Object} setA - Word set (keys = words)
@@ -665,11 +685,11 @@ function createSetAnalyzer(challenges) {
    */
   function findSimilarPairs(threshold) {
     if (threshold === undefined || threshold === null) threshold = 0.6;
-    var sets = _getWordSets();
+    var simMatrix = _getPairwiseSim();
     var pairs = [];
     for (var i = 0; i < _challenges.length; i++) {
       for (var j = i + 1; j < _challenges.length; j++) {
-        var sim = _jaccardSets(sets[i], sets[j]);
+        var sim = simMatrix[i][j];
         if (sim >= threshold) {
           pairs.push({ idA: _challenges[i].id, idB: _challenges[j].id, similarity: sim });
         }
@@ -696,13 +716,12 @@ function createSetAnalyzer(challenges) {
    */
   function diversityScore() {
     // answerDiversity: mean pairwise dissimilarity × 100
-    var sets = _getWordSets();
+    var simMatrix = _getPairwiseSim();
     var totalDissimilarity = 0;
     var pairCount = 0;
     for (var i = 0; i < _challenges.length; i++) {
       for (var j = i + 1; j < _challenges.length; j++) {
-        var sim = _jaccardSets(sets[i], sets[j]);
-        totalDissimilarity += (1 - sim);
+        totalDissimilarity += (1 - simMatrix[i][j]);
         pairCount++;
       }
     }
@@ -1156,15 +1175,16 @@ function createDifficultyCalibrator(challenges) {
    * Identify outlier challenges — ones where original difficulty
    * differs significantly from calibrated difficulty.
    * @param {number} [threshold=20] - Delta threshold to flag as outlier
+   * @param {Array} [precomputedCalibration] - Pre-computed calibrateAll() results to reuse
    * @returns {Array<{ challengeId: string, originalDifficulty: number,
    *                    calibratedDifficulty: number, delta: number, direction: string }>}
    */
-  function findOutliers(threshold) {
+  function findOutliers(threshold, precomputedCalibration) {
     if (threshold === undefined) threshold = 20;
     if (typeof threshold !== "number" || threshold < 0) {
       throw new Error("threshold must be a non-negative number");
     }
-    var all = calibrateAll();
+    var all = precomputedCalibration || calibrateAll();
     return all
       .filter(function (r) { return Math.abs(r.delta) >= threshold; })
       .map(function (r) {
@@ -1182,16 +1202,26 @@ function createDifficultyCalibrator(challenges) {
    * Get difficulty distribution buckets.
    * @returns {{ easy: number, medium: number, hard: number }}
    */
-  function getDifficultyDistribution() {
+  function getDifficultyDistribution(precomputedCalibration) {
     var dist = { easy: 0, medium: 0, hard: 0 };
-    _challenges.forEach(function (ch) {
-      var id = ch.id || ch.title;
-      var d = calibrateDifficulty(id);
-      if (d === null) return;
-      if (d < 33) dist.easy++;
-      else if (d < 67) dist.medium++;
-      else dist.hard++;
-    });
+    if (precomputedCalibration) {
+      // Use pre-computed calibration results directly
+      precomputedCalibration.forEach(function (r) {
+        var d = r.calibratedDifficulty;
+        if (d < 33) dist.easy++;
+        else if (d < 67) dist.medium++;
+        else dist.hard++;
+      });
+    } else {
+      _challenges.forEach(function (ch) {
+        var id = ch.id || ch.title;
+        var d = calibrateDifficulty(id);
+        if (d === null) return;
+        if (d < 33) dist.easy++;
+        else if (d < 67) dist.medium++;
+        else dist.hard++;
+      });
+    }
     return dist;
   }
 
@@ -1216,8 +1246,10 @@ function createDifficultyCalibrator(challenges) {
       avgDiff = Math.round(sum / calibrated.length);
     }
 
-    var outliers = findOutliers(20);
-    var dist = getDifficultyDistribution();
+    // Reuse calibrateAll() results for outliers and distribution
+    // instead of recomputing from scratch
+    var outliers = findOutliers(20, calibrated);
+    var dist = getDifficultyDistribution(calibrated);
 
     var recommendations = [];
     if (dist.easy === 0 && calibrated.length > 0) {

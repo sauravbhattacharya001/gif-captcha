@@ -322,7 +322,10 @@ function createAttemptTracker(options) {
     ? options.maxLockoutMs : 300000;
 
   // Internal state: Map<challengeId, { attempts: number, timestamps: number[], lockoutUntil: number, lockoutCount: number }>
-  var challenges = {};
+  // Use null-prototype object to prevent prototype pollution when
+  // user-supplied challengeIds collide with Object.prototype keys
+  // (e.g. "__proto__", "constructor", "toString").
+  var challenges = Object.create(null);
 
   function _now() {
     return Date.now();
@@ -959,7 +962,7 @@ function createDifficultyCalibrator(challenges) {
   }
 
   var _challenges = challenges.slice();
-  var _responses = {};
+  var _responses = Object.create(null);
 
   /**
    * Record a response for a challenge.
@@ -1900,7 +1903,9 @@ function createSessionManager(options) {
     ? Math.floor(options.maxSessions) : 1000;
 
   // Internal state: Map<sessionId, SessionState>
-  var sessions = {};
+  // Use null-prototype object to prevent prototype pollution via
+  // crafted session IDs targeting Object.prototype properties.
+  var sessions = Object.create(null);
   var sessionCount = 0;
 
   function _now() {
@@ -2209,7 +2214,8 @@ function createPoolManager(options) {
     ? Math.floor(options.minPoolSize) : 3;
 
   // challenge id → { challenge, serves, passes, fails, retired, addedAt, retiredAt, retireReason }
-  var registry = {};
+  // Use null-prototype object to prevent prototype pollution via crafted challenge IDs.
+  var registry = Object.create(null);
   var activeIds = [];
 
   function _now() { return Date.now(); }
@@ -2217,7 +2223,7 @@ function createPoolManager(options) {
   function _rebuildActive() {
     activeIds = [];
     for (var id in registry) {
-      if (registry.hasOwnProperty(id) && !registry[id].retired) {
+      if (!registry[id].retired) {
         activeIds.push(id);
       }
     }
@@ -2375,18 +2381,16 @@ function createPoolManager(options) {
     }
     var all = [];
     for (var rid in registry) {
-      if (registry.hasOwnProperty(rid)) {
-        var entry = registry[rid];
-        all.push({
-          id: rid,
-          serves: entry.serves,
-          passes: entry.passes,
-          fails: entry.fails,
-          passRate: entry.serves > 0 ? entry.passes / entry.serves : null,
-          retired: entry.retired,
-          retireReason: entry.retireReason,
-        });
-      }
+      var entry = registry[rid];
+      all.push({
+        id: rid,
+        serves: entry.serves,
+        passes: entry.passes,
+        fails: entry.fails,
+        passRate: entry.serves > 0 ? entry.passes / entry.serves : null,
+        retired: entry.retired,
+        retireReason: entry.retireReason,
+      });
     }
     return all;
   }
@@ -2399,7 +2403,6 @@ function createPoolManager(options) {
   function getSummary() {
     var totalServes = 0, totalPasses = 0, totalFails = 0, retiredCount = 0;
     for (var id in registry) {
-      if (!registry.hasOwnProperty(id)) continue;
       var e = registry[id];
       totalServes += e.serves;
       totalPasses += e.passes;
@@ -2444,7 +2447,6 @@ function createPoolManager(options) {
   function exportState() {
     var entries = [];
     for (var id in registry) {
-      if (!registry.hasOwnProperty(id)) continue;
       var e = registry[id];
       entries.push({
         id: id,

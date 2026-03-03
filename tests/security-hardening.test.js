@@ -254,3 +254,153 @@ describe("pickChallenges with secure random", function () {
     });
   });
 });
+
+// ── Prototype Pollution Prevention ─────────────────────────────────
+
+const {
+  createAttemptTracker,
+  createSessionManager,
+  createPoolManager,
+  createDifficultyCalibrator,
+} = require("../src/index");
+
+describe("prototype pollution prevention in AttemptTracker", function () {
+  const dangerousKeys = ["__proto__", "constructor", "toString", "valueOf", "hasOwnProperty"];
+
+  dangerousKeys.forEach(function (key) {
+    it(`should safely handle challengeId="${key}" without polluting Object.prototype`, function () {
+      const tracker = createAttemptTracker({ maxAttempts: 3, lockoutMs: 1000 });
+      const originalProto = Object.getPrototypeOf({});
+
+      // Record attempts with dangerous key
+      const result = tracker.recordAttempt(key);
+      assert.strictEqual(result.allowed, true);
+
+      // Verify Object.prototype is not polluted
+      const testObj = {};
+      assert.strictEqual(testObj.attempts, undefined, `Object.prototype.attempts should not be set by key "${key}"`);
+      assert.strictEqual(testObj.lockoutUntil, undefined, `Object.prototype.lockoutUntil should not be set by key "${key}"`);
+
+      // Verify tracker still works correctly
+      const status = tracker.isLocked(key);
+      assert.strictEqual(status.locked, false);
+    });
+  });
+
+  it("should track attempts independently for dangerous keys", function () {
+    const tracker = createAttemptTracker({ maxAttempts: 3 });
+
+    tracker.recordAttempt("__proto__");
+    tracker.recordAttempt("constructor");
+    tracker.recordAttempt("normal-id");
+
+    // Each should have its own count
+    const proto = tracker.isLocked("__proto__");
+    const ctor = tracker.isLocked("constructor");
+    const normal = tracker.isLocked("normal-id");
+
+    assert.strictEqual(proto.locked, false);
+    assert.strictEqual(ctor.locked, false);
+    assert.strictEqual(normal.locked, false);
+  });
+
+  it("should lock out dangerous keys after max attempts", function () {
+    const tracker = createAttemptTracker({ maxAttempts: 2, lockoutMs: 5000 });
+
+    tracker.recordAttempt("__proto__");
+    const second = tracker.recordAttempt("__proto__");
+
+    assert.strictEqual(second.allowed, false, "__proto__ should be locked after 2 attempts");
+    assert.ok(second.lockoutRemainingMs > 0);
+  });
+});
+
+describe("prototype pollution prevention in SessionManager", function () {
+  it("should not pollute Object.prototype when accessing crafted session IDs", function () {
+    const mgr = createSessionManager({ challengesPerSession: 2 });
+
+    // Start a session normally
+    const session = mgr.startSession({ userId: "test" });
+
+    // Try to access __proto__ as a session ID — should return error, not crash
+    const result = mgr.submitResponse("__proto__", true);
+    assert.strictEqual(result.error, "session_not_found");
+
+    // Try getSession with dangerous key
+    const protoSession = mgr.getSession("__proto__");
+    assert.strictEqual(protoSession, null);
+
+    // Verify Object.prototype is clean
+    const testObj = {};
+    assert.strictEqual(testObj.status, undefined);
+    assert.strictEqual(testObj.createdAt, undefined);
+  });
+
+  it("should not pollute prototype when invalidating crafted session IDs", function () {
+    const mgr = createSessionManager();
+    const result = mgr.invalidateSession("constructor");
+    assert.strictEqual(result, false, "invalidating non-existent crafted session should return false");
+  });
+});
+
+describe("prototype pollution prevention in PoolManager", function () {
+  it("should safely add challenges with dangerous IDs", function () {
+    const mgr = createPoolManager();
+
+    // Add challenges with dangerous IDs
+    const added = mgr.add([
+      { id: "__proto__", humanAnswer: "test" },
+      { id: "constructor", humanAnswer: "test2" },
+      { id: "normal", humanAnswer: "test3" },
+    ]);
+
+    assert.strictEqual(added, 3);
+
+    // Verify Object.prototype is clean
+    const testObj = {};
+    assert.strictEqual(testObj.challenge, undefined);
+    assert.strictEqual(testObj.serves, undefined);
+
+    // Verify stats work
+    const stats = mgr.getStats();
+    assert.strictEqual(stats.length, 3);
+  });
+
+  it("should record results for dangerous-ID challenges without pollution", function () {
+    const mgr = createPoolManager();
+    mgr.add({ id: "__proto__", humanAnswer: "test" });
+
+    mgr.recordResult("__proto__", true);
+    mgr.recordResult("__proto__", false);
+
+    const stats = mgr.getStats();
+    const entry = stats.find(function (s) { return s.id === "__proto__"; });
+    assert.ok(entry);
+    assert.strictEqual(entry.passes, 1);
+    assert.strictEqual(entry.fails, 1);
+  });
+});
+
+describe("prototype pollution prevention in DifficultyCalibrator", function () {
+  it("should safely handle challengeIds matching prototype keys", function () {
+    const challenges = [
+      { id: "c1", humanAnswer: "test" },
+      { id: "c2", humanAnswer: "test2" },
+    ];
+    const calibrator = createDifficultyCalibrator(challenges);
+
+    // Record response with dangerous key
+    calibrator.recordResponse("__proto__", { timeMs: 500, correct: true });
+    calibrator.recordResponse("constructor", { timeMs: 300, correct: false });
+
+    // Verify Object.prototype is clean
+    const testObj = {};
+    assert.strictEqual(testObj[0], undefined);
+
+    // Stats should work for those keys
+    const protoStats = calibrator.getStats("__proto__");
+    assert.ok(protoStats);
+    assert.strictEqual(protoStats.totalResponses, 1);
+    assert.strictEqual(protoStats.correctCount, 1);
+  });
+});

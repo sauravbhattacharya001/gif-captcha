@@ -3324,6 +3324,294 @@ function createBotDetector(options) {
   };
 }
 
+
+// ~~ Token Verifier ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+/**
+ * Create a stateless token verifier for CAPTCHA completion tokens.
+ *
+ * Issues HMAC-signed tokens when a session passes, which can be
+ * verified server-side without shared session state. Similar to
+ * how reCAPTCHA / hCaptcha issue signed verification tokens.
+ *
+ * Tokens encode: sessionId, timestamp, difficulty, score, IP hash.
+ * They are signed with HMAC-SHA256 and expire after a configurable TTL.
+ *
+ * Requires Node.js crypto module.
+ *
+ * @param {Object} options
+ * @param {string} options.secret - HMAC signing secret (min 16 chars)
+ * @param {number} [options.tokenTtlMs=300000] - Token validity window (default 5 min)
+ * @param {number} [options.maxTokenUses=1] - Max times a token can be verified (0 = unlimited)
+ * @param {boolean} [options.bindIp=true] - Bind token to originating IP
+ * @param {number} [options.maxUsedTokens=10000] - Max used-token nonces to track
+ * @returns {Object} Token verifier instance
+ */
+function createTokenVerifier(options) {
+  options = options || {};
+
+  if (!options.secret || typeof options.secret !== 'string') {
+    throw new Error('Token verifier requires a secret string');
+  }
+  if (options.secret.length < 16) {
+    throw new Error('Secret must be at least 16 characters');
+  }
+  if (!_crypto || typeof _crypto.createHmac !== 'function') {
+    throw new Error('Token verifier requires Node.js crypto module');
+  }
+
+  var secret = options.secret;
+  var tokenTtlMs = (typeof options.tokenTtlMs === 'number' && options.tokenTtlMs > 0)
+    ? options.tokenTtlMs : 300000;
+  var maxTokenUses = (typeof options.maxTokenUses === 'number' && options.maxTokenUses >= 0)
+    ? options.maxTokenUses : 1;
+  var bindIp = options.bindIp !== false;
+  var maxUsedTokens = (typeof options.maxUsedTokens === 'number' && options.maxUsedTokens > 0)
+    ? options.maxUsedTokens : 10000;
+
+  var usedNonces = Object.create(null);
+  var usedNonceCount = 0;
+  var usedNonceList = [];
+
+  function _hmac(data) {
+    return _crypto.createHmac('sha256', secret).update(data).digest('hex');
+  }
+
+  function _hashIp(ip) {
+    if (!ip || typeof ip !== 'string') return 'none';
+    return _crypto.createHash('sha256').update(ip + ':' + secret).digest('hex').substring(0, 16);
+  }
+
+  function _generateNonce() {
+    return _crypto.randomBytes(12).toString('hex');
+  }
+
+  function _recordNonce(nonce) {
+    if (usedNonces[nonce]) {
+      usedNonces[nonce].uses++;
+      return usedNonces[nonce].uses;
+    }
+    if (usedNonceCount >= maxUsedTokens) {
+      var evict = usedNonceList.shift();
+      if (evict && usedNonces[evict]) {
+        delete usedNonces[evict];
+        usedNonceCount--;
+      }
+    }
+    usedNonces[nonce] = { uses: 1, ts: Date.now() };
+    usedNonceList.push(nonce);
+    usedNonceCount++;
+    return 1;
+  }
+
+  /**
+   * Issue a signed verification token for a passed CAPTCHA session.
+   *
+   * @param {Object} params
+   * @param {string} params.sessionId - Session that passed
+   * @param {number} params.score - Pass score (0-1)
+   * @param {number} params.difficulty - Difficulty level used
+   * @param {string} [params.ip] - Client IP (hashed into token if bindIp)
+   * @param {Object} [params.metadata] - Extra claims to embed (max 10 keys, primitives only)
+   * @returns {{ token: string, expiresAt: number }}
+   */
+  function issueToken(params) {
+    params = params || {};
+    if (!params.sessionId || typeof params.sessionId !== 'string') {
+      throw new Error('sessionId is required');
+    }
+    if (typeof params.score !== 'number' || params.score < 0 || params.score > 1) {
+      throw new Error('score must be a number between 0 and 1');
+    }
+    if (typeof params.difficulty !== 'number' || params.difficulty < 0) {
+      throw new Error('difficulty must be a non-negative number');
+    }
+
+    var now = Date.now();
+    var nonce = _generateNonce();
+    var ipHash = bindIp ? _hashIp(params.ip) : 'unbound';
+
+    var payload = {
+      sid: params.sessionId,
+      scr: Math.round(params.score * 1000) / 1000,
+      dif: params.difficulty,
+      iph: ipHash,
+      iat: now,
+      exp: now + tokenTtlMs,
+      non: nonce,
+    };
+
+    if (params.metadata && typeof params.metadata === 'object') {
+      var metaKeys = Object.keys(params.metadata);
+      if (metaKeys.length > 10) {
+        throw new Error('metadata cannot have more than 10 keys');
+      }
+      payload.meta = {};
+      for (var i = 0; i < metaKeys.length; i++) {
+        var k = metaKeys[i];
+        var v = params.metadata[k];
+        if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
+          payload.meta[k] = v;
+        }
+      }
+    }
+
+    var payloadStr = JSON.stringify(payload);
+    var payloadB64 = Buffer.from(payloadStr).toString('base64url');
+    var signature = _hmac(payloadB64);
+
+    return {
+      token: payloadB64 + '.' + signature,
+      expiresAt: payload.exp,
+    };
+  }
+
+  /**
+   * Verify a previously issued token.
+   *
+   * Checks signature, expiry, IP binding, and replay protection.
+   *
+   * @param {string} token - The token string to verify
+   * @param {Object} [context]
+   * @param {string} [context.ip] - Client IP to check against binding
+   * @returns {{ valid: boolean, reason?: string, payload?: Object }}
+   */
+  function verifyToken(token, context) {
+    context = context || {};
+
+    if (!token || typeof token !== 'string') {
+      return { valid: false, reason: 'missing_token' };
+    }
+
+    var parts = token.split('.');
+    if (parts.length !== 2) {
+      return { valid: false, reason: 'malformed_token' };
+    }
+
+    var payloadB64 = parts[0];
+    var signature = parts[1];
+
+    var expectedSig = _hmac(payloadB64);
+    if (signature.length !== expectedSig.length) {
+      return { valid: false, reason: 'invalid_signature' };
+    }
+    var sigValid = true;
+    for (var i = 0; i < signature.length; i++) {
+      if (signature.charCodeAt(i) !== expectedSig.charCodeAt(i)) {
+        sigValid = false;
+      }
+    }
+    if (!sigValid) {
+      return { valid: false, reason: 'invalid_signature' };
+    }
+
+    var payload;
+    try {
+      var payloadStr = Buffer.from(payloadB64, 'base64url').toString('utf-8');
+      payload = JSON.parse(payloadStr);
+    } catch (e) {
+      return { valid: false, reason: 'corrupt_payload' };
+    }
+
+    if (!payload.sid || typeof payload.iat !== 'number' || typeof payload.exp !== 'number' || !payload.non) {
+      return { valid: false, reason: 'incomplete_payload' };
+    }
+
+    var now = Date.now();
+    if (now > payload.exp) {
+      return { valid: false, reason: 'token_expired' };
+    }
+
+    if (payload.iat > now + 30000) {
+      return { valid: false, reason: 'token_from_future' };
+    }
+
+    if (bindIp && payload.iph !== 'unbound' && payload.iph !== 'none') {
+      var contextIpHash = _hashIp(context.ip);
+      if (payload.iph !== contextIpHash) {
+        return { valid: false, reason: 'ip_mismatch' };
+      }
+    }
+
+    if (maxTokenUses > 0) {
+      var uses = _recordNonce(payload.non);
+      if (uses > maxTokenUses) {
+        return { valid: false, reason: 'token_already_used' };
+      }
+    }
+
+    return {
+      valid: true,
+      payload: {
+        sessionId: payload.sid,
+        score: payload.scr,
+        difficulty: payload.dif,
+        issuedAt: payload.iat,
+        expiresAt: payload.exp,
+        metadata: payload.meta || {},
+      },
+    };
+  }
+
+  /**
+   * Convenience: issue token from a session manager result.
+   *
+   * @param {Object} sessionResult - Result from submitResponse
+   * @param {string} sessionId - The session ID
+   * @param {Object} [opts]
+   * @param {string} [opts.ip] - Client IP
+   * @param {Object} [opts.metadata] - Extra metadata
+   * @returns {{ token: string, expiresAt: number }|null} Token or null if not passed
+   */
+  function issueFromSession(sessionResult, sessionId, opts) {
+    opts = opts || {};
+    if (!sessionResult || !sessionResult.done || !sessionResult.passed) {
+      return null;
+    }
+    var score = sessionResult.passRate != null
+      ? sessionResult.passRate
+      : (sessionResult.correctCount / sessionResult.totalAnswered);
+    return issueToken({
+      sessionId: sessionId,
+      score: score,
+      difficulty: sessionResult.nextDifficulty || 0,
+      ip: opts.ip,
+      metadata: opts.metadata,
+    });
+  }
+
+  /**
+   * Get current verifier stats.
+   * @returns {{ trackedNonces: number, maxCapacity: number, tokenTtlMs: number, maxUses: number, ipBound: boolean }}
+   */
+  function getStats() {
+    return {
+      trackedNonces: usedNonceCount,
+      maxCapacity: maxUsedTokens,
+      tokenTtlMs: tokenTtlMs,
+      maxUses: maxTokenUses,
+      ipBound: bindIp,
+    };
+  }
+
+  /**
+   * Clear all tracked nonces. Useful for testing or periodic maintenance.
+   */
+  function clearUsedTokens() {
+    usedNonces = Object.create(null);
+    usedNonceCount = 0;
+    usedNonceList = [];
+  }
+
+  return {
+    issueToken: issueToken,
+    verifyToken: verifyToken,
+    issueFromSession: issueFromSession,
+    getStats: getStats,
+    clearUsedTokens: clearUsedTokens,
+  };
+}
+
 // ── Exports ─────────────────────────────────────────────────────────
 
 var gifCaptcha = {
@@ -3345,6 +3633,7 @@ var gifCaptcha = {
   createPoolManager: createPoolManager,
   createResponseAnalyzer: createResponseAnalyzer,
   createBotDetector: createBotDetector,
+  createTokenVerifier: createTokenVerifier,
   GIF_MAX_RETRIES: GIF_MAX_RETRIES,
   GIF_RETRY_DELAY_MS: GIF_RETRY_DELAY_MS,
 };

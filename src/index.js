@@ -28,8 +28,12 @@ function secureRandomInt(max) {
     return _crypto.randomInt(max);
   }
   if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    // Rejection sampling to eliminate modulo bias
     var arr = new Uint32Array(1);
-    crypto.getRandomValues(arr);
+    var limit = Math.floor(0x100000000 / max) * max; // largest multiple of max that fits in uint32
+    do {
+      crypto.getRandomValues(arr);
+    } while (arr[0] >= limit);
     return arr[0] % max;
   }
   return Math.floor(Math.random() * max);

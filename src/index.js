@@ -2495,6 +2495,249 @@ function createPoolManager(options) {
   };
 }
 
+// ── Response Analyzer ───────────────────────────────────────────────
+
+/**
+ * Create a response analyzer that evaluates CAPTCHA responses for
+ * bot-like patterns and generates a humanity confidence score.
+ *
+ * Analyzes timing, linguistic diversity, response specificity, and
+ * cross-response consistency to distinguish human from automated submissions.
+ *
+ * @param {Object} [opts] - Configuration options
+ * @param {number} [opts.minResponseTimeMs=800] - Responses faster than this are suspicious
+ * @param {number} [opts.maxTimingCvThreshold=0.15] - Coefficient of variation below this flags uniform timing
+ * @param {number} [opts.duplicateThreshold=0.85] - Jaccard similarity above this counts as duplicate
+ * @param {number} [opts.minWordDiversity=0.4] - Type-token ratio below this is suspicious
+ * @returns {Object} Analyzer instance
+ */
+function createResponseAnalyzer(opts) {
+  opts = opts || {};
+  var minResponseTimeMs = opts.minResponseTimeMs != null ? opts.minResponseTimeMs : 800;
+  var maxTimingCvThreshold = opts.maxTimingCvThreshold != null ? opts.maxTimingCvThreshold : 0.15;
+  var duplicateThreshold = opts.duplicateThreshold != null ? opts.duplicateThreshold : 0.85;
+  var minWordDiversity = opts.minWordDiversity != null ? opts.minWordDiversity : 0.4;
+
+  function tokenize(text) {
+    if (!text || typeof text !== 'string') return [];
+    return text.toLowerCase().replace(/[^a-z0-9\s'-]/g, '').split(/\s+/).filter(function (w) { return w.length > 0; });
+  }
+
+  /**
+   * Analyze timing patterns in responses.
+   * @param {number[]} responseTimes - Array of response times in ms
+   * @returns {Object} Timing analysis with suspicion flags
+   */
+  function analyzeTiming(responseTimes) {
+    var flags = [];
+    if (!responseTimes || responseTimes.length === 0) {
+      return { avgMs: 0, medianMs: 0, stdDevMs: 0, cv: 0,
+               tooFastCount: 0, isUniform: false, suspicionFlags: ['no_timing_data'] };
+    }
+
+    var sorted = responseTimes.slice().sort(function (a, b) { return a - b; });
+    var n = sorted.length;
+    var sum = sorted.reduce(function (s, v) { return s + v; }, 0);
+    var avg = sum / n;
+
+    var median;
+    if (n % 2 === 1) {
+      median = sorted[Math.floor(n / 2)];
+    } else {
+      median = (sorted[n / 2 - 1] + sorted[n / 2]) / 2;
+    }
+
+    var variance = sorted.reduce(function (s, v) { return s + (v - avg) * (v - avg); }, 0);
+    var stdDev = n > 1 ? Math.sqrt(variance / (n - 1)) : 0;
+    var cv = avg > 0 ? stdDev / avg : 0;
+
+    var tooFastCount = sorted.filter(function (t) { return t < minResponseTimeMs; }).length;
+    var isUniform = n >= 3 && cv < maxTimingCvThreshold;
+
+    if (tooFastCount > 0) flags.push('fast_responses:' + tooFastCount);
+    if (tooFastCount === n) flags.push('all_responses_suspiciously_fast');
+    if (isUniform) flags.push('uniform_timing');
+    if (avg < minResponseTimeMs) flags.push('avg_below_threshold');
+
+    return {
+      avgMs: Math.round(avg), medianMs: Math.round(median),
+      stdDevMs: Math.round(stdDev), cv: Math.round(cv * 1000) / 1000,
+      tooFastCount: tooFastCount, isUniform: isUniform, suspicionFlags: flags
+    };
+  }
+
+  /**
+   * Analyze linguistic properties of a single response.
+   * @param {string} response - User response text
+   * @returns {Object} Linguistic analysis
+   */
+  function analyzeResponse(response) {
+    var words = tokenize(response);
+    var n = words.length;
+    if (n === 0) {
+      return { wordCount: 0, uniqueWords: 0, typeTokenRatio: 0,
+        avgWordLength: 0, hasDescriptiveWords: false, specificity: 'empty' };
+    }
+
+    var uniqueSet = {};
+    words.forEach(function (w) { uniqueSet[w] = true; });
+    var unique = Object.keys(uniqueSet).length;
+    var ttr = unique / n;
+
+    var totalLen = words.reduce(function (s, w) { return s + w.length; }, 0);
+    var avgWordLen = totalLen / n;
+
+    var descriptivePatterns = [
+      'suddenly', 'unexpectedly', 'surprisingly', 'then', 'but',
+      'while', 'instead', 'actually', 'realizes', 'noticed',
+      'turns', 'falls', 'jumps', 'appears', 'disappears',
+      'funny', 'hilarious', 'weird', 'strange', 'shocking'
+    ];
+    var lowerResp = (response || '').toLowerCase();
+    var hasDescriptive = descriptivePatterns.some(function (p) {
+      return lowerResp.indexOf(p) !== -1;
+    });
+
+    var specificity;
+    if (n <= 2) specificity = 'vague';
+    else if (n <= 5 && !hasDescriptive) specificity = 'low';
+    else if (n <= 10) specificity = 'moderate';
+    else specificity = 'detailed';
+
+    return {
+      wordCount: n, uniqueWords: unique,
+      typeTokenRatio: Math.round(ttr * 1000) / 1000,
+      avgWordLength: Math.round(avgWordLen * 100) / 100,
+      hasDescriptiveWords: hasDescriptive, specificity: specificity
+    };
+  }
+
+  /**
+   * Detect duplicate/near-duplicate responses in a batch.
+   * @param {string[]} responses - Array of response texts
+   * @returns {Object} Duplicate analysis
+   */
+  function detectDuplicateResponses(responses) {
+    if (!responses || responses.length < 2) {
+      return { duplicateCount: 0, duplicatePairs: [], uniqueRatio: 1 };
+    }
+
+    var pairs = [];
+    var duplicatedIndices = {};
+    for (var i = 0; i < responses.length; i++) {
+      for (var j = i + 1; j < responses.length; j++) {
+        var sim = textSimilarity(responses[i], responses[j]);
+        if (sim >= duplicateThreshold) {
+          pairs.push({ i: i, j: j, similarity: Math.round(sim * 1000) / 1000 });
+          duplicatedIndices[i] = true;
+          duplicatedIndices[j] = true;
+        }
+      }
+    }
+
+    var duplicateCount = Object.keys(duplicatedIndices).length;
+    var uniqueRatio = 1 - (duplicateCount / responses.length);
+
+    return {
+      duplicateCount: duplicateCount, duplicatePairs: pairs,
+      uniqueRatio: Math.round(uniqueRatio * 1000) / 1000
+    };
+  }
+
+  /**
+   * Generate a comprehensive humanity confidence score.
+   * @param {Array<{response: string, timeMs: number}>} submissions
+   * @returns {Object} Scoring result with verdict and flags
+   */
+  function scoreSubmissions(submissions) {
+    if (!submissions || submissions.length === 0) {
+      return {
+        humanityScore: 0, verdict: 'insufficient_data',
+        timing: { suspicionFlags: ['no_data'] }, linguistic: {},
+        duplicates: { duplicateCount: 0, duplicatePairs: [], uniqueRatio: 1 },
+        flags: ['no_submissions']
+      };
+    }
+
+    var times = submissions.map(function (s) { return s.timeMs; }).filter(function (t) { return t > 0; });
+    var responses = submissions.map(function (s) { return s.response || ''; });
+
+    var timing = analyzeTiming(times);
+    var duplicates = detectDuplicateResponses(responses);
+
+    var analyses = responses.map(analyzeResponse);
+    var totalWords = 0, descriptiveCount = 0, emptyCount = 0;
+    var specificities = {};
+    analyses.forEach(function (a) {
+      totalWords += a.wordCount;
+      if (a.hasDescriptiveWords) descriptiveCount++;
+      if (a.wordCount === 0) emptyCount++;
+      specificities[a.specificity] = (specificities[a.specificity] || 0) + 1;
+    });
+
+    var avgWords = totalWords / submissions.length;
+    var avgTTR = analyses.reduce(function (s, a) { return s + a.typeTokenRatio; }, 0) / submissions.length;
+
+    var linguistic = {
+      avgWordCount: Math.round(avgWords * 10) / 10,
+      avgTypeTokenRatio: Math.round(avgTTR * 1000) / 1000,
+      descriptiveResponseCount: descriptiveCount,
+      emptyResponseCount: emptyCount,
+      specificityBreakdown: specificities
+    };
+
+    var score = 100;
+    var flags = [];
+
+    if (timing.tooFastCount > 0) {
+      score -= Math.min(30, timing.tooFastCount * 10);
+      flags.push('fast_responses');
+    }
+    if (timing.isUniform) { score -= 20; flags.push('uniform_timing'); }
+    if (duplicates.duplicateCount > 0) {
+      score -= Math.min(30, duplicates.duplicatePairs.length * 15);
+      flags.push('duplicate_responses');
+    }
+    if (emptyCount > 0) { score -= emptyCount * 10; flags.push('empty_responses'); }
+    if (avgTTR < minWordDiversity && avgWords > 3) { score -= 15; flags.push('low_word_diversity'); }
+    if (descriptiveCount === 0 && submissions.length >= 3) { score -= 10; flags.push('no_descriptive_language'); }
+    if (avgWords < 3 && emptyCount === 0) { score -= 10; flags.push('very_short_responses'); }
+
+    if (descriptiveCount >= Math.ceil(submissions.length / 2)) score = Math.min(100, score + 5);
+    if (duplicates.uniqueRatio >= 0.95 && submissions.length >= 3) score = Math.min(100, score + 5);
+
+    score = Math.max(0, Math.min(100, score));
+
+    var verdict;
+    if (score >= 80) verdict = 'likely_human';
+    else if (score >= 50) verdict = 'uncertain';
+    else verdict = 'likely_bot';
+
+    return {
+      humanityScore: score, verdict: verdict,
+      timing: timing, linguistic: linguistic,
+      duplicates: duplicates, flags: flags
+    };
+  }
+
+  function getConfig() {
+    return {
+      minResponseTimeMs: minResponseTimeMs,
+      maxTimingCvThreshold: maxTimingCvThreshold,
+      duplicateThreshold: duplicateThreshold,
+      minWordDiversity: minWordDiversity
+    };
+  }
+
+  return {
+    analyzeTiming: analyzeTiming,
+    analyzeResponse: analyzeResponse,
+    detectDuplicateResponses: detectDuplicateResponses,
+    scoreSubmissions: scoreSubmissions,
+    getConfig: getConfig
+  };
+}
+
 // ── Exports ─────────────────────────────────────────────────────────
 
 var gifCaptcha = {
@@ -2514,6 +2757,7 @@ var gifCaptcha = {
   createSecurityScorer: createSecurityScorer,
   createSessionManager: createSessionManager,
   createPoolManager: createPoolManager,
+  createResponseAnalyzer: createResponseAnalyzer,
   GIF_MAX_RETRIES: GIF_MAX_RETRIES,
   GIF_RETRY_DELAY_MS: GIF_RETRY_DELAY_MS,
 };

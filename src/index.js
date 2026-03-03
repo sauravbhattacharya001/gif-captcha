@@ -2744,6 +2744,554 @@ function createResponseAnalyzer(opts) {
   };
 }
 
+// ── Honeypot & Bot Behavior Detector ────────────────────────────────
+
+/**
+ * Creates a honeypot and behavioral analysis system for detecting bots.
+ *
+ * Analyzes multiple behavioral signals that distinguish humans from
+ * automated solvers:
+ *
+ * - **Hidden field honeypots**: Invisible form fields that bots fill but
+ *   humans leave empty. Configurable field names and trap types.
+ * - **Interaction fingerprinting**: Mouse movement entropy, click patterns,
+ *   and scroll behavior that bots typically lack or fake poorly.
+ * - **Keystroke dynamics**: Typing speed, rhythm variance, and key-hold
+ *   patterns that are difficult to simulate realistically.
+ * - **Timing analysis**: Time-to-first-interaction, total solve time, and
+ *   pacing consistency across challenge steps.
+ * - **JavaScript verification**: Checks that JS executed (bots sometimes
+ *   submit forms without running page scripts).
+ * - **Behavior scoring**: Weighted composite score (0–100) from all signals
+ *   with configurable thresholds for flag/block decisions.
+ *
+ * Usage:
+ * ```js
+ * var detector = gifCaptcha.createBotDetector({ honeypotFields: ['email2', 'website'] });
+ *
+ * // On form submission, collect signals:
+ * var result = detector.analyze({
+ *   honeypotValues: { email2: '', website: '' },
+ *   mouseMovements: [{ x: 10, y: 20, t: 100 }, { x: 50, y: 80, t: 200 }],
+ *   keystrokes: [{ key: 'a', downAt: 100, upAt: 150 }, { key: 'b', downAt: 200, upAt: 260 }],
+ *   timeOnPageMs: 15000,
+ *   firstInteractionMs: 2000,
+ *   jsToken: detector.getJsToken(),
+ *   scrollEvents: [{ y: 0, t: 0 }, { y: 100, t: 500 }],
+ * });
+ *
+ * if (result.isBot) {
+ *   // Block or serve harder CAPTCHA
+ * }
+ * ```
+ *
+ * @param {Object} [options]
+ * @param {string[]} [options.honeypotFields=['hp_email','hp_url','hp_phone']]
+ *   Names of hidden form fields used as traps.
+ * @param {number} [options.minTimeOnPageMs=3000]
+ *   Minimum plausible time a human spends on the page.
+ * @param {number} [options.maxTimeOnPageMs=600000]
+ *   Maximum plausible time (10 minutes) — bots may have stale sessions.
+ * @param {number} [options.minMouseMovements=3]
+ *   Minimum number of mouse movements expected from a human.
+ * @param {number} [options.minKeystrokeVariance=10]
+ *   Minimum variance (ms²) in inter-key intervals for human-like typing.
+ * @param {number} [options.botThreshold=60]
+ *   Composite score at or above which the submission is flagged as bot.
+ * @param {number} [options.suspiciousThreshold=40]
+ *   Score at or above which the submission is flagged as suspicious.
+ * @returns {Object} Bot detector instance
+ */
+function createBotDetector(options) {
+  options = options || {};
+
+  var honeypotFields = Array.isArray(options.honeypotFields)
+    ? options.honeypotFields
+    : ['hp_email', 'hp_url', 'hp_phone'];
+  var minTimeOnPageMs = typeof options.minTimeOnPageMs === 'number'
+    ? options.minTimeOnPageMs : 3000;
+  var maxTimeOnPageMs = typeof options.maxTimeOnPageMs === 'number'
+    ? options.maxTimeOnPageMs : 600000;
+  var minMouseMovements = typeof options.minMouseMovements === 'number'
+    ? options.minMouseMovements : 3;
+  var minKeystrokeVariance = typeof options.minKeystrokeVariance === 'number'
+    ? options.minKeystrokeVariance : 10;
+  var botThreshold = typeof options.botThreshold === 'number'
+    ? options.botThreshold : 60;
+  var suspiciousThreshold = typeof options.suspiciousThreshold === 'number'
+    ? options.suspiciousThreshold : 40;
+
+  // JS verification token — must be retrieved by client-side JS
+  var _jsTokens = Object.create(null);
+
+  /**
+   * Generate a one-time JS verification token.
+   * The client must call this (proving JS execution) and submit it.
+   *
+   * @param {string} [sessionId] - Optional session identifier for binding
+   * @returns {string} Token string to include in form submission
+   */
+  function getJsToken(sessionId) {
+    var id = sessionId || '_default';
+    var token = '';
+    for (var i = 0; i < 32; i++) {
+      token += secureRandomInt(36).toString(36);
+    }
+    _jsTokens[id] = { token: token, createdAt: Date.now() };
+    return token;
+  }
+
+  /**
+   * Verify a submitted JS token.
+   * @private
+   */
+  function _verifyJsToken(submittedToken, sessionId) {
+    var id = sessionId || '_default';
+    var entry = _jsTokens[id];
+    if (!entry) return false;
+    var valid = entry.token === submittedToken;
+    // One-time use: delete after verification
+    delete _jsTokens[id];
+    return valid;
+  }
+
+  /**
+   * Analyze honeypot field values.
+   * Any filled honeypot field = instant bot detection.
+   *
+   * @param {Object} honeypotValues - Map of field name → submitted value
+   * @returns {{ score: number, filled: string[], clean: boolean }}
+   */
+  function analyzeHoneypots(honeypotValues) {
+    if (!honeypotValues || typeof honeypotValues !== 'object') {
+      return { score: 0, filled: [], clean: true };
+    }
+
+    var filled = [];
+    for (var i = 0; i < honeypotFields.length; i++) {
+      var field = honeypotFields[i];
+      var val = honeypotValues[field];
+      if (val !== undefined && val !== null && String(val).trim().length > 0) {
+        filled.push(field);
+      }
+    }
+
+    // Any filled honeypot is a very strong bot signal
+    var score = filled.length > 0 ? 100 : 0;
+    return { score: score, filled: filled, clean: filled.length === 0 };
+  }
+
+  /**
+   * Analyze mouse movement patterns.
+   * Humans produce curved, variable paths; bots produce straight lines
+   * or no movement at all.
+   *
+   * @param {Array<{x: number, y: number, t: number}>} movements
+   *   Mouse movement events with coordinates and timestamps.
+   * @returns {{ score: number, count: number, entropy: number, isLinear: boolean, flags: string[] }}
+   */
+  function analyzeMouseMovements(movements) {
+    var flags = [];
+
+    if (!Array.isArray(movements) || movements.length === 0) {
+      return { score: 80, count: 0, entropy: 0, isLinear: false, flags: ['no_mouse_data'] };
+    }
+
+    if (movements.length < minMouseMovements) {
+      flags.push('too_few_movements');
+    }
+
+    // Calculate directional entropy — humans change direction frequently
+    var angles = [];
+    for (var i = 1; i < movements.length; i++) {
+      var dx = movements[i].x - movements[i - 1].x;
+      var dy = movements[i].y - movements[i - 1].y;
+      if (dx !== 0 || dy !== 0) {
+        angles.push(Math.atan2(dy, dx));
+      }
+    }
+
+    var entropy = 0;
+    if (angles.length > 1) {
+      // Discretize angles into 8 bins (N, NE, E, SE, S, SW, W, NW)
+      var bins = [0, 0, 0, 0, 0, 0, 0, 0];
+      for (var j = 0; j < angles.length; j++) {
+        var binIdx = Math.floor(((angles[j] + Math.PI) / (2 * Math.PI)) * 8) % 8;
+        bins[binIdx]++;
+      }
+      // Shannon entropy over direction bins
+      var total = angles.length;
+      for (var k = 0; k < bins.length; k++) {
+        if (bins[k] > 0) {
+          var p = bins[k] / total;
+          entropy -= p * Math.log2(p);
+        }
+      }
+    }
+
+    // Check for linear movement (all same direction)
+    var isLinear = angles.length > 2 && entropy < 0.5;
+    if (isLinear) flags.push('linear_movement');
+
+    // Check for identical timestamps (scripted events)
+    var sameTimestampCount = 0;
+    for (var m = 1; m < movements.length; m++) {
+      if (movements[m].t === movements[m - 1].t) sameTimestampCount++;
+    }
+    if (sameTimestampCount > movements.length * 0.5) {
+      flags.push('identical_timestamps');
+    }
+
+    // Score: 0 (human-like) to 100 (bot-like)
+    var score = 0;
+    if (movements.length < minMouseMovements) score += 30;
+    if (isLinear) score += 25;
+    if (entropy < 1.0 && angles.length > 2) score += 20;
+    if (sameTimestampCount > movements.length * 0.5) score += 25;
+
+    // Low entropy with sufficient data is suspicious
+    var maxEntropy = Math.log2(8); // 3.0 for 8 bins
+    if (angles.length > 5 && entropy > maxEntropy * 0.6) {
+      score = Math.max(0, score - 20); // reward high entropy
+    }
+
+    return {
+      score: Math.min(100, score),
+      count: movements.length,
+      entropy: Math.round(entropy * 1000) / 1000,
+      isLinear: isLinear,
+      flags: flags,
+    };
+  }
+
+  /**
+   * Analyze keystroke dynamics.
+   * Humans have variable inter-key intervals and key-hold durations;
+   * bots tend to be perfectly uniform or impossibly fast.
+   *
+   * @param {Array<{key: string, downAt: number, upAt: number}>} keystrokes
+   *   Keystroke events with key-down and key-up timestamps.
+   * @returns {{ score: number, count: number, avgHoldMs: number, intervalVariance: number, flags: string[] }}
+   */
+  function analyzeKeystrokes(keystrokes) {
+    var flags = [];
+
+    if (!Array.isArray(keystrokes) || keystrokes.length === 0) {
+      return { score: 50, count: 0, avgHoldMs: 0, intervalVariance: 0, flags: ['no_keystroke_data'] };
+    }
+
+    // Key-hold durations (how long each key is pressed)
+    var holdTimes = [];
+    for (var i = 0; i < keystrokes.length; i++) {
+      var hold = keystrokes[i].upAt - keystrokes[i].downAt;
+      if (hold >= 0) holdTimes.push(hold);
+    }
+
+    var avgHold = 0;
+    if (holdTimes.length > 0) {
+      var sum = 0;
+      for (var h = 0; h < holdTimes.length; h++) sum += holdTimes[h];
+      avgHold = sum / holdTimes.length;
+    }
+
+    // Inter-key intervals (time between consecutive key presses)
+    var intervals = [];
+    for (var j = 1; j < keystrokes.length; j++) {
+      intervals.push(keystrokes[j].downAt - keystrokes[j - 1].downAt);
+    }
+
+    // Variance of inter-key intervals
+    var intervalVariance = 0;
+    if (intervals.length > 1) {
+      var mean = 0;
+      for (var k = 0; k < intervals.length; k++) mean += intervals[k];
+      mean /= intervals.length;
+      var sumSq = 0;
+      for (var l = 0; l < intervals.length; l++) {
+        sumSq += (intervals[l] - mean) * (intervals[l] - mean);
+      }
+      intervalVariance = sumSq / (intervals.length - 1);
+    }
+
+    var score = 0;
+
+    // Super-fast typing (< 20ms per key) is suspicious
+    if (avgHold < 20 && holdTimes.length > 0) {
+      score += 30;
+      flags.push('impossibly_fast_typing');
+    }
+
+    // Zero-hold keys (all exactly 0ms) — scripted input
+    var zeroHoldCount = holdTimes.filter(function (t) { return t === 0; }).length;
+    if (zeroHoldCount === holdTimes.length && holdTimes.length > 2) {
+      score += 35;
+      flags.push('zero_hold_times');
+    }
+
+    // Low variance = robotic typing
+    if (intervalVariance < minKeystrokeVariance && intervals.length > 2) {
+      score += 25;
+      flags.push('uniform_typing_rhythm');
+    }
+
+    // Very high variance with very fast keys = simulated randomness
+    if (intervalVariance > 100000 && avgHold < 30) {
+      score += 15;
+      flags.push('simulated_variance');
+    }
+
+    return {
+      score: Math.min(100, score),
+      count: keystrokes.length,
+      avgHoldMs: Math.round(avgHold),
+      intervalVariance: Math.round(intervalVariance),
+      flags: flags,
+    };
+  }
+
+  /**
+   * Analyze page timing signals.
+   *
+   * @param {number} timeOnPageMs - Total time spent on page
+   * @param {number} [firstInteractionMs] - Time until first interaction
+   * @returns {{ score: number, timeOnPageMs: number, flags: string[] }}
+   */
+  function analyzeTiming(timeOnPageMs, firstInteractionMs) {
+    var flags = [];
+    var score = 0;
+
+    if (typeof timeOnPageMs !== 'number' || timeOnPageMs <= 0) {
+      return { score: 50, timeOnPageMs: 0, flags: ['no_timing_data'] };
+    }
+
+    // Too fast = bot
+    if (timeOnPageMs < minTimeOnPageMs) {
+      score += 40;
+      flags.push('too_fast');
+    }
+
+    // Too slow = stale session or very slow bot
+    if (timeOnPageMs > maxTimeOnPageMs) {
+      score += 15;
+      flags.push('stale_session');
+    }
+
+    // First interaction timing
+    if (typeof firstInteractionMs === 'number') {
+      if (firstInteractionMs < 200) {
+        score += 25;
+        flags.push('instant_interaction');
+      } else if (firstInteractionMs < 500) {
+        score += 10;
+        flags.push('very_fast_first_interaction');
+      }
+    }
+
+    return {
+      score: Math.min(100, score),
+      timeOnPageMs: timeOnPageMs,
+      flags: flags,
+    };
+  }
+
+  /**
+   * Analyze scroll behavior.
+   *
+   * @param {Array<{y: number, t: number}>} scrollEvents
+   * @returns {{ score: number, count: number, flags: string[] }}
+   */
+  function analyzeScroll(scrollEvents) {
+    var flags = [];
+
+    if (!Array.isArray(scrollEvents) || scrollEvents.length === 0) {
+      return { score: 20, count: 0, flags: ['no_scroll_data'] };
+    }
+
+    var score = 0;
+
+    // Check for all-identical scroll positions
+    var allSame = scrollEvents.every(function (e) { return e.y === scrollEvents[0].y; });
+    if (allSame && scrollEvents.length > 2) {
+      score += 20;
+      flags.push('no_actual_scrolling');
+    }
+
+    // Check for perfectly uniform scroll intervals
+    if (scrollEvents.length > 3) {
+      var diffs = [];
+      for (var i = 1; i < scrollEvents.length; i++) {
+        diffs.push(scrollEvents[i].t - scrollEvents[i - 1].t);
+      }
+      var mean = 0;
+      for (var j = 0; j < diffs.length; j++) mean += diffs[j];
+      mean /= diffs.length;
+      var variance = 0;
+      for (var k = 0; k < diffs.length; k++) {
+        variance += (diffs[k] - mean) * (diffs[k] - mean);
+      }
+      variance = diffs.length > 1 ? variance / (diffs.length - 1) : 0;
+      if (variance < 5 && diffs.length > 2) {
+        score += 20;
+        flags.push('uniform_scroll_timing');
+      }
+    }
+
+    return {
+      score: Math.min(100, score),
+      count: scrollEvents.length,
+      flags: flags,
+    };
+  }
+
+  /**
+   * Run full behavioral analysis and produce a composite bot score.
+   *
+   * @param {Object} signals - All collected behavioral signals
+   * @param {Object} [signals.honeypotValues] - Honeypot field values
+   * @param {Array} [signals.mouseMovements] - Mouse movement events
+   * @param {Array} [signals.keystrokes] - Keystroke events
+   * @param {number} [signals.timeOnPageMs] - Time spent on page
+   * @param {number} [signals.firstInteractionMs] - Time to first interaction
+   * @param {string} [signals.jsToken] - JS verification token
+   * @param {string} [signals.sessionId] - Session ID for token binding
+   * @param {Array} [signals.scrollEvents] - Scroll events
+   * @returns {{
+   *   score: number,
+   *   isBot: boolean,
+   *   isSuspicious: boolean,
+   *   verdict: string,
+   *   signals: Object,
+   *   flags: string[],
+   *   breakdown: Object
+   * }}
+   */
+  function analyze(signals) {
+    signals = signals || {};
+    var allFlags = [];
+
+    // Analyze each signal type
+    var honeypot = analyzeHoneypots(signals.honeypotValues);
+    var mouse = analyzeMouseMovements(signals.mouseMovements);
+    var keys = analyzeKeystrokes(signals.keystrokes);
+    var timing = analyzeTiming(signals.timeOnPageMs, signals.firstInteractionMs);
+    var scroll = analyzeScroll(signals.scrollEvents);
+
+    // JS token verification
+    var jsValid = false;
+    var jsScore = 50; // neutral if no token submitted
+    if (signals.jsToken) {
+      jsValid = _verifyJsToken(signals.jsToken, signals.sessionId);
+      jsScore = jsValid ? 0 : 80;
+      if (!jsValid) allFlags.push('invalid_js_token');
+    } else {
+      allFlags.push('no_js_token');
+    }
+
+    // Collect all flags
+    allFlags = allFlags.concat(honeypot.filled.map(function (f) { return 'honeypot_filled:' + f; }));
+    allFlags = allFlags.concat(mouse.flags);
+    allFlags = allFlags.concat(keys.flags);
+    allFlags = allFlags.concat(timing.flags);
+    allFlags = allFlags.concat(scroll.flags);
+
+    // Honeypot is decisive — any filled field = instant bot
+    if (!honeypot.clean) {
+      return {
+        score: 100,
+        isBot: true,
+        isSuspicious: true,
+        verdict: 'bot',
+        signals: signals,
+        flags: allFlags,
+        breakdown: {
+          honeypot: honeypot.score,
+          mouse: mouse.score,
+          keystrokes: keys.score,
+          timing: timing.score,
+          scroll: scroll.score,
+          jsVerification: jsScore,
+        },
+      };
+    }
+
+    // Weighted composite score
+    // Weights reflect how reliable each signal is
+    var weights = {
+      mouse: 0.25,
+      keystrokes: 0.25,
+      timing: 0.20,
+      jsVerification: 0.15,
+      scroll: 0.15,
+    };
+
+    var composite =
+      mouse.score * weights.mouse +
+      keys.score * weights.keystrokes +
+      timing.score * weights.timing +
+      jsScore * weights.jsVerification +
+      scroll.score * weights.scroll;
+
+    composite = Math.round(composite * 10) / 10;
+
+    var isBot = composite >= botThreshold;
+    var isSuspicious = composite >= suspiciousThreshold;
+    var verdict = isBot ? 'bot' : (isSuspicious ? 'suspicious' : 'human');
+
+    return {
+      score: composite,
+      isBot: isBot,
+      isSuspicious: isSuspicious,
+      verdict: verdict,
+      signals: signals,
+      flags: allFlags,
+      breakdown: {
+        honeypot: honeypot.score,
+        mouse: mouse.score,
+        keystrokes: keys.score,
+        timing: timing.score,
+        scroll: scroll.score,
+        jsVerification: jsScore,
+      },
+    };
+  }
+
+  /**
+   * Get the honeypot field names for embedding in the form.
+   * @returns {string[]} Field names that should be hidden in the form
+   */
+  function getHoneypotFields() {
+    return honeypotFields.slice();
+  }
+
+  /**
+   * Get configuration summary.
+   * @returns {Object} Current detector configuration
+   */
+  function getConfig() {
+    return {
+      honeypotFields: honeypotFields.slice(),
+      minTimeOnPageMs: minTimeOnPageMs,
+      maxTimeOnPageMs: maxTimeOnPageMs,
+      minMouseMovements: minMouseMovements,
+      minKeystrokeVariance: minKeystrokeVariance,
+      botThreshold: botThreshold,
+      suspiciousThreshold: suspiciousThreshold,
+    };
+  }
+
+  return {
+    analyze: analyze,
+    analyzeHoneypots: analyzeHoneypots,
+    analyzeMouseMovements: analyzeMouseMovements,
+    analyzeKeystrokes: analyzeKeystrokes,
+    analyzeTiming: analyzeTiming,
+    analyzeScroll: analyzeScroll,
+    getJsToken: getJsToken,
+    getHoneypotFields: getHoneypotFields,
+    getConfig: getConfig,
+  };
+}
+
 // ── Exports ─────────────────────────────────────────────────────────
 
 var gifCaptcha = {
@@ -2764,6 +3312,7 @@ var gifCaptcha = {
   createSessionManager: createSessionManager,
   createPoolManager: createPoolManager,
   createResponseAnalyzer: createResponseAnalyzer,
+  createBotDetector: createBotDetector,
   GIF_MAX_RETRIES: GIF_MAX_RETRIES,
   GIF_RETRY_DELAY_MS: GIF_RETRY_DELAY_MS,
 };

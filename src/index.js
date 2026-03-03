@@ -2323,7 +2323,7 @@ function createPoolManager(options) {
     var picked = [];
     var usedIndices = {};
     for (var n = 0; n < count; n++) {
-      var rand = Math.random() * totalWeight;
+      var rand = (secureRandomInt(1000000) / 1000000) * totalWeight;
       var cumulative = 0;
       for (var j = 0; j < weights.length; j++) {
         if (usedIndices[j]) continue;

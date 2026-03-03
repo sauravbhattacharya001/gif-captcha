@@ -3614,6 +3614,527 @@ function createTokenVerifier(options) {
 
 // ── Exports ─────────────────────────────────────────────────────────
 
+/**
+ * createReputationTracker -- Cross-session IP/device reputation tracking
+ * for CAPTCHA challenge systems.
+ *
+ * Tracks solve/fail history per identifier (IP, device fingerprint, etc.),
+ * computes trust scores, supports allowlists/blocklists, and decays
+ * reputation over time to prevent stale entries.
+ */
+function createReputationTracker(options) {
+  options = options || {};
+  var decayHalfLifeMs = (typeof options.decayHalfLifeMs === "number" && options.decayHalfLifeMs > 0)
+    ? options.decayHalfLifeMs : 86400000; // 24 hours default
+  var maxEntries = (typeof options.maxEntries === "number" && options.maxEntries > 0)
+    ? Math.floor(options.maxEntries) : 10000;
+  var suspiciousThreshold = (typeof options.suspiciousThreshold === "number")
+    ? options.suspiciousThreshold : 0.3;
+  var trustedThreshold = (typeof options.trustedThreshold === "number")
+    ? options.trustedThreshold : 0.8;
+  var blockThreshold = (typeof options.blockThreshold === "number")
+    ? options.blockThreshold : 0.1;
+  var initialScore = (typeof options.initialScore === "number")
+    ? Math.max(0, Math.min(1, options.initialScore)) : 0.5;
+  var solveWeight = (typeof options.solveWeight === "number" && options.solveWeight > 0)
+    ? options.solveWeight : 0.1;
+  var failWeight = (typeof options.failWeight === "number" && options.failWeight > 0)
+    ? options.failWeight : 0.15;
+  var timeoutWeight = (typeof options.timeoutWeight === "number" && options.timeoutWeight > 0)
+    ? options.timeoutWeight : 0.05;
+  var burstPenalty = (typeof options.burstPenalty === "number" && options.burstPenalty >= 0)
+    ? options.burstPenalty : 0.2;
+  var burstWindowMs = (typeof options.burstWindowMs === "number" && options.burstWindowMs > 0)
+    ? options.burstWindowMs : 10000; // 10 seconds
+
+  // Use null-prototype objects to prevent prototype pollution
+  var entries = Object.create(null);
+  var allowlist = Object.create(null);
+  var blocklist = Object.create(null);
+  var entryCount = 0;
+
+  // Ordered list for LRU eviction
+  var evictionOrder = [];
+
+  function _now() {
+    return Date.now();
+  }
+
+  function _clampScore(score) {
+    return Math.max(0, Math.min(1, score));
+  }
+
+  /**
+   * Apply exponential decay to a score based on time elapsed.
+   * Score decays toward initialScore (regression to mean).
+   */
+  function _applyDecay(entry) {
+    var elapsed = _now() - entry.lastActivity;
+    if (elapsed <= 0) return entry.score;
+    // Exponential decay toward initialScore
+    var lambda = Math.LN2 / decayHalfLifeMs;
+    var decayFactor = Math.exp(-lambda * elapsed);
+    return initialScore + (entry.score - initialScore) * decayFactor;
+  }
+
+  function _ensureEntry(identifier) {
+    var id = String(identifier);
+    if (!entries[id]) {
+      // Evict oldest if at capacity
+      if (entryCount >= maxEntries) {
+        _evictOldest();
+      }
+      entries[id] = {
+        score: initialScore,
+        solves: 0,
+        fails: 0,
+        timeouts: 0,
+        totalAttempts: 0,
+        lastActivity: _now(),
+        firstSeen: _now(),
+        recentTimestamps: [],
+        tags: Object.create(null),
+      };
+      entryCount++;
+      evictionOrder.push(id);
+    }
+    return entries[id];
+  }
+
+  function _evictOldest() {
+    if (evictionOrder.length === 0) return;
+    var oldestId = evictionOrder.shift();
+    if (entries[oldestId]) {
+      delete entries[oldestId];
+      entryCount--;
+    }
+  }
+
+  /**
+   * Move an identifier to the end of the eviction order (most recent).
+   */
+  function _touchEviction(id) {
+    var idx = evictionOrder.indexOf(id);
+    if (idx !== -1) {
+      evictionOrder.splice(idx, 1);
+    }
+    evictionOrder.push(id);
+  }
+
+  /**
+   * Detect burst activity (many attempts in short window).
+   */
+  function _checkBurst(entry) {
+    var now = _now();
+    var cutoff = now - burstWindowMs;
+    // Prune old timestamps
+    var recent = [];
+    for (var i = 0; i < entry.recentTimestamps.length; i++) {
+      if (entry.recentTimestamps[i] >= cutoff) {
+        recent.push(entry.recentTimestamps[i]);
+      }
+    }
+    entry.recentTimestamps = recent;
+    entry.recentTimestamps.push(now);
+    // More than 5 attempts in burst window triggers penalty
+    return entry.recentTimestamps.length > 5;
+  }
+
+  // ── Public API ──────────────────────────────────────────────────
+
+  /**
+   * Record a successful CAPTCHA solve.
+   *
+   * @param {string} identifier - IP address or device fingerprint
+   * @returns {{ score: number, classification: string }}
+   */
+  function recordSolve(identifier) {
+    var id = String(identifier);
+    if (blocklist[id]) {
+      return { score: 0, classification: "blocked" };
+    }
+    if (allowlist[id]) {
+      return { score: 1, classification: "trusted" };
+    }
+    var entry = _ensureEntry(id);
+    entry.score = _applyDecay(entry);
+    entry.solves++;
+    entry.totalAttempts++;
+    entry.score = _clampScore(entry.score + solveWeight);
+    var isBurst = _checkBurst(entry);
+    if (isBurst) {
+      entry.score = _clampScore(entry.score - burstPenalty);
+    }
+    entry.lastActivity = _now();
+    _touchEviction(id);
+    return { score: entry.score, classification: _classify(entry.score) };
+  }
+
+  /**
+   * Record a failed CAPTCHA attempt.
+   *
+   * @param {string} identifier - IP address or device fingerprint
+   * @returns {{ score: number, classification: string }}
+   */
+  function recordFail(identifier) {
+    var id = String(identifier);
+    if (blocklist[id]) {
+      return { score: 0, classification: "blocked" };
+    }
+    if (allowlist[id]) {
+      return { score: 1, classification: "trusted" };
+    }
+    var entry = _ensureEntry(id);
+    entry.score = _applyDecay(entry);
+    entry.fails++;
+    entry.totalAttempts++;
+    entry.score = _clampScore(entry.score - failWeight);
+    var isBurst = _checkBurst(entry);
+    if (isBurst) {
+      entry.score = _clampScore(entry.score - burstPenalty);
+    }
+    entry.lastActivity = _now();
+    _touchEviction(id);
+    return { score: entry.score, classification: _classify(entry.score) };
+  }
+
+  /**
+   * Record a CAPTCHA timeout (user abandoned).
+   *
+   * @param {string} identifier - IP address or device fingerprint
+   * @returns {{ score: number, classification: string }}
+   */
+  function recordTimeout(identifier) {
+    var id = String(identifier);
+    if (blocklist[id]) {
+      return { score: 0, classification: "blocked" };
+    }
+    if (allowlist[id]) {
+      return { score: 1, classification: "trusted" };
+    }
+    var entry = _ensureEntry(id);
+    entry.score = _applyDecay(entry);
+    entry.timeouts++;
+    entry.totalAttempts++;
+    entry.score = _clampScore(entry.score - timeoutWeight);
+    entry.lastActivity = _now();
+    _touchEviction(id);
+    return { score: entry.score, classification: _classify(entry.score) };
+  }
+
+  /**
+   * Get the current reputation for an identifier.
+   *
+   * @param {string} identifier
+   * @returns {{ score: number, classification: string, solves: number, fails: number, timeouts: number, totalAttempts: number, firstSeen: number, lastActivity: number } | null}
+   */
+  function getReputation(identifier) {
+    var id = String(identifier);
+    if (blocklist[id]) {
+      return { score: 0, classification: "blocked", solves: 0, fails: 0, timeouts: 0, totalAttempts: 0, firstSeen: 0, lastActivity: 0 };
+    }
+    if (allowlist[id]) {
+      return { score: 1, classification: "trusted", solves: 0, fails: 0, timeouts: 0, totalAttempts: 0, firstSeen: 0, lastActivity: 0 };
+    }
+    if (!entries[id]) return null;
+    var entry = entries[id];
+    var decayed = _applyDecay(entry);
+    return {
+      score: decayed,
+      classification: _classify(decayed),
+      solves: entry.solves,
+      fails: entry.fails,
+      timeouts: entry.timeouts,
+      totalAttempts: entry.totalAttempts,
+      firstSeen: entry.firstSeen,
+      lastActivity: entry.lastActivity,
+    };
+  }
+
+  /**
+   * Check if an identifier should be challenged, trusted, or blocked.
+   *
+   * @param {string} identifier
+   * @returns {{ action: string, score: number, reason: string }}
+   */
+  function getAction(identifier) {
+    var id = String(identifier);
+    if (blocklist[id]) {
+      return { action: "block", score: 0, reason: "blocklisted" };
+    }
+    if (allowlist[id]) {
+      return { action: "allow", score: 1, reason: "allowlisted" };
+    }
+    if (!entries[id]) {
+      return { action: "challenge", score: initialScore, reason: "unknown_identifier" };
+    }
+    var entry = entries[id];
+    var score = _applyDecay(entry);
+    if (score <= blockThreshold) {
+      return { action: "block", score: score, reason: "reputation_too_low" };
+    }
+    if (score >= trustedThreshold) {
+      return { action: "allow", score: score, reason: "trusted_reputation" };
+    }
+    if (score <= suspiciousThreshold) {
+      return { action: "challenge_hard", score: score, reason: "suspicious_reputation" };
+    }
+    return { action: "challenge", score: score, reason: "normal_reputation" };
+  }
+
+  /**
+   * Classify a score into a human-readable category.
+   */
+  function _classify(score) {
+    if (score >= trustedThreshold) return "trusted";
+    if (score >= suspiciousThreshold) return "neutral";
+    if (score >= blockThreshold) return "suspicious";
+    return "dangerous";
+  }
+
+  /**
+   * Add an identifier to the allowlist (always trusted).
+   *
+   * @param {string} identifier
+   */
+  function addToAllowlist(identifier) {
+    var id = String(identifier);
+    allowlist[id] = true;
+    // Remove from blocklist if present
+    delete blocklist[id];
+  }
+
+  /**
+   * Add an identifier to the blocklist (always blocked).
+   *
+   * @param {string} identifier
+   */
+  function addToBlocklist(identifier) {
+    var id = String(identifier);
+    blocklist[id] = true;
+    // Remove from allowlist if present
+    delete allowlist[id];
+  }
+
+  /**
+   * Remove an identifier from the allowlist.
+   *
+   * @param {string} identifier
+   */
+  function removeFromAllowlist(identifier) {
+    delete allowlist[String(identifier)];
+  }
+
+  /**
+   * Remove an identifier from the blocklist.
+   *
+   * @param {string} identifier
+   */
+  function removeFromBlocklist(identifier) {
+    delete blocklist[String(identifier)];
+  }
+
+  /**
+   * Check if an identifier is on the allowlist.
+   *
+   * @param {string} identifier
+   * @returns {boolean}
+   */
+  function isAllowlisted(identifier) {
+    return allowlist[String(identifier)] === true;
+  }
+
+  /**
+   * Check if an identifier is on the blocklist.
+   *
+   * @param {string} identifier
+   * @returns {boolean}
+   */
+  function isBlocklisted(identifier) {
+    return blocklist[String(identifier)] === true;
+  }
+
+  /**
+   * Tag an identifier with metadata (e.g., country, user-agent class).
+   *
+   * @param {string} identifier
+   * @param {string} tag
+   * @param {*} value
+   */
+  function setTag(identifier, tag, value) {
+    var entry = _ensureEntry(identifier);
+    entry.tags[String(tag)] = value;
+  }
+
+  /**
+   * Get a tag value for an identifier.
+   *
+   * @param {string} identifier
+   * @param {string} tag
+   * @returns {*}
+   */
+  function getTag(identifier, tag) {
+    var id = String(identifier);
+    if (!entries[id]) return undefined;
+    return entries[id].tags[String(tag)];
+  }
+
+  /**
+   * Get aggregate statistics about tracked reputations.
+   *
+   * @returns {{ trackedCount: number, allowlistCount: number, blocklistCount: number, classifications: { trusted: number, neutral: number, suspicious: number, dangerous: number }, averageScore: number }}
+   */
+  function getStats() {
+    var classifications = { trusted: 0, neutral: 0, suspicious: 0, dangerous: 0 };
+    var totalScore = 0;
+    var count = 0;
+    for (var id in entries) {
+      var score = _applyDecay(entries[id]);
+      var cls = _classify(score);
+      classifications[cls]++;
+      totalScore += score;
+      count++;
+    }
+    var allowlistCount = 0;
+    for (var a in allowlist) { allowlistCount++; }
+    var blocklistCount = 0;
+    for (var b in blocklist) { blocklistCount++; }
+    return {
+      trackedCount: count,
+      allowlistCount: allowlistCount,
+      blocklistCount: blocklistCount,
+      classifications: classifications,
+      averageScore: count > 0 ? totalScore / count : 0,
+    };
+  }
+
+  /**
+   * Remove an identifier's reputation data entirely.
+   *
+   * @param {string} identifier
+   * @returns {boolean} true if the identifier was tracked
+   */
+  function forget(identifier) {
+    var id = String(identifier);
+    if (!entries[id]) return false;
+    delete entries[id];
+    entryCount--;
+    var idx = evictionOrder.indexOf(id);
+    if (idx !== -1) evictionOrder.splice(idx, 1);
+    return true;
+  }
+
+  /**
+   * Clear all reputation data, allowlists, and blocklists.
+   */
+  function reset() {
+    entries = Object.create(null);
+    allowlist = Object.create(null);
+    blocklist = Object.create(null);
+    entryCount = 0;
+    evictionOrder = [];
+  }
+
+  /**
+   * Export all reputation data for persistence.
+   *
+   * @returns {{ entries: Object, allowlist: string[], blocklist: string[] }}
+   */
+  function exportData() {
+    var exportedEntries = Object.create(null);
+    for (var id in entries) {
+      var e = entries[id];
+      exportedEntries[id] = {
+        score: e.score,
+        solves: e.solves,
+        fails: e.fails,
+        timeouts: e.timeouts,
+        totalAttempts: e.totalAttempts,
+        lastActivity: e.lastActivity,
+        firstSeen: e.firstSeen,
+        tags: JSON.parse(JSON.stringify(e.tags)),
+      };
+    }
+    var allowArr = [];
+    for (var a in allowlist) { allowArr.push(a); }
+    var blockArr = [];
+    for (var b in blocklist) { blockArr.push(b); }
+    return {
+      entries: exportedEntries,
+      allowlist: allowArr,
+      blocklist: blockArr,
+    };
+  }
+
+  /**
+   * Import previously exported reputation data.
+   *
+   * @param {{ entries?: Object, allowlist?: string[], blocklist?: string[] }} data
+   */
+  function importData(data) {
+    if (!data || typeof data !== "object") return;
+    // Import entries
+    if (data.entries && typeof data.entries === "object") {
+      for (var id in data.entries) {
+        if (typeof id !== "string") continue;
+        var src = data.entries[id];
+        if (!src || typeof src !== "object") continue;
+        var entry = _ensureEntry(id);
+        if (typeof src.score === "number") entry.score = _clampScore(src.score);
+        if (typeof src.solves === "number") entry.solves = Math.max(0, Math.floor(src.solves));
+        if (typeof src.fails === "number") entry.fails = Math.max(0, Math.floor(src.fails));
+        if (typeof src.timeouts === "number") entry.timeouts = Math.max(0, Math.floor(src.timeouts));
+        if (typeof src.totalAttempts === "number") entry.totalAttempts = Math.max(0, Math.floor(src.totalAttempts));
+        if (typeof src.lastActivity === "number") entry.lastActivity = src.lastActivity;
+        if (typeof src.firstSeen === "number") entry.firstSeen = src.firstSeen;
+        if (src.tags && typeof src.tags === "object") {
+          for (var tag in src.tags) {
+            entry.tags[String(tag)] = src.tags[tag];
+          }
+        }
+      }
+    }
+    // Import allowlist
+    if (Array.isArray(data.allowlist)) {
+      for (var i = 0; i < data.allowlist.length; i++) {
+        if (typeof data.allowlist[i] === "string") {
+          allowlist[data.allowlist[i]] = true;
+        }
+      }
+    }
+    // Import blocklist
+    if (Array.isArray(data.blocklist)) {
+      for (var i = 0; i < data.blocklist.length; i++) {
+        if (typeof data.blocklist[i] === "string") {
+          blocklist[data.blocklist[i]] = true;
+        }
+      }
+    }
+  }
+
+  return {
+    recordSolve: recordSolve,
+    recordFail: recordFail,
+    recordTimeout: recordTimeout,
+    getReputation: getReputation,
+    getAction: getAction,
+    addToAllowlist: addToAllowlist,
+    addToBlocklist: addToBlocklist,
+    removeFromAllowlist: removeFromAllowlist,
+    removeFromBlocklist: removeFromBlocklist,
+    isAllowlisted: isAllowlisted,
+    isBlocklisted: isBlocklisted,
+    setTag: setTag,
+    getTag: getTag,
+    getStats: getStats,
+    forget: forget,
+    reset: reset,
+    exportData: exportData,
+    importData: importData,
+  };
+}
+
+
 var gifCaptcha = {
   sanitize: sanitize,
   createSanitizer: createSanitizer,
@@ -3634,6 +4155,7 @@ var gifCaptcha = {
   createResponseAnalyzer: createResponseAnalyzer,
   createBotDetector: createBotDetector,
   createTokenVerifier: createTokenVerifier,
+  createReputationTracker: createReputationTracker,
   GIF_MAX_RETRIES: GIF_MAX_RETRIES,
   GIF_RETRY_DELAY_MS: GIF_RETRY_DELAY_MS,
 };

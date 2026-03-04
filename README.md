@@ -217,6 +217,15 @@ gif-captcha/
 └── LICENSE         # MIT License
 ```
 
+## 📖 API Reference
+
+See **[API.md](API.md)** for complete documentation of all 13 factory functions and utility exports, including:
+
+- **Challenge Management** — `createChallenge`, `createAttemptTracker`, `createPoolManager`
+- **Analysis & Calibration** — `createSetAnalyzer`, `createDifficultyCalibrator`, `createSecurityScorer`
+- **Session & Security** — `createSessionManager`, `createTokenVerifier`
+- **Bot Detection & Reputation** — `createBotDetector`, `createReputationTracker`, `createChallengeRouter`
+
 ## 🔮 Future Research Directions
 
 - **Temporal sequence CAPTCHAs** — Require understanding of event ordering across frames

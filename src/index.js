@@ -4709,6 +4709,474 @@ function createChallengeRouter(options) {
   };
 }
 
+// ── Sliding Window Rate Limiter ────────────────────────────────────
+
+/**
+ * createRateLimiter -- Sliding window rate limiter for CAPTCHA request throttling.
+ *
+ * Tracks per-client request counts in configurable time windows with:
+ * - Sliding window counters (not fixed buckets) for smooth limiting
+ * - Progressive delay calculation based on request pressure
+ * - Burst detection with configurable thresholds
+ * - Client allowlist/blocklist
+ * - Automatic cleanup of expired entries (LRU eviction)
+ * - State export/import for persistence
+ * - Batch check for multiple clients
+ *
+ * @param {Object} [options]
+ * @param {number} [options.windowMs=60000]         - Window size in milliseconds (default: 60s)
+ * @param {number} [options.maxRequests=10]          - Max requests per window
+ * @param {number} [options.burstThreshold=5]        - Requests in burstWindowMs to trigger burst
+ * @param {number} [options.burstWindowMs=5000]      - Burst detection window (default: 5s)
+ * @param {number} [options.maxDelay=30000]          - Maximum progressive delay in ms
+ * @param {number} [options.baseDelay=1000]          - Base delay for progressive calculation
+ * @param {number} [options.maxClients=10000]        - Max tracked clients (LRU eviction)
+ * @param {string[]} [options.allowlist=[]]          - Client IDs that bypass limiting
+ * @param {string[]} [options.blocklist=[]]          - Client IDs always blocked
+ * @returns {Object} Rate limiter instance
+ */
+function createRateLimiter(options) {
+  options = options || {};
+
+  var windowMs = options.windowMs != null && options.windowMs > 0 ? options.windowMs : 60000;
+  var maxRequests = options.maxRequests != null && options.maxRequests > 0 ? options.maxRequests : 10;
+  var burstThreshold = options.burstThreshold != null && options.burstThreshold > 0 ? options.burstThreshold : 5;
+  var burstWindowMs = options.burstWindowMs != null && options.burstWindowMs > 0 ? options.burstWindowMs : 5000;
+  var maxDelay = options.maxDelay != null && options.maxDelay >= 0 ? options.maxDelay : 30000;
+  var baseDelay = options.baseDelay != null && options.baseDelay >= 0 ? options.baseDelay : 1000;
+  var maxClients = options.maxClients != null && options.maxClients > 0 ? options.maxClients : 10000;
+
+  // Sets for O(1) lookup
+  var allowSet = {};
+  var blockSet = {};
+  (options.allowlist || []).forEach(function (id) { allowSet[id] = true; });
+  (options.blocklist || []).forEach(function (id) { blockSet[id] = true; });
+
+  // clientId -> { timestamps: number[], lastAccess: number }
+  var clients = {};
+  var clientCount = 0;
+  var clientOrder = []; // LRU order (oldest first)
+
+  // Stats
+  var totalChecks = 0;
+  var totalAllowed = 0;
+  var totalLimited = 0;
+  var totalBlocked = 0;
+  var totalBursts = 0;
+
+  /**
+   * Remove expired timestamps from a client's record.
+   */
+  function pruneTimestamps(record, now) {
+    var cutoff = now - windowMs;
+    var i = 0;
+    while (i < record.timestamps.length && record.timestamps[i] <= cutoff) {
+      i++;
+    }
+    if (i > 0) {
+      record.timestamps = record.timestamps.slice(i);
+    }
+  }
+
+  /**
+   * Evict oldest clients when over maxClients.
+   */
+  function evictIfNeeded() {
+    while (clientCount > maxClients && clientOrder.length > 0) {
+      var oldest = clientOrder.shift();
+      if (clients[oldest]) {
+        delete clients[oldest];
+        clientCount--;
+      }
+    }
+  }
+
+  /**
+   * Move client to end of LRU order.
+   */
+  function touchClient(clientId) {
+    var idx = clientOrder.indexOf(clientId);
+    if (idx !== -1) {
+      clientOrder.splice(idx, 1);
+    }
+    clientOrder.push(clientId);
+  }
+
+  /**
+   * Get or create client record.
+   */
+  function getRecord(clientId, now) {
+    if (!clients[clientId]) {
+      clients[clientId] = { timestamps: [], lastAccess: now };
+      clientCount++;
+      evictIfNeeded();
+    }
+    clients[clientId].lastAccess = now;
+    touchClient(clientId);
+    return clients[clientId];
+  }
+
+  /**
+   * Count timestamps in last N ms.
+   */
+  function countInWindow(timestamps, now, windowSize) {
+    var cutoff = now - windowSize;
+    var count = 0;
+    for (var i = timestamps.length - 1; i >= 0; i--) {
+      if (timestamps[i] > cutoff) count++;
+      else break;
+    }
+    return count;
+  }
+
+  /**
+   * Calculate progressive delay based on how far over the limit.
+   * Uses exponential curve: baseDelay * 2^(overage-1), capped at maxDelay.
+   */
+  function calculateDelay(requestCount) {
+    if (requestCount <= maxRequests) return 0;
+    var overage = requestCount - maxRequests;
+    var delay = baseDelay * Math.pow(2, overage - 1);
+    return Math.min(delay, maxDelay);
+  }
+
+  /**
+   * Check if a client is rate-limited. Records the attempt.
+   *
+   * @param {string} clientId - Unique client identifier (IP, session, etc.)
+   * @param {Object} [opts]
+   * @param {number} [opts.now]      - Current timestamp (for testing)
+   * @param {boolean} [opts.dryRun]  - If true, don't record the attempt
+   * @returns {{ allowed: boolean, remaining: number, resetMs: number,
+   *             delay: number, burst: boolean, reason: string, retryAfter: number }}
+   */
+  function check(clientId, opts) {
+    opts = opts || {};
+    var now = opts.now != null ? opts.now : Date.now();
+
+    totalChecks++;
+
+    // Allowlist bypass
+    if (allowSet[clientId]) {
+      totalAllowed++;
+      return {
+        allowed: true,
+        remaining: maxRequests,
+        resetMs: 0,
+        delay: 0,
+        burst: false,
+        reason: "allowlisted",
+        retryAfter: 0,
+      };
+    }
+
+    // Blocklist reject
+    if (blockSet[clientId]) {
+      totalBlocked++;
+      return {
+        allowed: false,
+        remaining: 0,
+        resetMs: windowMs,
+        delay: maxDelay,
+        burst: false,
+        reason: "blocklisted",
+        retryAfter: windowMs,
+      };
+    }
+
+    var record = getRecord(clientId, now);
+    pruneTimestamps(record, now);
+
+    var currentCount = record.timestamps.length;
+
+    // Check burst
+    var burstCount = countInWindow(record.timestamps, now, burstWindowMs);
+    var isBurst = burstCount >= burstThreshold;
+    if (isBurst) totalBursts++;
+
+    // Record attempt (unless dry run)
+    if (!opts.dryRun) {
+      record.timestamps.push(now);
+      currentCount++;
+    }
+
+    var isLimited = currentCount > maxRequests || isBurst;
+
+    // Calculate reset time
+    var resetMs = 0;
+    if (record.timestamps.length > 0) {
+      resetMs = Math.max(0, record.timestamps[0] + windowMs - now);
+    }
+
+    var delay = calculateDelay(currentCount);
+    if (isBurst && delay < baseDelay) {
+      delay = baseDelay; // minimum delay on burst
+    }
+
+    var retryAfter = isLimited ? Math.max(delay, resetMs > 0 ? Math.min(resetMs, windowMs) : windowMs) : 0;
+
+    if (isLimited) {
+      totalLimited++;
+      return {
+        allowed: false,
+        remaining: 0,
+        resetMs: resetMs,
+        delay: delay,
+        burst: isBurst,
+        reason: isBurst ? "burst_detected" : "rate_limited",
+        retryAfter: retryAfter,
+      };
+    }
+
+    totalAllowed++;
+    return {
+      allowed: true,
+      remaining: Math.max(0, maxRequests - currentCount),
+      resetMs: resetMs,
+      delay: 0,
+      burst: false,
+      reason: "ok",
+      retryAfter: 0,
+    };
+  }
+
+  /**
+   * Check multiple clients at once.
+   * @param {string[]} clientIds
+   * @param {Object} [opts]
+   * @returns {Object} Map of clientId -> check result
+   */
+  function checkBatch(clientIds, opts) {
+    var results = {};
+    for (var i = 0; i < clientIds.length; i++) {
+      results[clientIds[i]] = check(clientIds[i], opts);
+    }
+    return results;
+  }
+
+  /**
+   * Get current status for a client without recording an attempt.
+   * @param {string} clientId
+   * @param {Object} [opts]
+   * @returns {{ count: number, remaining: number, burst: boolean, limited: boolean }}
+   */
+  function peek(clientId, opts) {
+    opts = opts || {};
+    var now = (opts.now != null ? opts.now : Date.now());
+
+    if (allowSet[clientId]) {
+      return { count: 0, remaining: maxRequests, burst: false, limited: false };
+    }
+    if (blockSet[clientId]) {
+      return { count: 0, remaining: 0, burst: false, limited: true };
+    }
+
+    var record = clients[clientId];
+    if (!record) {
+      return { count: 0, remaining: maxRequests, burst: false, limited: false };
+    }
+
+    pruneTimestamps(record, now);
+    var count = record.timestamps.length;
+    var burstCount = countInWindow(record.timestamps, now, burstWindowMs);
+
+    return {
+      count: count,
+      remaining: Math.max(0, maxRequests - count),
+      burst: burstCount >= burstThreshold,
+      limited: count >= maxRequests || burstCount >= burstThreshold,
+    };
+  }
+
+  /**
+   * Reset a specific client's rate limit state.
+   * @param {string} clientId
+   */
+  function resetClient(clientId) {
+    if (clients[clientId]) {
+      delete clients[clientId];
+      clientCount--;
+      var idx = clientOrder.indexOf(clientId);
+      if (idx !== -1) clientOrder.splice(idx, 1);
+    }
+  }
+
+  /**
+   * Add client(s) to allowlist.
+   * @param {string|string[]} ids
+   */
+  function allow(ids) {
+    var arr = Array.isArray(ids) ? ids : [ids];
+    arr.forEach(function (id) {
+      allowSet[id] = true;
+      delete blockSet[id];
+    });
+  }
+
+  /**
+   * Add client(s) to blocklist.
+   * @param {string|string[]} ids
+   */
+  function block(ids) {
+    var arr = Array.isArray(ids) ? ids : [ids];
+    arr.forEach(function (id) {
+      blockSet[id] = true;
+      delete allowSet[id];
+    });
+  }
+
+  /**
+   * Remove client from both allowlist and blocklist.
+   * @param {string} clientId
+   */
+  function unlist(clientId) {
+    delete allowSet[clientId];
+    delete blockSet[clientId];
+  }
+
+  /**
+   * Get aggregate stats.
+   * @returns {Object}
+   */
+  function getStats() {
+    return {
+      totalChecks: totalChecks,
+      totalAllowed: totalAllowed,
+      totalLimited: totalLimited,
+      totalBlocked: totalBlocked,
+      totalBursts: totalBursts,
+      activeClients: clientCount,
+      allowlistSize: Object.keys(allowSet).length,
+      blocklistSize: Object.keys(blockSet).length,
+      limitRate: totalChecks > 0 ? totalLimited / totalChecks : 0,
+    };
+  }
+
+  /**
+   * Export state for persistence.
+   * @returns {Object}
+   */
+  function exportState() {
+    var clientData = {};
+    Object.keys(clients).forEach(function (id) {
+      clientData[id] = {
+        timestamps: clients[id].timestamps.slice(),
+        lastAccess: clients[id].lastAccess,
+      };
+    });
+    return {
+      clients: clientData,
+      allowlist: Object.keys(allowSet),
+      blocklist: Object.keys(blockSet),
+      stats: getStats(),
+    };
+  }
+
+  /**
+   * Import previously exported state.
+   * @param {Object} state
+   */
+  function importState(state) {
+    if (!state || typeof state !== "object") return;
+
+    if (state.clients) {
+      clients = {};
+      clientOrder = [];
+      clientCount = 0;
+      Object.keys(state.clients).forEach(function (id) {
+        clients[id] = {
+          timestamps: (state.clients[id].timestamps || []).slice(),
+          lastAccess: state.clients[id].lastAccess || 0,
+        };
+        clientOrder.push(id);
+        clientCount++;
+      });
+    }
+
+    if (state.allowlist) {
+      allowSet = {};
+      state.allowlist.forEach(function (id) { allowSet[id] = true; });
+    }
+    if (state.blocklist) {
+      blockSet = {};
+      state.blocklist.forEach(function (id) { blockSet[id] = true; });
+    }
+  }
+
+  /**
+   * Get the most active clients by request count.
+   * @param {number} [n=10]
+   * @param {Object} [opts]
+   * @returns {Array<{clientId: string, count: number, lastAccess: number}>}
+   */
+  function topClients(n, opts) {
+    opts = opts || {};
+    var now = (opts.now != null ? opts.now : Date.now());
+    n = n || 10;
+
+    var entries = [];
+    Object.keys(clients).forEach(function (id) {
+      pruneTimestamps(clients[id], now);
+      if (clients[id].timestamps.length > 0) {
+        entries.push({
+          clientId: id,
+          count: clients[id].timestamps.length,
+          lastAccess: clients[id].lastAccess,
+        });
+      }
+    });
+
+    entries.sort(function (a, b) { return b.count - a.count; });
+    return entries.slice(0, n);
+  }
+
+  /**
+   * Reset all state.
+   */
+  function reset() {
+    clients = {};
+    clientOrder = [];
+    clientCount = 0;
+    totalChecks = 0;
+    totalAllowed = 0;
+    totalLimited = 0;
+    totalBlocked = 0;
+    totalBursts = 0;
+  }
+
+  /**
+   * Get configuration.
+   * @returns {Object}
+   */
+  function getConfig() {
+    return {
+      windowMs: windowMs,
+      maxRequests: maxRequests,
+      burstThreshold: burstThreshold,
+      burstWindowMs: burstWindowMs,
+      maxDelay: maxDelay,
+      baseDelay: baseDelay,
+      maxClients: maxClients,
+    };
+  }
+
+  return {
+    check: check,
+    checkBatch: checkBatch,
+    peek: peek,
+    resetClient: resetClient,
+    allow: allow,
+    block: block,
+    unlist: unlist,
+    getStats: getStats,
+    topClients: topClients,
+    exportState: exportState,
+    importState: importState,
+    reset: reset,
+    getConfig: getConfig,
+  };
+}
+
 var gifCaptcha = {
   sanitize: sanitize,
   createSanitizer: createSanitizer,
@@ -4731,6 +5199,7 @@ var gifCaptcha = {
   createTokenVerifier: createTokenVerifier,
   createReputationTracker: createReputationTracker,
   createChallengeRouter: createChallengeRouter,
+  createRateLimiter: createRateLimiter,
   GIF_MAX_RETRIES: GIF_MAX_RETRIES,
   GIF_RETRY_DELAY_MS: GIF_RETRY_DELAY_MS,
 };

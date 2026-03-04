@@ -6421,6 +6421,272 @@ function createAdaptiveTimeout(options) {
   };
 }
 
+// ── Audit Trail ──────────────────────────────────────────────────
+//
+// Structured, queryable log of all CAPTCHA lifecycle events for
+// compliance auditing, forensic analysis, and debugging.
+// Events are stored in a bounded ring buffer with automatic eviction.
+
+/**
+ * @param {Object} [options]
+ * @param {number} [options.maxEntries=10000]   - Maximum stored events (ring buffer)
+ * @param {boolean} [options.includeMetadata=true] - Attach extra metadata to events
+ * @param {Function} [options.onEvent]          - Optional callback for each event
+ * @param {string[]} [options.enabledTypes]     - If set, only record these event types
+ * @returns {Object} Audit trail instance
+ */
+function createAuditTrail(options) {
+  options = options || {};
+
+  var maxEntries = options.maxEntries != null && options.maxEntries > 0
+    ? Math.floor(options.maxEntries) : 10000;
+  var includeMetadata = options.includeMetadata !== false;
+  var onEvent = typeof options.onEvent === "function" ? options.onEvent : null;
+  var enabledTypes = null;
+  if (Array.isArray(options.enabledTypes) && options.enabledTypes.length > 0) {
+    enabledTypes = Object.create(null);
+    for (var i = 0; i < options.enabledTypes.length; i++) {
+      enabledTypes[options.enabledTypes[i]] = true;
+    }
+  }
+
+  var EVENT_TYPES = [
+    "challenge.created",
+    "challenge.served",
+    "challenge.solved",
+    "challenge.failed",
+    "challenge.expired",
+    "challenge.refreshed",
+    "session.started",
+    "session.ended",
+    "rate.limited",
+    "rate.blocked",
+    "bot.detected",
+    "bot.suspected",
+    "reputation.updated",
+    "reputation.blocked",
+    "incident.created",
+    "incident.escalated",
+    "incident.closed",
+    "timeout.calculated",
+    "fingerprint.generated",
+    "config.changed",
+  ];
+
+  var entries = [];
+  var nextId = 1;
+  var totalLogged = 0;
+  var evictedCount = 0;
+  var typeCounts = Object.create(null);
+
+  function record(type, data, meta) {
+    if (typeof type !== "string" || type.length === 0) return null;
+    if (enabledTypes && !enabledTypes[type]) return null;
+
+    var entry = {
+      id: nextId++,
+      type: type,
+      timestamp: Date.now(),
+      data: data || null,
+    };
+
+    if (includeMetadata && meta) {
+      entry.meta = {
+        clientId: meta.clientId || null,
+        sessionId: meta.sessionId || null,
+        ip: meta.ip || null,
+        userAgent: meta.userAgent || null,
+      };
+      var metaKeys = Object.keys(meta);
+      for (var i = 0; i < metaKeys.length; i++) {
+        var k = metaKeys[i];
+        if (!(k in entry.meta)) {
+          entry.meta[k] = meta[k];
+        }
+      }
+    }
+
+    if (entries.length >= maxEntries) {
+      entries.shift();
+      evictedCount++;
+    }
+    entries.push(entry);
+    totalLogged++;
+
+    typeCounts[type] = (typeCounts[type] || 0) + 1;
+
+    if (onEvent) {
+      try { onEvent(entry); } catch (e) { /* swallow callback errors */ }
+    }
+
+    return entry;
+  }
+
+  function query(q) {
+    q = q || {};
+    var limit = q.limit != null && q.limit > 0 ? q.limit : 100;
+    var results = [];
+
+    for (var i = entries.length - 1; i >= 0 && results.length < limit; i--) {
+      var e = entries[i];
+      if (q.type && e.type !== q.type) continue;
+      if (q.typePrefix && e.type.indexOf(q.typePrefix) !== 0) continue;
+      if (q.since && e.timestamp < q.since) continue;
+      if (q.until && e.timestamp > q.until) continue;
+      if (q.clientId && (!e.meta || e.meta.clientId !== q.clientId)) continue;
+      if (q.sessionId && (!e.meta || e.meta.sessionId !== q.sessionId)) continue;
+      results.push(e);
+    }
+
+    return results;
+  }
+
+  function recent(n) {
+    n = n != null && n > 0 ? n : 10;
+    var start = Math.max(0, entries.length - n);
+    var result = [];
+    for (var i = entries.length - 1; i >= start; i--) {
+      result.push(entries[i]);
+    }
+    return result;
+  }
+
+  function getById(id) {
+    if (entries.length === 0) return null;
+    var firstId = entries[0].id;
+    var idx = id - firstId;
+    if (idx < 0 || idx >= entries.length) return null;
+    var entry = entries[idx];
+    return entry && entry.id === id ? entry : null;
+  }
+
+  function getStats() {
+    var typeCountsCopy = Object.create(null);
+    var keys = Object.keys(typeCounts);
+    for (var i = 0; i < keys.length; i++) {
+      typeCountsCopy[keys[i]] = typeCounts[keys[i]];
+    }
+    return {
+      totalLogged: totalLogged,
+      currentSize: entries.length,
+      maxEntries: maxEntries,
+      evictedCount: evictedCount,
+      typeCounts: typeCountsCopy,
+      oldestTimestamp: entries.length > 0 ? entries[0].timestamp : null,
+      newestTimestamp: entries.length > 0 ? entries[entries.length - 1].timestamp : null,
+    };
+  }
+
+  function countByType(opts) {
+    opts = opts || {};
+    var counts = Object.create(null);
+
+    if (!opts.since && !opts.until) {
+      var keys = Object.keys(typeCounts);
+      for (var i = 0; i < keys.length; i++) {
+        counts[keys[i]] = typeCounts[keys[i]];
+      }
+      return counts;
+    }
+
+    for (var j = 0; j < entries.length; j++) {
+      var e = entries[j];
+      if (opts.since && e.timestamp < opts.since) continue;
+      if (opts.until && e.timestamp > opts.until) continue;
+      counts[e.type] = (counts[e.type] || 0) + 1;
+    }
+    return counts;
+  }
+
+  function timeline(opts) {
+    if (!opts || !opts.bucketMs || opts.bucketMs <= 0) {
+      return { buckets: [], total: 0 };
+    }
+
+    var since = opts.since || (entries.length > 0 ? entries[0].timestamp : 0);
+    var until = opts.until || (entries.length > 0 ? entries[entries.length - 1].timestamp : 0);
+    if (since > until) return { buckets: [], total: 0 };
+
+    var buckets = [];
+    var numBuckets = Math.ceil((until - since + 1) / opts.bucketMs);
+    if (numBuckets > 1000) numBuckets = 1000;
+
+    for (var b = 0; b < numBuckets; b++) {
+      buckets.push({
+        start: since + b * opts.bucketMs,
+        end: since + (b + 1) * opts.bucketMs - 1,
+        count: 0,
+      });
+    }
+
+    var total = 0;
+    for (var i = 0; i < entries.length; i++) {
+      var e = entries[i];
+      if (e.timestamp < since || e.timestamp > until) continue;
+      if (opts.type && e.type !== opts.type) continue;
+      var bucketIdx = Math.floor((e.timestamp - since) / opts.bucketMs);
+      if (bucketIdx >= 0 && bucketIdx < buckets.length) {
+        buckets[bucketIdx].count++;
+        total++;
+      }
+    }
+
+    return { buckets: buckets, total: total };
+  }
+
+  function exportState() {
+    return {
+      entries: entries.slice(),
+      nextId: nextId,
+      totalLogged: totalLogged,
+      evictedCount: evictedCount,
+      typeCounts: countByType(),
+    };
+  }
+
+  function importState(state) {
+    if (!state || typeof state !== "object") return;
+    if (Array.isArray(state.entries)) {
+      entries = state.entries.slice();
+      if (entries.length > maxEntries) {
+        var excess = entries.length - maxEntries;
+        entries = entries.slice(excess);
+        evictedCount += excess;
+      }
+    }
+    if (typeof state.nextId === "number") nextId = state.nextId;
+    if (typeof state.totalLogged === "number") totalLogged = state.totalLogged;
+    if (typeof state.evictedCount === "number") evictedCount = state.evictedCount;
+    typeCounts = Object.create(null);
+    for (var i = 0; i < entries.length; i++) {
+      var t = entries[i].type;
+      typeCounts[t] = (typeCounts[t] || 0) + 1;
+    }
+  }
+
+  function reset() {
+    entries = [];
+    nextId = 1;
+    totalLogged = 0;
+    evictedCount = 0;
+    typeCounts = Object.create(null);
+  }
+
+  return {
+    record: record,
+    query: query,
+    recent: recent,
+    getById: getById,
+    getStats: getStats,
+    countByType: countByType,
+    timeline: timeline,
+    exportState: exportState,
+    importState: importState,
+    reset: reset,
+    EVENT_TYPES: EVENT_TYPES,
+  };
+}
+
 var gifCaptcha = {
   sanitize: sanitize,
   createSanitizer: createSanitizer,
@@ -6447,6 +6713,7 @@ var gifCaptcha = {
   createClientFingerprinter: createClientFingerprinter,
   createIncidentCorrelator: createIncidentCorrelator,
   createAdaptiveTimeout: createAdaptiveTimeout,
+  createAuditTrail: createAuditTrail,
   GIF_MAX_RETRIES: GIF_MAX_RETRIES,
   GIF_RETRY_DELAY_MS: GIF_RETRY_DELAY_MS,
 };

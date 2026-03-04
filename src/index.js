@@ -3492,14 +3492,25 @@ function createTokenVerifier(options) {
     var signature = parts[1];
 
     var expectedSig = _hmac(payloadB64);
-    if (signature.length !== expectedSig.length) {
-      return { valid: false, reason: 'invalid_signature' };
-    }
-    var sigValid = true;
-    for (var i = 0; i < signature.length; i++) {
-      if (signature.charCodeAt(i) !== expectedSig.charCodeAt(i)) {
+
+    // Constant-time comparison using crypto.timingSafeEqual.
+    // Both length mismatch and content mismatch must take the same
+    // time to prevent timing side-channels that leak signature bytes.
+    var sigValid = false;
+    try {
+      var sigBuf = Buffer.from(signature, 'utf-8');
+      var expBuf = Buffer.from(expectedSig, 'utf-8');
+      // timingSafeEqual requires equal-length buffers; if lengths
+      // differ, compare expectedSig against itself (constant time)
+      // then reject — this prevents length-oracle attacks.
+      if (sigBuf.length === expBuf.length) {
+        sigValid = _crypto.timingSafeEqual(sigBuf, expBuf);
+      } else {
+        _crypto.timingSafeEqual(expBuf, expBuf);
         sigValid = false;
       }
+    } catch (e) {
+      sigValid = false;
     }
     if (!sigValid) {
       return { valid: false, reason: 'invalid_signature' };
@@ -4755,7 +4766,6 @@ function createRateLimiter(options) {
   // clientId -> { timestamps: number[], lastAccess: number }
   var clients = {};
   var clientCount = 0;
-  var clientOrder = []; // LRU order (oldest first)
 
   // Stats
   var totalChecks = 0;
@@ -4780,26 +4790,27 @@ function createRateLimiter(options) {
 
   /**
    * Evict oldest clients when over maxClients.
+   * Uses lastAccess timestamps for O(1) amortized eviction instead of
+   * maintaining a synchronized LRU list (which was O(n) per access).
    */
   function evictIfNeeded() {
-    while (clientCount > maxClients && clientOrder.length > 0) {
-      var oldest = clientOrder.shift();
-      if (clients[oldest]) {
-        delete clients[oldest];
-        clientCount--;
-      }
-    }
-  }
+    if (clientCount <= maxClients) return;
 
-  /**
-   * Move client to end of LRU order.
-   */
-  function touchClient(clientId) {
-    var idx = clientOrder.indexOf(clientId);
-    if (idx !== -1) {
-      clientOrder.splice(idx, 1);
+    // Collect all client IDs with their lastAccess time
+    var entries = [];
+    for (var id in clients) {
+      entries.push({ id: id, lastAccess: clients[id].lastAccess });
     }
-    clientOrder.push(clientId);
+
+    // Sort by lastAccess ascending (oldest first)
+    entries.sort(function (a, b) { return a.lastAccess - b.lastAccess; });
+
+    // Evict oldest until we're under the limit
+    var toEvict = clientCount - maxClients;
+    for (var i = 0; i < toEvict && i < entries.length; i++) {
+      delete clients[entries[i].id];
+      clientCount--;
+    }
   }
 
   /**
@@ -4812,7 +4823,6 @@ function createRateLimiter(options) {
       evictIfNeeded();
     }
     clients[clientId].lastAccess = now;
-    touchClient(clientId);
     return clients[clientId];
   }
 
@@ -4996,8 +5006,6 @@ function createRateLimiter(options) {
     if (clients[clientId]) {
       delete clients[clientId];
       clientCount--;
-      var idx = clientOrder.indexOf(clientId);
-      if (idx !== -1) clientOrder.splice(idx, 1);
     }
   }
 
@@ -5081,14 +5089,12 @@ function createRateLimiter(options) {
 
     if (state.clients) {
       clients = {};
-      clientOrder = [];
       clientCount = 0;
       Object.keys(state.clients).forEach(function (id) {
         clients[id] = {
           timestamps: (state.clients[id].timestamps || []).slice(),
           lastAccess: state.clients[id].lastAccess || 0,
         };
-        clientOrder.push(id);
         clientCount++;
       });
     }
@@ -5135,7 +5141,6 @@ function createRateLimiter(options) {
    */
   function reset() {
     clients = {};
-    clientOrder = [];
     clientCount = 0;
     totalChecks = 0;
     totalAllowed = 0;

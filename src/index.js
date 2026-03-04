@@ -5614,6 +5614,394 @@ function createClientFingerprinter(options) {
   };
 }
 
+// ── Incident Correlator ─────────────────────────────────────────────
+
+/**
+ * Create a security incident correlator that aggregates signals from
+ * multiple detection systems (bot detector, rate limiter, reputation
+ * tracker, response analyzer) into unified security incidents with
+ * severity classification and alert generation.
+ *
+ * In production CAPTCHA deployments, individual signals (a failed
+ * challenge, a rate limit trip, a low reputation score) may each be
+ * benign. The correlator identifies *patterns* across signals that
+ * indicate coordinated attacks: credential stuffing, CAPTCHA farming,
+ * distributed bot networks, or targeted abuse.
+ *
+ * @param {object} [options]
+ * @param {number} [options.correlationWindowMs=60000] - Time window for
+ *   grouping related signals into a single incident (default: 60s)
+ * @param {number} [options.maxIncidents=1000] - Max stored incidents
+ *   before oldest are evicted (LRU)
+ * @param {number} [options.maxSignalsPerIncident=50] - Max signals per
+ *   incident before auto-escalation
+ * @param {object} [options.thresholds] - Signal count thresholds for
+ *   severity escalation
+ * @param {number} [options.thresholds.warning=3] - Signals to trigger
+ *   WARNING severity
+ * @param {number} [options.thresholds.high=6] - Signals to trigger HIGH
+ * @param {number} [options.thresholds.critical=10] - Signals to trigger
+ *   CRITICAL
+ * @param {function} [options.onAlert] - Callback fired when an incident
+ *   reaches WARNING or above: onAlert(incident)
+ * @param {function} [options.onEscalation] - Callback fired when an
+ *   incident's severity increases: onEscalation(incident, oldSeverity)
+ * @returns {object} Correlator instance
+ */
+function createIncidentCorrelator(options) {
+  options = options || {};
+
+  var correlationWindowMs = options.correlationWindowMs != null && options.correlationWindowMs > 0
+    ? options.correlationWindowMs : 60000;
+  var maxIncidents = options.maxIncidents != null && options.maxIncidents > 0
+    ? options.maxIncidents : 1000;
+  var maxSignalsPerIncident = options.maxSignalsPerIncident != null && options.maxSignalsPerIncident > 0
+    ? options.maxSignalsPerIncident : 50;
+
+  var thresholds = options.thresholds || {};
+  var warningThreshold = thresholds.warning != null && thresholds.warning > 0 ? thresholds.warning : 3;
+  var highThreshold = thresholds.high != null && thresholds.high > 0 ? thresholds.high : 6;
+  var criticalThreshold = thresholds.critical != null && thresholds.critical > 0 ? thresholds.critical : 10;
+
+  var onAlert = typeof options.onAlert === "function" ? options.onAlert : null;
+  var onEscalation = typeof options.onEscalation === "function" ? options.onEscalation : null;
+
+  // Severity levels (ordered)
+  var SEVERITY = { INFO: "info", WARNING: "warning", HIGH: "high", CRITICAL: "critical" };
+  var SEVERITY_ORDER = { info: 0, warning: 1, high: 2, critical: 3 };
+
+  // Signal types recognized by the correlator
+  var SIGNAL_TYPES = {
+    CHALLENGE_FAILED: "challenge_failed",
+    CHALLENGE_TIMEOUT: "challenge_timeout",
+    RATE_LIMITED: "rate_limited",
+    BOT_DETECTED: "bot_detected",
+    REPUTATION_DROP: "reputation_drop",
+    SUSPICIOUS_FINGERPRINT: "suspicious_fingerprint",
+    TOKEN_INVALID: "token_invalid",
+    TOKEN_REPLAY: "token_replay",
+    BURST_DETECTED: "burst_detected",
+    RAPID_ATTEMPTS: "rapid_attempts",
+    CUSTOM: "custom",
+  };
+
+  // clientId -> incidentId mapping for correlation
+  var clientIncidents = {};
+  // incidentId -> incident object
+  var incidents = {};
+  var incidentOrder = []; // oldest first for LRU eviction
+  var nextIncidentId = 1;
+
+  // Global stats
+  var stats = {
+    totalSignals: 0,
+    totalIncidents: 0,
+    totalAlerts: 0,
+    totalEscalations: 0,
+    signalsByType: {},
+    incidentsBySeverity: { info: 0, warning: 0, high: 0, critical: 0 },
+  };
+
+  /**
+   * Compute severity from signal count.
+   */
+  function computeSeverity(signalCount) {
+    if (signalCount >= criticalThreshold) return SEVERITY.CRITICAL;
+    if (signalCount >= highThreshold) return SEVERITY.HIGH;
+    if (signalCount >= warningThreshold) return SEVERITY.WARNING;
+    return SEVERITY.INFO;
+  }
+
+  /**
+   * Evict oldest incidents when over maxIncidents.
+   */
+  function evictIfNeeded() {
+    while (incidentOrder.length > maxIncidents) {
+      var oldId = incidentOrder.shift();
+      var old = incidents[oldId];
+      if (old) {
+        if (old.clientId && clientIncidents[old.clientId] === oldId) {
+          delete clientIncidents[old.clientId];
+        }
+        if (stats.incidentsBySeverity[old.severity] > 0) {
+          stats.incidentsBySeverity[old.severity]--;
+        }
+        delete incidents[oldId];
+      }
+    }
+  }
+
+  /**
+   * Get a read-only summary of an incident.
+   */
+  function getIncidentSummary(incident) {
+    return {
+      id: incident.id,
+      clientId: incident.clientId,
+      severity: incident.severity,
+      status: incident.status,
+      signalCount: incident.signalCount,
+      weightedCount: incident.weightedCount,
+      signalTypes: JSON.parse(JSON.stringify(incident.signalTypes)),
+      firstSignalAt: incident.firstSignalAt,
+      lastSignalAt: incident.lastSignalAt,
+      durationMs: incident.lastSignalAt - incident.firstSignalAt,
+      signals: incident.signals.map(function (s) {
+        return {
+          type: s.type,
+          description: s.description,
+          timestamp: s.timestamp,
+          weight: s.weight,
+        };
+      }),
+    };
+  }
+
+  /**
+   * Ingest a security signal. The correlator groups signals from the
+   * same client within the correlation window into a single incident.
+   *
+   * @param {object} signal
+   * @param {string} signal.type - One of SIGNAL_TYPES
+   * @param {string} signal.clientId - Client/session identifier
+   * @param {string} [signal.description] - Human-readable description
+   * @param {object} [signal.metadata] - Additional context
+   * @param {number} [signal.timestamp] - Signal time (default: Date.now())
+   * @param {number} [signal.weight] - Signal importance multiplier (default: 1)
+   * @returns {object} { incidentId, severity, isNew, escalated }
+   */
+  function ingest(signal) {
+    if (!signal || !signal.type || !signal.clientId) {
+      return { error: "Signal must have type and clientId" };
+    }
+
+    var now = signal.timestamp || Date.now();
+    var weight = signal.weight != null && signal.weight > 0 ? signal.weight : 1;
+
+    stats.totalSignals++;
+    stats.signalsByType[signal.type] = (stats.signalsByType[signal.type] || 0) + 1;
+
+    var existingId = clientIncidents[signal.clientId];
+    var incident = existingId != null ? incidents[existingId] : null;
+
+    // Close incident if outside correlation window
+    if (incident && (now - incident.lastSignalAt) > correlationWindowMs) {
+      incident.status = "closed";
+      incident = null;
+      existingId = null;
+    }
+
+    var isNew = false;
+    var escalated = false;
+    var oldSeverity = null;
+
+    if (!incident) {
+      isNew = true;
+      var id = nextIncidentId++;
+      incident = {
+        id: id,
+        clientId: signal.clientId,
+        severity: SEVERITY.INFO,
+        status: "open",
+        signals: [],
+        signalCount: 0,
+        weightedCount: 0,
+        signalTypes: {},
+        firstSignalAt: now,
+        lastSignalAt: now,
+        createdAt: now,
+      };
+      incidents[id] = incident;
+      incidentOrder.push(id);
+      clientIncidents[signal.clientId] = id;
+      stats.totalIncidents++;
+      stats.incidentsBySeverity.info++;
+      evictIfNeeded();
+    }
+
+    oldSeverity = incident.severity;
+    incident.lastSignalAt = now;
+    incident.signalCount++;
+    incident.weightedCount += weight;
+    incident.signalTypes[signal.type] = (incident.signalTypes[signal.type] || 0) + 1;
+
+    if (incident.signals.length < maxSignalsPerIncident) {
+      incident.signals.push({
+        type: signal.type,
+        description: signal.description || null,
+        metadata: signal.metadata || null,
+        timestamp: now,
+        weight: weight,
+      });
+    }
+
+    var newSeverity = computeSeverity(incident.weightedCount);
+    if (SEVERITY_ORDER[newSeverity] > SEVERITY_ORDER[incident.severity]) {
+      if (stats.incidentsBySeverity[incident.severity] > 0) {
+        stats.incidentsBySeverity[incident.severity]--;
+      }
+      incident.severity = newSeverity;
+      stats.incidentsBySeverity[newSeverity]++;
+      escalated = true;
+      stats.totalEscalations++;
+
+      if (onEscalation) {
+        try { onEscalation(getIncidentSummary(incident), oldSeverity); } catch (e) { /* swallow */ }
+      }
+    }
+
+    if (escalated && SEVERITY_ORDER[newSeverity] >= SEVERITY_ORDER[SEVERITY.WARNING]) {
+      stats.totalAlerts++;
+      if (onAlert) {
+        try { onAlert(getIncidentSummary(incident)); } catch (e) { /* swallow */ }
+      }
+    }
+
+    return {
+      incidentId: incident.id,
+      severity: incident.severity,
+      isNew: isNew,
+      escalated: escalated,
+    };
+  }
+
+  /**
+   * Get an incident by ID.
+   * @param {number} incidentId
+   * @returns {object|null} Incident summary or null
+   */
+  function getIncident(incidentId) {
+    var incident = incidents[incidentId];
+    return incident ? getIncidentSummary(incident) : null;
+  }
+
+  /**
+   * Get the active incident for a client.
+   * @param {string} clientId
+   * @returns {object|null} Incident summary or null
+   */
+  function getClientIncident(clientId) {
+    var id = clientIncidents[clientId];
+    if (id == null) return null;
+    var incident = incidents[id];
+    if (!incident || incident.status === "closed") return null;
+    return getIncidentSummary(incident);
+  }
+
+  /**
+   * Manually close an incident.
+   * @param {number} incidentId
+   * @returns {boolean} True if closed
+   */
+  function closeIncident(incidentId) {
+    var incident = incidents[incidentId];
+    if (!incident) return false;
+    incident.status = "closed";
+    if (clientIncidents[incident.clientId] === incidentId) {
+      delete clientIncidents[incident.clientId];
+    }
+    return true;
+  }
+
+  /**
+   * Query incidents by severity, status, and/or time range.
+   * @param {object} [query]
+   * @param {string} [query.severity] - Filter by exact severity
+   * @param {string} [query.minSeverity] - Filter by minimum severity
+   * @param {string} [query.status] - Filter by status
+   * @param {number} [query.since] - Only incidents after this timestamp
+   * @param {number} [query.limit] - Max results (default: 100)
+   * @returns {Array} Matching incident summaries (newest first)
+   */
+  function queryIncidents(query) {
+    query = query || {};
+    var limit = query.limit != null && query.limit > 0 ? query.limit : 100;
+    var minSev = query.minSeverity ? SEVERITY_ORDER[query.minSeverity] || 0 : 0;
+
+    var results = [];
+    for (var i = incidentOrder.length - 1; i >= 0 && results.length < limit; i--) {
+      var inc = incidents[incidentOrder[i]];
+      if (!inc) continue;
+      if (query.severity && inc.severity !== query.severity) continue;
+      if (SEVERITY_ORDER[inc.severity] < minSev) continue;
+      if (query.status && inc.status !== query.status) continue;
+      if (query.since && inc.lastSignalAt < query.since) continue;
+      results.push(getIncidentSummary(inc));
+    }
+    return results;
+  }
+
+  /**
+   * Get correlator statistics.
+   * @returns {object} Current stats snapshot
+   */
+  function getStats() {
+    return {
+      totalSignals: stats.totalSignals,
+      totalIncidents: stats.totalIncidents,
+      activeIncidents: incidentOrder.reduce(function (n, id) {
+        return n + (incidents[id] && incidents[id].status === "open" ? 1 : 0);
+      }, 0),
+      totalAlerts: stats.totalAlerts,
+      totalEscalations: stats.totalEscalations,
+      signalsByType: JSON.parse(JSON.stringify(stats.signalsByType)),
+      incidentsBySeverity: JSON.parse(JSON.stringify(stats.incidentsBySeverity)),
+    };
+  }
+
+  /**
+   * Reset all state.
+   */
+  function reset() {
+    clientIncidents = {};
+    incidents = {};
+    incidentOrder = [];
+    nextIncidentId = 1;
+    stats.totalSignals = 0;
+    stats.totalIncidents = 0;
+    stats.totalAlerts = 0;
+    stats.totalEscalations = 0;
+    stats.signalsByType = {};
+    stats.incidentsBySeverity = { info: 0, warning: 0, high: 0, critical: 0 };
+  }
+
+  /**
+   * Export full correlator state for persistence/debugging.
+   * @returns {object} Serializable state
+   */
+  function exportState() {
+    return {
+      incidents: incidentOrder.map(function (id) {
+        return incidents[id] ? getIncidentSummary(incidents[id]) : null;
+      }).filter(Boolean),
+      stats: getStats(),
+      config: {
+        correlationWindowMs: correlationWindowMs,
+        maxIncidents: maxIncidents,
+        maxSignalsPerIncident: maxSignalsPerIncident,
+        thresholds: {
+          warning: warningThreshold,
+          high: highThreshold,
+          critical: criticalThreshold,
+        },
+      },
+    };
+  }
+
+  return {
+    ingest: ingest,
+    getIncident: getIncident,
+    getClientIncident: getClientIncident,
+    closeIncident: closeIncident,
+    queryIncidents: queryIncidents,
+    getStats: getStats,
+    reset: reset,
+    exportState: exportState,
+    SIGNAL_TYPES: SIGNAL_TYPES,
+    SEVERITY: SEVERITY,
+  };
+}
+
 var gifCaptcha = {
   sanitize: sanitize,
   createSanitizer: createSanitizer,
@@ -5638,6 +6026,7 @@ var gifCaptcha = {
   createChallengeRouter: createChallengeRouter,
   createRateLimiter: createRateLimiter,
   createClientFingerprinter: createClientFingerprinter,
+  createIncidentCorrelator: createIncidentCorrelator,
   GIF_MAX_RETRIES: GIF_MAX_RETRIES,
   GIF_RETRY_DELAY_MS: GIF_RETRY_DELAY_MS,
 };

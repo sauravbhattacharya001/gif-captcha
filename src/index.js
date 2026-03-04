@@ -461,7 +461,7 @@ function createAttemptTracker(options) {
    * Reset all tracking state.
    */
   function resetAll() {
-    challenges = {};
+    challenges = Object.create(null);
   }
 
   /**

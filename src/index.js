@@ -5177,6 +5177,443 @@ function createRateLimiter(options) {
   };
 }
 
+// ── Client Fingerprinter ────────────────────────────────────────────
+
+/**
+ * Create a client fingerprinter for identifying repeat CAPTCHA visitors
+ * without cookies. Collects multiple browser/device signals, hashes them
+ * into a composite fingerprint, tracks fingerprint history, and detects
+ * suspicious patterns (rapid identity changes, known bot fingerprints).
+ *
+ * Works server-side: the caller collects signals from the client and
+ * passes them in. The fingerprinter handles hashing, storage, and analysis.
+ *
+ * @param {Object} [options]
+ * @param {number} [options.maxFingerprints=10000] - Max stored fingerprints (LRU)
+ * @param {number} [options.ttlMs=86400000] - Fingerprint TTL (default 24h)
+ * @param {number} [options.suspiciousChangeThreshold=5] - Identity changes in window to flag
+ * @param {number} [options.changeWindowMs=3600000] - Window for change detection (1h)
+ * @param {string[]} [options.signalWeights] - Custom signal weight overrides
+ * @returns {Object} Fingerprinter instance
+ */
+function createClientFingerprinter(options) {
+  var opts = options || {};
+  var maxFingerprints = opts.maxFingerprints || 10000;
+  var ttlMs = opts.ttlMs || 86400000;
+  var suspiciousChangeThreshold = opts.suspiciousChangeThreshold || 5;
+  var changeWindowMs = opts.changeWindowMs || 3600000;
+
+  // Signal weights for similarity scoring (sum to 1.0)
+  var defaultWeights = {
+    userAgent: 0.15,
+    screen: 0.10,
+    timezone: 0.10,
+    language: 0.10,
+    platform: 0.10,
+    colorDepth: 0.05,
+    touchSupport: 0.05,
+    canvasHash: 0.15,
+    webglVendor: 0.10,
+    fonts: 0.10,
+  };
+  var signalWeights = {};
+  var k;
+  for (k in defaultWeights) {
+    if (defaultWeights.hasOwnProperty(k)) {
+      signalWeights[k] = (opts.signalWeights && opts.signalWeights[k] !== undefined)
+        ? opts.signalWeights[k]
+        : defaultWeights[k];
+    }
+  }
+
+  // Storage: fingerprint hash -> { signals, firstSeen, lastSeen, visits, ipSet, meta }
+  var store = {};
+  var storeOrder = []; // LRU tracking: oldest first
+
+  // IP -> [{ fingerprintHash, timestamp }] for change tracking
+  var ipHistory = {};
+
+  // Known bot fingerprint patterns
+  var botPatterns = [
+    { field: "userAgent", pattern: /headless/i, label: "headless-browser" },
+    { field: "userAgent", pattern: /phantom/i, label: "phantomjs" },
+    { field: "userAgent", pattern: /selenium/i, label: "selenium" },
+    { field: "userAgent", pattern: /puppeteer/i, label: "puppeteer" },
+    { field: "webglVendor", pattern: /swiftshader/i, label: "swiftshader-gpu" },
+    { field: "webglVendor", pattern: /llvmpipe/i, label: "software-renderer" },
+    { field: "screen", pattern: /^0x0$/, label: "zero-screen" },
+    { field: "colorDepth", pattern: /^0$/, label: "zero-color-depth" },
+  ];
+
+  /**
+   * Simple string hash (djb2) for generating fingerprint IDs.
+   * @param {string} str
+   * @returns {string} Hex hash
+   */
+  function djb2Hash(str) {
+    var hash = 5381;
+    for (var i = 0; i < str.length; i++) {
+      hash = ((hash << 5) + hash + str.charCodeAt(i)) & 0xffffffff;
+    }
+    // Convert to unsigned hex
+    return (hash >>> 0).toString(16).padStart(8, "0");
+  }
+
+  /**
+   * Normalize signals into a canonical object.
+   * @param {Object} raw - Raw signals from client
+   * @returns {Object} Normalized signals
+   */
+  function normalizeSignals(raw) {
+    if (!raw || typeof raw !== "object") {
+      return {};
+    }
+    return {
+      userAgent: String(raw.userAgent || ""),
+      screen: String(raw.screenWidth || 0) + "x" + String(raw.screenHeight || 0),
+      timezone: String(raw.timezone || raw.timezoneOffset || ""),
+      language: String(raw.language || "").toLowerCase(),
+      platform: String(raw.platform || "").toLowerCase(),
+      colorDepth: String(raw.colorDepth || 0),
+      touchSupport: raw.touchSupport ? "true" : "false",
+      canvasHash: String(raw.canvasHash || ""),
+      webglVendor: String(raw.webglVendor || ""),
+      fonts: Array.isArray(raw.fonts) ? raw.fonts.slice().sort().join(",") : String(raw.fonts || ""),
+    };
+  }
+
+  /**
+   * Generate a fingerprint hash from normalized signals.
+   * @param {Object} signals - Normalized signals
+   * @returns {string} Fingerprint hash
+   */
+  function generateHash(signals) {
+    var parts = [];
+    var keys = Object.keys(signals).sort();
+    for (var i = 0; i < keys.length; i++) {
+      parts.push(keys[i] + "=" + signals[keys[i]]);
+    }
+    return djb2Hash(parts.join("|"));
+  }
+
+  /**
+   * Compute similarity between two normalized signal sets (0-1).
+   * @param {Object} a
+   * @param {Object} b
+   * @returns {number} Similarity score
+   */
+  function computeSimilarity(a, b) {
+    var score = 0;
+    var totalWeight = 0;
+    for (var key in signalWeights) {
+      if (!signalWeights.hasOwnProperty(key)) continue;
+      var w = signalWeights[key];
+      totalWeight += w;
+      if (a[key] === b[key] && a[key] !== "" && a[key] !== "0" && a[key] !== "0x0") {
+        score += w;
+      }
+    }
+    return totalWeight > 0 ? score / totalWeight : 0;
+  }
+
+  /**
+   * Evict expired and over-limit entries.
+   */
+  function evict() {
+    var now = Date.now();
+    // Remove expired
+    var i = 0;
+    while (i < storeOrder.length) {
+      var hash = storeOrder[i];
+      if (store[hash] && (now - store[hash].lastSeen) > ttlMs) {
+        delete store[hash];
+        storeOrder.splice(i, 1);
+      } else {
+        i++;
+      }
+    }
+    // LRU eviction if over limit
+    while (storeOrder.length > maxFingerprints) {
+      var oldest = storeOrder.shift();
+      delete store[oldest];
+    }
+  }
+
+  /**
+   * Record IP history for change detection.
+   * @param {string} ip
+   * @param {string} fpHash
+   * @param {number} now
+   */
+  function recordIpChange(ip, fpHash, now) {
+    if (!ip) return;
+    if (!ipHistory[ip]) {
+      ipHistory[ip] = [];
+    }
+    var hist = ipHistory[ip];
+    // Only record if different from last
+    if (hist.length === 0 || hist[hist.length - 1].fingerprintHash !== fpHash) {
+      hist.push({ fingerprintHash: fpHash, timestamp: now });
+    }
+    // Trim old entries
+    var cutoff = now - changeWindowMs;
+    while (hist.length > 0 && hist[0].timestamp < cutoff) {
+      hist.shift();
+    }
+    if (hist.length === 0) {
+      delete ipHistory[ip];
+    }
+  }
+
+  /**
+   * Check if an IP has suspicious identity changes.
+   * @param {string} ip
+   * @returns {{ suspicious: boolean, changes: number, threshold: number }}
+   */
+  function checkIdentityChanges(ip) {
+    if (!ip || !ipHistory[ip]) {
+      return { suspicious: false, changes: 0, threshold: suspiciousChangeThreshold };
+    }
+    var now = Date.now();
+    var cutoff = now - changeWindowMs;
+    var recent = ipHistory[ip].filter(function (e) { return e.timestamp >= cutoff; });
+    var uniqueHashes = {};
+    for (var i = 0; i < recent.length; i++) {
+      uniqueHashes[recent[i].fingerprintHash] = true;
+    }
+    var changes = Object.keys(uniqueHashes).length;
+    return {
+      suspicious: changes >= suspiciousChangeThreshold,
+      changes: changes,
+      threshold: suspiciousChangeThreshold,
+    };
+  }
+
+  /**
+   * Check signals against known bot patterns.
+   * @param {Object} signals - Normalized signals
+   * @returns {string[]} Matched bot pattern labels
+   */
+  function detectBotSignals(signals) {
+    var matches = [];
+    for (var i = 0; i < botPatterns.length; i++) {
+      var bp = botPatterns[i];
+      var val = signals[bp.field] || "";
+      if (bp.pattern.test(val)) {
+        matches.push(bp.label);
+      }
+    }
+    return matches;
+  }
+
+  /**
+   * Process a fingerprint: normalize, hash, store, detect.
+   * @param {Object} rawSignals - Raw signals from client
+   * @param {Object} [meta] - Optional metadata (ip, sessionId, etc.)
+   * @returns {Object} Fingerprint result
+   */
+  function identify(rawSignals, meta) {
+    var m = meta || {};
+    var now = Date.now();
+    var signals = normalizeSignals(rawSignals);
+    var hash = generateHash(signals);
+
+    evict();
+
+    var isNew = !store[hash];
+    if (isNew) {
+      store[hash] = {
+        signals: signals,
+        firstSeen: now,
+        lastSeen: now,
+        visits: 0,
+        ips: {},
+      };
+      storeOrder.push(hash);
+    }
+
+    var entry = store[hash];
+    entry.lastSeen = now;
+    entry.visits++;
+    if (m.ip) {
+      entry.ips[m.ip] = (entry.ips[m.ip] || 0) + 1;
+    }
+
+    // Move to end of LRU
+    var idx = storeOrder.indexOf(hash);
+    if (idx !== -1 && idx !== storeOrder.length - 1) {
+      storeOrder.splice(idx, 1);
+      storeOrder.push(hash);
+    }
+
+    recordIpChange(m.ip, hash, now);
+    var botSignals = detectBotSignals(signals);
+    var identityCheck = checkIdentityChanges(m.ip);
+
+    var riskScore = 0;
+    if (botSignals.length > 0) riskScore += Math.min(botSignals.length * 20, 60);
+    if (identityCheck.suspicious) riskScore += 30;
+    if (isNew && m.ip && ipHistory[m.ip] && ipHistory[m.ip].length > 2) riskScore += 10;
+    riskScore = Math.min(riskScore, 100);
+
+    return {
+      fingerprintHash: hash,
+      isNew: isNew,
+      visits: entry.visits,
+      firstSeen: entry.firstSeen,
+      lastSeen: entry.lastSeen,
+      signals: signals,
+      botSignals: botSignals,
+      identityChanges: identityCheck,
+      riskScore: riskScore,
+      riskLevel: riskScore >= 60 ? "high" : riskScore >= 30 ? "medium" : "low",
+    };
+  }
+
+  /**
+   * Find stored fingerprints similar to given signals.
+   * @param {Object} rawSignals
+   * @param {number} [minSimilarity=0.7] - Minimum similarity threshold
+   * @returns {Array<{ fingerprintHash: string, similarity: number, visits: number }>}
+   */
+  function findSimilar(rawSignals, minSimilarity) {
+    var threshold = minSimilarity !== undefined ? minSimilarity : 0.7;
+    var signals = normalizeSignals(rawSignals);
+    var results = [];
+    for (var hash in store) {
+      if (!store.hasOwnProperty(hash)) continue;
+      var sim = computeSimilarity(signals, store[hash].signals);
+      if (sim >= threshold) {
+        results.push({
+          fingerprintHash: hash,
+          similarity: Math.round(sim * 1000) / 1000,
+          visits: store[hash].visits,
+          firstSeen: store[hash].firstSeen,
+          lastSeen: store[hash].lastSeen,
+        });
+      }
+    }
+    results.sort(function (a, b) { return b.similarity - a.similarity; });
+    return results;
+  }
+
+  /**
+   * Get fingerprint details by hash.
+   * @param {string} hash
+   * @returns {Object|null}
+   */
+  function getFingerprint(hash) {
+    if (!store[hash]) return null;
+    var e = store[hash];
+    return {
+      fingerprintHash: hash,
+      signals: e.signals,
+      firstSeen: e.firstSeen,
+      lastSeen: e.lastSeen,
+      visits: e.visits,
+      uniqueIps: Object.keys(e.ips).length,
+    };
+  }
+
+  /**
+   * Get aggregate statistics.
+   * @returns {Object}
+   */
+  function getStats() {
+    var totalVisits = 0;
+    var totalIps = {};
+    for (var hash in store) {
+      if (!store.hasOwnProperty(hash)) continue;
+      totalVisits += store[hash].visits;
+      for (var ip in store[hash].ips) {
+        if (store[hash].ips.hasOwnProperty(ip)) {
+          totalIps[ip] = true;
+        }
+      }
+    }
+    return {
+      totalFingerprints: storeOrder.length,
+      totalVisits: totalVisits,
+      uniqueIps: Object.keys(totalIps).length,
+      maxCapacity: maxFingerprints,
+      trackedIps: Object.keys(ipHistory).length,
+    };
+  }
+
+  /**
+   * Export state for persistence.
+   * @returns {Object}
+   */
+  function exportState() {
+    return {
+      store: JSON.parse(JSON.stringify(store)),
+      storeOrder: storeOrder.slice(),
+      ipHistory: JSON.parse(JSON.stringify(ipHistory)),
+    };
+  }
+
+  /**
+   * Import previously exported state.
+   * @param {Object} state
+   */
+  function importState(state) {
+    if (!state || typeof state !== "object") return;
+    if (state.store) {
+      store = {};
+      for (var h in state.store) {
+        if (state.store.hasOwnProperty(h)) {
+          store[h] = state.store[h];
+        }
+      }
+    }
+    if (Array.isArray(state.storeOrder)) {
+      storeOrder = state.storeOrder.slice();
+    }
+    if (state.ipHistory) {
+      ipHistory = {};
+      for (var ip in state.ipHistory) {
+        if (state.ipHistory.hasOwnProperty(ip)) {
+          ipHistory[ip] = state.ipHistory[ip];
+        }
+      }
+    }
+  }
+
+  /**
+   * Reset all state.
+   */
+  function reset() {
+    store = {};
+    storeOrder = [];
+    ipHistory = {};
+  }
+
+  /**
+   * Get configuration.
+   * @returns {Object}
+   */
+  function getConfig() {
+    return {
+      maxFingerprints: maxFingerprints,
+      ttlMs: ttlMs,
+      suspiciousChangeThreshold: suspiciousChangeThreshold,
+      changeWindowMs: changeWindowMs,
+      signalWeights: JSON.parse(JSON.stringify(signalWeights)),
+    };
+  }
+
+  return {
+    identify: identify,
+    findSimilar: findSimilar,
+    getFingerprint: getFingerprint,
+    getStats: getStats,
+    exportState: exportState,
+    importState: importState,
+    reset: reset,
+    getConfig: getConfig,
+  };
+}
+
 var gifCaptcha = {
   sanitize: sanitize,
   createSanitizer: createSanitizer,
@@ -5200,6 +5637,7 @@ var gifCaptcha = {
   createReputationTracker: createReputationTracker,
   createChallengeRouter: createChallengeRouter,
   createRateLimiter: createRateLimiter,
+  createClientFingerprinter: createClientFingerprinter,
   GIF_MAX_RETRIES: GIF_MAX_RETRIES,
   GIF_RETRY_DELAY_MS: GIF_RETRY_DELAY_MS,
 };

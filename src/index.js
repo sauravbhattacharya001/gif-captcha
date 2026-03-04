@@ -6007,6 +6007,420 @@ function createIncidentCorrelator(options) {
   };
 }
 
+// ── Adaptive Timeout Manager ──────────────────────────────────────
+//
+// Calculates optimal response timeouts for CAPTCHA challenges based on
+// difficulty, client reputation, historical response times, and network
+// conditions. Harder challenges get more time; suspicious clients get
+// less. Uses percentile-based baselines from actual response data.
+
+/**
+ * @param {Object} [options]
+ * @param {number} [options.baseTimeoutMs=30000]       - Default timeout when no data available
+ * @param {number} [options.minTimeoutMs=5000]          - Absolute minimum timeout
+ * @param {number} [options.maxTimeoutMs=120000]        - Absolute maximum timeout
+ * @param {number} [options.difficultyMultiplierLow=0.7]  - Timeout multiplier for easy challenges
+ * @param {number} [options.difficultyMultiplierHigh=1.8] - Timeout multiplier for hard challenges
+ * @param {number} [options.suspiciousReduction=0.5]    - Multiply timeout by this for suspicious clients
+ * @param {number} [options.trustedBonus=1.3]           - Multiply timeout by this for trusted clients
+ * @param {number} [options.targetPercentile=0.90]      - Response time percentile to use as baseline
+ * @param {number} [options.baselineMargin=1.5]         - Multiplier on top of percentile baseline
+ * @param {number} [options.maxHistoryPerDifficulty=500] - Max stored response times per difficulty bucket
+ * @param {number} [options.latencyBufferMs=2000]       - Extra buffer added for estimated network latency
+ * @returns {Object} Adaptive timeout manager instance
+ */
+function createAdaptiveTimeout(options) {
+  options = options || {};
+
+  var baseTimeoutMs = options.baseTimeoutMs != null && options.baseTimeoutMs > 0
+    ? options.baseTimeoutMs : 30000;
+  var minTimeoutMs = options.minTimeoutMs != null && options.minTimeoutMs > 0
+    ? options.minTimeoutMs : 5000;
+  var maxTimeoutMs = options.maxTimeoutMs != null && options.maxTimeoutMs > 0
+    ? options.maxTimeoutMs : 120000;
+  var difficultyMultiplierLow = options.difficultyMultiplierLow != null
+    ? options.difficultyMultiplierLow : 0.7;
+  var difficultyMultiplierHigh = options.difficultyMultiplierHigh != null
+    ? options.difficultyMultiplierHigh : 1.8;
+  var suspiciousReduction = options.suspiciousReduction != null
+    ? options.suspiciousReduction : 0.5;
+  var trustedBonus = options.trustedBonus != null
+    ? options.trustedBonus : 1.3;
+  var targetPercentile = options.targetPercentile != null
+    ? options.targetPercentile : 0.90;
+  var baselineMargin = options.baselineMargin != null
+    ? options.baselineMargin : 1.5;
+  var maxHistoryPerDifficulty = options.maxHistoryPerDifficulty != null && options.maxHistoryPerDifficulty > 0
+    ? Math.floor(options.maxHistoryPerDifficulty) : 500;
+  var latencyBufferMs = options.latencyBufferMs != null && options.latencyBufferMs >= 0
+    ? options.latencyBufferMs : 2000;
+
+  // Difficulty buckets: "easy", "medium", "hard", or numeric 0-100
+  // Normalized to 3 buckets for history tracking
+  // Each bucket stores sorted response times for percentile calculation.
+  var history = Object.create(null);
+  history.easy = [];
+  history.medium = [];
+  history.hard = [];
+
+  // Per-client latency estimates: clientId → { samples: number[], avg: number }
+  var clientLatency = Object.create(null);
+  var clientLatencyCount = 0;
+  var maxClientLatencyEntries = 5000;
+
+  // Stats
+  var totalCalculations = 0;
+  var totalRecorded = 0;
+
+  /**
+   * Normalize a difficulty value to a bucket name.
+   * Accepts "easy"/"medium"/"hard" strings or numeric 0-100.
+   * @param {string|number} difficulty
+   * @returns {string} "easy", "medium", or "hard"
+   */
+  function normalizeDifficulty(difficulty) {
+    if (typeof difficulty === "string") {
+      var lower = difficulty.toLowerCase();
+      if (lower === "easy" || lower === "low") return "easy";
+      if (lower === "hard" || lower === "high") return "hard";
+      return "medium";
+    }
+    if (typeof difficulty === "number") {
+      if (difficulty <= 33) return "easy";
+      if (difficulty >= 67) return "hard";
+      return "medium";
+    }
+    return "medium";
+  }
+
+  /**
+   * Get the difficulty multiplier for a bucket.
+   * @param {string} bucket
+   * @returns {number}
+   */
+  function getDifficultyMultiplier(bucket) {
+    if (bucket === "easy") return difficultyMultiplierLow;
+    if (bucket === "hard") return difficultyMultiplierHigh;
+    return 1.0;
+  }
+
+  /**
+   * Calculate the Nth percentile from a sorted array.
+   * @param {number[]} sorted - Sorted array of values
+   * @param {number} p - Percentile (0-1)
+   * @returns {number}
+   */
+  function percentile(sorted, p) {
+    if (sorted.length === 0) return 0;
+    if (sorted.length === 1) return sorted[0];
+    var idx = p * (sorted.length - 1);
+    var lower = Math.floor(idx);
+    var upper = Math.ceil(idx);
+    if (lower === upper) return sorted[lower];
+    var frac = idx - lower;
+    return sorted[lower] * (1 - frac) + sorted[upper] * frac;
+  }
+
+  /**
+   * Insert a value into a sorted array, maintaining sort order.
+   * If the array exceeds maxHistoryPerDifficulty, remove the oldest
+   * (first) entry.
+   * @param {number[]} arr
+   * @param {number} value
+   */
+  function insertSorted(arr, value) {
+    // Binary search for insertion point
+    var lo = 0;
+    var hi = arr.length;
+    while (lo < hi) {
+      var mid = (lo + hi) >>> 1;
+      if (arr[mid] < value) {
+        lo = mid + 1;
+      } else {
+        hi = mid;
+      }
+    }
+    arr.splice(lo, 0, value);
+    // Evict oldest if over capacity (remove from start since
+    // oldest entries are randomly distributed, just trim length)
+    if (arr.length > maxHistoryPerDifficulty) {
+      arr.shift();
+    }
+  }
+
+  /**
+   * Record a response time for a given difficulty level.
+   * Builds up the baseline data used for percentile calculations.
+   *
+   * @param {string|number} difficulty - Challenge difficulty
+   * @param {number} responseTimeMs - Actual response time in ms
+   */
+  function recordResponse(difficulty, responseTimeMs) {
+    if (typeof responseTimeMs !== "number" || responseTimeMs < 0) return;
+    var bucket = normalizeDifficulty(difficulty);
+    insertSorted(history[bucket], responseTimeMs);
+    totalRecorded++;
+  }
+
+  /**
+   * Record a network latency sample for a client.
+   * Used to add per-client latency compensation.
+   *
+   * @param {string} clientId - Client identifier
+   * @param {number} latencyMs - Measured round-trip latency in ms
+   */
+  function recordLatency(clientId, latencyMs) {
+    if (typeof latencyMs !== "number" || latencyMs < 0) return;
+    if (!clientId) return;
+
+    if (!clientLatency[clientId]) {
+      // Evict oldest if at capacity
+      if (clientLatencyCount >= maxClientLatencyEntries) {
+        var keys = Object.keys(clientLatency);
+        if (keys.length > 0) {
+          delete clientLatency[keys[0]];
+          clientLatencyCount--;
+        }
+      }
+      clientLatency[clientId] = { samples: [], avg: 0 };
+      clientLatencyCount++;
+    }
+
+    var entry = clientLatency[clientId];
+    entry.samples.push(latencyMs);
+    // Keep last 10 samples
+    if (entry.samples.length > 10) {
+      entry.samples.shift();
+    }
+    // Recalculate average
+    var sum = 0;
+    for (var i = 0; i < entry.samples.length; i++) {
+      sum += entry.samples[i];
+    }
+    entry.avg = sum / entry.samples.length;
+  }
+
+  /**
+   * Get the estimated latency for a client.
+   * @param {string} [clientId]
+   * @returns {number} Latency in ms (0 if unknown)
+   */
+  function getClientLatency(clientId) {
+    if (!clientId || !clientLatency[clientId]) return 0;
+    return clientLatency[clientId].avg;
+  }
+
+  /**
+   * Calculate the adaptive timeout for a challenge.
+   *
+   * The calculation layers multiple factors:
+   * 1. Baseline: percentile-based response time from history (or baseTimeoutMs)
+   * 2. Difficulty: multiplier based on challenge difficulty
+   * 3. Reputation: reduction for suspicious clients, bonus for trusted
+   * 4. Latency: per-client network latency compensation
+   * 5. Clamped to [minTimeoutMs, maxTimeoutMs]
+   *
+   * @param {Object} params
+   * @param {string|number} [params.difficulty="medium"] - Challenge difficulty
+   * @param {string} [params.reputation="neutral"]       - "trusted", "neutral", or "suspicious"
+   * @param {string} [params.clientId]                    - Client ID for latency lookup
+   * @returns {{ timeoutMs: number, factors: Object }}
+   */
+  function calculate(params) {
+    params = params || {};
+    totalCalculations++;
+
+    var bucket = normalizeDifficulty(params.difficulty != null ? params.difficulty : "medium");
+    var reputation = params.reputation || "neutral";
+    var clientId = params.clientId || null;
+
+    // Step 1: Baseline from history or default
+    var baseline;
+    var historyData = history[bucket];
+    if (historyData.length >= 10) {
+      var p = percentile(historyData, targetPercentile);
+      baseline = p * baselineMargin;
+    } else {
+      baseline = baseTimeoutMs;
+    }
+
+    // Step 2: Difficulty multiplier
+    var diffMult = getDifficultyMultiplier(bucket);
+    var afterDifficulty = baseline * diffMult;
+
+    // Step 3: Reputation adjustment
+    var repMult = 1.0;
+    if (reputation === "suspicious") {
+      repMult = suspiciousReduction;
+    } else if (reputation === "trusted") {
+      repMult = trustedBonus;
+    }
+    var afterReputation = afterDifficulty * repMult;
+
+    // Step 4: Latency compensation
+    var clientLat = getClientLatency(clientId);
+    var latencyCompensation = clientLat > 0 ? clientLat : latencyBufferMs;
+    var afterLatency = afterReputation + latencyCompensation;
+
+    // Step 5: Clamp
+    var finalTimeout = Math.round(
+      Math.max(minTimeoutMs, Math.min(maxTimeoutMs, afterLatency))
+    );
+
+    return {
+      timeoutMs: finalTimeout,
+      factors: {
+        baseline: Math.round(baseline),
+        difficulty: bucket,
+        difficultyMultiplier: diffMult,
+        reputation: reputation,
+        reputationMultiplier: repMult,
+        latencyMs: Math.round(latencyCompensation),
+        unclamped: Math.round(afterLatency),
+      },
+    };
+  }
+
+  /**
+   * Get the baseline response time for a difficulty bucket.
+   *
+   * @param {string|number} [difficulty="medium"]
+   * @returns {{ percentile: number, sampleCount: number, bucketMs: number|null }}
+   */
+  function getBaseline(difficulty) {
+    var bucket = normalizeDifficulty(difficulty != null ? difficulty : "medium");
+    var data = history[bucket];
+    if (data.length === 0) {
+      return { percentile: targetPercentile, sampleCount: 0, baselineMs: null };
+    }
+    return {
+      percentile: targetPercentile,
+      sampleCount: data.length,
+      baselineMs: Math.round(percentile(data, targetPercentile)),
+    };
+  }
+
+  /**
+   * Get overall statistics.
+   * @returns {Object}
+   */
+  function getStats() {
+    return {
+      totalCalculations: totalCalculations,
+      totalRecorded: totalRecorded,
+      historySizes: {
+        easy: history.easy.length,
+        medium: history.medium.length,
+        hard: history.hard.length,
+      },
+      clientLatencyEntries: clientLatencyCount,
+    };
+  }
+
+  /**
+   * Export full state for persistence.
+   * @returns {Object}
+   */
+  function exportState() {
+    var latencyExport = Object.create(null);
+    for (var id in clientLatency) {
+      latencyExport[id] = {
+        samples: clientLatency[id].samples.slice(),
+        avg: clientLatency[id].avg,
+      };
+    }
+    return {
+      history: {
+        easy: history.easy.slice(),
+        medium: history.medium.slice(),
+        hard: history.hard.slice(),
+      },
+      clientLatency: latencyExport,
+      totalCalculations: totalCalculations,
+      totalRecorded: totalRecorded,
+    };
+  }
+
+  /**
+   * Import previously exported state.
+   * @param {Object} state
+   */
+  function importState(state) {
+    if (!state || typeof state !== "object") return;
+    if (state.history) {
+      history.easy = Array.isArray(state.history.easy) ? state.history.easy.slice() : [];
+      history.medium = Array.isArray(state.history.medium) ? state.history.medium.slice() : [];
+      history.hard = Array.isArray(state.history.hard) ? state.history.hard.slice() : [];
+    }
+    if (state.clientLatency) {
+      clientLatency = Object.create(null);
+      clientLatencyCount = 0;
+      var keys = Object.keys(state.clientLatency);
+      for (var i = 0; i < keys.length; i++) {
+        var k = keys[i];
+        var entry = state.clientLatency[k];
+        clientLatency[k] = {
+          samples: Array.isArray(entry.samples) ? entry.samples.slice() : [],
+          avg: entry.avg || 0,
+        };
+        clientLatencyCount++;
+      }
+    }
+    if (typeof state.totalCalculations === "number") {
+      totalCalculations = state.totalCalculations;
+    }
+    if (typeof state.totalRecorded === "number") {
+      totalRecorded = state.totalRecorded;
+    }
+  }
+
+  /**
+   * Reset all state.
+   */
+  function reset() {
+    history.easy = [];
+    history.medium = [];
+    history.hard = [];
+    clientLatency = Object.create(null);
+    clientLatencyCount = 0;
+    totalCalculations = 0;
+    totalRecorded = 0;
+  }
+
+  /**
+   * Get configuration.
+   * @returns {Object}
+   */
+  function getConfig() {
+    return {
+      baseTimeoutMs: baseTimeoutMs,
+      minTimeoutMs: minTimeoutMs,
+      maxTimeoutMs: maxTimeoutMs,
+      difficultyMultiplierLow: difficultyMultiplierLow,
+      difficultyMultiplierHigh: difficultyMultiplierHigh,
+      suspiciousReduction: suspiciousReduction,
+      trustedBonus: trustedBonus,
+      targetPercentile: targetPercentile,
+      baselineMargin: baselineMargin,
+      maxHistoryPerDifficulty: maxHistoryPerDifficulty,
+      latencyBufferMs: latencyBufferMs,
+    };
+  }
+
+  return {
+    calculate: calculate,
+    recordResponse: recordResponse,
+    recordLatency: recordLatency,
+    getClientLatency: getClientLatency,
+    getBaseline: getBaseline,
+    getStats: getStats,
+    exportState: exportState,
+    importState: importState,
+    reset: reset,
+    getConfig: getConfig,
+  };
+}
+
 var gifCaptcha = {
   sanitize: sanitize,
   createSanitizer: createSanitizer,
@@ -6032,6 +6446,7 @@ var gifCaptcha = {
   createRateLimiter: createRateLimiter,
   createClientFingerprinter: createClientFingerprinter,
   createIncidentCorrelator: createIncidentCorrelator,
+  createAdaptiveTimeout: createAdaptiveTimeout,
   GIF_MAX_RETRIES: GIF_MAX_RETRIES,
   GIF_RETRY_DELAY_MS: GIF_RETRY_DELAY_MS,
 };

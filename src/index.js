@@ -8501,6 +8501,428 @@ function createABExperimentRunner(options) {
   };
 }
 
+// ─── Fraud Ring Detector ──────────────────────────────────────────────────────
+
+/**
+ * createFraudRingDetector — identifies coordinated CAPTCHA-solving operations
+ * by analyzing cross-client behavioral patterns.
+ *
+ * Detects fraud rings through:
+ * - Timing cluster analysis (clients solving within narrow windows)
+ * - Shared fingerprint/signal detection
+ * - IP proximity clustering
+ * - Sequential solve pattern matching
+ * - Graph-based ring detection (union-find)
+ *
+ * @param {Object} [options]
+ * @param {number} [options.maxClients=5000] - Max tracked clients (LRU eviction)
+ * @param {number} [options.timingWindowMs=5000] - Window for timing cluster detection
+ * @param {number} [options.minRingSize=3] - Minimum clients to form a ring
+ * @param {number} [options.suspicionThreshold=60] - Score threshold (0-100) for ring flagging
+ * @param {number} [options.signalDecayMs=3600000] - Signal decay time (1 hour default)
+ * @param {number} [options.maxRings=200] - Maximum tracked rings
+ * @returns {Object} fraud ring detector instance
+ */
+function createFraudRingDetector(options) {
+  options = options || {};
+  var maxClients = options.maxClients > 0 ? options.maxClients : 5000;
+  var timingWindowMs = options.timingWindowMs > 0 ? options.timingWindowMs : 5000;
+  var minRingSize = options.minRingSize > 0 ? options.minRingSize : 3;
+  var suspicionThreshold = typeof options.suspicionThreshold === 'number' ? options.suspicionThreshold : 60;
+  var signalDecayMs = options.signalDecayMs > 0 ? options.signalDecayMs : 3600000;
+  var maxRings = options.maxRings > 0 ? options.maxRings : 200;
+
+  var clients = {};
+  var clientOrder = [];
+  var rings = {};
+  var ringCounter = 0;
+  var onRingCallbacks = [];
+  var parent = {};
+  var rank = {};
+
+  function ufFind(x) {
+    if (parent[x] === undefined) { parent[x] = x; rank[x] = 0; }
+    if (parent[x] !== x) parent[x] = ufFind(parent[x]);
+    return parent[x];
+  }
+
+  function ufUnion(a, b) {
+    var ra = ufFind(a), rb = ufFind(b);
+    if (ra === rb) return;
+    if (rank[ra] < rank[rb]) { parent[ra] = rb; }
+    else if (rank[ra] > rank[rb]) { parent[rb] = ra; }
+    else { parent[rb] = ra; rank[ra]++; }
+  }
+
+  function getClient(clientId) {
+    if (!clients[clientId]) {
+      if (clientOrder.length >= maxClients) {
+        var evicted = clientOrder.shift();
+        delete clients[evicted];
+        delete parent[evicted];
+        delete rank[evicted];
+      }
+      clients[clientId] = {
+        id: clientId, events: [], fingerprints: [], ips: [], userAgents: [],
+        solveCount: 0, failCount: 0, firstSeen: Date.now(), lastSeen: Date.now(), ringId: null
+      };
+      clientOrder.push(clientId);
+    } else {
+      var idx = clientOrder.indexOf(clientId);
+      if (idx > -1) { clientOrder.splice(idx, 1); clientOrder.push(clientId); }
+    }
+    return clients[clientId];
+  }
+
+  function recordEvent(event) {
+    if (!event || !event.clientId || !event.type) return null;
+    var client = getClient(event.clientId);
+    var ts = event.timestamp || Date.now();
+    var record = {
+      clientId: event.clientId, type: event.type, timestamp: ts,
+      ip: event.ip || null, fingerprint: event.fingerprint || null,
+      userAgent: event.userAgent || null, responseTimeMs: event.responseTimeMs || null,
+      challengeId: event.challengeId || null
+    };
+    client.events.push(record);
+    client.lastSeen = ts;
+    if (event.type === 'solve') client.solveCount++;
+    if (event.type === 'fail') client.failCount++;
+    if (event.ip && client.ips.indexOf(event.ip) === -1) client.ips.push(event.ip);
+    if (event.fingerprint && client.fingerprints.indexOf(event.fingerprint) === -1) client.fingerprints.push(event.fingerprint);
+    if (event.userAgent && client.userAgents.indexOf(event.userAgent) === -1) client.userAgents.push(event.userAgent);
+    if (client.events.length > 200) client.events = client.events.slice(-200);
+    return record;
+  }
+
+  function findTimingClusters() {
+    var solves = [];
+    var ids = Object.keys(clients);
+    for (var i = 0; i < ids.length; i++) {
+      var c = clients[ids[i]];
+      for (var j = 0; j < c.events.length; j++) {
+        if (c.events[j].type === 'solve') solves.push({ clientId: ids[i], timestamp: c.events[j].timestamp });
+      }
+    }
+    solves.sort(function(a, b) { return a.timestamp - b.timestamp; });
+    var clusters = [], current = [];
+    for (var k = 0; k < solves.length; k++) {
+      if (current.length === 0) { current.push(solves[k]); continue; }
+      if (solves[k].timestamp - current[0].timestamp <= timingWindowMs) {
+        var already = false;
+        for (var m = 0; m < current.length; m++) { if (current[m].clientId === solves[k].clientId) { already = true; break; } }
+        if (!already) current.push(solves[k]);
+      } else {
+        if (current.length >= minRingSize) clusters.push(current.slice());
+        current = [solves[k]];
+      }
+    }
+    if (current.length >= minRingSize) clusters.push(current);
+    return clusters;
+  }
+
+  function findSharedFingerprints() {
+    var fpMap = {};
+    var ids = Object.keys(clients);
+    for (var i = 0; i < ids.length; i++) {
+      var c = clients[ids[i]];
+      for (var j = 0; j < c.fingerprints.length; j++) {
+        var fp = c.fingerprints[j];
+        if (!fpMap[fp]) fpMap[fp] = [];
+        if (fpMap[fp].indexOf(ids[i]) === -1) fpMap[fp].push(ids[i]);
+      }
+    }
+    var groups = [];
+    var fps = Object.keys(fpMap);
+    for (var k = 0; k < fps.length; k++) {
+      if (fpMap[fps[k]].length >= 2) groups.push({ fingerprint: fps[k], clients: fpMap[fps[k]] });
+    }
+    return groups;
+  }
+
+  function findIPClusters() {
+    var ipMap = {};
+    var ids = Object.keys(clients);
+    for (var i = 0; i < ids.length; i++) {
+      var c = clients[ids[i]];
+      for (var j = 0; j < c.ips.length; j++) {
+        var ip = c.ips[j];
+        if (!ipMap[ip]) ipMap[ip] = [];
+        if (ipMap[ip].indexOf(ids[i]) === -1) ipMap[ip].push(ids[i]);
+      }
+    }
+    var clusters = [];
+    var ips = Object.keys(ipMap);
+    for (var k = 0; k < ips.length; k++) {
+      if (ipMap[ips[k]].length >= 2) clusters.push({ ip: ips[k], clients: ipMap[ips[k]] });
+    }
+    var subnetMap = {};
+    for (var s = 0; s < ips.length; s++) {
+      var parts = ips[s].split('.');
+      if (parts.length === 4) {
+        var subnet = parts[0] + '.' + parts[1] + '.' + parts[2];
+        if (!subnetMap[subnet]) subnetMap[subnet] = [];
+        for (var t = 0; t < ipMap[ips[s]].length; t++) {
+          if (subnetMap[subnet].indexOf(ipMap[ips[s]][t]) === -1) subnetMap[subnet].push(ipMap[ips[s]][t]);
+        }
+      }
+    }
+    var subnets = Object.keys(subnetMap);
+    for (var u = 0; u < subnets.length; u++) {
+      if (subnetMap[subnets[u]].length >= minRingSize) clusters.push({ subnet: subnets[u], clients: subnetMap[subnets[u]] });
+    }
+    return clusters;
+  }
+
+  function findSequentialPatterns() {
+    var solves = [];
+    var ids = Object.keys(clients);
+    for (var i = 0; i < ids.length; i++) {
+      var c = clients[ids[i]];
+      for (var j = 0; j < c.events.length; j++) {
+        if (c.events[j].type === 'solve') solves.push({ clientId: ids[i], timestamp: c.events[j].timestamp, challengeId: c.events[j].challengeId });
+      }
+    }
+    solves.sort(function(a, b) { return a.timestamp - b.timestamp; });
+    var patterns = [];
+    for (var k = 0; k < solves.length - 1; k++) {
+      var seq = [solves[k]];
+      for (var m = k + 1; m < solves.length; m++) {
+        var gap = solves[m].timestamp - solves[m - 1].timestamp;
+        if (gap > 0 && gap < 2000 && solves[m].clientId !== solves[m - 1].clientId) seq.push(solves[m]);
+        else break;
+      }
+      if (seq.length >= minRingSize) {
+        var seqClients = [];
+        for (var n = 0; n < seq.length; n++) { if (seqClients.indexOf(seq[n].clientId) === -1) seqClients.push(seq[n].clientId); }
+        if (seqClients.length >= minRingSize) patterns.push({ clients: seqClients, events: seq });
+      }
+    }
+    return patterns;
+  }
+
+  function computeRingScore(clientIds) {
+    if (!clientIds || clientIds.length < 2) return { score: 0, factors: [] };
+    var score = 0, factors = [];
+
+    // Size (up to 20)
+    var sizeScore = Math.min(20, (clientIds.length - 1) * 4);
+    score += sizeScore;
+    factors.push({ name: 'ringSize', score: sizeScore, detail: clientIds.length + ' clients' });
+
+    // Shared fingerprints (up to 25)
+    var fpSets = {};
+    for (var i = 0; i < clientIds.length; i++) {
+      var c = clients[clientIds[i]];
+      if (c) for (var j = 0; j < c.fingerprints.length; j++) {
+        var fp = c.fingerprints[j];
+        fpSets[fp] = (fpSets[fp] || 0) + 1;
+      }
+    }
+    var maxShared = 0;
+    var fps = Object.keys(fpSets);
+    for (var k = 0; k < fps.length; k++) { if (fpSets[fps[k]] > maxShared) maxShared = fpSets[fps[k]]; }
+    var fpScore = Math.min(25, Math.floor(maxShared / clientIds.length * 25));
+    score += fpScore;
+    factors.push({ name: 'sharedFingerprint', score: fpScore, detail: maxShared + '/' + clientIds.length + ' share fingerprint' });
+
+    // IP proximity (up to 20)
+    var allIps = {};
+    for (var m = 0; m < clientIds.length; m++) {
+      var cl = clients[clientIds[m]];
+      if (cl) for (var n = 0; n < cl.ips.length; n++) { allIps[cl.ips[n]] = (allIps[cl.ips[n]] || 0) + 1; }
+    }
+    var sharedIps = 0;
+    var ipKeys = Object.keys(allIps);
+    for (var p = 0; p < ipKeys.length; p++) { if (allIps[ipKeys[p]] >= 2) sharedIps++; }
+    var ipScore = Math.min(20, sharedIps * 10);
+    score += ipScore;
+    factors.push({ name: 'ipProximity', score: ipScore, detail: sharedIps + ' shared IPs' });
+
+    // Timing (up to 20)
+    var solveTimes = [];
+    for (var q = 0; q < clientIds.length; q++) {
+      var client = clients[clientIds[q]];
+      if (client) for (var r = 0; r < client.events.length; r++) {
+        if (client.events[r].type === 'solve') solveTimes.push(client.events[r].timestamp);
+      }
+    }
+    solveTimes.sort(function(a, b) { return a - b; });
+    var closeCount = 0;
+    for (var s = 1; s < solveTimes.length; s++) { if (solveTimes[s] - solveTimes[s - 1] < timingWindowMs) closeCount++; }
+    var timingScore = solveTimes.length > 1 ? Math.min(20, Math.floor(closeCount / (solveTimes.length - 1) * 20)) : 0;
+    score += timingScore;
+    factors.push({ name: 'timingCorrelation', score: timingScore, detail: closeCount + ' close-timed solves' });
+
+    // Response uniformity (up to 15)
+    var responseTimes = [];
+    for (var t = 0; t < clientIds.length; t++) {
+      var ct = clients[clientIds[t]];
+      if (ct) for (var u = 0; u < ct.events.length; u++) {
+        if (ct.events[u].responseTimeMs != null) responseTimes.push(ct.events[u].responseTimeMs);
+      }
+    }
+    var uniformScore = 0;
+    if (responseTimes.length >= 3) {
+      var mean = 0;
+      for (var v = 0; v < responseTimes.length; v++) mean += responseTimes[v];
+      mean /= responseTimes.length;
+      var variance = 0;
+      for (var w = 0; w < responseTimes.length; w++) variance += (responseTimes[w] - mean) * (responseTimes[w] - mean);
+      variance /= responseTimes.length;
+      var cv = mean > 0 ? Math.sqrt(variance) / mean : 1;
+      uniformScore = cv < 0.1 ? 15 : cv < 0.2 ? 10 : cv < 0.3 ? 5 : 0;
+    }
+    score += uniformScore;
+    factors.push({ name: 'responseUniformity', score: uniformScore });
+
+    return { score: Math.min(100, score), factors: factors };
+  }
+
+  function detectRings() {
+    parent = {}; rank = {};
+
+    var fpGroups = findSharedFingerprints();
+    for (var i = 0; i < fpGroups.length; i++) {
+      var group = fpGroups[i].clients;
+      for (var j = 1; j < group.length; j++) ufUnion(group[0], group[j]);
+    }
+
+    var ipGroups = findIPClusters();
+    for (var k = 0; k < ipGroups.length; k++) {
+      var ipGroup = ipGroups[k].clients;
+      for (var m = 1; m < ipGroup.length; m++) ufUnion(ipGroup[0], ipGroup[m]);
+    }
+
+    var timingClusters = findTimingClusters();
+    for (var n = 0; n < timingClusters.length; n++) {
+      var cluster = timingClusters[n];
+      for (var p = 1; p < cluster.length; p++) ufUnion(cluster[0].clientId, cluster[p].clientId);
+    }
+
+    var seqPatterns = findSequentialPatterns();
+    for (var q = 0; q < seqPatterns.length; q++) {
+      var pat = seqPatterns[q].clients;
+      for (var r = 1; r < pat.length; r++) ufUnion(pat[0], pat[r]);
+    }
+
+    var components = {};
+    var ids = Object.keys(clients);
+    for (var s = 0; s < ids.length; s++) {
+      var root = ufFind(ids[s]);
+      if (!components[root]) components[root] = [];
+      components[root].push(ids[s]);
+    }
+
+    var detected = [];
+    var roots = Object.keys(components);
+    for (var t = 0; t < roots.length; t++) {
+      var members = components[roots[t]];
+      if (members.length < minRingSize) continue;
+      var result = computeRingScore(members);
+      if (result.score >= suspicionThreshold) {
+        var ringId = 'ring-' + (++ringCounter);
+        var ring = { id: ringId, members: members, size: members.length, score: result.score, factors: result.factors, detectedAt: Date.now(), status: 'active' };
+        if (Object.keys(rings).length >= maxRings) {
+          var oldest = null, oldestTime = Infinity;
+          var rids = Object.keys(rings);
+          for (var u = 0; u < rids.length; u++) { if (rings[rids[u]].detectedAt < oldestTime) { oldest = rids[u]; oldestTime = rings[rids[u]].detectedAt; } }
+          if (oldest) delete rings[oldest];
+        }
+        rings[ringId] = ring;
+        for (var v = 0; v < members.length; v++) { if (clients[members[v]]) clients[members[v]].ringId = ringId; }
+        detected.push(ring);
+        for (var w = 0; w < onRingCallbacks.length; w++) { try { onRingCallbacks[w](ring); } catch (e) { /* ignore */ } }
+      }
+    }
+    detected.sort(function(a, b) { return b.score - a.score; });
+    return detected;
+  }
+
+  function checkClient(clientId) {
+    var client = clients[clientId];
+    if (!client) return null;
+    if (client.ringId && rings[client.ringId]) return { isFlagged: true, ringId: client.ringId, ring: rings[client.ringId] };
+    return { isFlagged: false, ringId: null, ring: null };
+  }
+
+  function getRing(ringId) { return rings[ringId] || null; }
+
+  function listRings(filter) {
+    filter = filter || {};
+    var result = [];
+    var rids = Object.keys(rings);
+    for (var i = 0; i < rids.length; i++) {
+      var ring = rings[rids[i]];
+      if (filter.status && ring.status !== filter.status) continue;
+      if (filter.minScore && ring.score < filter.minScore) continue;
+      result.push(ring);
+    }
+    result.sort(function(a, b) { return b.score - a.score; });
+    return result;
+  }
+
+  function dismissRing(ringId) {
+    if (!rings[ringId]) return false;
+    rings[ringId].status = 'dismissed';
+    return true;
+  }
+
+  function onRingDetected(cb) { if (typeof cb === 'function') onRingCallbacks.push(cb); }
+
+  function getStats() {
+    var totalClients = Object.keys(clients).length;
+    var flaggedCount = 0;
+    var ids = Object.keys(clients);
+    for (var i = 0; i < ids.length; i++) { if (clients[ids[i]].ringId) flaggedCount++; }
+    var activeRings = 0, dismissedRings = 0, highestScore = 0;
+    var rids = Object.keys(rings);
+    for (var j = 0; j < rids.length; j++) {
+      if (rings[rids[j]].status === 'active') activeRings++; else dismissedRings++;
+      if (rings[rids[j]].score > highestScore) highestScore = rings[rids[j]].score;
+    }
+    return { totalClients: totalClients, flaggedClients: flaggedCount, flaggedPercent: totalClients > 0 ? Math.round(flaggedCount / totalClients * 100 * 10) / 10 : 0, totalRings: rids.length, activeRings: activeRings, dismissedRings: dismissedRings, highestScore: highestScore, minRingSize: minRingSize, suspicionThreshold: suspicionThreshold };
+  }
+
+  function exportState() {
+    return { clients: JSON.parse(JSON.stringify(clients)), clientOrder: clientOrder.slice(), rings: JSON.parse(JSON.stringify(rings)), ringCounter: ringCounter };
+  }
+
+  function importState(state) {
+    if (!state || typeof state !== 'object') return false;
+    if (state.clients) clients = JSON.parse(JSON.stringify(state.clients));
+    if (Array.isArray(state.clientOrder)) clientOrder = state.clientOrder.slice();
+    if (state.rings) rings = JSON.parse(JSON.stringify(state.rings));
+    if (typeof state.ringCounter === 'number') ringCounter = state.ringCounter;
+    return true;
+  }
+
+  function generateReport() {
+    var stats = getStats();
+    var lines = ['=== Fraud Ring Detection Report ===', 'Tracked Clients: ' + stats.totalClients, 'Flagged Clients: ' + stats.flaggedClients + ' (' + stats.flaggedPercent + '%)', 'Active Rings: ' + stats.activeRings, 'Dismissed Rings: ' + stats.dismissedRings, 'Highest Score: ' + stats.highestScore + '/100', ''];
+    var activeList = listRings({ status: 'active' });
+    if (activeList.length > 0) {
+      lines.push('--- Active Rings ---');
+      for (var i = 0; i < activeList.length; i++) {
+        var r = activeList[i];
+        lines.push('  ' + r.id + ': ' + r.size + ' members, score=' + r.score);
+        for (var j = 0; j < r.factors.length; j++) lines.push('    ' + r.factors[j].name + ': +' + r.factors[j].score);
+      }
+    } else { lines.push('No active fraud rings detected.'); }
+    return lines.join('\n');
+  }
+
+  function reset() { clients = {}; clientOrder = []; rings = {}; parent = {}; rank = {}; ringCounter = 0; }
+
+  return {
+    recordEvent: recordEvent, detectRings: detectRings, checkClient: checkClient,
+    getRing: getRing, listRings: listRings, dismissRing: dismissRing, onRingDetected: onRingDetected,
+    getStats: getStats, findTimingClusters: findTimingClusters, findSharedFingerprints: findSharedFingerprints,
+    findIPClusters: findIPClusters, findSequentialPatterns: findSequentialPatterns, computeRingScore: computeRingScore,
+    exportState: exportState, importState: importState, generateReport: generateReport, reset: reset
+  };
+}
+
 var gifCaptcha = {
   sanitize: sanitize,
   createSanitizer: createSanitizer,
@@ -8531,6 +8953,7 @@ var gifCaptcha = {
   createSessionRecorder: createSessionRecorder,
   createLoadTester: createLoadTester,
   createABExperimentRunner: createABExperimentRunner,
+  createFraudRingDetector: createFraudRingDetector,
   GIF_MAX_RETRIES: GIF_MAX_RETRIES,
   GIF_RETRY_DELAY_MS: GIF_RETRY_DELAY_MS,
 };

@@ -6687,6 +6687,605 @@ function createAuditTrail(options) {
   };
 }
 
+// ── Session Recorder ────────────────────────────────────────────────
+
+/**
+ * Create a CAPTCHA session recorder for capturing, replaying, and analyzing
+ * complete user interaction sessions. Useful for debugging, QA testing,
+ * identifying UX issues, and generating test fixtures from real traffic.
+ *
+ * Each session captures a sequence of events (challenge served, user input,
+ * answer submitted, result) with precise timing. Sessions can be exported,
+ * imported, replayed step-by-step, compared, and queried.
+ *
+ * @param {Object} [options]
+ * @param {number} [options.maxSessions=1000] - Maximum stored sessions (LRU eviction)
+ * @param {number} [options.sessionTimeoutMs=300000] - Auto-close inactive sessions (5 min default)
+ * @param {boolean} [options.captureInputs=true] - Record intermediate user inputs
+ * @param {function} [options.onSessionEnd] - Callback when a session ends
+ * @param {string[]} [options.tags] - Default tags for all sessions
+ * @returns {Object} Session recorder API
+ */
+function createSessionRecorder(options) {
+  options = options || {};
+
+  var maxSessions = options.maxSessions != null && options.maxSessions > 0
+    ? Math.floor(options.maxSessions) : 1000;
+  var sessionTimeoutMs = options.sessionTimeoutMs != null && options.sessionTimeoutMs > 0
+    ? options.sessionTimeoutMs : 300000;
+  var captureInputs = options.captureInputs !== false;
+  var onSessionEnd = typeof options.onSessionEnd === "function" ? options.onSessionEnd : null;
+  var defaultTags = Array.isArray(options.tags) ? options.tags.slice() : [];
+
+  var sessions = Object.create(null);
+  var sessionOrder = []; // oldest first for LRU
+  var sessionCount = 0;
+  var nextId = 1;
+  var totalRecorded = 0;
+  var totalEvicted = 0;
+
+  var EVENT_TYPES = [
+    "session.start",
+    "challenge.served",
+    "input.keystroke",
+    "input.click",
+    "input.focus",
+    "input.blur",
+    "input.paste",
+    "answer.submitted",
+    "answer.correct",
+    "answer.incorrect",
+    "challenge.timeout",
+    "challenge.skipped",
+    "challenge.refreshed",
+    "session.end",
+    "error",
+    "custom"
+  ];
+
+  var eventTypeSet = Object.create(null);
+  for (var i = 0; i < EVENT_TYPES.length; i++) {
+    eventTypeSet[EVENT_TYPES[i]] = true;
+  }
+
+  function _now() {
+    return Date.now();
+  }
+
+  function _evictOldest() {
+    if (sessionOrder.length === 0) return;
+    var oldest = sessionOrder.shift();
+    delete sessions[oldest];
+    sessionCount--;
+    totalEvicted++;
+  }
+
+  /**
+   * Start a new recording session.
+   * @param {Object} [meta] - Session metadata (clientId, difficulty, etc.)
+   * @returns {string} Session ID
+   */
+  function startSession(meta) {
+    var id = "rec_" + nextId++;
+    var now = _now();
+
+    if (sessionCount >= maxSessions) {
+      _evictOldest();
+    }
+
+    var session = {
+      id: id,
+      startedAt: now,
+      endedAt: null,
+      status: "active",  // active | completed | timeout | error
+      events: [],
+      metadata: meta || {},
+      tags: defaultTags.slice(),
+      outcome: null,  // correct | incorrect | timeout | skipped | null
+      challengeCount: 0,
+      inputCount: 0,
+      duration: null
+    };
+
+    sessions[id] = session;
+    sessionOrder.push(id);
+    sessionCount++;
+    totalRecorded++;
+
+    _addEvent(id, "session.start", { metadata: session.metadata });
+
+    return id;
+  }
+
+  function _addEvent(sessionId, type, data) {
+    var session = sessions[sessionId];
+    if (!session) return null;
+    if (session.status !== "active") return null;
+
+    var event = {
+      seq: session.events.length,
+      type: type,
+      timestamp: _now(),
+      elapsed: _now() - session.startedAt,
+      data: data || null
+    };
+
+    session.events.push(event);
+
+    // Auto-timeout check
+    if (event.elapsed > sessionTimeoutMs && type !== "session.end") {
+      endSession(sessionId, "timeout");
+    }
+
+    return event;
+  }
+
+  /**
+   * Record a challenge being served in a session.
+   * @param {string} sessionId
+   * @param {Object} challengeInfo - Challenge details (type, difficulty, id)
+   */
+  function recordChallenge(sessionId, challengeInfo) {
+    var session = sessions[sessionId];
+    if (!session) return;
+    session.challengeCount++;
+    _addEvent(sessionId, "challenge.served", challengeInfo || {});
+  }
+
+  /**
+   * Record user input (keystroke, click, etc.).
+   * @param {string} sessionId
+   * @param {string} inputType - "keystroke" | "click" | "focus" | "blur" | "paste"
+   * @param {Object} [data] - Input details
+   */
+  function recordInput(sessionId, inputType, data) {
+    if (!captureInputs) return;
+    var session = sessions[sessionId];
+    if (!session) return;
+    session.inputCount++;
+    var type = "input." + (inputType || "keystroke");
+    if (!eventTypeSet[type]) type = "custom";
+    _addEvent(sessionId, type, data || {});
+  }
+
+  /**
+   * Record an answer submission.
+   * @param {string} sessionId
+   * @param {Object} submission - { answer, challengeId, ... }
+   */
+  function recordSubmission(sessionId, submission) {
+    _addEvent(sessionId, "answer.submitted", submission || {});
+  }
+
+  /**
+   * Record the answer result.
+   * @param {string} sessionId
+   * @param {boolean} correct
+   * @param {Object} [details]
+   */
+  function recordResult(sessionId, correct, details) {
+    var session = sessions[sessionId];
+    if (!session) return;
+    var type = correct ? "answer.correct" : "answer.incorrect";
+    session.outcome = correct ? "correct" : "incorrect";
+    _addEvent(sessionId, type, details || {});
+  }
+
+  /**
+   * Record a challenge skip.
+   * @param {string} sessionId
+   * @param {Object} [data]
+   */
+  function recordSkip(sessionId, data) {
+    var session = sessions[sessionId];
+    if (!session) return;
+    session.outcome = "skipped";
+    _addEvent(sessionId, "challenge.skipped", data || {});
+  }
+
+  /**
+   * Record a challenge refresh (user requested new challenge).
+   * @param {string} sessionId
+   * @param {Object} [data]
+   */
+  function recordRefresh(sessionId, data) {
+    _addEvent(sessionId, "challenge.refreshed", data || {});
+  }
+
+  /**
+   * Record an error event.
+   * @param {string} sessionId
+   * @param {string} message
+   * @param {Object} [data]
+   */
+  function recordError(sessionId, message, data) {
+    var d = data || {};
+    d.message = message;
+    _addEvent(sessionId, "error", d);
+  }
+
+  /**
+   * Record a custom event.
+   * @param {string} sessionId
+   * @param {Object} [data]
+   */
+  function recordCustom(sessionId, data) {
+    _addEvent(sessionId, "custom", data || {});
+  }
+
+  /**
+   * End a session.
+   * @param {string} sessionId
+   * @param {string} [reason] - "completed" | "timeout" | "error"
+   */
+  function endSession(sessionId, reason) {
+    var session = sessions[sessionId];
+    if (!session || session.status !== "active") return;
+
+    session.status = reason || "completed";
+    session.endedAt = _now();
+    session.duration = session.endedAt - session.startedAt;
+
+    if (reason === "timeout" && !session.outcome) {
+      session.outcome = "timeout";
+    }
+
+    // Add end event directly to avoid recursion
+    session.events.push({
+      seq: session.events.length,
+      type: "session.end",
+      timestamp: session.endedAt,
+      elapsed: session.duration,
+      data: { reason: session.status, outcome: session.outcome }
+    });
+
+    if (onSessionEnd) {
+      try { onSessionEnd(session); } catch (e) { /* ignore */ }
+    }
+  }
+
+  /**
+   * Get a session by ID.
+   * @param {string} sessionId
+   * @returns {Object|null}
+   */
+  function getSession(sessionId) {
+    return sessions[sessionId] || null;
+  }
+
+  /**
+   * Add tags to a session.
+   * @param {string} sessionId
+   * @param {string[]} tags
+   */
+  function addTags(sessionId, tags) {
+    var session = sessions[sessionId];
+    if (!session || !Array.isArray(tags)) return;
+    for (var i = 0; i < tags.length; i++) {
+      if (session.tags.indexOf(tags[i]) === -1) {
+        session.tags.push(tags[i]);
+      }
+    }
+  }
+
+  /**
+   * Query sessions with filters.
+   * @param {Object} [filters]
+   * @param {string} [filters.status] - Filter by status
+   * @param {string} [filters.outcome] - Filter by outcome
+   * @param {string} [filters.tag] - Filter by tag
+   * @param {number} [filters.since] - Filter sessions started after timestamp
+   * @param {number} [filters.until] - Filter sessions started before timestamp
+   * @param {string} [filters.clientId] - Filter by metadata.clientId
+   * @param {number} [filters.minEvents] - Minimum event count
+   * @param {number} [filters.limit] - Max results
+   * @returns {Object[]}
+   */
+  function querySessions(filters) {
+    filters = filters || {};
+    var results = [];
+    var limit = filters.limit > 0 ? filters.limit : Infinity;
+
+    for (var i = sessionOrder.length - 1; i >= 0 && results.length < limit; i--) {
+      var s = sessions[sessionOrder[i]];
+      if (!s) continue;
+
+      if (filters.status && s.status !== filters.status) continue;
+      if (filters.outcome && s.outcome !== filters.outcome) continue;
+      if (filters.tag && s.tags.indexOf(filters.tag) === -1) continue;
+      if (filters.since && s.startedAt < filters.since) continue;
+      if (filters.until && s.startedAt > filters.until) continue;
+      if (filters.clientId && (!s.metadata || s.metadata.clientId !== filters.clientId)) continue;
+      if (filters.minEvents && s.events.length < filters.minEvents) continue;
+
+      results.push(s);
+    }
+
+    return results;
+  }
+
+  /**
+   * Create a step-by-step replay iterator for a session.
+   * @param {string} sessionId
+   * @returns {Object} Replay controller with next(), peek(), reset(), progress()
+   */
+  function createReplay(sessionId) {
+    var session = sessions[sessionId];
+    if (!session) return null;
+
+    var events = session.events;
+    var cursor = 0;
+
+    return {
+      /** Get next event or null if done */
+      next: function () {
+        if (cursor >= events.length) return null;
+        return events[cursor++];
+      },
+      /** Peek at next event without advancing */
+      peek: function () {
+        if (cursor >= events.length) return null;
+        return events[cursor];
+      },
+      /** Reset replay to beginning */
+      reset: function () {
+        cursor = 0;
+      },
+      /** Jump to a specific step */
+      jumpTo: function (step) {
+        if (step >= 0 && step <= events.length) cursor = step;
+      },
+      /** Get progress info */
+      progress: function () {
+        return {
+          current: cursor,
+          total: events.length,
+          percent: events.length > 0 ? Math.round((cursor / events.length) * 100) : 0,
+          done: cursor >= events.length
+        };
+      },
+      /** Get all remaining events */
+      remaining: function () {
+        return events.slice(cursor);
+      }
+    };
+  }
+
+  /**
+   * Compare two sessions side-by-side.
+   * @param {string} sessionIdA
+   * @param {string} sessionIdB
+   * @returns {Object|null} Comparison result
+   */
+  function compareSessions(sessionIdA, sessionIdB) {
+    var a = sessions[sessionIdA];
+    var b = sessions[sessionIdB];
+    if (!a || !b) return null;
+
+    function eventTypeCounts(session) {
+      var counts = Object.create(null);
+      for (var i = 0; i < session.events.length; i++) {
+        var t = session.events[i].type;
+        counts[t] = (counts[t] || 0) + 1;
+      }
+      return counts;
+    }
+
+    var aCounts = eventTypeCounts(a);
+    var bCounts = eventTypeCounts(b);
+
+    // Collect all event types
+    var allTypes = Object.create(null);
+    var k;
+    for (k in aCounts) allTypes[k] = true;
+    for (k in bCounts) allTypes[k] = true;
+
+    var eventDiffs = [];
+    for (k in allTypes) {
+      var ca = aCounts[k] || 0;
+      var cb = bCounts[k] || 0;
+      if (ca !== cb) {
+        eventDiffs.push({ type: k, countA: ca, countB: cb, delta: cb - ca });
+      }
+    }
+
+    return {
+      sessionA: { id: a.id, status: a.status, outcome: a.outcome, duration: a.duration, eventCount: a.events.length, challengeCount: a.challengeCount, inputCount: a.inputCount },
+      sessionB: { id: b.id, status: b.status, outcome: b.outcome, duration: b.duration, eventCount: b.events.length, challengeCount: b.challengeCount, inputCount: b.inputCount },
+      durationDelta: (b.duration || 0) - (a.duration || 0),
+      eventCountDelta: b.events.length - a.events.length,
+      sameOutcome: a.outcome === b.outcome,
+      eventDiffs: eventDiffs
+    };
+  }
+
+  /**
+   * Get aggregate analytics across all (or filtered) sessions.
+   * @param {Object} [filters] - Same as querySessions filters
+   * @returns {Object} Analytics summary
+   */
+  function getAnalytics(filters) {
+    var target = filters ? querySessions(filters) : querySessions();
+    var total = target.length;
+    if (total === 0) {
+      return {
+        totalSessions: 0, outcomes: {}, avgDuration: 0, avgEvents: 0,
+        avgInputs: 0, avgChallenges: 0, statusBreakdown: {}, tags: {}
+      };
+    }
+
+    var outcomes = Object.create(null);
+    var statuses = Object.create(null);
+    var tagCounts = Object.create(null);
+    var totalDuration = 0;
+    var totalEvents = 0;
+    var totalInputs = 0;
+    var totalChallenges = 0;
+    var completedCount = 0;
+
+    for (var i = 0; i < target.length; i++) {
+      var s = target[i];
+      if (s.outcome) outcomes[s.outcome] = (outcomes[s.outcome] || 0) + 1;
+      statuses[s.status] = (statuses[s.status] || 0) + 1;
+      if (s.duration != null) { totalDuration += s.duration; completedCount++; }
+      totalEvents += s.events.length;
+      totalInputs += s.inputCount;
+      totalChallenges += s.challengeCount;
+      for (var j = 0; j < s.tags.length; j++) {
+        tagCounts[s.tags[j]] = (tagCounts[s.tags[j]] || 0) + 1;
+      }
+    }
+
+    return {
+      totalSessions: total,
+      outcomes: outcomes,
+      avgDuration: completedCount > 0 ? Math.round(totalDuration / completedCount) : 0,
+      avgEvents: Math.round(totalEvents / total),
+      avgInputs: Math.round(totalInputs / total),
+      avgChallenges: total > 0 ? +(totalChallenges / total).toFixed(1) : 0,
+      statusBreakdown: statuses,
+      successRate: outcomes.correct ? +(outcomes.correct / total * 100).toFixed(1) : 0,
+      tags: tagCounts
+    };
+  }
+
+  /**
+   * Get a timeline of events across multiple sessions (interleaved by timestamp).
+   * @param {string[]} sessionIds
+   * @param {number} [limit]
+   * @returns {Object[]}
+   */
+  function mergedTimeline(sessionIds, limit) {
+    var allEvents = [];
+    for (var i = 0; i < sessionIds.length; i++) {
+      var s = sessions[sessionIds[i]];
+      if (!s) continue;
+      for (var j = 0; j < s.events.length; j++) {
+        allEvents.push({
+          sessionId: s.id,
+          event: s.events[j]
+        });
+      }
+    }
+    allEvents.sort(function (a, b) { return a.event.timestamp - b.event.timestamp; });
+    if (limit && limit > 0) allEvents = allEvents.slice(0, limit);
+    return allEvents;
+  }
+
+  /**
+   * Export all sessions as serializable state.
+   * @returns {Object}
+   */
+  function exportState() {
+    var sessionsArr = [];
+    for (var i = 0; i < sessionOrder.length; i++) {
+      var s = sessions[sessionOrder[i]];
+      if (s) sessionsArr.push(s);
+    }
+    return {
+      sessions: sessionsArr,
+      nextId: nextId,
+      totalRecorded: totalRecorded,
+      totalEvicted: totalEvicted
+    };
+  }
+
+  /**
+   * Import previously exported state.
+   * @param {Object} state
+   */
+  function importState(state) {
+    if (!state || !Array.isArray(state.sessions)) return;
+
+    sessions = Object.create(null);
+    sessionOrder = [];
+    sessionCount = 0;
+
+    var imported = state.sessions;
+    // Respect maxSessions
+    var start = imported.length > maxSessions ? imported.length - maxSessions : 0;
+    for (var i = start; i < imported.length; i++) {
+      var s = imported[i];
+      if (s && s.id) {
+        sessions[s.id] = s;
+        sessionOrder.push(s.id);
+        sessionCount++;
+      }
+    }
+
+    if (typeof state.nextId === "number") nextId = state.nextId;
+    if (typeof state.totalRecorded === "number") totalRecorded = state.totalRecorded;
+    if (typeof state.totalEvicted === "number") totalEvicted = state.totalEvicted;
+  }
+
+  /**
+   * Get overall stats.
+   * @returns {Object}
+   */
+  function getStats() {
+    return {
+      activeSessions: sessionCount,
+      totalRecorded: totalRecorded,
+      totalEvicted: totalEvicted,
+      maxSessions: maxSessions,
+      sessionTimeoutMs: sessionTimeoutMs,
+      captureInputs: captureInputs
+    };
+  }
+
+  /**
+   * Delete a session.
+   * @param {string} sessionId
+   * @returns {boolean}
+   */
+  function deleteSession(sessionId) {
+    if (!sessions[sessionId]) return false;
+    delete sessions[sessionId];
+    var idx = sessionOrder.indexOf(sessionId);
+    if (idx !== -1) sessionOrder.splice(idx, 1);
+    sessionCount--;
+    return true;
+  }
+
+  /**
+   * Reset all sessions.
+   */
+  function reset() {
+    sessions = Object.create(null);
+    sessionOrder = [];
+    sessionCount = 0;
+    nextId = 1;
+    totalRecorded = 0;
+    totalEvicted = 0;
+  }
+
+  return {
+    startSession: startSession,
+    endSession: endSession,
+    recordChallenge: recordChallenge,
+    recordInput: recordInput,
+    recordSubmission: recordSubmission,
+    recordResult: recordResult,
+    recordSkip: recordSkip,
+    recordRefresh: recordRefresh,
+    recordError: recordError,
+    recordCustom: recordCustom,
+    getSession: getSession,
+    addTags: addTags,
+    querySessions: querySessions,
+    createReplay: createReplay,
+    compareSessions: compareSessions,
+    getAnalytics: getAnalytics,
+    mergedTimeline: mergedTimeline,
+    exportState: exportState,
+    importState: importState,
+    getStats: getStats,
+    deleteSession: deleteSession,
+    reset: reset,
+    EVENT_TYPES: EVENT_TYPES
+  };
+}
+
 var gifCaptcha = {
   sanitize: sanitize,
   createSanitizer: createSanitizer,
@@ -6714,6 +7313,7 @@ var gifCaptcha = {
   createIncidentCorrelator: createIncidentCorrelator,
   createAdaptiveTimeout: createAdaptiveTimeout,
   createAuditTrail: createAuditTrail,
+  createSessionRecorder: createSessionRecorder,
   GIF_MAX_RETRIES: GIF_MAX_RETRIES,
   GIF_RETRY_DELAY_MS: GIF_RETRY_DELAY_MS,
 };

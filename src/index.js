@@ -9,6 +9,35 @@
 
 "use strict";
 
+// ── Shared Option Helpers ───────────────────────────────────────────
+
+/**
+ * Extract a positive-number option, falling back to a default.
+ *
+ * Replaces the verbose pattern:
+ *   options.x != null && options.x > 0 ? options.x : fallback
+ *
+ * @param {*}      val      The option value to check
+ * @param {number} fallback Default when val is null/undefined/non-positive
+ * @returns {number}
+ */
+function _posOpt(val, fallback) {
+  return val != null && val > 0 ? val : fallback;
+}
+
+/**
+ * Extract a non-negative-number option, falling back to a default.
+ *
+ * Like _posOpt but allows 0.
+ *
+ * @param {*}      val      The option value to check
+ * @param {number} fallback Default when val is null/undefined/negative
+ * @returns {number}
+ */
+function _nnOpt(val, fallback) {
+  return val != null && val >= 0 ? val : fallback;
+}
+
 // ── Crypto-secure Randomness ────────────────────────────────────────
 
 var _crypto = null;
@@ -4749,13 +4778,13 @@ function createChallengeRouter(options) {
 function createRateLimiter(options) {
   options = options || {};
 
-  var windowMs = options.windowMs != null && options.windowMs > 0 ? options.windowMs : 60000;
-  var maxRequests = options.maxRequests != null && options.maxRequests > 0 ? options.maxRequests : 10;
-  var burstThreshold = options.burstThreshold != null && options.burstThreshold > 0 ? options.burstThreshold : 5;
-  var burstWindowMs = options.burstWindowMs != null && options.burstWindowMs > 0 ? options.burstWindowMs : 5000;
-  var maxDelay = options.maxDelay != null && options.maxDelay >= 0 ? options.maxDelay : 30000;
-  var baseDelay = options.baseDelay != null && options.baseDelay >= 0 ? options.baseDelay : 1000;
-  var maxClients = options.maxClients != null && options.maxClients > 0 ? options.maxClients : 10000;
+  var windowMs = _posOpt(options.windowMs, 60000);
+  var maxRequests = _posOpt(options.maxRequests, 10);
+  var burstThreshold = _posOpt(options.burstThreshold, 5);
+  var burstWindowMs = _posOpt(options.burstWindowMs, 5000);
+  var maxDelay = _nnOpt(options.maxDelay, 30000);
+  var baseDelay = _nnOpt(options.baseDelay, 1000);
+  var maxClients = _posOpt(options.maxClients, 10000);
 
   // Sets for O(1) lookup
   var allowSet = {};
@@ -5688,16 +5717,13 @@ function createClientFingerprinter(options) {
 function createIncidentCorrelator(options) {
   options = options || {};
 
-  var correlationWindowMs = options.correlationWindowMs != null && options.correlationWindowMs > 0
-    ? options.correlationWindowMs : 60000;
-  var maxIncidents = options.maxIncidents != null && options.maxIncidents > 0
-    ? options.maxIncidents : 1000;
-  var maxSignalsPerIncident = options.maxSignalsPerIncident != null && options.maxSignalsPerIncident > 0
-    ? options.maxSignalsPerIncident : 50;
+  var correlationWindowMs = _posOpt(options.correlationWindowMs, 60000);
+  var maxIncidents = _posOpt(options.maxIncidents, 1000);
+  var maxSignalsPerIncident = _posOpt(options.maxSignalsPerIncident, 50);
 
   var thresholds = options.thresholds || {};
-  var warningThreshold = thresholds.warning != null && thresholds.warning > 0 ? thresholds.warning : 3;
-  var highThreshold = thresholds.high != null && thresholds.high > 0 ? thresholds.high : 6;
+  var warningThreshold = _posOpt(thresholds.warning, 3);
+  var highThreshold = _posOpt(thresholds.high, 6);
   var criticalThreshold = thresholds.critical != null && thresholds.critical > 0 ? thresholds.critical : 10;
 
   var onAlert = typeof options.onAlert === "function" ? options.onAlert : null;
@@ -6064,12 +6090,9 @@ function createIncidentCorrelator(options) {
 function createAdaptiveTimeout(options) {
   options = options || {};
 
-  var baseTimeoutMs = options.baseTimeoutMs != null && options.baseTimeoutMs > 0
-    ? options.baseTimeoutMs : 30000;
-  var minTimeoutMs = options.minTimeoutMs != null && options.minTimeoutMs > 0
-    ? options.minTimeoutMs : 5000;
-  var maxTimeoutMs = options.maxTimeoutMs != null && options.maxTimeoutMs > 0
-    ? options.maxTimeoutMs : 120000;
+  var baseTimeoutMs = _posOpt(options.baseTimeoutMs, 30000);
+  var minTimeoutMs = _posOpt(options.minTimeoutMs, 5000);
+  var maxTimeoutMs = _posOpt(options.maxTimeoutMs, 120000);
   var difficultyMultiplierLow = options.difficultyMultiplierLow != null
     ? options.difficultyMultiplierLow : 0.7;
   var difficultyMultiplierHigh = options.difficultyMultiplierHigh != null
@@ -6082,10 +6105,8 @@ function createAdaptiveTimeout(options) {
     ? options.targetPercentile : 0.90;
   var baselineMargin = options.baselineMargin != null
     ? options.baselineMargin : 1.5;
-  var maxHistoryPerDifficulty = options.maxHistoryPerDifficulty != null && options.maxHistoryPerDifficulty > 0
-    ? Math.floor(options.maxHistoryPerDifficulty) : 500;
-  var latencyBufferMs = options.latencyBufferMs != null && options.latencyBufferMs >= 0
-    ? options.latencyBufferMs : 2000;
+  var maxHistoryPerDifficulty = Math.floor(_posOpt(options.maxHistoryPerDifficulty, 500));
+  var latencyBufferMs = _nnOpt(options.latencyBufferMs, 2000);
 
   // Difficulty buckets: "easy", "medium", "hard", or numeric 0-100
   // Normalized to 3 buckets for history tracking
@@ -6470,8 +6491,7 @@ function createAdaptiveTimeout(options) {
 function createAuditTrail(options) {
   options = options || {};
 
-  var maxEntries = options.maxEntries != null && options.maxEntries > 0
-    ? Math.floor(options.maxEntries) : 10000;
+  var maxEntries = Math.floor(_posOpt(options.maxEntries, 10000));
   var includeMetadata = options.includeMetadata !== false;
   var onEvent = typeof options.onEvent === "function" ? options.onEvent : null;
   var enabledTypes = null;
@@ -6741,10 +6761,8 @@ function createAuditTrail(options) {
 function createSessionRecorder(options) {
   options = options || {};
 
-  var maxSessions = options.maxSessions != null && options.maxSessions > 0
-    ? Math.floor(options.maxSessions) : 1000;
-  var sessionTimeoutMs = options.sessionTimeoutMs != null && options.sessionTimeoutMs > 0
-    ? options.sessionTimeoutMs : 300000;
+  var maxSessions = Math.floor(_posOpt(options.maxSessions, 1000));
+  var sessionTimeoutMs = _posOpt(options.sessionTimeoutMs, 300000);
   var captureInputs = options.captureInputs !== false;
   var onSessionEnd = typeof options.onSessionEnd === "function" ? options.onSessionEnd : null;
   var defaultTags = Array.isArray(options.tags) ? options.tags.slice() : [];

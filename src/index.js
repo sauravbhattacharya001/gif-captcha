@@ -9639,6 +9639,346 @@ function createComplianceReporter(options) {
   };
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// Metrics Aggregator — unified metrics collection from all subsystems
+// ═══════════════════════════════════════════════════════════════════
+
+/**
+ * Creates a metrics aggregator that collects and unifies stats from all
+ * registered CAPTCHA subsystems into a single dashboard-ready snapshot.
+ *
+ * Accepts instances of any subsystem (bot detector, rate limiter,
+ * reputation tracker, etc.) and calls their getStats/getReport methods
+ * to produce a unified view.
+ *
+ * Usage:
+ * ```js
+ * var agg = createMetricsAggregator({ historySize: 100 });
+ * agg.register('sessions', sessionManager);
+ * agg.register('reputation', reputationTracker);
+ * agg.register('rateLimiter', rateLimiter);
+ *
+ * var snapshot = agg.snapshot();
+ * // { timestamp, subsystems: {...}, health: {...}, alerts: [...] }
+ *
+ * var trends = agg.getTrends();
+ * // { snapshots: [...], uptimeMs, snapshotCount }
+ * ```
+ *
+ * @param {Object} [options]
+ * @param {number} [options.historySize=60]  Max snapshots to retain
+ * @param {Object} [options.thresholds]      Alert thresholds
+ * @param {number} [options.thresholds.passRate]      Min acceptable pass rate (0-1)
+ * @param {number} [options.thresholds.avgResponseMs] Max acceptable avg response time ms
+ * @param {number} [options.thresholds.dangerousRate] Max acceptable dangerous-classified rate (0-1)
+ * @param {number} [options.thresholds.botDetectionRate] Max acceptable bot rate (0-1)
+ * @returns {Object} Metrics aggregator instance
+ */
+function createMetricsAggregator(options) {
+  var opts = options || {};
+  var historySize = Math.max(1, opts.historySize || 60);
+  var thresholds = Object.assign({
+    passRate: 0.3,
+    avgResponseMs: 30000,
+    dangerousRate: 0.25,
+    botDetectionRate: 0.4,
+  }, opts.thresholds || {});
+
+  var subsystems = Object.create(null);
+  var history = [];
+  var startTime = Date.now();
+
+  // ── Registration ──
+
+  /**
+   * Register a subsystem instance for metrics collection.
+   * The instance must have at least one of: getStats, getReport, getSummary.
+   *
+   * @param {string} name   Unique subsystem identifier
+   * @param {Object} instance  Subsystem instance
+   * @returns {boolean} true if registered successfully
+   */
+  function register(name, instance) {
+    if (!name || typeof name !== 'string') return false;
+    if (!instance || typeof instance !== 'object') return false;
+    if (typeof instance.getStats !== 'function' &&
+        typeof instance.getReport !== 'function' &&
+        typeof instance.getSummary !== 'function') {
+      return false;
+    }
+    subsystems[name] = instance;
+    return true;
+  }
+
+  /**
+   * Unregister a subsystem.
+   * @param {string} name
+   * @returns {boolean} true if was registered
+   */
+  function unregister(name) {
+    if (!(name in subsystems)) return false;
+    delete subsystems[name];
+    return true;
+  }
+
+  /**
+   * Get list of registered subsystem names.
+   * @returns {string[]}
+   */
+  function listSubsystems() {
+    return Object.keys(subsystems);
+  }
+
+  // ── Stats Collection ──
+
+  /**
+   * Safely collect stats from a single subsystem.
+   * Tries getStats, then getReport, then getSummary.
+   * @param {Object} instance
+   * @returns {Object|null}
+   */
+  function _collectStats(instance) {
+    try {
+      if (typeof instance.getStats === 'function') return instance.getStats();
+      if (typeof instance.getReport === 'function') return instance.getReport();
+      if (typeof instance.getSummary === 'function') return instance.getSummary();
+    } catch (_) {
+      return null;
+    }
+    return null;
+  }
+
+  /**
+   * Compute overall health score (0-100) from subsystem stats.
+   * Checks known patterns: passRate, avgResponseTimeMs,
+   * classifications.dangerous, botRate.
+   *
+   * @param {Object} stats  Map of subsystem name → stats object
+   * @returns {{ score: number, status: string, factors: Object[] }}
+   */
+  function _computeHealth(stats) {
+    var factors = [];
+    var penalties = 0;
+
+    // Check session pass rate
+    if (stats.sessions && typeof stats.sessions.passRate === 'number') {
+      var pr = stats.sessions.passRate;
+      if (pr < thresholds.passRate) {
+        var impact = Math.round((thresholds.passRate - pr) * 100);
+        factors.push({ subsystem: 'sessions', metric: 'passRate', value: pr, threshold: thresholds.passRate, impact: impact });
+        penalties += impact;
+      }
+    }
+
+    // Check response time
+    if (stats.sessions && typeof stats.sessions.avgResponseTimeMs === 'number' && stats.sessions.avgResponseTimeMs !== null) {
+      var rt = stats.sessions.avgResponseTimeMs;
+      if (rt > thresholds.avgResponseMs) {
+        var rtImpact = Math.min(30, Math.round((rt - thresholds.avgResponseMs) / thresholds.avgResponseMs * 30));
+        factors.push({ subsystem: 'sessions', metric: 'avgResponseTimeMs', value: rt, threshold: thresholds.avgResponseMs, impact: rtImpact });
+        penalties += rtImpact;
+      }
+    }
+
+    // Check reputation dangerous rate
+    if (stats.reputation && stats.reputation.classifications) {
+      var cls = stats.reputation.classifications;
+      var total = (cls.trusted || 0) + (cls.neutral || 0) + (cls.suspicious || 0) + (cls.dangerous || 0);
+      if (total > 0) {
+        var dangRate = (cls.dangerous || 0) / total;
+        if (dangRate > thresholds.dangerousRate) {
+          var dImpact = Math.round((dangRate - thresholds.dangerousRate) * 80);
+          factors.push({ subsystem: 'reputation', metric: 'dangerousRate', value: dangRate, threshold: thresholds.dangerousRate, impact: dImpact });
+          penalties += dImpact;
+        }
+      }
+    }
+
+    // Check bot detection rate from botDetector
+    if (stats.botDetector && typeof stats.botDetector.totalChecks === 'number' && stats.botDetector.totalChecks > 0) {
+      var botRate = (stats.botDetector.botsDetected || 0) / stats.botDetector.totalChecks;
+      if (botRate > thresholds.botDetectionRate) {
+        var bImpact = Math.round((botRate - thresholds.botDetectionRate) * 60);
+        factors.push({ subsystem: 'botDetector', metric: 'botRate', value: botRate, threshold: thresholds.botDetectionRate, impact: bImpact });
+        penalties += bImpact;
+      }
+    }
+
+    // Check rate limiter rejections
+    if (stats.rateLimiter && typeof stats.rateLimiter.totalRequests === 'number' && stats.rateLimiter.totalRequests > 0) {
+      var rejectRate = (stats.rateLimiter.rejected || 0) / stats.rateLimiter.totalRequests;
+      if (rejectRate > 0.5) {
+        var rlImpact = Math.round(rejectRate * 20);
+        factors.push({ subsystem: 'rateLimiter', metric: 'rejectRate', value: rejectRate, threshold: 0.5, impact: rlImpact });
+        penalties += rlImpact;
+      }
+    }
+
+    var score = Math.max(0, 100 - penalties);
+    var status = score >= 80 ? 'healthy' : score >= 50 ? 'degraded' : 'critical';
+
+    return { score: score, status: status, factors: factors };
+  }
+
+  /**
+   * Generate alerts from current stats.
+   * @param {Object} stats
+   * @param {{ score: number, status: string }} health
+   * @returns {Object[]}
+   */
+  function _generateAlerts(stats, health) {
+    var alerts = [];
+    var now = Date.now();
+
+    if (health.status === 'critical') {
+      alerts.push({ level: 'critical', message: 'System health is critical (score: ' + health.score + ')', timestamp: now });
+    } else if (health.status === 'degraded') {
+      alerts.push({ level: 'warning', message: 'System health is degraded (score: ' + health.score + ')', timestamp: now });
+    }
+
+    for (var i = 0; i < health.factors.length; i++) {
+      var f = health.factors[i];
+      alerts.push({
+        level: f.impact >= 20 ? 'critical' : 'warning',
+        message: f.subsystem + '.' + f.metric + ' = ' + (typeof f.value === 'number' ? Math.round(f.value * 1000) / 1000 : f.value) + ' (threshold: ' + f.threshold + ')',
+        timestamp: now,
+        subsystem: f.subsystem,
+        metric: f.metric,
+      });
+    }
+
+    return alerts;
+  }
+
+  // ── Snapshot ──
+
+  /**
+   * Take a point-in-time snapshot of all subsystem metrics.
+   * @returns {{ timestamp: number, subsystems: Object, health: Object, alerts: Object[], registeredCount: number }}
+   */
+  function snapshot() {
+    var now = Date.now();
+    var stats = Object.create(null);
+    var names = Object.keys(subsystems);
+
+    for (var i = 0; i < names.length; i++) {
+      var name = names[i];
+      var collected = _collectStats(subsystems[name]);
+      if (collected !== null) {
+        stats[name] = collected;
+      }
+    }
+
+    var health = _computeHealth(stats);
+    var alerts = _generateAlerts(stats, health);
+
+    var snap = {
+      timestamp: now,
+      subsystems: stats,
+      health: health,
+      alerts: alerts,
+      registeredCount: names.length,
+    };
+
+    history.push(snap);
+    if (history.length > historySize) {
+      history = history.slice(history.length - historySize);
+    }
+
+    return snap;
+  }
+
+  /**
+   * Get the most recent snapshot without taking a new one.
+   * @returns {Object|null}
+   */
+  function lastSnapshot() {
+    return history.length > 0 ? history[history.length - 1] : null;
+  }
+
+  // ── Trends ──
+
+  /**
+   * Get historical trend data from stored snapshots.
+   * @returns {{ snapshots: Object[], uptimeMs: number, snapshotCount: number, healthTrend: string|null }}
+   */
+  function getTrends() {
+    var uptimeMs = Date.now() - startTime;
+    var healthTrend = null;
+
+    if (history.length >= 3) {
+      var recentScores = [];
+      var startIdx = Math.max(0, history.length - 5);
+      for (var i = startIdx; i < history.length; i++) {
+        recentScores.push(history[i].health.score);
+      }
+      var firstHalf = 0, secondHalf = 0;
+      var mid = Math.floor(recentScores.length / 2);
+      for (var j = 0; j < mid; j++) firstHalf += recentScores[j];
+      for (var k = mid; k < recentScores.length; k++) secondHalf += recentScores[k];
+      firstHalf /= mid;
+      secondHalf /= (recentScores.length - mid);
+
+      if (secondHalf > firstHalf + 5) healthTrend = 'improving';
+      else if (secondHalf < firstHalf - 5) healthTrend = 'declining';
+      else healthTrend = 'stable';
+    }
+
+    return {
+      snapshots: history.slice(),
+      uptimeMs: uptimeMs,
+      snapshotCount: history.length,
+      healthTrend: healthTrend,
+    };
+  }
+
+  /**
+   * Get a compact summary suitable for logging or external reporting.
+   * @returns {Object}
+   */
+  function getSummary() {
+    var snap = history.length > 0 ? history[history.length - 1] : snapshot();
+    return {
+      timestamp: snap.timestamp,
+      healthScore: snap.health.score,
+      healthStatus: snap.health.status,
+      registeredCount: snap.registeredCount,
+      alertCount: snap.alerts.length,
+      criticalAlerts: snap.alerts.filter(function(a) { return a.level === 'critical'; }).length,
+      uptimeMs: Date.now() - startTime,
+      snapshotCount: history.length,
+    };
+  }
+
+  /**
+   * Clear all historical snapshots.
+   */
+  function clearHistory() {
+    history = [];
+  }
+
+  /**
+   * Reset everything — unregister all subsystems and clear history.
+   */
+  function reset() {
+    subsystems = Object.create(null);
+    history = [];
+  }
+
+  return {
+    register: register,
+    unregister: unregister,
+    listSubsystems: listSubsystems,
+    snapshot: snapshot,
+    lastSnapshot: lastSnapshot,
+    getTrends: getTrends,
+    getSummary: getSummary,
+    clearHistory: clearHistory,
+    reset: reset,
+  };
+}
+
+
 var gifCaptcha = {
   sanitize: sanitize,
   createSanitizer: createSanitizer,
@@ -9671,6 +10011,7 @@ var gifCaptcha = {
   createABExperimentRunner: createABExperimentRunner,
   createFraudRingDetector: createFraudRingDetector,
   createComplianceReporter: createComplianceReporter,
+  createMetricsAggregator: createMetricsAggregator,
   GIF_MAX_RETRIES: GIF_MAX_RETRIES,
   GIF_RETRY_DELAY_MS: GIF_RETRY_DELAY_MS,
 };

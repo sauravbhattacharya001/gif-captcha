@@ -7318,6 +7318,524 @@ function createSessionRecorder(options) {
   };
 }
 
+// ── Load Tester ─────────────────────────────────────────────────────
+
+/**
+ * Create a load tester that stress-tests the CAPTCHA system by simulating
+ * concurrent virtual users exercising the full challenge lifecycle.
+ *
+ * Integrates with:
+ * - PoolManager (challenge selection under load)
+ * - RateLimiter (per-client throttling under concurrent access)
+ * - SessionManager (session creation/cleanup at scale)
+ * - BotDetector (behavior analysis with varied profiles)
+ * - TokenVerifier (token generation/validation throughput)
+ * - ResponseAnalyzer (answer quality metrics under stress)
+ *
+ * @param {Object} [options]
+ * @param {number} [options.concurrency=10] - Number of simulated concurrent users
+ * @param {number} [options.requestsPerUser=50] - Requests each user makes
+ * @param {number} [options.rampUpMs=1000] - Time to ramp up to full concurrency
+ * @param {number} [options.thinkTimeMs=100] - Simulated user think time between actions
+ * @param {number} [options.humanRatio=0.8] - Fraction of users simulating human behavior
+ * @param {number} [options.timeoutMs=30000] - Max test duration before forced stop
+ * @param {Object} [options.challenges] - Custom challenge pool (array)
+ * @param {string} [options.tokenSecret] - Secret for token verifier
+ * @returns {Object} Load tester instance
+ */
+function createLoadTester(options) {
+  options = options || {};
+
+  var concurrency = (typeof options.concurrency === "number" && options.concurrency > 0)
+    ? Math.floor(options.concurrency) : 10;
+  var requestsPerUser = (typeof options.requestsPerUser === "number" && options.requestsPerUser > 0)
+    ? Math.floor(options.requestsPerUser) : 50;
+  var rampUpMs = (typeof options.rampUpMs === "number" && options.rampUpMs >= 0)
+    ? options.rampUpMs : 1000;
+  var thinkTimeMs = (typeof options.thinkTimeMs === "number" && options.thinkTimeMs >= 0)
+    ? options.thinkTimeMs : 100;
+  var humanRatio = (typeof options.humanRatio === "number" && options.humanRatio >= 0 && options.humanRatio <= 1)
+    ? options.humanRatio : 0.8;
+  var timeoutMs = (typeof options.timeoutMs === "number" && options.timeoutMs > 0)
+    ? options.timeoutMs : 30000;
+  var tokenSecret = options.tokenSecret || "load-test-secret-key-minimum-length";
+
+  // Default challenge pool
+  var challengePool = Array.isArray(options.challenges) && options.challenges.length > 0
+    ? options.challenges
+    : [
+        { id: "lt-1", title: "Cat jumping", gifUrl: "https://example.com/cat.gif", humanAnswer: "A cat jumps off a table and lands on the floor" },
+        { id: "lt-2", title: "Ball bouncing", gifUrl: "https://example.com/ball.gif", humanAnswer: "A red ball bounces three times on concrete" },
+        { id: "lt-3", title: "Dog running", gifUrl: "https://example.com/dog.gif", humanAnswer: "A golden retriever runs across a grassy field" },
+        { id: "lt-4", title: "Bird flying", gifUrl: "https://example.com/bird.gif", humanAnswer: "A small bird takes off from a branch and flies away" },
+        { id: "lt-5", title: "Water pouring", gifUrl: "https://example.com/water.gif", humanAnswer: "Water is poured from a pitcher into a clear glass" },
+      ];
+
+  // Phase tracking
+  var PHASE = { IDLE: "idle", RAMPING: "ramping", RUNNING: "running", STOPPING: "stopping", DONE: "done" };
+  var phase = PHASE.IDLE;
+  var startTime = 0;
+  var endTime = 0;
+  var stopped = false;
+
+  // Per-user results
+  var userResults = [];
+
+  // Aggregate metrics
+  var metrics = {
+    totalRequests: 0,
+    successfulRequests: 0,
+    failedRequests: 0,
+    rateLimited: 0,
+    botDetected: 0,
+    tokenVerified: 0,
+    tokenRejected: 0,
+    responseTimes: [],
+    errors: [],
+    challengesServed: {},
+  };
+
+  // Internal subsystem instances (created fresh per run)
+  var pool = null;
+  var rateLimiter = null;
+  var tokenVerifier = null;
+  var botDetector = null;
+  var responseAnalyzer = null;
+  var submissions = [];  // Collected submissions for response analysis
+
+  /**
+   * Initialize subsystems for a fresh test run.
+   */
+  function _initSubsystems() {
+    pool = createPoolManager({ maxServes: requestsPerUser * concurrency, minPoolSize: 2 });
+    pool.add(challengePool);
+
+    rateLimiter = createRateLimiter({
+      windowMs: 60000,
+      maxRequests: Math.max(requestsPerUser, 20),
+      burstThreshold: Math.max(Math.floor(requestsPerUser / 5), 5),
+      maxClients: concurrency * 2,
+    });
+
+    tokenVerifier = createTokenVerifier({ secret: tokenSecret, tokenTtlMs: timeoutMs * 2 });
+    botDetector = createBotDetector({ botThreshold: 60 });
+    responseAnalyzer = createResponseAnalyzer({ similarityThreshold: 0.3 });
+  }
+
+  /**
+   * Generate simulated mouse movements for bot detection.
+   * Human profiles produce varied, curved movements.
+   * Bot profiles produce linear or no movements.
+   */
+  function _generateMouseMovements(isHuman) {
+    if (!isHuman) {
+      // Bot: no mouse data or perfectly linear
+      return secureRandomInt(2) === 0 ? [] : [
+        { x: 0, y: 0, t: 0 },
+        { x: 100, y: 100, t: 50 },
+        { x: 200, y: 200, t: 100 },
+      ];
+    }
+    // Human: varied movements with direction changes
+    var moves = [];
+    var count = 5 + secureRandomInt(20);
+    var x = secureRandomInt(500);
+    var y = secureRandomInt(400);
+    var t = 0;
+    for (var i = 0; i < count; i++) {
+      x += secureRandomInt(100) - 50;
+      y += secureRandomInt(80) - 40;
+      t += 20 + secureRandomInt(200);
+      moves.push({ x: Math.max(0, x), y: Math.max(0, y), t: t });
+    }
+    return moves;
+  }
+
+  /**
+   * Generate simulated keystroke timing data.
+   */
+  function _generateKeystrokeTiming(isHuman, answerLength) {
+    var intervals = [];
+    for (var i = 0; i < answerLength; i++) {
+      if (isHuman) {
+        // Human: 50-300ms between keystrokes, with variance
+        intervals.push(50 + secureRandomInt(250));
+      } else {
+        // Bot: very consistent, fast timing
+        intervals.push(5 + secureRandomInt(10));
+      }
+    }
+    return intervals;
+  }
+
+  /**
+   * Simulate a single user's complete CAPTCHA lifecycle.
+   * Returns per-user metrics.
+   */
+  function _simulateUser(userId, isHuman) {
+    var userMetrics = {
+      userId: userId,
+      isHuman: isHuman,
+      requests: 0,
+      passed: 0,
+      failed: 0,
+      rateLimited: 0,
+      responseTimes: [],
+      errors: [],
+    };
+
+    var clientId = "load-test-user-" + userId;
+    var startTs = Date.now();
+
+    for (var i = 0; i < requestsPerUser; i++) {
+      if (stopped) break;
+
+      var reqStart = Date.now();
+      metrics.totalRequests++;
+      userMetrics.requests++;
+
+      try {
+        // Step 1: Rate limit check
+        var rateCheck = rateLimiter.check(clientId, { now: reqStart });
+        if (!rateCheck.allowed) {
+          metrics.rateLimited++;
+          userMetrics.rateLimited++;
+          var reqEnd = Date.now();
+          var elapsed = reqEnd - reqStart;
+          metrics.responseTimes.push(elapsed);
+          userMetrics.responseTimes.push(elapsed);
+          continue;
+        }
+
+        // Step 2: Pick a challenge
+        var picked = pool.pick(1);
+        if (picked.length === 0) {
+          metrics.failedRequests++;
+          userMetrics.failed++;
+          metrics.errors.push({ userId: userId, error: "no_challenges_available", request: i });
+          continue;
+        }
+        var challenge = picked[0];
+        metrics.challengesServed[challenge.id] = (metrics.challengesServed[challenge.id] || 0) + 1;
+
+        // Step 3: Issue and verify token
+        var issued = tokenVerifier.issueToken({
+          sessionId: "lt-session-" + userId + "-" + i,
+          score: 0.5,
+          difficulty: 1,
+          ip: "127.0.0." + userId,
+        });
+        var tokenResult = tokenVerifier.verifyToken(issued.token, { ip: "127.0.0." + userId });
+        if (tokenResult.valid) {
+          metrics.tokenVerified++;
+        } else {
+          metrics.tokenRejected++;
+        }
+
+        // Step 4: Bot detection
+        var movements = _generateMouseMovements(isHuman);
+        var timeOnPage = isHuman ? (3000 + secureRandomInt(10000)) : (500 + secureRandomInt(1000));
+        var keystrokes = _generateKeystrokeTiming(isHuman, 30);
+
+        var botResult = botDetector.analyze({
+          mouseMovements: movements,
+          timeOnPageMs: timeOnPage,
+          keystrokeTimings: keystrokes,
+        });
+
+        if (botResult.verdict === "bot") {
+          metrics.botDetected++;
+        }
+
+        // Step 5: Simulate answer
+        var answer;
+        if (isHuman) {
+          // Human: give a somewhat relevant answer (50-90% similarity)
+          var words = challenge.humanAnswer.split(/\s+/);
+          var useWords = Math.max(2, Math.floor(words.length * (0.5 + Math.random() * 0.4)));
+          answer = words.slice(0, useWords).join(" ");
+        } else {
+          // Bot: random gibberish or exact copy
+          if (secureRandomInt(3) === 0) {
+            answer = challenge.humanAnswer; // exact copy (suspicious)
+          } else {
+            answer = "random answer " + secureRandomInt(10000);
+          }
+        }
+
+        // Step 6: Validate answer
+        var validation = validateAnswer(answer, challenge.humanAnswer, { threshold: 0.3 });
+        if (validation.passed) {
+          metrics.successfulRequests++;
+          userMetrics.passed++;
+          pool.recordResult(challenge.id, true);
+        } else {
+          metrics.failedRequests++;
+          userMetrics.failed++;
+          pool.recordResult(challenge.id, false);
+        }
+
+        // Step 7: Collect submission for analysis
+        submissions.push({
+          timeMs: timeOnPage,
+          response: answer,
+        });
+
+        var reqEnd2 = Date.now();
+        var elapsed2 = reqEnd2 - reqStart;
+        metrics.responseTimes.push(elapsed2);
+        userMetrics.responseTimes.push(elapsed2);
+
+      } catch (err) {
+        metrics.failedRequests++;
+        userMetrics.failed++;
+        userMetrics.errors.push({ request: i, error: String(err.message || err) });
+        metrics.errors.push({ userId: userId, request: i, error: String(err.message || err) });
+      }
+    }
+
+    userMetrics.totalTimeMs = Date.now() - startTs;
+    return userMetrics;
+  }
+
+  /**
+   * Calculate percentile from a sorted array of numbers.
+   */
+  function _percentile(sorted, p) {
+    if (sorted.length === 0) return 0;
+    var idx = Math.ceil(p / 100 * sorted.length) - 1;
+    return sorted[Math.max(0, Math.min(idx, sorted.length - 1))];
+  }
+
+  /**
+   * Run the load test synchronously.
+   * Simulates concurrent users sequentially (no true parallelism in
+   * single-threaded JS, but exercises all subsystems at scale).
+   *
+   * @returns {Object} Complete test results with per-user and aggregate metrics
+   */
+  function run() {
+    if (phase !== PHASE.IDLE && phase !== PHASE.DONE) {
+      return { error: "Test already running", phase: phase };
+    }
+
+    // Reset state
+    phase = PHASE.RAMPING;
+    stopped = false;
+    startTime = Date.now();
+    userResults = [];
+    metrics = {
+      totalRequests: 0,
+      successfulRequests: 0,
+      failedRequests: 0,
+      rateLimited: 0,
+      botDetected: 0,
+      tokenVerified: 0,
+      tokenRejected: 0,
+      responseTimes: [],
+      errors: [],
+      challengesServed: {},
+    };
+
+    _initSubsystems();
+
+    // Determine user profiles
+    var humanCount = Math.round(concurrency * humanRatio);
+    var botCount = concurrency - humanCount;
+
+    phase = PHASE.RUNNING;
+
+    // Simulate each user
+    for (var i = 0; i < concurrency; i++) {
+      if (stopped) break;
+      var isHuman = i < humanCount;
+      var result = _simulateUser(i + 1, isHuman);
+      userResults.push(result);
+    }
+
+    endTime = Date.now();
+    phase = PHASE.DONE;
+
+    return _buildReport();
+  }
+
+  /**
+   * Stop a running test early.
+   */
+  function stop() {
+    stopped = true;
+    phase = PHASE.STOPPING;
+  }
+
+  /**
+   * Build the final test report with aggregate statistics.
+   */
+  function _buildReport() {
+    var duration = endTime - startTime;
+    var sortedTimes = metrics.responseTimes.slice().sort(function (a, b) { return a - b; });
+
+    var avgTime = sortedTimes.length > 0
+      ? sortedTimes.reduce(function (s, v) { return s + v; }, 0) / sortedTimes.length
+      : 0;
+
+    // Calculate throughput
+    var throughput = duration > 0 ? (metrics.totalRequests / (duration / 1000)) : 0;
+
+    // Challenge distribution analysis
+    var challengeIds = Object.keys(metrics.challengesServed);
+    var serveValues = challengeIds.map(function (id) { return metrics.challengesServed[id]; });
+    var minServes = serveValues.length > 0 ? Math.min.apply(null, serveValues) : 0;
+    var maxServes = serveValues.length > 0 ? Math.max.apply(null, serveValues) : 0;
+    var avgServes = serveValues.length > 0
+      ? serveValues.reduce(function (s, v) { return s + v; }, 0) / serveValues.length : 0;
+
+    // Pool stats
+    var poolStats = pool ? pool.getSummary() : null;
+
+    // Response analyzer report
+    var analyzerReport = null;
+    try {
+      analyzerReport = responseAnalyzer ? responseAnalyzer.scoreSubmissions(submissions) : null;
+    } catch (e) {
+      analyzerReport = { error: String(e.message || e) };
+    }
+
+    // Per-user summaries
+    var userSummaries = userResults.map(function (u) {
+      var uSorted = u.responseTimes.slice().sort(function (a, b) { return a - b; });
+      return {
+        userId: u.userId,
+        isHuman: u.isHuman,
+        requests: u.requests,
+        passed: u.passed,
+        failed: u.failed,
+        rateLimited: u.rateLimited,
+        passRate: u.requests > 0 ? u.passed / u.requests : 0,
+        avgResponseMs: uSorted.length > 0
+          ? uSorted.reduce(function (s, v) { return s + v; }, 0) / uSorted.length : 0,
+        p50ResponseMs: _percentile(uSorted, 50),
+        p95ResponseMs: _percentile(uSorted, 95),
+        p99ResponseMs: _percentile(uSorted, 99),
+        totalTimeMs: u.totalTimeMs,
+        errorCount: u.errors.length,
+      };
+    });
+
+    // Separate human vs bot stats
+    var humanUsers = userSummaries.filter(function (u) { return u.isHuman; });
+    var botUsers = userSummaries.filter(function (u) { return !u.isHuman; });
+
+    var humanPassRate = humanUsers.length > 0
+      ? humanUsers.reduce(function (s, u) { return s + u.passRate; }, 0) / humanUsers.length : 0;
+    var botPassRate = botUsers.length > 0
+      ? botUsers.reduce(function (s, u) { return s + u.passRate; }, 0) / botUsers.length : 0;
+
+    return {
+      summary: {
+        phase: phase,
+        concurrency: concurrency,
+        requestsPerUser: requestsPerUser,
+        totalRequests: metrics.totalRequests,
+        successfulRequests: metrics.successfulRequests,
+        failedRequests: metrics.failedRequests,
+        rateLimited: metrics.rateLimited,
+        botDetected: metrics.botDetected,
+        tokenVerified: metrics.tokenVerified,
+        tokenRejected: metrics.tokenRejected,
+        durationMs: duration,
+        throughputRps: Math.round(throughput * 100) / 100,
+        errorCount: metrics.errors.length,
+      },
+      latency: {
+        avgMs: Math.round(avgTime * 100) / 100,
+        p50Ms: _percentile(sortedTimes, 50),
+        p95Ms: _percentile(sortedTimes, 95),
+        p99Ms: _percentile(sortedTimes, 99),
+        minMs: sortedTimes.length > 0 ? sortedTimes[0] : 0,
+        maxMs: sortedTimes.length > 0 ? sortedTimes[sortedTimes.length - 1] : 0,
+      },
+      challengeDistribution: {
+        totalChallenges: challengeIds.length,
+        minServes: minServes,
+        maxServes: maxServes,
+        avgServes: Math.round(avgServes * 100) / 100,
+        distribution: metrics.challengesServed,
+      },
+      userBreakdown: {
+        humanCount: humanUsers.length,
+        botCount: botUsers.length,
+        humanPassRate: Math.round(humanPassRate * 10000) / 10000,
+        botPassRate: Math.round(botPassRate * 10000) / 10000,
+      },
+      poolStats: poolStats,
+      analyzerReport: analyzerReport,
+      users: userSummaries,
+      errors: metrics.errors.slice(0, 100), // cap at 100 for readability
+    };
+  }
+
+  /**
+   * Get current test configuration.
+   */
+  function getConfig() {
+    return {
+      concurrency: concurrency,
+      requestsPerUser: requestsPerUser,
+      rampUpMs: rampUpMs,
+      thinkTimeMs: thinkTimeMs,
+      humanRatio: humanRatio,
+      timeoutMs: timeoutMs,
+      challengeCount: challengePool.length,
+      phase: phase,
+    };
+  }
+
+  /**
+   * Get current phase.
+   */
+  function getPhase() {
+    return phase;
+  }
+
+  /**
+   * Reset for another run.
+   */
+  function reset() {
+    phase = PHASE.IDLE;
+    stopped = false;
+    startTime = 0;
+    endTime = 0;
+    userResults = [];
+    metrics = {
+      totalRequests: 0,
+      successfulRequests: 0,
+      failedRequests: 0,
+      rateLimited: 0,
+      botDetected: 0,
+      tokenVerified: 0,
+      tokenRejected: 0,
+      responseTimes: [],
+      errors: [],
+      challengesServed: {},
+    };
+    pool = null;
+    rateLimiter = null;
+    tokenVerifier = null;
+    botDetector = null;
+    responseAnalyzer = null;
+    submissions = [];
+  }
+
+  return {
+    run: run,
+    stop: stop,
+    reset: reset,
+    getConfig: getConfig,
+    getPhase: getPhase,
+    PHASE: PHASE,
+  };
+}
+
 var gifCaptcha = {
   sanitize: sanitize,
   createSanitizer: createSanitizer,
@@ -7346,6 +7864,7 @@ var gifCaptcha = {
   createAdaptiveTimeout: createAdaptiveTimeout,
   createAuditTrail: createAuditTrail,
   createSessionRecorder: createSessionRecorder,
+  createLoadTester: createLoadTester,
   GIF_MAX_RETRIES: GIF_MAX_RETRIES,
   GIF_RETRY_DELAY_MS: GIF_RETRY_DELAY_MS,
 };

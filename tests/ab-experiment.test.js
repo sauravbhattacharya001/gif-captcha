@@ -2,7 +2,103 @@
  * Tests for the A/B Experiment Runner module.
  */
 
+var { describe, it, beforeEach } = require("node:test");
+var assert = require("node:assert/strict");
+var test = it;
 var gifCaptcha = require("../src/index");
+
+// Lightweight expect shim for Jest-style assertions
+function expect(actual) {
+  return {
+    toBe: function (expected) {
+      assert.strictEqual(actual, expected);
+    },
+    toEqual: function (expected) {
+      assert.deepStrictEqual(actual, expected);
+    },
+    toContain: function (item) {
+      if (typeof actual === "string") {
+        assert.ok(actual.includes(item), "expected '" + actual + "' to contain '" + item + "'");
+      } else if (Array.isArray(actual)) {
+        assert.ok(actual.includes(item), "expected array to contain " + JSON.stringify(item));
+      } else {
+        assert.fail("toContain requires string or array");
+      }
+    },
+    toThrow: function (pattern) {
+      assert.throws(actual, pattern);
+    },
+    toBeDefined: function () {
+      assert.notStrictEqual(actual, undefined);
+    },
+    toBeNull: function () {
+      assert.strictEqual(actual, null);
+    },
+    toBeUndefined: function () {
+      assert.strictEqual(actual, undefined);
+    },
+    toBeTruthy: function () {
+      assert.ok(actual);
+    },
+    toBeFalsy: function () {
+      assert.ok(!actual);
+    },
+    toBeGreaterThan: function (expected) {
+      assert.ok(actual > expected, "expected " + actual + " > " + expected);
+    },
+    toBeLessThan: function (expected) {
+      assert.ok(actual < expected, "expected " + actual + " < " + expected);
+    },
+    toBeGreaterThanOrEqual: function (expected) {
+      assert.ok(actual >= expected, "expected " + actual + " >= " + expected);
+    },
+    toBeLessThanOrEqual: function (expected) {
+      assert.ok(actual <= expected, "expected " + actual + " <= " + expected);
+    },
+    toMatch: function (pattern) {
+      if (typeof pattern === "string") {
+        assert.ok(actual.includes(pattern), "expected '" + actual + "' to match '" + pattern + "'");
+      } else {
+        assert.match(actual, pattern);
+      }
+    },
+    toHaveLength: function (expected) {
+      assert.strictEqual(actual.length, expected);
+    },
+    toBeCloseTo: function (expected, digits) {
+      var d = digits === undefined ? 2 : digits;
+      var diff = Math.abs(actual - expected);
+      assert.ok(diff < Math.pow(10, -d) / 2, "expected " + actual + " to be close to " + expected);
+    },
+    not: {
+      toBe: function (expected) {
+        assert.notStrictEqual(actual, expected);
+      },
+      toEqual: function (expected) {
+        assert.notDeepStrictEqual(actual, expected);
+      },
+      toContain: function (item) {
+        if (typeof actual === "string") {
+          assert.ok(!actual.includes(item), "expected not to contain '" + item + "'");
+        } else if (Array.isArray(actual)) {
+          assert.ok(!actual.includes(item), "expected array not to contain " + JSON.stringify(item));
+        }
+      },
+      toThrow: function () {
+        assert.doesNotThrow(actual);
+      },
+      toBeDefined: function () {
+        assert.strictEqual(actual, undefined);
+      },
+      toBeNull: function () {
+        assert.notStrictEqual(actual, null);
+      },
+      toBeTruthy: function () {
+        assert.ok(!actual);
+      },
+    },
+  };
+}
 
 describe("createABExperimentRunner", function () {
   var runner;

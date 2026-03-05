@@ -1,3 +1,4 @@
+var { describe, it, beforeEach } = require('node:test');
 var assert = require('assert');
 var lib = require('../src/index');
 

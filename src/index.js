@@ -47,10 +47,13 @@ try {
 
 /**
  * Generate a cryptographically secure random integer in [0, max).
- * Falls back to Math.random() if no crypto API is available.
+ * Throws if no cryptographic RNG is available — a CAPTCHA library
+ * must never fall back to Math.random() as it is predictable and
+ * would allow attackers to forecast challenges.
  *
  * @param {number} max - Exclusive upper bound (must be > 0)
  * @returns {number} Random integer in [0, max)
+ * @throws {Error} If no cryptographic random source is available
  */
 function secureRandomInt(max) {
   if (_crypto && typeof _crypto.randomInt === 'function') {
@@ -65,7 +68,12 @@ function secureRandomInt(max) {
     } while (arr[0] >= limit);
     return arr[0] % max;
   }
-  return Math.floor(Math.random() * max);
+  throw new Error(
+    'gif-captcha: no cryptographic random source available. ' +
+    'CAPTCHA security requires crypto.randomInt (Node.js) or ' +
+    'crypto.getRandomValues (browser). Math.random() is predictable ' +
+    'and must not be used for challenge generation.'
+  );
 }
 
 // ── Text Sanitizer ──────────────────────────────────────────────────

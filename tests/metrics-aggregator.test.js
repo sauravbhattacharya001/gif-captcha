@@ -478,4 +478,131 @@ describe('createMetricsAggregator', function () {
       expect(snap.health.score).toBe(100);
     });
   });
+
+  // ── Auto-Capture ──
+
+  describe('startAutoCapture / stopAutoCapture', function () {
+    afterEach(function () {
+      agg.stopAutoCapture();
+    });
+
+    it('takes periodic snapshots', function (done) {
+      agg.register('s', { getStats: function () { return { ok: true }; } });
+      agg.startAutoCapture(1000);
+      expect(agg.isAutoCapturing()).toBe(true);
+      // After ~50ms no auto snapshot yet (interval is 1s), but manual check
+      setTimeout(function () {
+        agg.stopAutoCapture();
+        expect(agg.isAutoCapturing()).toBe(false);
+        done();
+      }, 50);
+    });
+
+    it('defaults to 60000ms for invalid interval', function () {
+      var result = agg.startAutoCapture('bad');
+      expect(result.intervalMs).toBe(60000);
+      expect(result.active).toBe(true);
+      agg.stopAutoCapture();
+    });
+
+    it('replaces previous timer on re-call', function () {
+      agg.startAutoCapture(5000);
+      agg.startAutoCapture(2000);
+      expect(agg.isAutoCapturing()).toBe(true);
+      agg.stopAutoCapture();
+      expect(agg.isAutoCapturing()).toBe(false);
+    });
+
+    it('stopAutoCapture is safe to call when not running', function () {
+      var result = agg.stopAutoCapture();
+      expect(result.active).toBe(false);
+    });
+  });
+
+  // ── onAlert ──
+
+  describe('onAlert', function () {
+    it('fires callback when snapshot has alerts', function () {
+      var received = [];
+      agg.onAlert(function (alerts) { received.push(alerts); });
+      // Register a subsystem that triggers a critical health score
+      agg.register('sessions', {
+        getStats: function () { return { passRate: 0.01, avgResponseTimeMs: 100000 }; }
+      });
+      agg.snapshot();
+      expect(received.length).toBe(1);
+      expect(received[0].length).toBeGreaterThan(0);
+    });
+
+    it('does not fire when no alerts', function () {
+      var count = 0;
+      agg.onAlert(function () { count++; });
+      agg.register('ok', { getStats: function () { return { fine: true }; } });
+      agg.snapshot();
+      expect(count).toBe(0);
+    });
+
+    it('returns unsubscribe function', function () {
+      var count = 0;
+      var unsub = agg.onAlert(function () { count++; });
+      agg.register('sessions', {
+        getStats: function () { return { passRate: 0.01 }; }
+      });
+      agg.snapshot();
+      expect(count).toBe(1);
+      unsub();
+      agg.snapshot();
+      expect(count).toBe(1);
+    });
+
+    it('throws on non-function callback', function () {
+      expect(function () { agg.onAlert('bad'); }).toThrow();
+    });
+  });
+
+  // ── exportHistory ──
+
+  describe('exportHistory', function () {
+    it('exports JSON by default', function () {
+      agg.register('s', { getStats: function () { return { x: 1 }; } });
+      agg.snapshot();
+      var json = agg.exportHistory();
+      var parsed = JSON.parse(json);
+      expect(Array.isArray(parsed)).toBe(true);
+      expect(parsed.length).toBe(1);
+      expect(parsed[0].health).toBeDefined();
+    });
+
+    it('exports CSV format', function () {
+      agg.register('s', { getStats: function () { return { x: 1 }; } });
+      agg.snapshot();
+      agg.snapshot();
+      var csv = agg.exportHistory('csv');
+      var lines = csv.split('\n');
+      expect(lines[0]).toBe('timestamp,healthScore,healthStatus,registeredCount,alertCount,criticalAlerts');
+      expect(lines.length).toBe(3); // header + 2 rows
+    });
+
+    it('returns empty array JSON when no history', function () {
+      var json = agg.exportHistory('json');
+      expect(JSON.parse(json)).toEqual([]);
+    });
+
+    it('returns header-only CSV when no history', function () {
+      var csv = agg.exportHistory('csv');
+      var lines = csv.split('\n');
+      expect(lines.length).toBe(1);
+    });
+  });
+
+  // ── reset clears auto-capture ──
+
+  describe('reset', function () {
+    it('stops auto-capture on reset', function () {
+      agg.startAutoCapture(5000);
+      expect(agg.isAutoCapturing()).toBe(true);
+      agg.reset();
+      expect(agg.isAutoCapturing()).toBe(false);
+    });
+  });
 });

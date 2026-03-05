@@ -9687,6 +9687,8 @@ function createMetricsAggregator(options) {
   var subsystems = Object.create(null);
   var history = [];
   var startTime = Date.now();
+  var autoCaptureTimer = null;
+  var alertListeners = [];
 
   // ── Registration ──
 
@@ -9885,6 +9887,13 @@ function createMetricsAggregator(options) {
       history = history.slice(history.length - historySize);
     }
 
+    // Notify alert listeners if there are new alerts
+    if (alerts.length > 0) {
+      for (var li = 0; li < alertListeners.length; li++) {
+        try { alertListeners[li](alerts, snap); } catch (_ignored) {}
+      }
+    }
+
     return snap;
   }
 
@@ -9961,8 +9970,113 @@ function createMetricsAggregator(options) {
    * Reset everything — unregister all subsystems and clear history.
    */
   function reset() {
+    stopAutoCapture();
     subsystems = Object.create(null);
     history = [];
+    alertListeners = [];
+  }
+
+  // ── Auto-Capture ──
+
+  /**
+   * Start periodic auto-snapshots at the given interval.
+   * Only one auto-capture timer can be active at a time; calling again
+   * replaces the previous interval.
+   *
+   * @param {number} intervalMs  Capture interval in milliseconds (min 1000)
+   * @returns {{ intervalMs: number, active: boolean }}
+   */
+  function startAutoCapture(intervalMs) {
+    if (typeof intervalMs !== 'number' || intervalMs < 1000) {
+      intervalMs = 60000; // default 60s
+    }
+    stopAutoCapture();
+    autoCaptureTimer = setInterval(function () {
+      snapshot();
+    }, intervalMs);
+    // Prevent timer from keeping Node.js process alive
+    if (autoCaptureTimer && typeof autoCaptureTimer.unref === 'function') {
+      autoCaptureTimer.unref();
+    }
+    return { intervalMs: intervalMs, active: true };
+  }
+
+  /**
+   * Stop periodic auto-snapshots.
+   * @returns {{ active: boolean }}
+   */
+  function stopAutoCapture() {
+    if (autoCaptureTimer !== null) {
+      clearInterval(autoCaptureTimer);
+      autoCaptureTimer = null;
+    }
+    return { active: false };
+  }
+
+  /**
+   * Check whether auto-capture is currently running.
+   * @returns {boolean}
+   */
+  function isAutoCapturing() {
+    return autoCaptureTimer !== null;
+  }
+
+  // ── Alert Listeners ──
+
+  /**
+   * Register a callback invoked whenever a snapshot produces alerts.
+   * The callback receives (alerts, snapshot).
+   *
+   * @param {Function} callback
+   * @returns {Function} Unsubscribe function
+   */
+  function onAlert(callback) {
+    if (typeof callback !== 'function') {
+      throw new Error('onAlert requires a function callback');
+    }
+    alertListeners.push(callback);
+    return function unsubscribe() {
+      var idx = alertListeners.indexOf(callback);
+      if (idx !== -1) alertListeners.splice(idx, 1);
+    };
+  }
+
+  // ── Export ──
+
+  /**
+   * Export snapshot history in the requested format.
+   * Supported formats: 'json' (default) and 'csv'.
+   *
+   * CSV columns: timestamp, healthScore, healthStatus, registeredCount,
+   *              alertCount, criticalAlerts
+   *
+   * @param {string} [format='json']  'json' or 'csv'
+   * @returns {string}
+   */
+  function exportHistory(format) {
+    var fmt = (format || 'json').toLowerCase();
+    if (fmt === 'csv') {
+      var header = 'timestamp,healthScore,healthStatus,registeredCount,alertCount,criticalAlerts';
+      var rows = [header];
+      for (var i = 0; i < history.length; i++) {
+        var s = history[i];
+        var critCount = 0;
+        for (var a = 0; a < s.alerts.length; a++) {
+          if (s.alerts[a].level === 'critical') critCount++;
+        }
+        rows.push([
+          s.timestamp,
+          s.health.score,
+          s.health.status,
+          s.registeredCount,
+          s.alerts.length,
+          critCount
+        ].join(','));
+      }
+      return rows.join('\n');
+    }
+    // Default: JSON
+    return JSON.stringify(history, null, 2);
   }
 
   return {
@@ -9975,6 +10089,11 @@ function createMetricsAggregator(options) {
     getSummary: getSummary,
     clearHistory: clearHistory,
     reset: reset,
+    startAutoCapture: startAutoCapture,
+    stopAutoCapture: stopAutoCapture,
+    isAutoCapturing: isAutoCapturing,
+    onAlert: onAlert,
+    exportHistory: exportHistory,
   };
 }
 

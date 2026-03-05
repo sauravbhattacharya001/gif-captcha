@@ -35,6 +35,9 @@ function makeChallenges(count) {
 
 // ── Challenge → Pool Manager ───────────────────────────────────────
 
+const { describe, test } = require('node:test');
+const assert = require('node:assert/strict');
+
 describe('pipeline: challenge → pool manager', function () {
 
   test('challenges created by createChallenge work with pool.add + pool.pick', function () {
@@ -42,12 +45,12 @@ describe('pipeline: challenge → pool manager', function () {
     var pool = gifCaptcha.createPoolManager();
     pool.add(challenges);
     var selected = pool.pick(3);
-    expect(selected).toHaveLength(3);
+    assert.strictEqual((selected).length, 3);
     selected.forEach(function (c) {
-      expect(c).toHaveProperty('id');
-      expect(c).toHaveProperty('gifUrl');
-      expect(c).toHaveProperty('humanAnswer');
-      expect(Object.isFrozen(c)).toBe(true);
+      assert.notStrictEqual((c)["id"], undefined);
+      assert.notStrictEqual((c)["gifUrl"], undefined);
+      assert.notStrictEqual((c)["humanAnswer"], undefined);
+      assert.strictEqual(Object.isFrozen(c), true);
     });
   });
 
@@ -58,7 +61,7 @@ describe('pipeline: challenge → pool manager', function () {
     var selected = pool.pick(5);
     var ids = selected.map(function (c) { return c.id; });
     var unique = ids.filter(function (id, i) { return ids.indexOf(id) === i; });
-    expect(unique).toHaveLength(5);
+    assert.strictEqual((unique).length, 5);
   });
 
   test('pool.recordResult updates challenge stats', function () {
@@ -72,18 +75,18 @@ describe('pipeline: challenge → pool manager', function () {
     pool.recordResult(challenges[0].id, false, 2000);
 
     var stats = pool.getStats(challenges[0].id);
-    expect(stats).toBeTruthy();
-    expect(stats.passes).toBeGreaterThanOrEqual(1);
+    assert.ok(stats);
+    assert.ok((stats.passes) >= (1));
   });
 
   test('pool-selected challenges work with pickChallenges', function () {
     var challenges = makeChallenges(20);
     var picked = gifCaptcha.pickChallenges(challenges, 5);
-    expect(picked).toHaveLength(5);
+    assert.strictEqual((picked).length, 5);
     picked.forEach(function (c) {
-      expect(c.gifUrl).toMatch(/^https:\/\//);
-      expect(typeof c.humanAnswer).toBe('string');
-      expect(c.humanAnswer.length).toBeGreaterThan(0);
+      assert.match(c.gifUrl, /^https:\/\//);
+      assert.strictEqual(typeof c.humanAnswer, 'string');
+      assert.ok((c.humanAnswer.length) > (0));
     });
   });
 
@@ -92,9 +95,9 @@ describe('pipeline: challenge → pool manager', function () {
     var pool = gifCaptcha.createPoolManager();
     pool.add(challenges);
     var summary = pool.getSummary();
-    expect(summary).toBeTruthy();
-    expect(summary.activeCount).toBe(8);
-    expect(summary.retiredCount).toBe(0);
+    assert.ok(summary);
+    assert.strictEqual(summary.activeCount, 8);
+    assert.strictEqual(summary.retiredCount, 0);
   });
 });
 
@@ -110,9 +113,9 @@ describe('pipeline: challenge → session manager', function () {
 
     var challenges = makeChallenges(10);
     var sess = session.startSession(challenges);
-    expect(sess).toHaveProperty('sessionId');
-    expect(sess.totalChallenges).toBe(3);
-    expect(sess.challengeIndex).toBe(0);
+    assert.notStrictEqual((sess)["sessionId"], undefined);
+    assert.strictEqual(sess.totalChallenges, 3);
+    assert.strictEqual(sess.challengeIndex, 0);
   });
 
   test('session completes as passed with all correct responses', function () {
@@ -127,10 +130,10 @@ describe('pipeline: challenge → session manager', function () {
     for (var i = 0; i < 3; i++) {
       var result = session.submitResponse(sess.sessionId, true, 3000 + i * 500);
       if (i < 2) {
-        expect(result.done).toBe(false);
+        assert.strictEqual(result.done, false);
       } else {
-        expect(result.done).toBe(true);
-        expect(result.passed).toBe(true);
+        assert.strictEqual(result.done, true);
+        assert.strictEqual(result.passed, true);
       }
     }
   });
@@ -149,8 +152,8 @@ describe('pipeline: challenge → session manager', function () {
       lastResult = session.submitResponse(sess.sessionId, false, 5000);
     }
 
-    expect(lastResult.done).toBe(true);
-    expect(lastResult.passed).toBe(false);
+    assert.strictEqual(lastResult.done, true);
+    assert.strictEqual(lastResult.passed, false);
   });
 
   test('session difficulty escalates on correct responses', function () {
@@ -166,7 +169,7 @@ describe('pipeline: challenge → session manager', function () {
     var sess = session.startSession(challenges);
 
     var r1 = session.submitResponse(sess.sessionId, true, 3000);
-    expect(r1.nextDifficulty).toBeGreaterThan(30);
+    assert.ok((r1.nextDifficulty) > (30));
   });
 
   test('session tracks correct and total answered', function () {
@@ -182,8 +185,8 @@ describe('pipeline: challenge → session manager', function () {
     session.submitResponse(sess.sessionId, false, 4000);
     var r = session.submitResponse(sess.sessionId, true, 5000);
 
-    expect(r.correctCount).toBe(2);
-    expect(r.totalAnswered).toBe(3);
+    assert.strictEqual(r.correctCount, 2);
+    assert.strictEqual(r.totalAnswered, 3);
   });
 });
 
@@ -196,10 +199,10 @@ describe('pipeline: challenge pool → security scorer', function () {
     var scorer = gifCaptcha.createSecurityScorer(challenges);
     var report = scorer.getReport();
 
-    expect(report).toHaveProperty('score');
-    expect(report).toHaveProperty('grade');
-    expect(report.score).toBeGreaterThanOrEqual(0);
-    expect(report.score).toBeLessThanOrEqual(100);
+    assert.notStrictEqual((report)["score"], undefined);
+    assert.notStrictEqual((report)["grade"], undefined);
+    assert.ok((report.score) >= (0));
+    assert.ok((report.score) <= (100));
   });
 
   test('security scorer getDimensions returns array of dimensions', function () {
@@ -207,14 +210,14 @@ describe('pipeline: challenge pool → security scorer', function () {
     var scorer = gifCaptcha.createSecurityScorer(challenges);
     var dims = scorer.getDimensions();
 
-    expect(Array.isArray(dims)).toBe(true);
-    expect(dims.length).toBeGreaterThan(0);
+    assert.strictEqual(Array.isArray(dims), true);
+    assert.ok((dims.length) > (0));
 
     dims.forEach(function (dim) {
-      expect(dim).toHaveProperty('name');
-      expect(dim).toHaveProperty('score');
-      expect(dim.score).toBeGreaterThanOrEqual(0);
-      expect(dim.score).toBeLessThanOrEqual(100);
+      assert.notStrictEqual((dim)["name"], undefined);
+      assert.notStrictEqual((dim)["score"], undefined);
+      assert.ok((dim.score) >= (0));
+      assert.ok((dim.score) <= (100));
     });
   });
 
@@ -223,15 +226,15 @@ describe('pipeline: challenge pool → security scorer', function () {
     var scorer = gifCaptcha.createSecurityScorer(challenges);
 
     var dim = scorer.getDimension('AI Resistance');
-    expect(dim).toHaveProperty('score');
-    expect(dim).toHaveProperty('name');
-    expect(dim.name).toBe('AI Resistance');
+    assert.notStrictEqual((dim)["score"], undefined);
+    assert.notStrictEqual((dim)["name"], undefined);
+    assert.strictEqual(dim.name, 'AI Resistance');
   });
 
   test('isSecure returns boolean for challenge pool', function () {
     var challenges = makeChallenges(10);
     var scorer = gifCaptcha.createSecurityScorer(challenges);
-    expect(typeof scorer.isSecure()).toBe('boolean');
+    assert.strictEqual(typeof scorer.isSecure(), 'boolean');
   });
 
   test('vulnerabilities are actionable', function () {
@@ -239,12 +242,12 @@ describe('pipeline: challenge pool → security scorer', function () {
     var scorer = gifCaptcha.createSecurityScorer(challenges);
     var vulns = scorer.getVulnerabilities();
 
-    expect(Array.isArray(vulns)).toBe(true);
+    assert.strictEqual(Array.isArray(vulns), true);
     vulns.forEach(function (v) {
-      expect(v).toHaveProperty('dimension');
-      expect(v).toHaveProperty('severity');
-      expect(v).toHaveProperty('description');
-      expect(['critical', 'high', 'medium', 'low']).toContain(v.severity);
+      assert.notStrictEqual((v)["dimension"], undefined);
+      assert.notStrictEqual((v)["severity"], undefined);
+      assert.notStrictEqual((v)["description"], undefined);
+      assert.ok((['critical', 'high', 'medium', 'low']).includes(v.severity));
     });
   });
 
@@ -254,12 +257,12 @@ describe('pipeline: challenge pool → security scorer', function () {
     var recs = scorer.getRecommendations();
     var vulns = scorer.getVulnerabilities();
 
-    expect(Array.isArray(recs)).toBe(true);
+    assert.strictEqual(Array.isArray(recs), true);
     var vulnDims = vulns.map(function (v) { return v.dimension; });
     var recDims = recs.map(function (r) { return r.dimension; });
     var overlap = recDims.filter(function (d) { return vulnDims.indexOf(d) !== -1; });
     if (vulns.length > 0) {
-      expect(overlap.length).toBeGreaterThan(0);
+      assert.ok((overlap.length) > (0));
     }
   });
 });
@@ -273,10 +276,10 @@ describe('pipeline: challenges → set analyzer → calibrator', function () {
     var analyzer = gifCaptcha.createSetAnalyzer(challenges);
     var report = analyzer.generateReport();
 
-    expect(report).toHaveProperty('challengeCount');
-    expect(report.challengeCount).toBe(10);
-    expect(report).toHaveProperty('diversity');
-    expect(report.diversity).toHaveProperty('score');
+    assert.notStrictEqual((report)["challengeCount"], undefined);
+    assert.strictEqual(report.challengeCount, 10);
+    assert.notStrictEqual((report)["diversity"], undefined);
+    assert.notStrictEqual((report.diversity)["score"], undefined);
   });
 
   test('set analyzer detects similar pairs in challenge pool', function () {
@@ -284,7 +287,7 @@ describe('pipeline: challenges → set analyzer → calibrator', function () {
     var analyzer = gifCaptcha.createSetAnalyzer(challenges);
     var pairs = analyzer.findSimilarPairs(0.3);
 
-    expect(Array.isArray(pairs)).toBe(true);
+    assert.strictEqual(Array.isArray(pairs), true);
   });
 
   test('set analyzer quality issues are structured objects', function () {
@@ -292,11 +295,11 @@ describe('pipeline: challenges → set analyzer → calibrator', function () {
     var analyzer = gifCaptcha.createSetAnalyzer(challenges);
     var issues = analyzer.qualityIssues();
 
-    expect(Array.isArray(issues)).toBe(true);
+    assert.strictEqual(Array.isArray(issues), true);
     issues.forEach(function (issue) {
-      expect(typeof issue).toBe('object');
-      expect(issue).toHaveProperty('type');
-      expect(issue).toHaveProperty('message');
+      assert.strictEqual(typeof issue, 'object');
+      assert.notStrictEqual((issue)["type"], undefined);
+      assert.notStrictEqual((issue)["message"], undefined);
     });
   });
 
@@ -306,11 +309,11 @@ describe('pipeline: challenges → set analyzer → calibrator', function () {
     var scoreResult = analyzer.diversityScore();
 
     // diversityScore returns an object with score property
-    expect(scoreResult).toBeTruthy();
-    expect(typeof scoreResult).toBe('object');
-    expect(scoreResult).toHaveProperty('score');
-    expect(scoreResult.score).toBeGreaterThanOrEqual(0);
-    expect(scoreResult.score).toBeLessThanOrEqual(100);
+    assert.ok(scoreResult);
+    assert.strictEqual(typeof scoreResult, 'object');
+    assert.notStrictEqual((scoreResult)["score"], undefined);
+    assert.ok((scoreResult.score) >= (0));
+    assert.ok((scoreResult.score) <= (100));
   });
 
   test('calibrator generates report from challenge pool', function () {
@@ -318,8 +321,8 @@ describe('pipeline: challenges → set analyzer → calibrator', function () {
     var calibrator = gifCaptcha.createDifficultyCalibrator(challenges);
     var report = calibrator.generateReport();
 
-    expect(report).toBeTruthy();
-    expect(typeof report).toBe('object');
+    assert.ok(report);
+    assert.strictEqual(typeof report, 'object');
   });
 
   test('calibrator tracks responses with proper argument format', function () {
@@ -331,9 +334,9 @@ describe('pipeline: challenges → set analyzer → calibrator', function () {
     calibrator.recordResponse('1', { timeMs: 8000, correct: false });
     calibrator.recordResponse('2', { timeMs: 2000, correct: true });
 
-    expect(calibrator.totalResponses()).toBe(3);
-    expect(calibrator.responseCount('1')).toBe(2);
-    expect(calibrator.responseCount('2')).toBe(1);
+    assert.strictEqual(calibrator.totalResponses(), 3);
+    assert.strictEqual(calibrator.responseCount('1'), 2);
+    assert.strictEqual(calibrator.responseCount('2'), 1);
   });
 
   test('calibrator difficulty distribution reflects recorded data', function () {
@@ -345,8 +348,8 @@ describe('pipeline: challenges → set analyzer → calibrator', function () {
     }
 
     var dist = calibrator.getDifficultyDistribution();
-    expect(dist).toBeTruthy();
-    expect(typeof dist).toBe('object');
+    assert.ok(dist);
+    assert.strictEqual(typeof dist, 'object');
   });
 
   test('calibrator findOutliers returns array', function () {
@@ -360,7 +363,7 @@ describe('pipeline: challenges → set analyzer → calibrator', function () {
     calibrator.recordResponse('2', { timeMs: 100, correct: true });
 
     var outliers = calibrator.findOutliers();
-    expect(Array.isArray(outliers)).toBe(true);
+    assert.strictEqual(Array.isArray(outliers), true);
   });
 });
 
@@ -385,8 +388,8 @@ describe('pipeline: response analyzer + bot detector', function () {
       keystrokes: [],
     });
 
-    expect(analyzerResult.verdict).not.toBe('likely_human');
-    expect(detectorResult.verdict).not.toBe('human');
+    assert.notStrictEqual(analyzerResult.verdict, 'likely_human');
+    assert.notStrictEqual(detectorResult.verdict, 'human');
   });
 
   test('both accept likely-human behavior', function () {
@@ -430,8 +433,8 @@ describe('pipeline: response analyzer + bot detector', function () {
       ],
     });
 
-    expect(analyzerResult.verdict).toBe('likely_human');
-    expect(detectorResult.verdict).toBe('human');
+    assert.strictEqual(analyzerResult.verdict, 'likely_human');
+    assert.strictEqual(detectorResult.verdict, 'human');
   });
 
   test('fast submissions flagged by both analyzers', function () {
@@ -441,8 +444,8 @@ describe('pipeline: response analyzer + bot detector', function () {
     var timingResult = analyzer.analyzeTiming([100, 150, 80, 120]);
     var detectorTiming = detector.analyzeTiming(300);
 
-    expect(timingResult.tooFastCount).toBeGreaterThan(0);
-    expect(detectorTiming.flags).toContain('too_fast');
+    assert.ok((timingResult.tooFastCount) > (0));
+    assert.ok((detectorTiming.flags).includes('too_fast'));
   });
 
   test('duplicate response detection returns proper structure', function () {
@@ -452,12 +455,12 @@ describe('pipeline: response analyzer + bot detector', function () {
       'A cat falls down', 'A cat falls down', 'Something else entirely'
     ]);
 
-    expect(dupes).toHaveProperty('duplicateCount');
-    expect(dupes.duplicateCount).toBeGreaterThan(0);
-    expect(dupes).toHaveProperty('duplicatePairs');
-    expect(dupes.duplicatePairs.length).toBeGreaterThan(0);
-    expect(dupes).toHaveProperty('uniqueRatio');
-    expect(dupes.uniqueRatio).toBeLessThan(1);
+    assert.notStrictEqual((dupes)["duplicateCount"], undefined);
+    assert.ok((dupes.duplicateCount) > (0));
+    assert.notStrictEqual((dupes)["duplicatePairs"], undefined);
+    assert.ok((dupes.duplicatePairs.length) > (0));
+    assert.notStrictEqual((dupes)["uniqueRatio"], undefined);
+    assert.ok((dupes.uniqueRatio) < (1));
   });
 
   test('no duplicates detected for diverse responses', function () {
@@ -469,8 +472,8 @@ describe('pipeline: response analyzer + bot detector', function () {
       'A dog catches a frisbee mid-air'
     ]);
 
-    expect(dupes.duplicateCount).toBe(0);
-    expect(dupes.uniqueRatio).toBe(1);
+    assert.strictEqual(dupes.duplicateCount, 0);
+    assert.strictEqual(dupes.uniqueRatio, 1);
   });
 });
 
@@ -487,9 +490,9 @@ describe('pipeline: attempt tracker + validateAnswer', function () {
       'challenge-1'
     );
 
-    expect(result.passed).toBe(true);
-    expect(result.locked).toBe(false);
-    expect(result.attemptsRemaining).toBe(2);
+    assert.strictEqual(result.passed, true);
+    assert.strictEqual(result.locked, false);
+    assert.strictEqual(result.attemptsRemaining, 2);
   });
 
   test('tracker locks after max failed attempts', function () {
@@ -498,12 +501,12 @@ describe('pipeline: attempt tracker + validateAnswer', function () {
     tracker.validateAnswer('wrong', 'right answer here', 'q1');
     var second = tracker.validateAnswer('still wrong', 'right answer here', 'q1');
 
-    expect(second.locked).toBe(true);
-    expect(second.lockoutRemainingMs).toBeGreaterThan(0);
+    assert.strictEqual(second.locked, true);
+    assert.ok((second.lockoutRemainingMs) > (0));
 
     var blocked = tracker.validateAnswer('right answer here', 'right answer here', 'q1');
-    expect(blocked.locked).toBe(true);
-    expect(blocked.passed).toBe(false);
+    assert.strictEqual(blocked.locked, true);
+    assert.strictEqual(blocked.passed, false);
   });
 
   test('different challenge IDs tracked independently', function () {
@@ -513,8 +516,8 @@ describe('pipeline: attempt tracker + validateAnswer', function () {
     tracker.validateAnswer('wrong', 'answer1', 'q1');
 
     var q2result = tracker.validateAnswer('answer two here', 'answer two here', 'q2');
-    expect(q2result.passed).toBe(true);
-    expect(q2result.locked).toBe(false);
+    assert.strictEqual(q2result.passed, true);
+    assert.strictEqual(q2result.locked, false);
   });
 
   test('tracker stats reflect validation history', function () {
@@ -524,8 +527,8 @@ describe('pipeline: attempt tracker + validateAnswer', function () {
     tracker.validateAnswer('wrong2', 'correct answer', 'q1');
 
     var stats = tracker.getStats('q1');
-    expect(stats.attempts).toBe(2);
-    expect(stats.isLocked).toBe(false);
+    assert.strictEqual(stats.attempts, 2);
+    assert.strictEqual(stats.isLocked, false);
   });
 
   test('tracker config matches initialization', function () {
@@ -536,9 +539,9 @@ describe('pipeline: attempt tracker + validateAnswer', function () {
     });
 
     var config = tracker.getConfig();
-    expect(config.maxAttempts).toBe(3);
-    expect(config.lockoutMs).toBe(10000);
-    expect(config.exponentialBackoff).toBe(false);
+    assert.strictEqual(config.maxAttempts, 3);
+    assert.strictEqual(config.lockoutMs, 10000);
+    assert.strictEqual(config.exponentialBackoff, false);
   });
 });
 
@@ -554,7 +557,7 @@ describe('full pipeline: create → pool → session → analyze → score', fun
     var pool = gifCaptcha.createPoolManager();
     pool.add(challenges);
     var selected = pool.pick(3);
-    expect(selected).toHaveLength(3);
+    assert.strictEqual((selected).length, 3);
 
     // 3. Start session
     var session = gifCaptcha.createSessionManager({
@@ -572,19 +575,19 @@ describe('full pipeline: create → pool → session → analyze → score', fun
     }
 
     // 5. Verify session passed
-    expect(result.done).toBe(true);
-    expect(result.passed).toBe(true);
+    assert.strictEqual(result.done, true);
+    assert.strictEqual(result.passed, true);
 
     // 6. Analyze response quality
     var analyzer = gifCaptcha.createResponseAnalyzer();
     var analysis = analyzer.scoreSubmissions(responses);
-    expect(analysis.verdict).toBe('likely_human');
+    assert.strictEqual(analysis.verdict, 'likely_human');
 
     // 7. Security score the pool
     var scorer = gifCaptcha.createSecurityScorer(challenges);
     var report = scorer.getReport();
-    expect(report.score).toBeGreaterThanOrEqual(0);
-    expect(report.score).toBeLessThanOrEqual(100);
+    assert.ok((report.score) >= (0));
+    assert.ok((report.score) <= (100));
   });
 
   test('end-to-end bot flow is detected across all modules', function () {
@@ -596,9 +599,9 @@ describe('full pipeline: create → pool → session → analyze → score', fun
     ];
 
     var analysis = analyzer.scoreSubmissions(botResponses);
-    expect(analysis.verdict).toBe('likely_bot');
-    expect(analysis.flags).toContain('duplicate_responses');
-    expect(analysis.flags).toContain('fast_responses');
+    assert.strictEqual(analysis.verdict, 'likely_bot');
+    assert.ok((analysis.flags).includes('duplicate_responses'));
+    assert.ok((analysis.flags).includes('fast_responses'));
   });
 
   test('security scorer + set analyzer provide complementary insights', function () {
@@ -611,11 +614,11 @@ describe('full pipeline: create → pool → session → analyze → score', fun
     var setReport = analyzer.generateReport();
 
     // Both analyze the same 10 challenges
-    expect(setReport.challengeCount).toBe(10);
-    expect(secReport.score).toBeGreaterThanOrEqual(0);
+    assert.strictEqual(setReport.challengeCount, 10);
+    assert.ok((secReport.score) >= (0));
 
     // Set analyzer diversity and security scorer scores are complementary
-    expect(setReport).toHaveProperty('diversity');
-    expect(setReport.diversity).toHaveProperty('score');
+    assert.notStrictEqual((setReport)["diversity"], undefined);
+    assert.notStrictEqual((setReport.diversity)["score"], undefined);
   });
 });

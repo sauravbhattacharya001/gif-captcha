@@ -1,7 +1,9 @@
 "use strict";
-var assert = require("assert");
 var gifCaptcha = require("../src/index");
 var createChallengeRouter = gifCaptcha.createChallengeRouter;
+
+const { describe, it } = require('node:test');
+const assert = require('node:assert/strict');
 
 describe("createChallengeRouter", function () {
   describe("construction", function () {

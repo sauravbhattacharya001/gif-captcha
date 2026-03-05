@@ -32,18 +32,21 @@ function sampleSignals(overrides) {
 
 // ── Basic creation ──────────────────────────────────────────────────
 
+const { describe, it } = require('node:test');
+const assert = require('node:assert/strict');
+
 describe("createClientFingerprinter", function () {
   it("should create a fingerprinter with default options", function () {
     var fp = createClientFingerprinter();
-    expect(fp).toBeDefined();
-    expect(typeof fp.identify).toBe("function");
-    expect(typeof fp.findSimilar).toBe("function");
-    expect(typeof fp.getFingerprint).toBe("function");
-    expect(typeof fp.getStats).toBe("function");
-    expect(typeof fp.exportState).toBe("function");
-    expect(typeof fp.importState).toBe("function");
-    expect(typeof fp.reset).toBe("function");
-    expect(typeof fp.getConfig).toBe("function");
+    assert.notStrictEqual(fp, undefined);
+    assert.strictEqual(typeof fp.identify, "function");
+    assert.strictEqual(typeof fp.findSimilar, "function");
+    assert.strictEqual(typeof fp.getFingerprint, "function");
+    assert.strictEqual(typeof fp.getStats, "function");
+    assert.strictEqual(typeof fp.exportState, "function");
+    assert.strictEqual(typeof fp.importState, "function");
+    assert.strictEqual(typeof fp.reset, "function");
+    assert.strictEqual(typeof fp.getConfig, "function");
   });
 
   it("should accept custom options", function () {
@@ -54,10 +57,10 @@ describe("createClientFingerprinter", function () {
       changeWindowMs: 600000,
     });
     var config = fp.getConfig();
-    expect(config.maxFingerprints).toBe(500);
-    expect(config.ttlMs).toBe(3600000);
-    expect(config.suspiciousChangeThreshold).toBe(3);
-    expect(config.changeWindowMs).toBe(600000);
+    assert.strictEqual(config.maxFingerprints, 500);
+    assert.strictEqual(config.ttlMs, 3600000);
+    assert.strictEqual(config.suspiciousChangeThreshold, 3);
+    assert.strictEqual(config.changeWindowMs, 600000);
   });
 });
 
@@ -67,13 +70,13 @@ describe("identify", function () {
   it("should return a fingerprint result for valid signals", function () {
     var fp = createClientFingerprinter();
     var result = fp.identify(sampleSignals());
-    expect(result.fingerprintHash).toBeDefined();
-    expect(typeof result.fingerprintHash).toBe("string");
-    expect(result.isNew).toBe(true);
-    expect(result.visits).toBe(1);
-    expect(result.riskScore).toBeDefined();
-    expect(result.riskLevel).toBeDefined();
-    expect(result.signals).toBeDefined();
+    assert.notStrictEqual(result.fingerprintHash, undefined);
+    assert.strictEqual(typeof result.fingerprintHash, "string");
+    assert.strictEqual(result.isNew, true);
+    assert.strictEqual(result.visits, 1);
+    assert.notStrictEqual(result.riskScore, undefined);
+    assert.notStrictEqual(result.riskLevel, undefined);
+    assert.notStrictEqual(result.signals, undefined);
   });
 
   it("should recognize returning visitors", function () {
@@ -81,8 +84,8 @@ describe("identify", function () {
     var signals = sampleSignals();
     fp.identify(signals);
     var result = fp.identify(signals);
-    expect(result.isNew).toBe(false);
-    expect(result.visits).toBe(2);
+    assert.strictEqual(result.isNew, false);
+    assert.strictEqual(result.visits, 2);
   });
 
   it("should track visit count across multiple visits", function () {
@@ -92,32 +95,32 @@ describe("identify", function () {
       fp.identify(signals);
     }
     var result = fp.identify(signals);
-    expect(result.visits).toBe(11);
+    assert.strictEqual(result.visits, 11);
   });
 
   it("should distinguish different signal sets", function () {
     var fp = createClientFingerprinter();
     var r1 = fp.identify(sampleSignals());
     var r2 = fp.identify(sampleSignals({ screenWidth: 2560, screenHeight: 1440 }));
-    expect(r1.fingerprintHash).not.toBe(r2.fingerprintHash);
+    assert.notStrictEqual(r1.fingerprintHash, r2.fingerprintHash);
   });
 
   it("should handle empty/null signals", function () {
     var fp = createClientFingerprinter();
     var r1 = fp.identify({});
-    expect(r1.fingerprintHash).toBeDefined();
-    expect(r1.isNew).toBe(true);
+    assert.notStrictEqual(r1.fingerprintHash, undefined);
+    assert.strictEqual(r1.isNew, true);
 
     var r2 = fp.identify(null);
-    expect(r2.fingerprintHash).toBeDefined();
+    assert.notStrictEqual(r2.fingerprintHash, undefined);
   });
 
   it("should track IP metadata", function () {
     var fp = createClientFingerprinter();
     var result = fp.identify(sampleSignals(), { ip: "1.2.3.4" });
-    expect(result.fingerprintHash).toBeDefined();
+    assert.notStrictEqual(result.fingerprintHash, undefined);
     var info = fp.getFingerprint(result.fingerprintHash);
-    expect(info.uniqueIps).toBe(1);
+    assert.strictEqual(info.uniqueIps, 1);
   });
 
   it("should count multiple IPs per fingerprint", function () {
@@ -127,7 +130,7 @@ describe("identify", function () {
     fp.identify(signals, { ip: "5.6.7.8" });
     var hash = fp.identify(signals, { ip: "9.10.11.12" }).fingerprintHash;
     var info = fp.getFingerprint(hash);
-    expect(info.uniqueIps).toBe(3);
+    assert.strictEqual(info.uniqueIps, 3);
   });
 
   it("should produce consistent hashes for same signals", function () {
@@ -135,14 +138,14 @@ describe("identify", function () {
     var signals = sampleSignals();
     var r1 = fp.identify(signals);
     var r2 = fp.identify(signals);
-    expect(r1.fingerprintHash).toBe(r2.fingerprintHash);
+    assert.strictEqual(r1.fingerprintHash, r2.fingerprintHash);
   });
 
   it("should normalize language to lowercase", function () {
     var fp = createClientFingerprinter();
     var r1 = fp.identify(sampleSignals({ language: "EN-US" }));
     var r2 = fp.identify(sampleSignals({ language: "en-us" }));
-    expect(r1.fingerprintHash).toBe(r2.fingerprintHash);
+    assert.strictEqual(r1.fingerprintHash, r2.fingerprintHash);
   });
 });
 
@@ -152,50 +155,50 @@ describe("bot detection", function () {
   it("should detect headless browser", function () {
     var fp = createClientFingerprinter();
     var result = fp.identify(sampleSignals({ userAgent: "Mozilla/5.0 HeadlessChrome/91.0" }));
-    expect(result.botSignals).toContain("headless-browser");
-    expect(result.riskScore).toBeGreaterThan(0);
+    assert.ok((result.botSignals).includes("headless-browser"));
+    assert.ok((result.riskScore) > (0));
   });
 
   it("should detect PhantomJS", function () {
     var fp = createClientFingerprinter();
     var result = fp.identify(sampleSignals({ userAgent: "Mozilla/5.0 PhantomJS/2.1" }));
-    expect(result.botSignals).toContain("phantomjs");
+    assert.ok((result.botSignals).includes("phantomjs"));
   });
 
   it("should detect Selenium", function () {
     var fp = createClientFingerprinter();
     var result = fp.identify(sampleSignals({ userAgent: "Selenium WebDriver" }));
-    expect(result.botSignals).toContain("selenium");
+    assert.ok((result.botSignals).includes("selenium"));
   });
 
   it("should detect Puppeteer", function () {
     var fp = createClientFingerprinter();
     var result = fp.identify(sampleSignals({ userAgent: "Chrome Puppeteer" }));
-    expect(result.botSignals).toContain("puppeteer");
+    assert.ok((result.botSignals).includes("puppeteer"));
   });
 
   it("should detect SwiftShader GPU", function () {
     var fp = createClientFingerprinter();
     var result = fp.identify(sampleSignals({ webglVendor: "Google SwiftShader" }));
-    expect(result.botSignals).toContain("swiftshader-gpu");
+    assert.ok((result.botSignals).includes("swiftshader-gpu"));
   });
 
   it("should detect software renderer", function () {
     var fp = createClientFingerprinter();
     var result = fp.identify(sampleSignals({ webglVendor: "Mesa/X.org llvmpipe" }));
-    expect(result.botSignals).toContain("software-renderer");
+    assert.ok((result.botSignals).includes("software-renderer"));
   });
 
   it("should detect zero screen dimensions", function () {
     var fp = createClientFingerprinter();
     var result = fp.identify(sampleSignals({ screenWidth: 0, screenHeight: 0 }));
-    expect(result.botSignals).toContain("zero-screen");
+    assert.ok((result.botSignals).includes("zero-screen"));
   });
 
   it("should detect zero color depth", function () {
     var fp = createClientFingerprinter();
     var result = fp.identify(sampleSignals({ colorDepth: 0 }));
-    expect(result.botSignals).toContain("zero-color-depth");
+    assert.ok((result.botSignals).includes("zero-color-depth"));
   });
 
   it("should flag multiple bot signals with higher risk", function () {
@@ -206,16 +209,16 @@ describe("bot detection", function () {
       screenWidth: 0,
       screenHeight: 0,
     }));
-    expect(result.botSignals.length).toBeGreaterThanOrEqual(3);
-    expect(result.riskScore).toBeGreaterThanOrEqual(60);
-    expect(result.riskLevel).toBe("high");
+    assert.ok((result.botSignals.length) >= (3));
+    assert.ok((result.riskScore) >= (60));
+    assert.strictEqual(result.riskLevel, "high");
   });
 
   it("should return empty botSignals for normal browsers", function () {
     var fp = createClientFingerprinter();
     var result = fp.identify(sampleSignals());
-    expect(result.botSignals.length).toBe(0);
-    expect(result.riskLevel).toBe("low");
+    assert.strictEqual(result.botSignals.length, 0);
+    assert.strictEqual(result.riskLevel, "low");
   });
 });
 
@@ -227,8 +230,8 @@ describe("identity change detection", function () {
     fp.identify(sampleSignals({ canvasHash: "a1" }), { ip: "1.1.1.1" });
     fp.identify(sampleSignals({ canvasHash: "a2" }), { ip: "1.1.1.1" });
     var result = fp.identify(sampleSignals({ canvasHash: "a3" }), { ip: "1.1.1.1" });
-    expect(result.identityChanges.suspicious).toBe(false);
-    expect(result.identityChanges.changes).toBeLessThan(5);
+    assert.strictEqual(result.identityChanges.suspicious, false);
+    assert.ok((result.identityChanges.changes) < (5));
   });
 
   it("should flag many identity changes from same IP", function () {
@@ -236,8 +239,8 @@ describe("identity change detection", function () {
     fp.identify(sampleSignals({ canvasHash: "x1" }), { ip: "2.2.2.2" });
     fp.identify(sampleSignals({ canvasHash: "x2" }), { ip: "2.2.2.2" });
     var result = fp.identify(sampleSignals({ canvasHash: "x3" }), { ip: "2.2.2.2" });
-    expect(result.identityChanges.suspicious).toBe(true);
-    expect(result.identityChanges.changes).toBeGreaterThanOrEqual(3);
+    assert.strictEqual(result.identityChanges.suspicious, true);
+    assert.ok((result.identityChanges.changes) >= (3));
   });
 
   it("should not count same fingerprint as a change", function () {
@@ -247,13 +250,13 @@ describe("identity change detection", function () {
     fp.identify(signals, { ip: "3.3.3.3" });
     fp.identify(signals, { ip: "3.3.3.3" });
     var result = fp.identify(signals, { ip: "3.3.3.3" });
-    expect(result.identityChanges.suspicious).toBe(false);
+    assert.strictEqual(result.identityChanges.suspicious, false);
   });
 
   it("should return not suspicious when no IP provided", function () {
     var fp = createClientFingerprinter();
     var result = fp.identify(sampleSignals());
-    expect(result.identityChanges.suspicious).toBe(false);
+    assert.strictEqual(result.identityChanges.suspicious, false);
   });
 });
 
@@ -265,8 +268,8 @@ describe("findSimilar", function () {
     var signals = sampleSignals();
     fp.identify(signals);
     var similar = fp.findSimilar(signals);
-    expect(similar.length).toBe(1);
-    expect(similar[0].similarity).toBe(1);
+    assert.strictEqual(similar.length, 1);
+    assert.strictEqual(similar[0].similarity, 1);
   });
 
   it("should find partially matching fingerprints", function () {
@@ -275,22 +278,22 @@ describe("findSimilar", function () {
     // Only change one signal
     var modified = sampleSignals({ canvasHash: "different_hash" });
     var similar = fp.findSimilar(modified, 0.5);
-    expect(similar.length).toBeGreaterThanOrEqual(1);
-    expect(similar[0].similarity).toBeGreaterThan(0.5);
-    expect(similar[0].similarity).toBeLessThan(1);
+    assert.ok((similar.length) >= (1));
+    assert.ok((similar[0].similarity) > (0.5));
+    assert.ok((similar[0].similarity) < (1));
   });
 
   it("should respect similarity threshold", function () {
     var fp = createClientFingerprinter();
     fp.identify(sampleSignals());
     var similar = fp.findSimilar(sampleSignals({ canvasHash: "x" }), 1.0);
-    expect(similar.length).toBe(0);
+    assert.strictEqual(similar.length, 0);
   });
 
   it("should return empty for no matches", function () {
     var fp = createClientFingerprinter();
     var similar = fp.findSimilar(sampleSignals());
-    expect(similar.length).toBe(0);
+    assert.strictEqual(similar.length, 0);
   });
 
   it("should sort results by similarity descending", function () {
@@ -300,7 +303,7 @@ describe("findSimilar", function () {
     var query = sampleSignals({ canvasHash: "x" });
     var similar = fp.findSimilar(query, 0.3);
     if (similar.length >= 2) {
-      expect(similar[0].similarity).toBeGreaterThanOrEqual(similar[1].similarity);
+      assert.ok((similar[0].similarity) >= (similar[1].similarity));
     }
   });
 });
@@ -312,16 +315,16 @@ describe("getFingerprint", function () {
     var fp = createClientFingerprinter();
     var r = fp.identify(sampleSignals(), { ip: "1.1.1.1" });
     var info = fp.getFingerprint(r.fingerprintHash);
-    expect(info).not.toBeNull();
-    expect(info.fingerprintHash).toBe(r.fingerprintHash);
-    expect(info.visits).toBe(1);
-    expect(info.uniqueIps).toBe(1);
-    expect(info.signals).toBeDefined();
+    assert.notStrictEqual(info, null);
+    assert.strictEqual(info.fingerprintHash, r.fingerprintHash);
+    assert.strictEqual(info.visits, 1);
+    assert.strictEqual(info.uniqueIps, 1);
+    assert.notStrictEqual(info.signals, undefined);
   });
 
   it("should return null for unknown hash", function () {
     var fp = createClientFingerprinter();
-    expect(fp.getFingerprint("nonexistent")).toBeNull();
+    assert.strictEqual(fp.getFingerprint("nonexistent"), null);
   });
 });
 
@@ -331,9 +334,9 @@ describe("getStats", function () {
   it("should return empty stats initially", function () {
     var fp = createClientFingerprinter();
     var stats = fp.getStats();
-    expect(stats.totalFingerprints).toBe(0);
-    expect(stats.totalVisits).toBe(0);
-    expect(stats.uniqueIps).toBe(0);
+    assert.strictEqual(stats.totalFingerprints, 0);
+    assert.strictEqual(stats.totalVisits, 0);
+    assert.strictEqual(stats.uniqueIps, 0);
   });
 
   it("should aggregate stats correctly", function () {
@@ -342,9 +345,9 @@ describe("getStats", function () {
     fp.identify(sampleSignals(), { ip: "2.2.2.2" });
     fp.identify(sampleSignals({ canvasHash: "other" }), { ip: "1.1.1.1" });
     var stats = fp.getStats();
-    expect(stats.totalFingerprints).toBe(2);
-    expect(stats.totalVisits).toBe(3);
-    expect(stats.uniqueIps).toBe(2);
+    assert.strictEqual(stats.totalFingerprints, 2);
+    assert.strictEqual(stats.totalVisits, 3);
+    assert.strictEqual(stats.uniqueIps, 2);
   });
 });
 
@@ -360,15 +363,15 @@ describe("state persistence", function () {
     var fp2 = createClientFingerprinter();
     fp2.importState(state);
     var stats = fp2.getStats();
-    expect(stats.totalFingerprints).toBe(2);
-    expect(stats.totalVisits).toBe(2);
+    assert.strictEqual(stats.totalFingerprints, 2);
+    assert.strictEqual(stats.totalVisits, 2);
   });
 
   it("should handle importing empty/null state", function () {
     var fp = createClientFingerprinter();
     fp.importState(null);
     fp.importState({});
-    expect(fp.getStats().totalFingerprints).toBe(0);
+    assert.strictEqual(fp.getStats().totalFingerprints, 0);
   });
 });
 
@@ -380,8 +383,8 @@ describe("reset", function () {
     fp.identify(sampleSignals());
     fp.identify(sampleSignals({ canvasHash: "x" }));
     fp.reset();
-    expect(fp.getStats().totalFingerprints).toBe(0);
-    expect(fp.getStats().totalVisits).toBe(0);
+    assert.strictEqual(fp.getStats().totalFingerprints, 0);
+    assert.strictEqual(fp.getStats().totalVisits, 0);
   });
 });
 
@@ -396,7 +399,7 @@ describe("LRU eviction", function () {
     // This should evict the first
     fp.identify(sampleSignals({ canvasHash: "d" }));
     var stats = fp.getStats();
-    expect(stats.totalFingerprints).toBeLessThanOrEqual(4);
+    assert.ok((stats.totalFingerprints) <= (4));
   });
 });
 
@@ -406,15 +409,15 @@ describe("risk scoring", function () {
   it("should assign low risk to normal fingerprint", function () {
     var fp = createClientFingerprinter();
     var result = fp.identify(sampleSignals());
-    expect(result.riskScore).toBe(0);
-    expect(result.riskLevel).toBe("low");
+    assert.strictEqual(result.riskScore, 0);
+    assert.strictEqual(result.riskLevel, "low");
   });
 
   it("should assign medium risk for single bot signal", function () {
     var fp = createClientFingerprinter();
     var result = fp.identify(sampleSignals({ userAgent: "HeadlessChrome" }));
-    expect(result.riskScore).toBeGreaterThanOrEqual(20);
-    expect(["low", "medium", "high"]).toContain(result.riskLevel);
+    assert.ok((result.riskScore) >= (20));
+    assert.ok((["low", "medium", "high"]).includes(result.riskLevel));
   });
 
   it("should cap risk score at 100", function () {
@@ -422,7 +425,7 @@ describe("risk scoring", function () {
     fp.identify(sampleSignals({ canvasHash: "z1", userAgent: "HeadlessChrome Selenium Puppeteer PhantomJS" }), { ip: "9.9.9.9" });
     fp.identify(sampleSignals({ canvasHash: "z2", userAgent: "HeadlessChrome Selenium Puppeteer PhantomJS" }), { ip: "9.9.9.9" });
     var result = fp.identify(sampleSignals({ canvasHash: "z3", userAgent: "HeadlessChrome Selenium Puppeteer PhantomJS", webglVendor: "SwiftShader" }), { ip: "9.9.9.9" });
-    expect(result.riskScore).toBeLessThanOrEqual(100);
+    assert.ok((result.riskScore) <= (100));
   });
 });
 
@@ -432,11 +435,11 @@ describe("getConfig", function () {
   it("should return default configuration", function () {
     var fp = createClientFingerprinter();
     var config = fp.getConfig();
-    expect(config.maxFingerprints).toBe(10000);
-    expect(config.ttlMs).toBe(86400000);
-    expect(config.suspiciousChangeThreshold).toBe(5);
-    expect(config.signalWeights).toBeDefined();
-    expect(config.signalWeights.userAgent).toBe(0.15);
+    assert.strictEqual(config.maxFingerprints, 10000);
+    assert.strictEqual(config.ttlMs, 86400000);
+    assert.strictEqual(config.suspiciousChangeThreshold, 5);
+    assert.notStrictEqual(config.signalWeights, undefined);
+    assert.strictEqual(config.signalWeights.userAgent, 0.15);
   });
 
   it("should return custom signal weights", function () {
@@ -444,7 +447,7 @@ describe("getConfig", function () {
       signalWeights: { userAgent: 0.5 },
     });
     var config = fp.getConfig();
-    expect(config.signalWeights.userAgent).toBe(0.5);
-    expect(config.signalWeights.screen).toBe(0.10); // default kept
+    assert.strictEqual(config.signalWeights.userAgent, 0.5);
+    assert.strictEqual(config.signalWeights.screen, 0.10); // default kept
   });
 });

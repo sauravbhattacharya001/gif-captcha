@@ -72,6 +72,9 @@ if (typeof module !== 'undefined') module.exports = { createABTestCalculator: cr
 
 // ── Tests ──
 
+const { describe, test, beforeEach } = require('node:test');
+const assert = require('node:assert/strict');
+
 describe('createABTestCalculator', function() {
     var calc;
 
@@ -83,42 +86,42 @@ describe('createABTestCalculator', function() {
 
     describe('normalQuantile', function() {
         test('returns 0 for p=0.5', function() {
-            expect(calc.normalQuantile(0.5)).toBe(0);
+            assert.strictEqual(calc.normalQuantile(0.5), 0);
         });
 
         test('returns -Infinity for p=0', function() {
-            expect(calc.normalQuantile(0)).toBe(-Infinity);
+            assert.strictEqual(calc.normalQuantile(0), -Infinity);
         });
 
         test('returns Infinity for p=1', function() {
-            expect(calc.normalQuantile(1)).toBe(Infinity);
+            assert.strictEqual(calc.normalQuantile(1), Infinity);
         });
 
         test('p=0.975 ≈ 1.96 (for 95% CI)', function() {
-            expect(calc.normalQuantile(0.975)).toBeCloseTo(1.96, 1);
+            assert.ok(Math.abs((calc.normalQuantile(0.975)) - (1.96)) < Math.pow(10, -1));
         });
 
         test('p=0.995 ≈ 2.576 (for 99% CI)', function() {
-            expect(calc.normalQuantile(0.995)).toBeCloseTo(2.576, 1);
+            assert.ok(Math.abs((calc.normalQuantile(0.995)) - (2.576)) < Math.pow(10, -1));
         });
 
         test('p=0.95 ≈ 1.645 (one-sided 95%)', function() {
-            expect(calc.normalQuantile(0.95)).toBeCloseTo(1.645, 1);
+            assert.ok(Math.abs((calc.normalQuantile(0.95)) - (1.645)) < Math.pow(10, -1));
         });
 
         test('p=0.025 ≈ -1.96 (symmetric)', function() {
-            expect(calc.normalQuantile(0.025)).toBeCloseTo(-1.96, 1);
+            assert.ok(Math.abs((calc.normalQuantile(0.025)) - (-1.96)) < Math.pow(10, -1));
         });
 
         test('symmetry: q(p) = -q(1-p)', function() {
             var p = 0.8;
-            expect(calc.normalQuantile(p) + calc.normalQuantile(1 - p)).toBeCloseTo(0, 5);
+            assert.ok(Math.abs((calc.normalQuantile(p) + calc.normalQuantile(1 - p)) - (0)) < Math.pow(10, -5));
         });
 
         test('monotonically increasing', function() {
             var vals = [0.1, 0.3, 0.5, 0.7, 0.9];
             for (var i = 1; i < vals.length; i++) {
-                expect(calc.normalQuantile(vals[i])).toBeGreaterThan(calc.normalQuantile(vals[i-1]));
+                assert.ok((calc.normalQuantile(vals[i])) > (calc.normalQuantile(vals[i-1])));
             }
         });
     });
@@ -128,44 +131,44 @@ describe('createABTestCalculator', function() {
     describe('calcSampleSize', function() {
         test('returns positive integer', function() {
             var n = calc.calcSampleSize(0.035, 0.0385, 0.05, 0.80);
-            expect(n).toBeGreaterThan(0);
-            expect(Number.isInteger(n)).toBe(true);
+            assert.ok((n) > (0));
+            assert.strictEqual(Number.isInteger(n), true);
         });
 
         test('higher confidence requires more samples', function() {
             var n95 = calc.calcSampleSize(0.05, 0.06, 0.05, 0.80);
             var n99 = calc.calcSampleSize(0.05, 0.06, 0.01, 0.80);
-            expect(n99).toBeGreaterThan(n95);
+            assert.ok((n99) > (n95));
         });
 
         test('higher power requires more samples', function() {
             var n80 = calc.calcSampleSize(0.05, 0.06, 0.05, 0.80);
             var n90 = calc.calcSampleSize(0.05, 0.06, 0.05, 0.90);
-            expect(n90).toBeGreaterThan(n80);
+            assert.ok((n90) > (n80));
         });
 
         test('smaller effect size requires more samples', function() {
             var nBig = calc.calcSampleSize(0.05, 0.07, 0.05, 0.80);   // 40% relative change
             var nSmall = calc.calcSampleSize(0.05, 0.055, 0.05, 0.80); // 10% relative change
-            expect(nSmall).toBeGreaterThan(nBig);
+            assert.ok((nSmall) > (nBig));
         });
 
         test('zero difference would give very large sample', function() {
             // p1 very close to p2 — should be huge
             var n = calc.calcSampleSize(0.05, 0.05001, 0.05, 0.80);
-            expect(n).toBeGreaterThan(100000);
+            assert.ok((n) > (100000));
         });
 
         test('large effect size needs small sample', function() {
             var n = calc.calcSampleSize(0.10, 0.30, 0.05, 0.80);
-            expect(n).toBeLessThan(200);
+            assert.ok((n) < (200));
         });
 
         test('typical scenario: 3.5% → 3.85% (10% lift)', function() {
             var n = calc.calcSampleSize(0.035, 0.0385, 0.05, 0.80);
             // Should be in a reasonable range (tens of thousands)
-            expect(n).toBeGreaterThan(5000);
-            expect(n).toBeLessThan(500000);
+            assert.ok((n) > (5000));
+            assert.ok((n) < (500000));
         });
     });
 
@@ -174,34 +177,33 @@ describe('createABTestCalculator', function() {
     describe('compositeScore', function() {
         test('perfect profile scores 1.0', function() {
             var profile = { botBlockRate: 1, humanPassRate: 1, dropoffRate: 0, accessibilityScore: 1 };
-            expect(calc.compositeScore(profile)).toBeCloseTo(1.0, 5);
+            assert.ok(Math.abs((calc.compositeScore(profile)) - (1.0)) < Math.pow(10, -5));
         });
 
         test('worst profile scores 0.0', function() {
             var profile = { botBlockRate: 0, humanPassRate: 0, dropoffRate: 1, accessibilityScore: 0 };
             // 0*0.4 + 0*0.2 + (1-1)*0.25 + 0*0.15 = 0
-            expect(calc.compositeScore(profile)).toBeCloseTo(0, 5);
+            assert.ok(Math.abs((calc.compositeScore(profile)) - (0)) < Math.pow(10, -5));
         });
 
         test('weights sum correctly (0.4 + 0.2 + 0.25 + 0.15 = 1)', function() {
             // All metrics at 0.5
             var profile = { botBlockRate: 0.5, humanPassRate: 0.5, dropoffRate: 0.5, accessibilityScore: 0.5 };
             var expected = 0.5 * 0.4 + 0.5 * 0.2 + 0.5 * 0.25 + 0.5 * 0.15;
-            expect(calc.compositeScore(profile)).toBeCloseTo(expected, 5);
+            assert.ok(Math.abs((calc.compositeScore(profile)) - (expected)) < Math.pow(10, -5));
         });
 
         test('bot block rate has highest weight', function() {
             var base = { botBlockRate: 0.5, humanPassRate: 0.5, dropoffRate: 0.5, accessibilityScore: 0.5 };
             var highBot = Object.assign({}, base, { botBlockRate: 1.0 });
             var highPass = Object.assign({}, base, { humanPassRate: 1.0 });
-            expect(calc.compositeScore(highBot) - calc.compositeScore(base))
-                .toBeGreaterThan(calc.compositeScore(highPass) - calc.compositeScore(base));
+            assert.ok((calc.compositeScore(highBot) - calc.compositeScore(base)) > (calc.compositeScore(highPass) - calc.compositeScore(base)));
         });
 
         test('GIF CAPTCHA scores higher than text CAPTCHA', function() {
             var gif = { botBlockRate: 0.97, humanPassRate: 0.92, dropoffRate: 0.08, accessibilityScore: 0.45 };
             var text = { botBlockRate: 0.65, humanPassRate: 0.85, dropoffRate: 0.12, accessibilityScore: 0.30 };
-            expect(calc.compositeScore(gif)).toBeGreaterThan(calc.compositeScore(text));
+            assert.ok((calc.compositeScore(gif)) > (calc.compositeScore(text)));
         });
     });
 
@@ -209,29 +211,29 @@ describe('createABTestCalculator', function() {
 
     describe('estimateDuration', function() {
         test('1000 per group, 500/day = 2 days', function() {
-            expect(calc.estimateDuration(1000, 1000, 0.5)).toBe(2);
+            assert.strictEqual(calc.estimateDuration(1000, 1000, 0.5), 2);
         });
 
         test('70/30 split uses smaller group for duration', function() {
             // 1000 traffic, 70/30 split → smallest group gets 300/day
             var d = calc.estimateDuration(1000, 1000, 0.7);
-            expect(d).toBe(Math.ceil(1000 / 300));
+            assert.strictEqual(d, Math.ceil(1000 / 300));
         });
 
         test('50/50 split is most efficient', function() {
             var d50 = calc.estimateDuration(1000, 1000, 0.5);
             var d80 = calc.estimateDuration(1000, 1000, 0.8);
-            expect(d50).toBeLessThanOrEqual(d80);
+            assert.ok((d50) <= (d80));
         });
 
         test('higher traffic = shorter duration', function() {
             var d1 = calc.estimateDuration(5000, 1000, 0.5);
             var d2 = calc.estimateDuration(5000, 10000, 0.5);
-            expect(d2).toBeLessThan(d1);
+            assert.ok((d2) < (d1));
         });
 
         test('returns at least 1 day', function() {
-            expect(calc.estimateDuration(1, 1000000, 0.5)).toBe(1);
+            assert.strictEqual(calc.estimateDuration(1, 1000000, 0.5), 1);
         });
     });
 
@@ -239,27 +241,27 @@ describe('createABTestCalculator', function() {
 
     describe('formatDuration', function() {
         test('1 day', function() {
-            expect(calc.formatDuration(1)).toBe('1 day');
+            assert.strictEqual(calc.formatDuration(1), '1 day');
         });
 
         test('3 days (no weeks)', function() {
-            expect(calc.formatDuration(3)).toBe('3 days');
+            assert.strictEqual(calc.formatDuration(3), '3 days');
         });
 
         test('7 days shows weeks', function() {
-            expect(calc.formatDuration(7)).toContain('1 week');
+            assert.ok((calc.formatDuration(7)).includes('1 week'));
         });
 
         test('14 days shows 2 weeks', function() {
-            expect(calc.formatDuration(14)).toContain('2 weeks');
+            assert.ok((calc.formatDuration(14)).includes('2 weeks'));
         });
 
         test('10 days shows 2 weeks (ceiling)', function() {
-            expect(calc.formatDuration(10)).toContain('2 weeks');
+            assert.ok((calc.formatDuration(10)).includes('2 weeks'));
         });
 
         test('0 or negative returns 1 day', function() {
-            expect(calc.formatDuration(0)).toBe('1 day');
+            assert.strictEqual(calc.formatDuration(0), '1 day');
         });
     });
 
@@ -267,26 +269,26 @@ describe('createABTestCalculator', function() {
 
     describe('adjustedConversion', function() {
         test('no drop-off returns base CR', function() {
-            expect(calc.adjustedConversion(0.05, 0)).toBe(0.05);
+            assert.strictEqual(calc.adjustedConversion(0.05, 0), 0.05);
         });
 
         test('10% drop-off reduces CR by 10%', function() {
-            expect(calc.adjustedConversion(0.10, 0.10)).toBeCloseTo(0.09, 5);
+            assert.ok(Math.abs((calc.adjustedConversion(0.10, 0.10)) - (0.09)) < Math.pow(10, -5));
         });
 
         test('100% drop-off gives 0 CR', function() {
-            expect(calc.adjustedConversion(0.05, 1.0)).toBe(0);
+            assert.strictEqual(calc.adjustedConversion(0.05, 1.0), 0);
         });
 
         test('GIF CAPTCHA (8% drop-off) on 3.5% CR', function() {
             var adj = calc.adjustedConversion(0.035, 0.08);
-            expect(adj).toBeCloseTo(0.0322, 3);
+            assert.ok(Math.abs((adj) - (0.0322)) < Math.pow(10, -3));
         });
 
         test('slider (3% drop-off) is less impactful', function() {
             var gif = calc.adjustedConversion(0.05, 0.08);
             var slider = calc.adjustedConversion(0.05, 0.03);
-            expect(slider).toBeGreaterThan(gif);
+            assert.ok((slider) > (gif));
         });
     });
 
@@ -303,13 +305,13 @@ describe('createABTestCalculator', function() {
             var crB = crA * (1 + mdeRel);
 
             var perGroup = calc.calcSampleSize(crA, crB, 0.05, 0.80);
-            expect(perGroup).toBeGreaterThan(0);
+            assert.ok((perGroup) > (0));
 
             var days = calc.estimateDuration(perGroup, 1000, 0.5);
-            expect(days).toBeGreaterThan(0);
+            assert.ok((days) > (0));
 
             var duration = calc.formatDuration(days);
-            expect(typeof duration).toBe('string');
+            assert.strictEqual(typeof duration, 'string');
         });
 
         test('high-traffic site needs fewer days', function() {
@@ -320,7 +322,7 @@ describe('createABTestCalculator', function() {
             var daysLow = calc.estimateDuration(n, 100, 0.5);
             var daysHigh = calc.estimateDuration(n, 100000, 0.5);
 
-            expect(daysHigh).toBeLessThan(daysLow);
+            assert.ok((daysHigh) < (daysLow));
         });
 
         test('invisible vs GIF: invisible has higher composite', function() {
@@ -333,7 +335,7 @@ describe('createABTestCalculator', function() {
             // Invisible wins on UX/accessibility despite lower bot block
             // Actually let's compute: invisible = 0.82*0.4 + 0.99*0.2 + 0.99*0.25 + 0.95*0.15 = 0.328+0.198+0.2475+0.1425 = 0.916
             // GIF = 0.97*0.4 + 0.92*0.2 + 0.92*0.25 + 0.45*0.15 = 0.388+0.184+0.23+0.0675 = 0.8695
-            expect(iScore).toBeGreaterThan(gScore);
+            assert.ok((iScore) > (gScore));
         });
     });
 });

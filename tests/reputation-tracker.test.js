@@ -1,11 +1,13 @@
 /* eslint-env mocha */
 "use strict";
 
-var assert = require("assert");
 
 // Load source directly
 var src = require("../src/index");
 var createReputationTracker = src.createReputationTracker;
+
+const { describe, it, before, after } = require('node:test');
+const assert = require('node:assert/strict');
 
 describe("createReputationTracker", function () {
 

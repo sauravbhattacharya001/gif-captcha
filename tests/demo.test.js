@@ -11,7 +11,14 @@ const fs = require('fs');
 const path = require('path');
 const { JSDOM } = require('jsdom');
 
-const DEMO_HTML = fs.readFileSync(path.join(__dirname, '..', 'demo.html'), 'utf8');
+const DEMO_HTML_RAW = fs.readFileSync(path.join(__dirname, '..', 'demo.html'), 'utf8');
+const SHARED_JS = fs.readFileSync(path.join(__dirname, '..', 'shared.js'), 'utf8');
+
+// Inline shared.js so jsdom can execute it (jsdom doesn't load external <script src>)
+const DEMO_HTML = DEMO_HTML_RAW.replace(
+  '<script src="shared.js"></script>',
+  '<script>' + SHARED_JS + '</script>'
+);
 
 /** Create a fresh jsdom instance with demo.html loaded */
 function createDemoDOM() {

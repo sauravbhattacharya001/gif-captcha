@@ -11,7 +11,14 @@ const fs = require('fs');
 const path = require('path');
 const { JSDOM } = require('jsdom');
 
-const GENERATOR_HTML = fs.readFileSync(path.join(__dirname, '..', 'generator.html'), 'utf8');
+const GENERATOR_HTML_RAW = fs.readFileSync(path.join(__dirname, '..', 'generator.html'), 'utf8');
+const SHARED_JS = fs.readFileSync(path.join(__dirname, '..', 'shared.js'), 'utf8');
+
+// Inline shared.js so jsdom can execute it (jsdom doesn't load external <script src>)
+const GENERATOR_HTML = GENERATOR_HTML_RAW.replace(
+  '<script src="shared.js"></script>',
+  '<script>' + SHARED_JS + '</script>'
+);
 
 /** Create a fresh jsdom instance with generator.html loaded */
 function createGeneratorDOM() {

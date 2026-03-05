@@ -8923,6 +8923,558 @@ function createFraudRingDetector(options) {
   };
 }
 
+// ── Compliance Report Generator ───────────────────────────────────────
+
+/**
+ * Creates a compliance report generator that evaluates CAPTCHA system
+ * configuration and runtime metrics against accessibility, security,
+ * privacy, and operational standards.
+ *
+ * Checks against:
+ * - WCAG 2.1 AA accessibility guidelines
+ * - GDPR / privacy data-retention requirements
+ * - OWASP bot-mitigation best practices
+ * - Operational health thresholds
+ *
+ * @param {Object} [options] - Generator configuration
+ * @param {string} [options.systemName="gif-captcha"] - System identifier for reports
+ * @param {number} [options.maxDataRetentionDays=30] - GDPR data retention limit in days
+ * @param {number} [options.minSolveRatePercent=70] - Minimum acceptable human solve rate
+ * @param {number} [options.maxSolveTimeMs=60000] - Maximum acceptable solve time
+ * @param {number} [options.maxFailRatePercent=50] - Maximum acceptable failure rate
+ * @param {number} [options.minBotBlockRatePercent=90] - Minimum bot detection rate
+ * @returns {Object} Compliance report generator instance
+ */
+function createComplianceReporter(options) {
+  options = options || {};
+  var systemName = options.systemName || "gif-captcha";
+  var maxRetentionDays = options.maxDataRetentionDays > 0 ? options.maxDataRetentionDays : 30;
+  var minSolveRate = typeof options.minSolveRatePercent === "number" ? options.minSolveRatePercent : 70;
+  var maxSolveTimeMs = options.maxSolveTimeMs > 0 ? options.maxSolveTimeMs : 60000;
+  var maxFailRate = typeof options.maxFailRatePercent === "number" ? options.maxFailRatePercent : 50;
+  var minBotBlockRate = typeof options.minBotBlockRatePercent === "number" ? options.minBotBlockRatePercent : 90;
+
+  var SEVERITY = { CRITICAL: "critical", WARNING: "warning", INFO: "info", PASS: "pass" };
+  var CATEGORY = {
+    ACCESSIBILITY: "accessibility",
+    PRIVACY: "privacy",
+    SECURITY: "security",
+    OPERATIONAL: "operational"
+  };
+
+  /**
+   * Run all compliance checks against provided configuration and metrics.
+   *
+   * @param {Object} config - CAPTCHA system configuration
+   * @param {boolean} [config.audioAlternative] - Whether audio CAPTCHA is available
+   * @param {boolean} [config.keyboardNavigable] - Whether CAPTCHA is keyboard-navigable
+   * @param {string} [config.ariaLabel] - ARIA label for the CAPTCHA element
+   * @param {number} [config.colorContrast] - Color contrast ratio (e.g. 4.5)
+   * @param {number} [config.timeLimitMs] - Time limit given to solve
+   * @param {boolean} [config.canExtendTime] - Whether user can extend time
+   * @param {string[]} [config.supportedLanguages] - List of supported locale codes
+   * @param {number} [config.dataRetentionDays] - How long data is retained
+   * @param {boolean} [config.consentRequired] - Whether consent is collected
+   * @param {boolean} [config.anonymization] - Whether data is anonymised
+   * @param {boolean} [config.deletionSupported] - Whether right-to-delete is supported
+   * @param {boolean} [config.rateLimitEnabled] - Whether rate limiting is active
+   * @param {boolean} [config.tokenSigned] - Whether tokens use HMAC signing
+   * @param {boolean} [config.httpsOnly] - Whether HTTPS is enforced
+   * @param {boolean} [config.inputSanitized] - Whether input is sanitised
+   * @param {number} [config.maxAttempts] - Max attempts before lockout
+   * @param {boolean} [config.replayProtection] - Whether replay attacks are prevented
+   * @param {Object} [metrics] - Runtime metrics snapshot
+   * @param {number} [metrics.totalChallenges] - Total challenges served
+   * @param {number} [metrics.totalSolves] - Successful solves
+   * @param {number} [metrics.totalFailures] - Failed attempts
+   * @param {number} [metrics.avgSolveTimeMs] - Average solve time in ms
+   * @param {number} [metrics.p95SolveTimeMs] - P95 solve time in ms
+   * @param {number} [metrics.botAttempts] - Detected bot attempts
+   * @param {number} [metrics.botBlocked] - Blocked bot attempts
+   * @param {number} [metrics.uptimePercent] - System uptime percentage
+   * @param {number} [metrics.avgResponseTimeMs] - Average server response time
+   * @param {number} [metrics.errorCount] - Server error count
+   * @returns {Object} Compliance report
+   */
+  function generateReport(config, metrics) {
+    config = config || {};
+    metrics = metrics || {};
+    var findings = [];
+    var now = new Date();
+
+    // ── Accessibility Checks (WCAG 2.1 AA) ─────────────────────────
+
+    findings.push({
+      id: "ACC-001",
+      category: CATEGORY.ACCESSIBILITY,
+      title: "Audio alternative available",
+      description: "WCAG 1.1.1: Non-text content must have a text or audio alternative",
+      severity: config.audioAlternative ? SEVERITY.PASS : SEVERITY.CRITICAL,
+      recommendation: config.audioAlternative ? null : "Enable audio CAPTCHA alternative for visually impaired users"
+    });
+
+    findings.push({
+      id: "ACC-002",
+      category: CATEGORY.ACCESSIBILITY,
+      title: "Keyboard navigation support",
+      description: "WCAG 2.1.1: All functionality must be operable through a keyboard",
+      severity: config.keyboardNavigable ? SEVERITY.PASS : SEVERITY.CRITICAL,
+      recommendation: config.keyboardNavigable ? null : "Ensure CAPTCHA can be completed using keyboard only"
+    });
+
+    findings.push({
+      id: "ACC-003",
+      category: CATEGORY.ACCESSIBILITY,
+      title: "ARIA labelling",
+      description: "WCAG 4.1.2: UI components must have accessible names and roles",
+      severity: config.ariaLabel ? SEVERITY.PASS : SEVERITY.WARNING,
+      recommendation: config.ariaLabel ? null : "Add aria-label or aria-labelledby to the CAPTCHA container"
+    });
+
+    var contrast = typeof config.colorContrast === "number" ? config.colorContrast : 0;
+    findings.push({
+      id: "ACC-004",
+      category: CATEGORY.ACCESSIBILITY,
+      title: "Color contrast ratio",
+      description: "WCAG 1.4.3: Text must have a contrast ratio of at least 4.5:1",
+      severity: contrast >= 4.5 ? SEVERITY.PASS : contrast >= 3 ? SEVERITY.WARNING : SEVERITY.CRITICAL,
+      recommendation: contrast >= 4.5 ? null : "Increase color contrast to at least 4.5:1 (current: " + contrast.toFixed(1) + ":1)"
+    });
+
+    var hasTimeLimit = typeof config.timeLimitMs === "number" && config.timeLimitMs > 0;
+    findings.push({
+      id: "ACC-005",
+      category: CATEGORY.ACCESSIBILITY,
+      title: "Time limit accommodation",
+      description: "WCAG 2.2.1: Users must be able to turn off, adjust, or extend time limits",
+      severity: !hasTimeLimit || config.canExtendTime ? SEVERITY.PASS : SEVERITY.WARNING,
+      recommendation: hasTimeLimit && !config.canExtendTime ? "Allow users to request additional time to complete the CAPTCHA" : null
+    });
+
+    var langCount = Array.isArray(config.supportedLanguages) ? config.supportedLanguages.length : 0;
+    findings.push({
+      id: "ACC-006",
+      category: CATEGORY.ACCESSIBILITY,
+      title: "Multilingual support",
+      description: "WCAG 3.1.1: Default language must be programmatically determinable",
+      severity: langCount >= 3 ? SEVERITY.PASS : langCount >= 1 ? SEVERITY.INFO : SEVERITY.WARNING,
+      recommendation: langCount < 3 ? "Support at least 3 languages for broader accessibility (" + langCount + " currently configured)" : null
+    });
+
+    // ── Privacy Checks (GDPR) ───────────────────────────────────────
+
+    var retDays = typeof config.dataRetentionDays === "number" ? config.dataRetentionDays : -1;
+    findings.push({
+      id: "PRV-001",
+      category: CATEGORY.PRIVACY,
+      title: "Data retention policy",
+      description: "GDPR Art. 5(1)(e): Data must not be kept longer than necessary",
+      severity: retDays >= 0 && retDays <= maxRetentionDays ? SEVERITY.PASS : retDays < 0 ? SEVERITY.CRITICAL : SEVERITY.WARNING,
+      recommendation: retDays < 0 ? "Define a data retention period (max " + maxRetentionDays + " days recommended)"
+        : retDays > maxRetentionDays ? "Reduce retention from " + retDays + " to " + maxRetentionDays + " days or less" : null
+    });
+
+    findings.push({
+      id: "PRV-002",
+      category: CATEGORY.PRIVACY,
+      title: "User consent collection",
+      description: "GDPR Art. 6: Processing requires a lawful basis (consent for CAPTCHAs)",
+      severity: config.consentRequired ? SEVERITY.PASS : SEVERITY.WARNING,
+      recommendation: config.consentRequired ? null : "Collect explicit consent before processing CAPTCHA interaction data"
+    });
+
+    findings.push({
+      id: "PRV-003",
+      category: CATEGORY.PRIVACY,
+      title: "Data anonymisation",
+      description: "GDPR Art. 25: Data protection by design and default",
+      severity: config.anonymization ? SEVERITY.PASS : SEVERITY.WARNING,
+      recommendation: config.anonymization ? null : "Anonymise or pseudonymise stored CAPTCHA interaction data"
+    });
+
+    findings.push({
+      id: "PRV-004",
+      category: CATEGORY.PRIVACY,
+      title: "Right to deletion",
+      description: "GDPR Art. 17: Users have the right to erasure of personal data",
+      severity: config.deletionSupported ? SEVERITY.PASS : SEVERITY.CRITICAL,
+      recommendation: config.deletionSupported ? null : "Implement data deletion endpoint for GDPR Art. 17 compliance"
+    });
+
+    // ── Security Checks (OWASP) ─────────────────────────────────────
+
+    findings.push({
+      id: "SEC-001",
+      category: CATEGORY.SECURITY,
+      title: "Rate limiting enabled",
+      description: "OWASP: Implement rate limiting to prevent automated attacks",
+      severity: config.rateLimitEnabled ? SEVERITY.PASS : SEVERITY.CRITICAL,
+      recommendation: config.rateLimitEnabled ? null : "Enable request rate limiting to prevent brute-force attacks"
+    });
+
+    findings.push({
+      id: "SEC-002",
+      category: CATEGORY.SECURITY,
+      title: "Token signing (HMAC)",
+      description: "OWASP: Validate CAPTCHA tokens server-side with cryptographic signatures",
+      severity: config.tokenSigned ? SEVERITY.PASS : SEVERITY.CRITICAL,
+      recommendation: config.tokenSigned ? null : "Use HMAC-signed tokens for stateless CAPTCHA validation"
+    });
+
+    findings.push({
+      id: "SEC-003",
+      category: CATEGORY.SECURITY,
+      title: "HTTPS enforcement",
+      description: "OWASP: Encrypt all CAPTCHA traffic to prevent interception",
+      severity: config.httpsOnly ? SEVERITY.PASS : SEVERITY.CRITICAL,
+      recommendation: config.httpsOnly ? null : "Enforce HTTPS for all CAPTCHA endpoints"
+    });
+
+    findings.push({
+      id: "SEC-004",
+      category: CATEGORY.SECURITY,
+      title: "Input sanitisation",
+      description: "OWASP: Sanitise all user input to prevent injection attacks",
+      severity: config.inputSanitized ? SEVERITY.PASS : SEVERITY.WARNING,
+      recommendation: config.inputSanitized ? null : "Sanitise CAPTCHA answer input before processing"
+    });
+
+    var maxAttempts = typeof config.maxAttempts === "number" ? config.maxAttempts : 0;
+    findings.push({
+      id: "SEC-005",
+      category: CATEGORY.SECURITY,
+      title: "Attempt limiting / lockout",
+      description: "OWASP: Lock out after repeated failures to prevent brute force",
+      severity: maxAttempts > 0 && maxAttempts <= 10 ? SEVERITY.PASS : maxAttempts > 10 ? SEVERITY.WARNING : SEVERITY.CRITICAL,
+      recommendation: maxAttempts <= 0 ? "Configure a maximum attempt limit (recommended: 3-5)"
+        : maxAttempts > 10 ? "Reduce max attempts from " + maxAttempts + " to 5 or fewer" : null
+    });
+
+    findings.push({
+      id: "SEC-006",
+      category: CATEGORY.SECURITY,
+      title: "Replay protection",
+      description: "Prevent reuse of solved CAPTCHA tokens",
+      severity: config.replayProtection ? SEVERITY.PASS : SEVERITY.WARNING,
+      recommendation: config.replayProtection ? null : "Implement one-time-use tokens to prevent replay attacks"
+    });
+
+    var botBlockRate = 0;
+    if (metrics.botAttempts > 0) {
+      botBlockRate = (metrics.botBlocked / metrics.botAttempts) * 100;
+    }
+    findings.push({
+      id: "SEC-007",
+      category: CATEGORY.SECURITY,
+      title: "Bot detection effectiveness",
+      description: "Bot block rate should be at least " + minBotBlockRate + "%",
+      severity: metrics.botAttempts === 0 ? SEVERITY.INFO
+        : botBlockRate >= minBotBlockRate ? SEVERITY.PASS
+        : botBlockRate >= minBotBlockRate * 0.8 ? SEVERITY.WARNING : SEVERITY.CRITICAL,
+      recommendation: metrics.botAttempts > 0 && botBlockRate < minBotBlockRate
+        ? "Bot block rate is " + botBlockRate.toFixed(1) + "% (target: " + minBotBlockRate + "%)" : null
+    });
+
+    // ── Operational Checks ──────────────────────────────────────────
+
+    var solveRate = 0;
+    if (metrics.totalChallenges > 0) {
+      solveRate = (metrics.totalSolves / metrics.totalChallenges) * 100;
+    }
+    findings.push({
+      id: "OPS-001",
+      category: CATEGORY.OPERATIONAL,
+      title: "Human solve rate",
+      description: "Solve rate should be at least " + minSolveRate + "% to avoid user frustration",
+      severity: metrics.totalChallenges === 0 ? SEVERITY.INFO
+        : solveRate >= minSolveRate ? SEVERITY.PASS
+        : solveRate >= minSolveRate * 0.8 ? SEVERITY.WARNING : SEVERITY.CRITICAL,
+      recommendation: metrics.totalChallenges > 0 && solveRate < minSolveRate
+        ? "Solve rate is " + solveRate.toFixed(1) + "% (target: " + minSolveRate + "%). Consider reducing difficulty." : null
+    });
+
+    var failRate = 0;
+    if (metrics.totalChallenges > 0) {
+      failRate = (metrics.totalFailures / metrics.totalChallenges) * 100;
+    }
+    findings.push({
+      id: "OPS-002",
+      category: CATEGORY.OPERATIONAL,
+      title: "Failure rate within threshold",
+      description: "Failure rate should be below " + maxFailRate + "%",
+      severity: metrics.totalChallenges === 0 ? SEVERITY.INFO
+        : failRate <= maxFailRate ? SEVERITY.PASS
+        : failRate <= maxFailRate * 1.2 ? SEVERITY.WARNING : SEVERITY.CRITICAL,
+      recommendation: metrics.totalChallenges > 0 && failRate > maxFailRate
+        ? "Failure rate is " + failRate.toFixed(1) + "% (threshold: " + maxFailRate + "%)" : null
+    });
+
+    var avgTime = typeof metrics.avgSolveTimeMs === "number" ? metrics.avgSolveTimeMs : 0;
+    findings.push({
+      id: "OPS-003",
+      category: CATEGORY.OPERATIONAL,
+      title: "Average solve time acceptable",
+      description: "Solve time should be under " + (maxSolveTimeMs / 1000) + "s",
+      severity: avgTime <= 0 ? SEVERITY.INFO
+        : avgTime <= maxSolveTimeMs ? SEVERITY.PASS
+        : avgTime <= maxSolveTimeMs * 1.5 ? SEVERITY.WARNING : SEVERITY.CRITICAL,
+      recommendation: avgTime > maxSolveTimeMs
+        ? "Average solve time is " + (avgTime / 1000).toFixed(1) + "s (target: " + (maxSolveTimeMs / 1000) + "s)" : null
+    });
+
+    var p95Time = typeof metrics.p95SolveTimeMs === "number" ? metrics.p95SolveTimeMs : 0;
+    findings.push({
+      id: "OPS-004",
+      category: CATEGORY.OPERATIONAL,
+      title: "P95 solve time acceptable",
+      description: "95th percentile solve time should be under " + (maxSolveTimeMs * 2 / 1000) + "s",
+      severity: p95Time <= 0 ? SEVERITY.INFO
+        : p95Time <= maxSolveTimeMs * 2 ? SEVERITY.PASS
+        : p95Time <= maxSolveTimeMs * 3 ? SEVERITY.WARNING : SEVERITY.CRITICAL,
+      recommendation: p95Time > maxSolveTimeMs * 2
+        ? "P95 solve time is " + (p95Time / 1000).toFixed(1) + "s — consider simplifying hard challenges" : null
+    });
+
+    var uptime = typeof metrics.uptimePercent === "number" ? metrics.uptimePercent : 100;
+    findings.push({
+      id: "OPS-005",
+      category: CATEGORY.OPERATIONAL,
+      title: "System availability",
+      description: "Uptime should be at least 99.5%",
+      severity: uptime >= 99.5 ? SEVERITY.PASS : uptime >= 99 ? SEVERITY.WARNING : SEVERITY.CRITICAL,
+      recommendation: uptime < 99.5 ? "Uptime is " + uptime.toFixed(2) + "% (target: 99.5%)" : null
+    });
+
+    var responseTime = typeof metrics.avgResponseTimeMs === "number" ? metrics.avgResponseTimeMs : 0;
+    findings.push({
+      id: "OPS-006",
+      category: CATEGORY.OPERATIONAL,
+      title: "Server response time",
+      description: "Average response time should be under 500ms",
+      severity: responseTime <= 0 ? SEVERITY.INFO
+        : responseTime <= 500 ? SEVERITY.PASS
+        : responseTime <= 1000 ? SEVERITY.WARNING : SEVERITY.CRITICAL,
+      recommendation: responseTime > 500 ? "Average response time is " + responseTime + "ms (target: <500ms)" : null
+    });
+
+    var errCount = typeof metrics.errorCount === "number" ? metrics.errorCount : 0;
+    var errRate = metrics.totalChallenges > 0 ? (errCount / metrics.totalChallenges) * 100 : 0;
+    findings.push({
+      id: "OPS-007",
+      category: CATEGORY.OPERATIONAL,
+      title: "Error rate",
+      description: "Server error rate should be below 1%",
+      severity: metrics.totalChallenges === 0 ? SEVERITY.INFO
+        : errRate <= 1 ? SEVERITY.PASS
+        : errRate <= 5 ? SEVERITY.WARNING : SEVERITY.CRITICAL,
+      recommendation: errRate > 1 ? "Error rate is " + errRate.toFixed(2) + "% (" + errCount + " errors)" : null
+    });
+
+    // ── Compute Scores ──────────────────────────────────────────────
+
+    var categoryScores = {};
+    var categories = [CATEGORY.ACCESSIBILITY, CATEGORY.PRIVACY, CATEGORY.SECURITY, CATEGORY.OPERATIONAL];
+    for (var ci = 0; ci < categories.length; ci++) {
+      var cat = categories[ci];
+      var catFindings = [];
+      for (var fi = 0; fi < findings.length; fi++) {
+        if (findings[fi].category === cat) catFindings.push(findings[fi]);
+      }
+      var total = catFindings.length;
+      var passed = 0;
+      var criticals = 0;
+      var warnings = 0;
+      for (var pi = 0; pi < catFindings.length; pi++) {
+        if (catFindings[pi].severity === SEVERITY.PASS) passed++;
+        else if (catFindings[pi].severity === SEVERITY.CRITICAL) criticals++;
+        else if (catFindings[pi].severity === SEVERITY.WARNING) warnings++;
+        // INFO doesn't count for/against
+      }
+      var scorable = total - catFindings.filter(function (f) { return f.severity === SEVERITY.INFO; }).length;
+      var score = scorable > 0 ? Math.round((passed / scorable) * 100) : 100;
+      categoryScores[cat] = { score: score, total: total, passed: passed, criticals: criticals, warnings: warnings };
+    }
+
+    // Overall score: weighted average (security 35%, privacy 25%, accessibility 25%, operational 15%)
+    var weights = { security: 35, privacy: 25, accessibility: 25, operational: 15 };
+    var overallScore = 0;
+    var totalWeight = 0;
+    for (var wi = 0; wi < categories.length; wi++) {
+      var wCat = categories[wi];
+      var wVal = weights[wCat] || 0;
+      overallScore += categoryScores[wCat].score * wVal;
+      totalWeight += wVal;
+    }
+    overallScore = totalWeight > 0 ? Math.round(overallScore / totalWeight) : 0;
+
+    var grade = overallScore >= 90 ? "A" : overallScore >= 80 ? "B" : overallScore >= 70 ? "C" : overallScore >= 60 ? "D" : "F";
+
+    var totalCriticals = 0;
+    var totalWarnings = 0;
+    var totalPassed = 0;
+    for (var ti = 0; ti < findings.length; ti++) {
+      if (findings[ti].severity === SEVERITY.CRITICAL) totalCriticals++;
+      else if (findings[ti].severity === SEVERITY.WARNING) totalWarnings++;
+      else if (findings[ti].severity === SEVERITY.PASS) totalPassed++;
+    }
+
+    return {
+      system: systemName,
+      generatedAt: now.toISOString(),
+      overallScore: overallScore,
+      grade: grade,
+      totalFindings: findings.length,
+      passed: totalPassed,
+      criticals: totalCriticals,
+      warnings: totalWarnings,
+      categoryScores: categoryScores,
+      findings: findings
+    };
+  }
+
+  /**
+   * Generate a minimal configuration template that would achieve a passing score.
+   * Useful for bootstrapping new CAPTCHA deployments.
+   *
+   * @returns {Object} Recommended configuration object
+   */
+  function getRecommendedConfig() {
+    return {
+      audioAlternative: true,
+      keyboardNavigable: true,
+      ariaLabel: "Security verification",
+      colorContrast: 4.5,
+      timeLimitMs: 120000,
+      canExtendTime: true,
+      supportedLanguages: ["en", "es", "fr"],
+      dataRetentionDays: maxRetentionDays,
+      consentRequired: true,
+      anonymization: true,
+      deletionSupported: true,
+      rateLimitEnabled: true,
+      tokenSigned: true,
+      httpsOnly: true,
+      inputSanitized: true,
+      maxAttempts: 5,
+      replayProtection: true
+    };
+  }
+
+  /**
+   * Compare two reports and return a diff summary showing improvements
+   * and regressions between audits.
+   *
+   * @param {Object} oldReport - Previous compliance report
+   * @param {Object} newReport - Current compliance report
+   * @returns {Object} Diff summary with improved, regressed, and unchanged counts
+   */
+  function compareReports(oldReport, newReport) {
+    if (!oldReport || !newReport || !oldReport.findings || !newReport.findings) {
+      return { error: "invalid_reports", improved: 0, regressed: 0, unchanged: 0, details: [] };
+    }
+    var oldMap = {};
+    for (var oi = 0; oi < oldReport.findings.length; oi++) {
+      oldMap[oldReport.findings[oi].id] = oldReport.findings[oi].severity;
+    }
+
+    var severityRank = {};
+    severityRank[SEVERITY.PASS] = 0;
+    severityRank[SEVERITY.INFO] = 1;
+    severityRank[SEVERITY.WARNING] = 2;
+    severityRank[SEVERITY.CRITICAL] = 3;
+
+    var improved = 0, regressed = 0, unchanged = 0;
+    var details = [];
+    for (var ni = 0; ni < newReport.findings.length; ni++) {
+      var finding = newReport.findings[ni];
+      var oldSev = oldMap[finding.id];
+      if (oldSev === undefined) {
+        details.push({ id: finding.id, change: "new", severity: finding.severity });
+        continue;
+      }
+      var oldRank = severityRank[oldSev] !== undefined ? severityRank[oldSev] : 1;
+      var newRank = severityRank[finding.severity] !== undefined ? severityRank[finding.severity] : 1;
+      if (newRank < oldRank) {
+        improved++;
+        details.push({ id: finding.id, change: "improved", from: oldSev, to: finding.severity });
+      } else if (newRank > oldRank) {
+        regressed++;
+        details.push({ id: finding.id, change: "regressed", from: oldSev, to: finding.severity });
+      } else {
+        unchanged++;
+      }
+    }
+
+    return {
+      oldScore: oldReport.overallScore,
+      newScore: newReport.overallScore,
+      scoreDelta: newReport.overallScore - oldReport.overallScore,
+      improved: improved,
+      regressed: regressed,
+      unchanged: unchanged,
+      details: details
+    };
+  }
+
+  /**
+   * Format a report as a plain-text summary suitable for terminal output or logging.
+   *
+   * @param {Object} report - Compliance report from generateReport()
+   * @returns {string} Formatted text report
+   */
+  function formatReportText(report) {
+    if (!report) return "";
+    var lines = [];
+    lines.push("=== CAPTCHA Compliance Report ===");
+    lines.push("System: " + report.system);
+    lines.push("Generated: " + report.generatedAt);
+    lines.push("Overall Score: " + report.overallScore + "/100 (Grade: " + report.grade + ")");
+    lines.push("");
+
+    var cats = ["accessibility", "privacy", "security", "operational"];
+    for (var ci = 0; ci < cats.length; ci++) {
+      var cat = cats[ci];
+      var cs = report.categoryScores[cat];
+      if (!cs) continue;
+      lines.push("  " + cat.charAt(0).toUpperCase() + cat.slice(1) + ": " + cs.score + "/100 (" + cs.passed + "/" + cs.total + " passed)");
+    }
+    lines.push("");
+
+    var actionItems = [];
+    for (var fi = 0; fi < report.findings.length; fi++) {
+      var f = report.findings[fi];
+      if (f.severity === SEVERITY.CRITICAL || f.severity === SEVERITY.WARNING) {
+        actionItems.push(f);
+      }
+    }
+
+    if (actionItems.length > 0) {
+      lines.push("Action Items:");
+      for (var ai = 0; ai < actionItems.length; ai++) {
+        var item = actionItems[ai];
+        var icon = item.severity === SEVERITY.CRITICAL ? "[CRITICAL]" : "[WARNING]";
+        lines.push("  " + icon + " " + item.id + " " + item.title);
+        if (item.recommendation) {
+          lines.push("    -> " + item.recommendation);
+        }
+      }
+    } else {
+      lines.push("No action items - all checks passed!");
+    }
+
+    return lines.join("\n");
+  }
+
+  return {
+    generateReport: generateReport,
+    getRecommendedConfig: getRecommendedConfig,
+    compareReports: compareReports,
+    formatReportText: formatReportText,
+    SEVERITY: SEVERITY,
+    CATEGORY: CATEGORY
+  };
+}
+
 var gifCaptcha = {
   sanitize: sanitize,
   createSanitizer: createSanitizer,
@@ -8954,6 +9506,7 @@ var gifCaptcha = {
   createLoadTester: createLoadTester,
   createABExperimentRunner: createABExperimentRunner,
   createFraudRingDetector: createFraudRingDetector,
+  createComplianceReporter: createComplianceReporter,
   GIF_MAX_RETRIES: GIF_MAX_RETRIES,
   GIF_RETRY_DELAY_MS: GIF_RETRY_DELAY_MS,
 };

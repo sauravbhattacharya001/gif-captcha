@@ -475,4 +475,95 @@ describe('createComplianceReporter', function () {
       expect(text).toContain('Operational:');
     });
   });
+
+  // ── HTML Report Rendering ─────────────────────────────────────────
+
+  describe('formatReportHtml', function () {
+    test('returns a complete HTML document', function () {
+      var report = reporter.generateReport(reporter.getRecommendedConfig(), { totalChallenges: 1000, totalSolves: 900, totalFailures: 100 });
+      var html = reporter.formatReportHtml(report);
+      expect(html).toContain('<!DOCTYPE html>');
+      expect(html).toContain('</html>');
+      expect(html).toContain('<title>');
+    });
+
+    test('includes system name and grade', function () {
+      var report = reporter.generateReport(reporter.getRecommendedConfig());
+      var html = reporter.formatReportHtml(report);
+      expect(html).toContain('gif-captcha');
+      expect(html).toContain(report.grade);
+      expect(html).toContain(String(report.overallScore));
+    });
+
+    test('includes all four category score sections', function () {
+      var report = reporter.generateReport(reporter.getRecommendedConfig());
+      var html = reporter.formatReportHtml(report);
+      expect(html).toContain('Accessibility');
+      expect(html).toContain('Privacy');
+      expect(html).toContain('Security');
+      expect(html).toContain('Operational');
+    });
+
+    test('includes finding IDs and titles', function () {
+      var report = reporter.generateReport({});
+      var html = reporter.formatReportHtml(report);
+      expect(html).toContain('ACC-001');
+      expect(html).toContain('SEC-001');
+      expect(html).toContain('PRV-001');
+    });
+
+    test('color-codes severity badges', function () {
+      var report = reporter.generateReport({});
+      var html = reporter.formatReportHtml(report);
+      // Critical findings should have red badge
+      expect(html).toContain('#dc3545');
+      expect(html).toContain('critical');
+    });
+
+    test('includes recommendations for failing checks', function () {
+      var report = reporter.generateReport({});
+      var html = reporter.formatReportHtml(report);
+      expect(html).toContain('💡');
+    });
+
+    test('supports dark mode option', function () {
+      var report = reporter.generateReport(reporter.getRecommendedConfig());
+      var lightHtml = reporter.formatReportHtml(report, { darkMode: false });
+      var darkHtml = reporter.formatReportHtml(report, { darkMode: true });
+      expect(darkHtml).toContain('#1a1a2e');
+      expect(lightHtml).not.toContain('#1a1a2e');
+    });
+
+    test('supports custom title', function () {
+      var report = reporter.generateReport(reporter.getRecommendedConfig());
+      var html = reporter.formatReportHtml(report, { title: 'My Custom Audit' });
+      expect(html).toContain('My Custom Audit');
+    });
+
+    test('can hide timestamp', function () {
+      var report = reporter.generateReport(reporter.getRecommendedConfig());
+      var html = reporter.formatReportHtml(report, { includeTimestamp: false });
+      expect(html).not.toContain('Generated 20');
+    });
+
+    test('returns empty string for null report', function () {
+      expect(reporter.formatReportHtml(null)).toBe('');
+    });
+
+    test('escapes HTML in findings to prevent XSS', function () {
+      var customReporter = createComplianceReporter({ systemName: '<script>alert(1)</script>' });
+      var report = customReporter.generateReport({});
+      var html = customReporter.formatReportHtml(report);
+      expect(html).not.toContain('<script>alert(1)</script>');
+      expect(html).toContain('&lt;script&gt;');
+    });
+
+    test('shows passed count and total findings count', function () {
+      var config = reporter.getRecommendedConfig();
+      var report = reporter.generateReport(config);
+      var html = reporter.formatReportHtml(report);
+      expect(html).toContain(String(report.passed));
+      expect(html).toContain('Findings (' + report.totalFindings + ')');
+    });
+  });
 });

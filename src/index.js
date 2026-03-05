@@ -9465,11 +9465,175 @@ function createComplianceReporter(options) {
     return lines.join("\n");
   }
 
+  /**
+   * Render a compliance report as a self-contained HTML page with inline
+   * CSS styling, color-coded severity badges, category score bars, and
+   * a summary dashboard. The output is a complete HTML document that can
+   * be saved to a file and opened in any browser.
+   *
+   * @param {Object} report - Compliance report from generateReport()
+   * @param {Object} [htmlOptions] - Rendering options
+   * @param {string} [htmlOptions.title] - Custom page title
+   * @param {boolean} [htmlOptions.darkMode=false] - Use dark colour scheme
+   * @param {boolean} [htmlOptions.includeTimestamp=true] - Show generation timestamp
+   * @returns {string} Complete HTML document string
+   */
+  function formatReportHtml(report, htmlOptions) {
+    if (!report) return "";
+    htmlOptions = htmlOptions || {};
+    var title = htmlOptions.title || "CAPTCHA Compliance Report — " + (report.system || "System");
+    var dark = !!htmlOptions.darkMode;
+    var showTime = htmlOptions.includeTimestamp !== false;
+
+    // Colour palette
+    var bg = dark ? "#1a1a2e" : "#f8f9fa";
+    var cardBg = dark ? "#16213e" : "#ffffff";
+    var textColor = dark ? "#e0e0e0" : "#333333";
+    var mutedText = dark ? "#a0a0a0" : "#6c757d";
+    var borderColor = dark ? "#2a2a4a" : "#dee2e6";
+
+    var severityColors = {
+      critical: { bg: "#dc3545", text: "#fff" },
+      warning:  { bg: "#ffc107", text: "#333" },
+      info:     { bg: "#17a2b8", text: "#fff" },
+      pass:     { bg: "#28a745", text: "#fff" }
+    };
+
+    var gradeColors = {
+      A: "#28a745", B: "#5cb85c", C: "#ffc107", D: "#fd7e14", F: "#dc3545"
+    };
+
+    var gradeColor = gradeColors[report.grade] || "#6c757d";
+
+    // Build category score bars
+    var cats = ["accessibility", "privacy", "security", "operational"];
+    var catLabels = { accessibility: "Accessibility", privacy: "Privacy", security: "Security", operational: "Operational" };
+    var catIcons = { accessibility: "♿", privacy: "🔒", security: "🛡️", operational: "⚙️" };
+
+    var scoreBarsHtml = "";
+    for (var ci = 0; ci < cats.length; ci++) {
+      var cat = cats[ci];
+      var cs = report.categoryScores[cat];
+      if (!cs) continue;
+      var barColor = cs.score >= 80 ? "#28a745" : cs.score >= 60 ? "#ffc107" : "#dc3545";
+      scoreBarsHtml += '<div style="margin-bottom:12px">'
+        + '<div style="display:flex;justify-content:space-between;margin-bottom:4px">'
+        + '<span>' + catIcons[cat] + ' ' + catLabels[cat] + '</span>'
+        + '<span style="font-weight:600">' + cs.score + '/100</span>'
+        + '</div>'
+        + '<div style="background:' + borderColor + ';border-radius:8px;height:10px;overflow:hidden">'
+        + '<div style="width:' + cs.score + '%;height:100%;background:' + barColor + ';border-radius:8px;transition:width 0.5s"></div>'
+        + '</div>'
+        + '<div style="font-size:12px;color:' + mutedText + ';margin-top:2px">'
+        + cs.passed + '/' + cs.total + ' passed'
+        + (cs.criticals > 0 ? ' · ' + cs.criticals + ' critical' : '')
+        + (cs.warnings > 0 ? ' · ' + cs.warnings + ' warning' : '')
+        + '</div></div>';
+    }
+
+    // Build findings table
+    var findingsHtml = "";
+    // Sort: critical first, then warning, info, pass
+    var sortedFindings = report.findings.slice().sort(function (a, b) {
+      var order = { critical: 0, warning: 1, info: 2, pass: 3 };
+      return (order[a.severity] || 4) - (order[b.severity] || 4);
+    });
+
+    for (var fi = 0; fi < sortedFindings.length; fi++) {
+      var f = sortedFindings[fi];
+      var sc = severityColors[f.severity] || severityColors.info;
+      var recHtml = f.recommendation
+        ? '<div style="margin-top:6px;padding:8px 12px;background:' + (dark ? "#1a1a2e" : "#f1f3f5")
+          + ';border-left:3px solid ' + sc.bg + ';border-radius:4px;font-size:13px">💡 ' + escapeHtml(f.recommendation) + '</div>'
+        : '';
+
+      findingsHtml += '<div style="padding:14px 16px;border-bottom:1px solid ' + borderColor + '">'
+        + '<div style="display:flex;align-items:center;gap:10px">'
+        + '<span style="display:inline-block;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:700;text-transform:uppercase;background:'
+        + sc.bg + ';color:' + sc.text + '">' + f.severity + '</span>'
+        + '<span style="font-size:12px;color:' + mutedText + '">' + escapeHtml(f.id) + '</span>'
+        + '<span style="font-weight:600">' + escapeHtml(f.title) + '</span>'
+        + '</div>'
+        + '<div style="margin-top:4px;font-size:13px;color:' + mutedText + '">' + escapeHtml(f.description) + '</div>'
+        + recHtml
+        + '</div>';
+    }
+
+    // Summary counters
+    var summaryItems = [
+      { label: "Passed", value: report.passed, color: "#28a745" },
+      { label: "Critical", value: report.criticals, color: "#dc3545" },
+      { label: "Warnings", value: report.warnings, color: "#ffc107" },
+      { label: "Total Checks", value: report.totalFindings, color: mutedText }
+    ];
+    var summaryHtml = "";
+    for (var si = 0; si < summaryItems.length; si++) {
+      var s = summaryItems[si];
+      summaryHtml += '<div style="text-align:center;flex:1;min-width:100px">'
+        + '<div style="font-size:28px;font-weight:700;color:' + s.color + '">' + s.value + '</div>'
+        + '<div style="font-size:12px;color:' + mutedText + '">' + s.label + '</div></div>';
+    }
+
+    var html = '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">'
+      + '<meta name="viewport" content="width=device-width,initial-scale=1">'
+      + '<title>' + escapeHtml(title) + '</title>'
+      + '<style>'
+      + 'body{margin:0;padding:20px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;'
+      + 'background:' + bg + ';color:' + textColor + '}'
+      + '.card{background:' + cardBg + ';border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,' + (dark ? '0.3' : '0.08') + ');margin-bottom:20px;overflow:hidden}'
+      + '.card-header{padding:16px 20px;font-weight:600;font-size:16px;border-bottom:1px solid ' + borderColor + '}'
+      + '.card-body{padding:20px}'
+      + '@media print{body{background:#fff;color:#333}.card{box-shadow:none;border:1px solid #ddd}}'
+      + '</style></head><body>'
+      + '<div style="max-width:900px;margin:0 auto">'
+      // Header
+      + '<div style="text-align:center;margin-bottom:24px">'
+      + '<h1 style="margin:0 0 4px 0;font-size:24px">' + escapeHtml(report.system) + ' Compliance Report</h1>'
+      + (showTime ? '<div style="color:' + mutedText + ';font-size:13px">Generated ' + escapeHtml(report.generatedAt) + '</div>' : '')
+      + '</div>'
+      // Grade circle + summary
+      + '<div class="card"><div class="card-body" style="display:flex;align-items:center;gap:24px;flex-wrap:wrap">'
+      + '<div style="flex-shrink:0;text-align:center">'
+      + '<div style="width:90px;height:90px;border-radius:50%;border:4px solid ' + gradeColor
+      + ';display:flex;flex-direction:column;align-items:center;justify-content:center">'
+      + '<div style="font-size:32px;font-weight:800;color:' + gradeColor + '">' + report.grade + '</div>'
+      + '<div style="font-size:12px;color:' + mutedText + '">' + report.overallScore + '/100</div>'
+      + '</div></div>'
+      + '<div style="display:flex;flex-wrap:wrap;flex:1;gap:8px">' + summaryHtml + '</div>'
+      + '</div></div>'
+      // Category scores
+      + '<div class="card"><div class="card-header">Category Scores</div><div class="card-body">'
+      + scoreBarsHtml
+      + '</div></div>'
+      // Findings
+      + '<div class="card"><div class="card-header">Findings (' + report.totalFindings + ')</div>'
+      + findingsHtml
+      + '</div>'
+      // Footer
+      + '<div style="text-align:center;padding:16px;font-size:12px;color:' + mutedText + '">'
+      + 'Generated by gif-captcha compliance reporter'
+      + '</div></div></body></html>';
+
+    return html;
+  }
+
+  /**
+   * Escape HTML special characters to prevent XSS in generated reports.
+   * @param {string} str - Raw string
+   * @returns {string} HTML-safe string
+   */
+  function escapeHtml(str) {
+    if (typeof str !== "string") return "";
+    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+
   return {
     generateReport: generateReport,
     getRecommendedConfig: getRecommendedConfig,
     compareReports: compareReports,
     formatReportText: formatReportText,
+    formatReportHtml: formatReportHtml,
     SEVERITY: SEVERITY,
     CATEGORY: CATEGORY
   };

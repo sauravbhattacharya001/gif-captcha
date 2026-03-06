@@ -9013,6 +9013,75 @@ function createFraudRingDetector(options) {
  * @param {number} [options.minBotBlockRatePercent=90] - Minimum bot detection rate
  * @returns {Object} Compliance report generator instance
  */
+/**
+ * Count severity occurrences across an array of findings.
+ * @param {Object[]} findings - Array of finding objects with .severity
+ * @param {Object} SEV - Severity constants (PASS, CRITICAL, WARNING, INFO)
+ * @returns {{ passed: number, criticals: number, warnings: number, infos: number }}
+ */
+function _countSeverities(findings, SEV) {
+  var passed = 0, criticals = 0, warnings = 0, infos = 0;
+  for (var i = 0; i < findings.length; i++) {
+    var s = findings[i].severity;
+    if (s === SEV.PASS) passed++;
+    else if (s === SEV.CRITICAL) criticals++;
+    else if (s === SEV.WARNING) warnings++;
+    else if (s === SEV.INFO) infos++;
+  }
+  return { passed: passed, criticals: criticals, warnings: warnings, infos: infos };
+}
+
+/**
+ * Compute per-category compliance scores from findings.
+ * @param {Object[]} findings - Array of finding objects with .category and .severity
+ * @param {Object} SEV - Severity constants
+ * @returns {Object} Map of category -> { score, total, passed, criticals, warnings }
+ */
+function _computeAllCategoryScores(findings, SEV) {
+  var buckets = {};
+  for (var i = 0; i < findings.length; i++) {
+    var cat = findings[i].category;
+    if (!buckets[cat]) buckets[cat] = [];
+    buckets[cat].push(findings[i]);
+  }
+  var scores = {};
+  var cats = Object.keys(buckets);
+  for (var c = 0; c < cats.length; c++) {
+    var catName = cats[c];
+    var items = buckets[catName];
+    var counts = _countSeverities(items, SEV);
+    var scorable = items.length - counts.infos;
+    var score = scorable > 0 ? Math.round((counts.passed / scorable) * 100) : 100;
+    scores[catName] = {
+      score: score,
+      total: items.length,
+      passed: counts.passed,
+      criticals: counts.criticals,
+      warnings: counts.warnings
+    };
+  }
+  return scores;
+}
+
+/**
+ * Compute a weighted average score from category scores and weight map.
+ * @param {Object} categoryScores - Map of category -> { score }
+ * @param {Object} weights - Map of category -> weight (number)
+ * @returns {number} Weighted average (0-100), rounded
+ */
+function _weightedAverage(categoryScores, weights) {
+  var total = 0, weightSum = 0;
+  var cats = Object.keys(weights);
+  for (var i = 0; i < cats.length; i++) {
+    var cat = cats[i];
+    if (categoryScores[cat]) {
+      total += categoryScores[cat].score * weights[cat];
+      weightSum += weights[cat];
+    }
+  }
+  return weightSum > 0 ? Math.round(total / weightSum) : 0;
+}
+
 function createComplianceReporter(options) {
   options = options || {};
   var systemName = options.systemName || "gif-captcha";
@@ -9340,51 +9409,17 @@ function createComplianceReporter(options) {
 
     // ── Compute Scores ──────────────────────────────────────────────
 
-    var categoryScores = {};
-    var categories = [CATEGORY.ACCESSIBILITY, CATEGORY.PRIVACY, CATEGORY.SECURITY, CATEGORY.OPERATIONAL];
-    for (var ci = 0; ci < categories.length; ci++) {
-      var cat = categories[ci];
-      var catFindings = [];
-      for (var fi = 0; fi < findings.length; fi++) {
-        if (findings[fi].category === cat) catFindings.push(findings[fi]);
-      }
-      var total = catFindings.length;
-      var passed = 0;
-      var criticals = 0;
-      var warnings = 0;
-      for (var pi = 0; pi < catFindings.length; pi++) {
-        if (catFindings[pi].severity === SEVERITY.PASS) passed++;
-        else if (catFindings[pi].severity === SEVERITY.CRITICAL) criticals++;
-        else if (catFindings[pi].severity === SEVERITY.WARNING) warnings++;
-        // INFO doesn't count for/against
-      }
-      var scorable = total - catFindings.filter(function (f) { return f.severity === SEVERITY.INFO; }).length;
-      var score = scorable > 0 ? Math.round((passed / scorable) * 100) : 100;
-      categoryScores[cat] = { score: score, total: total, passed: passed, criticals: criticals, warnings: warnings };
-    }
+    var categoryScores = _computeAllCategoryScores(findings, SEVERITY);
 
     // Overall score: weighted average (security 35%, privacy 25%, accessibility 25%, operational 15%)
     var weights = { security: 35, privacy: 25, accessibility: 25, operational: 15 };
-    var overallScore = 0;
-    var totalWeight = 0;
-    for (var wi = 0; wi < categories.length; wi++) {
-      var wCat = categories[wi];
-      var wVal = weights[wCat] || 0;
-      overallScore += categoryScores[wCat].score * wVal;
-      totalWeight += wVal;
-    }
-    overallScore = totalWeight > 0 ? Math.round(overallScore / totalWeight) : 0;
-
+    var overallScore = _weightedAverage(categoryScores, weights);
     var grade = overallScore >= 90 ? "A" : overallScore >= 80 ? "B" : overallScore >= 70 ? "C" : overallScore >= 60 ? "D" : "F";
 
-    var totalCriticals = 0;
-    var totalWarnings = 0;
-    var totalPassed = 0;
-    for (var ti = 0; ti < findings.length; ti++) {
-      if (findings[ti].severity === SEVERITY.CRITICAL) totalCriticals++;
-      else if (findings[ti].severity === SEVERITY.WARNING) totalWarnings++;
-      else if (findings[ti].severity === SEVERITY.PASS) totalPassed++;
-    }
+    var counts = _countSeverities(findings, SEVERITY);
+    var totalCriticals = counts.criticals;
+    var totalWarnings = counts.warnings;
+    var totalPassed = counts.passed;
 
     return {
       system: systemName,

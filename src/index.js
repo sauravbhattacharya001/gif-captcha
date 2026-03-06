@@ -8764,33 +8764,44 @@ function createFraudRingDetector(options) {
       }
     }
     solves.sort(function(a, b) { return a.timestamp - b.timestamp; });
-    var clusters = [], current = [];
+    var clusters = [], current = [], currentSet = Object.create(null);
     for (var k = 0; k < solves.length; k++) {
-      if (current.length === 0) { current.push(solves[k]); continue; }
+      if (current.length === 0) { current.push(solves[k]); currentSet[solves[k].clientId] = true; continue; }
       if (solves[k].timestamp - current[0].timestamp <= timingWindowMs) {
-        var already = false;
-        for (var m = 0; m < current.length; m++) { if (current[m].clientId === solves[k].clientId) { already = true; break; } }
-        if (!already) current.push(solves[k]);
+        if (!currentSet[solves[k].clientId]) { current.push(solves[k]); currentSet[solves[k].clientId] = true; }
       } else {
         if (current.length >= minRingSize) clusters.push(current.slice());
         current = [solves[k]];
+        currentSet = Object.create(null);
+        currentSet[solves[k].clientId] = true;
       }
     }
     if (current.length >= minRingSize) clusters.push(current);
     return clusters;
   }
 
-  function findSharedFingerprints() {
-    var fpMap = {};
+  /**
+   * Build a map of key → list of distinct client IDs that share that key.
+   * Reused by findSharedFingerprints and findIPClusters to avoid code duplication.
+   * @param {string} prop – client property to group by ('fingerprints' | 'ips')
+   * @returns {Object.<string, string[]>}
+   */
+  function _buildGroupMap(prop) {
+    var map = {};
     var ids = Object.keys(clients);
     for (var i = 0; i < ids.length; i++) {
-      var c = clients[ids[i]];
-      for (var j = 0; j < c.fingerprints.length; j++) {
-        var fp = c.fingerprints[j];
-        if (!fpMap[fp]) fpMap[fp] = [];
-        if (fpMap[fp].indexOf(ids[i]) === -1) fpMap[fp].push(ids[i]);
+      var arr = clients[ids[i]][prop];
+      for (var j = 0; j < arr.length; j++) {
+        var key = arr[j];
+        if (!map[key]) map[key] = [];
+        if (map[key].indexOf(ids[i]) === -1) map[key].push(ids[i]);
       }
     }
+    return map;
+  }
+
+  function findSharedFingerprints() {
+    var fpMap = _buildGroupMap('fingerprints');
     var groups = [];
     var fps = Object.keys(fpMap);
     for (var k = 0; k < fps.length; k++) {
@@ -8800,16 +8811,7 @@ function createFraudRingDetector(options) {
   }
 
   function findIPClusters() {
-    var ipMap = {};
-    var ids = Object.keys(clients);
-    for (var i = 0; i < ids.length; i++) {
-      var c = clients[ids[i]];
-      for (var j = 0; j < c.ips.length; j++) {
-        var ip = c.ips[j];
-        if (!ipMap[ip]) ipMap[ip] = [];
-        if (ipMap[ip].indexOf(ids[i]) === -1) ipMap[ip].push(ids[i]);
-      }
-    }
+    var ipMap = _buildGroupMap('ips');
     var clusters = [];
     var ips = Object.keys(ipMap);
     for (var k = 0; k < ips.length; k++) {
@@ -8852,8 +8854,11 @@ function createFraudRingDetector(options) {
         else break;
       }
       if (seq.length >= minRingSize) {
+        var seqSet = Object.create(null);
         var seqClients = [];
-        for (var n = 0; n < seq.length; n++) { if (seqClients.indexOf(seq[n].clientId) === -1) seqClients.push(seq[n].clientId); }
+        for (var n = 0; n < seq.length; n++) {
+          if (!seqSet[seq[n].clientId]) { seqSet[seq[n].clientId] = true; seqClients.push(seq[n].clientId); }
+        }
         if (seqClients.length >= minRingSize) patterns.push({ clients: seqClients, events: seq });
       }
     }

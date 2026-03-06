@@ -464,13 +464,10 @@ function pickChallenges(pool, count) {
  */
 function createAttemptTracker(options) {
   options = options || {};
-  var maxAttempts = (typeof options.maxAttempts === "number" && options.maxAttempts > 0)
-    ? Math.floor(options.maxAttempts) : 5;
-  var baseLockoutMs = (typeof options.lockoutMs === "number" && options.lockoutMs > 0)
-    ? options.lockoutMs : 30000;
+  var maxAttempts = Math.floor(_posOpt(options.maxAttempts, 5));
+  var baseLockoutMs = _posOpt(options.lockoutMs, 30000);
   var exponentialBackoff = options.exponentialBackoff !== false;
-  var maxLockoutMs = (typeof options.maxLockoutMs === "number" && options.maxLockoutMs > 0)
-    ? options.maxLockoutMs : 300000;
+  var maxLockoutMs = _posOpt(options.maxLockoutMs, 300000);
 
   // Internal state: Map<challengeId, { attempts: number, timestamps: number[], lockoutUntil: number, lockoutCount: number }>
   // Use null-prototype object to prevent prototype pollution when
@@ -2074,12 +2071,10 @@ function createSecurityScorer(challenges) {
 function createSessionManager(options) {
   options = options || {};
 
-  var challengesPerSession = (typeof options.challengesPerSession === "number" && options.challengesPerSession > 0)
-    ? Math.floor(options.challengesPerSession) : 3;
+  var challengesPerSession = Math.floor(_posOpt(options.challengesPerSession, 3));
   var passThreshold = (typeof options.passThreshold === "number" && options.passThreshold >= 0 && options.passThreshold <= 1)
     ? options.passThreshold : 0.67;
-  var sessionTimeoutMs = (typeof options.sessionTimeoutMs === "number" && options.sessionTimeoutMs > 0)
-    ? options.sessionTimeoutMs : 300000;
+  var sessionTimeoutMs = _posOpt(options.sessionTimeoutMs, 300000);
   var escalateDifficulty = options.escalateDifficulty !== false;
   var difficultyStep = (typeof options.difficultyStep === "number" && options.difficultyStep >= 0)
     ? options.difficultyStep : 15;
@@ -2087,8 +2082,7 @@ function createSessionManager(options) {
     ? options.baseDifficulty : 30;
   var maxDifficulty = (typeof options.maxDifficulty === "number" && options.maxDifficulty >= 0 && options.maxDifficulty <= 100)
     ? options.maxDifficulty : 95;
-  var maxSessions = (typeof options.maxSessions === "number" && options.maxSessions > 0)
-    ? Math.floor(options.maxSessions) : 1000;
+  var maxSessions = Math.floor(_posOpt(options.maxSessions, 1000));
 
   // Internal state: Map<sessionId, SessionState>
   // Use null-prototype object to prevent prototype pollution via
@@ -2394,12 +2388,10 @@ function createSessionManager(options) {
  */
 function createPoolManager(options) {
   options = options || {};
-  var maxServes = (typeof options.maxServes === "number" && options.maxServes > 0)
-    ? Math.floor(options.maxServes) : 100;
+  var maxServes = Math.floor(_posOpt(options.maxServes, 100));
   var minPassRate = (typeof options.minPassRate === "number") ? options.minPassRate : 0.3;
   var maxPassRate = (typeof options.maxPassRate === "number") ? options.maxPassRate : 0.95;
-  var minPoolSize = (typeof options.minPoolSize === "number" && options.minPoolSize > 0)
-    ? Math.floor(options.minPoolSize) : 3;
+  var minPoolSize = Math.floor(_posOpt(options.minPoolSize, 3));
 
   // challenge id → { challenge, serves, passes, fails, retired, addedAt, retiredAt, retireReason }
   // Use null-prototype object to prevent prototype pollution via crafted challenge IDs.
@@ -3517,13 +3509,10 @@ function createTokenVerifier(options) {
   }
 
   var secret = options.secret;
-  var tokenTtlMs = (typeof options.tokenTtlMs === 'number' && options.tokenTtlMs > 0)
-    ? options.tokenTtlMs : 300000;
-  var maxTokenUses = (typeof options.maxTokenUses === 'number' && options.maxTokenUses >= 0)
-    ? options.maxTokenUses : 1;
+  var tokenTtlMs = _posOpt(options.tokenTtlMs, 300000);
+  var maxTokenUses = _nnOpt(options.maxTokenUses, 1);
   var bindIp = options.bindIp !== false;
-  var maxUsedTokens = (typeof options.maxUsedTokens === 'number' && options.maxUsedTokens > 0)
-    ? options.maxUsedTokens : 10000;
+  var maxUsedTokens = _posOpt(options.maxUsedTokens, 10000);
 
   var usedNonces = Object.create(null);
   var usedNonceCount = 0;
@@ -3791,28 +3780,19 @@ function createTokenVerifier(options) {
  */
 function createReputationTracker(options) {
   options = options || {};
-  var decayHalfLifeMs = (typeof options.decayHalfLifeMs === "number" && options.decayHalfLifeMs > 0)
-    ? options.decayHalfLifeMs : 86400000; // 24 hours default
-  var maxEntries = (typeof options.maxEntries === "number" && options.maxEntries > 0)
-    ? Math.floor(options.maxEntries) : 10000;
-  var suspiciousThreshold = (typeof options.suspiciousThreshold === "number")
-    ? options.suspiciousThreshold : 0.3;
-  var trustedThreshold = (typeof options.trustedThreshold === "number")
-    ? options.trustedThreshold : 0.8;
-  var blockThreshold = (typeof options.blockThreshold === "number")
-    ? options.blockThreshold : 0.1;
+  var decayHalfLifeMs = _posOpt(options.decayHalfLifeMs, 86400000); // 24 hours default
+  var maxEntries = Math.floor(_posOpt(options.maxEntries, 10000));
+  var suspiciousThreshold = _nnOpt(options.suspiciousThreshold, 0.3);
+  var trustedThreshold = _nnOpt(options.trustedThreshold, 0.8);
+  var blockThreshold = _nnOpt(options.blockThreshold, 0.1);
   var initialScore = (typeof options.initialScore === "number")
     ? Math.max(0, Math.min(1, options.initialScore)) : 0.5;
-  var solveWeight = (typeof options.solveWeight === "number" && options.solveWeight > 0)
-    ? options.solveWeight : 0.1;
-  var failWeight = (typeof options.failWeight === "number" && options.failWeight > 0)
-    ? options.failWeight : 0.15;
-  var timeoutWeight = (typeof options.timeoutWeight === "number" && options.timeoutWeight > 0)
-    ? options.timeoutWeight : 0.05;
+  var solveWeight = _posOpt(options.solveWeight, 0.1);
+  var failWeight = _posOpt(options.failWeight, 0.15);
+  var timeoutWeight = _posOpt(options.timeoutWeight, 0.05);
   var burstPenalty = (typeof options.burstPenalty === "number" && options.burstPenalty >= 0)
     ? options.burstPenalty : 0.2;
-  var burstWindowMs = (typeof options.burstWindowMs === "number" && options.burstWindowMs > 0)
-    ? options.burstWindowMs : 10000; // 10 seconds
+  var burstWindowMs = _posOpt(options.burstWindowMs, 10000); // 10 seconds
 
   // Use null-prototype objects to prevent prototype pollution
   var entries = Object.create(null);
@@ -7526,18 +7506,15 @@ function createSessionRecorder(options) {
 function createLoadTester(options) {
   options = options || {};
 
-  var concurrency = (typeof options.concurrency === "number" && options.concurrency > 0)
-    ? Math.floor(options.concurrency) : 10;
-  var requestsPerUser = (typeof options.requestsPerUser === "number" && options.requestsPerUser > 0)
-    ? Math.floor(options.requestsPerUser) : 50;
+  var concurrency = Math.floor(_posOpt(options.concurrency, 10));
+  var requestsPerUser = Math.floor(_posOpt(options.requestsPerUser, 50));
   var rampUpMs = (typeof options.rampUpMs === "number" && options.rampUpMs >= 0)
     ? options.rampUpMs : 1000;
   var thinkTimeMs = (typeof options.thinkTimeMs === "number" && options.thinkTimeMs >= 0)
     ? options.thinkTimeMs : 100;
   var humanRatio = (typeof options.humanRatio === "number" && options.humanRatio >= 0 && options.humanRatio <= 1)
     ? options.humanRatio : 0.8;
-  var timeoutMs = (typeof options.timeoutMs === "number" && options.timeoutMs > 0)
-    ? options.timeoutMs : 30000;
+  var timeoutMs = _posOpt(options.timeoutMs, 30000);
   var tokenSecret = options.tokenSecret || "load-test-secret-key-minimum-length";
 
   // Default challenge pool

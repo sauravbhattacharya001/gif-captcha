@@ -1,0 +1,986 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; img-src https: data:; script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'self'; form-action 'none';">
+    <meta name="referrer" content="no-referrer">
+    <title>GIF CAPTCHA — Interaction Heatmap 🔥</title>
+    <link rel="stylesheet" href="shared.css">
+    <style>
+        .container { max-width: 900px; }
+
+        /* Heatmap area */
+        .heatmap-wrapper {
+            position: relative;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            overflow: hidden;
+            margin-bottom: 1.5rem;
+            background: var(--surface);
+            cursor: crosshair;
+        }
+        .heatmap-wrapper img {
+            display: block;
+            width: 100%;
+            max-height: 400px;
+            object-fit: contain;
+            user-select: none;
+            -webkit-user-drag: none;
+        }
+        .heatmap-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+        .trail-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        /* Controls */
+        .controls-bar {
+            display: flex;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+        .controls-bar select,
+        .controls-bar button {
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            color: var(--text);
+            font-size: 0.85rem;
+            cursor: pointer;
+        }
+        .controls-bar select:hover,
+        .controls-bar button:hover {
+            background: var(--surface-hover);
+            border-color: var(--accent);
+        }
+        .controls-bar .active-toggle {
+            background: var(--accent);
+            color: #000;
+            font-weight: 600;
+        }
+
+        /* Stats grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        .stat-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1rem 1.25rem;
+            text-align: center;
+        }
+        .stat-label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--muted);
+            margin-bottom: 0.25rem;
+        }
+        .stat-value {
+            font-size: 1.4rem;
+            font-weight: 700;
+        }
+
+        /* Timing chart */
+        .timing-chart {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .timing-chart h3 {
+            font-size: 1rem;
+            margin-bottom: 1rem;
+            color: var(--text);
+        }
+        .timing-bars {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        .timing-row {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        .timing-label {
+            font-size: 0.8rem;
+            color: var(--muted);
+            min-width: 120px;
+            text-align: right;
+        }
+        .timing-bar-track {
+            flex: 1;
+            height: 20px;
+            background: var(--bg);
+            border-radius: 4px;
+            overflow: hidden;
+            position: relative;
+        }
+        .timing-bar-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.5s ease;
+        }
+        .timing-bar-value {
+            font-size: 0.75rem;
+            color: var(--muted);
+            min-width: 50px;
+        }
+
+        /* Pattern analysis */
+        .pattern-panel {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .pattern-panel h3 {
+            font-size: 1rem;
+            margin-bottom: 1rem;
+        }
+        .pattern-meter {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 0.75rem;
+        }
+        .meter-label {
+            font-size: 0.85rem;
+            min-width: 140px;
+        }
+        .meter-track {
+            flex: 1;
+            height: 10px;
+            background: var(--bg);
+            border-radius: 5px;
+            overflow: hidden;
+        }
+        .meter-fill {
+            height: 100%;
+            border-radius: 5px;
+            transition: width 0.5s ease;
+        }
+        .meter-value {
+            font-size: 0.8rem;
+            color: var(--muted);
+            min-width: 40px;
+            text-align: right;
+        }
+        .verdict-box {
+            margin-top: 1.25rem;
+            padding: 1rem;
+            border-radius: 8px;
+            text-align: center;
+            font-weight: 600;
+            font-size: 1rem;
+        }
+        .verdict-human {
+            background: var(--green-bg);
+            border: 1px solid var(--green);
+            color: var(--green);
+        }
+        .verdict-bot {
+            background: var(--red-bg);
+            border: 1px solid var(--red);
+            color: var(--red);
+        }
+        .verdict-uncertain {
+            background: var(--yellow-bg);
+            border: 1px solid var(--yellow);
+            color: var(--yellow);
+        }
+
+        /* Event log */
+        .event-log {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .event-log h3 {
+            font-size: 1rem;
+            margin-bottom: 0.75rem;
+        }
+        .log-entries {
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: 'SFMono-Regular', Consolas, monospace;
+            font-size: 0.75rem;
+            line-height: 1.8;
+            color: var(--muted);
+        }
+        .log-entries .log-click { color: var(--accent); }
+        .log-entries .log-move { color: var(--purple); }
+        .log-entries .log-key { color: var(--orange); }
+
+        /* Mode indicator */
+        .mode-badge {
+            display: inline-block;
+            padding: 0.2rem 0.6rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .mode-record { background: var(--red-bg); color: var(--red); }
+        .mode-replay { background: var(--green-bg); color: var(--green); }
+        .mode-idle { background: rgba(139,148,158,0.15); color: var(--muted); }
+
+        /* Responsive */
+        @media (max-width: 600px) {
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .timing-label { min-width: 80px; font-size: 0.7rem; }
+            .controls-bar { justify-content: center; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🔥 Interaction Heatmap</h1>
+        <p class="subtitle">Visualize click patterns, mouse trails, and timing data for CAPTCHA interactions</p>
+        <div class="nav-links">
+            <a href="index.html">Home</a>
+            <a href="demo.html">Demo</a>
+            <a href="analysis.html">Analysis</a>
+            <a href="timing.html">Timing</a>
+            <a href="cognitive-load.html">Cognitive Load</a>
+            <a href="playground.html">Playground</a>
+        </div>
+    </div>
+
+    <div class="container">
+
+        <!-- Controls -->
+        <div class="controls-bar">
+            <select id="gifSelect" aria-label="Select CAPTCHA GIF">
+                <option value="0">GIF 1 — Duel Plot Twist</option>
+                <option value="1">GIF 2 — Rollerblading Rappers</option>
+                <option value="2">GIF 3 — Flying Skateboarder</option>
+                <option value="3">GIF 4 — Banana Dance-Off</option>
+                <option value="4">GIF 5 — Tic Tac Toe Dog</option>
+                <option value="5">GIF 6 — Parent Dog Sacrifice</option>
+                <option value="6">GIF 7 — Mirror Hand Illusion</option>
+                <option value="7">GIF 8 — Highway 180° Drift</option>
+                <option value="8">GIF 9 — Road Rage Hug</option>
+                <option value="9">GIF 10 — Birthday Cake Face</option>
+            </select>
+            <button id="recordBtn" title="Start recording interactions">⏺ Record</button>
+            <button id="replayBtn" title="Replay recorded interactions" disabled>▶ Replay</button>
+            <button id="clearBtn" title="Clear all data">🗑 Clear</button>
+            <button id="toggleHeatmap" class="active-toggle" title="Toggle heatmap overlay">🔥 Heatmap</button>
+            <button id="toggleTrail" title="Toggle mouse trail">🖱 Trail</button>
+            <span id="modeBadge" class="mode-badge mode-idle">IDLE</span>
+        </div>
+
+        <!-- Heatmap visualization -->
+        <div class="heatmap-wrapper" id="heatmapArea">
+            <img id="gifImage" src="" alt="CAPTCHA GIF">
+            <canvas class="trail-canvas" id="trailCanvas"></canvas>
+            <canvas class="heatmap-canvas" id="heatmapCanvas"></canvas>
+        </div>
+
+        <!-- Live stats -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-label">Clicks</div>
+                <div class="stat-value" id="statClicks">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Mouse Distance</div>
+                <div class="stat-value" id="statDistance">0 px</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Avg Speed</div>
+                <div class="stat-value" id="statSpeed">0 px/s</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Duration</div>
+                <div class="stat-value" id="statDuration">0.0s</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">First Click</div>
+                <div class="stat-value" id="statFirstClick">—</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Click Entropy</div>
+                <div class="stat-value" id="statEntropy">—</div>
+            </div>
+        </div>
+
+        <!-- Timing breakdown -->
+        <div class="timing-chart">
+            <h3>⏱ Timing Breakdown</h3>
+            <div class="timing-bars" id="timingBars">
+                <div class="timing-row">
+                    <span class="timing-label">Think Time</span>
+                    <div class="timing-bar-track">
+                        <div class="timing-bar-fill" id="barThink" style="width:0%; background:var(--accent);"></div>
+                    </div>
+                    <span class="timing-bar-value" id="valThink">—</span>
+                </div>
+                <div class="timing-row">
+                    <span class="timing-label">Move Time</span>
+                    <div class="timing-bar-track">
+                        <div class="timing-bar-fill" id="barMove" style="width:0%; background:var(--purple);"></div>
+                    </div>
+                    <span class="timing-bar-value" id="valMove">—</span>
+                </div>
+                <div class="timing-row">
+                    <span class="timing-label">Click Time</span>
+                    <div class="timing-bar-track">
+                        <div class="timing-bar-fill" id="barClick" style="width:0%; background:var(--green);"></div>
+                    </div>
+                    <span class="timing-bar-value" id="valClick">—</span>
+                </div>
+                <div class="timing-row">
+                    <span class="timing-label">Idle Time</span>
+                    <div class="timing-bar-track">
+                        <div class="timing-bar-fill" id="barIdle" style="width:0%; background:var(--yellow);"></div>
+                    </div>
+                    <span class="timing-bar-value" id="valIdle">—</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Behavior pattern analysis -->
+        <div class="pattern-panel">
+            <h3>🧠 Behavior Pattern Analysis</h3>
+            <div class="pattern-meter">
+                <span class="meter-label">Movement Smoothness</span>
+                <div class="meter-track">
+                    <div class="meter-fill" id="meterSmooth" style="width:0%; background:var(--green);"></div>
+                </div>
+                <span class="meter-value" id="valSmooth">—</span>
+            </div>
+            <div class="pattern-meter">
+                <span class="meter-label">Click Regularity</span>
+                <div class="meter-track">
+                    <div class="meter-fill" id="meterRegularity" style="width:0%; background:var(--accent);"></div>
+                </div>
+                <span class="meter-value" id="valRegularity">—</span>
+            </div>
+            <div class="pattern-meter">
+                <span class="meter-label">Spatial Coverage</span>
+                <div class="meter-track">
+                    <div class="meter-fill" id="meterCoverage" style="width:0%; background:var(--purple);"></div>
+                </div>
+                <span class="meter-value" id="valCoverage">—</span>
+            </div>
+            <div class="pattern-meter">
+                <span class="meter-label">Path Efficiency</span>
+                <div class="meter-track">
+                    <div class="meter-fill" id="meterEfficiency" style="width:0%; background:var(--orange);"></div>
+                </div>
+                <span class="meter-value" id="valEfficiency">—</span>
+            </div>
+            <div id="verdictBox" class="verdict-box verdict-uncertain">
+                Interact with the CAPTCHA above to analyze behavior patterns
+            </div>
+        </div>
+
+        <!-- Event log -->
+        <div class="event-log">
+            <h3>📋 Event Log</h3>
+            <div class="log-entries" id="eventLog" role="log" aria-live="polite">
+                <div style="color:var(--muted);">Waiting for interactions...</div>
+            </div>
+        </div>
+
+    </div>
+
+    <footer class="footer">
+        <p>Part of the <a href="index.html">GIF CAPTCHA</a> research study</p>
+    </footer>
+
+    <script src="shared.js"></script>
+    <script>
+    (function() {
+        'use strict';
+
+        // ── GIF data ────────────────────────────────────────
+        var GIFS = [
+            { title: 'Duel Plot Twist',       url: 'https://media.giphy.com/media/3o7TKz9bX5fBKgztWE/giphy.gif' },
+            { title: 'Rollerblading Rappers',  url: 'https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif' },
+            { title: 'Flying Skateboarder',    url: 'https://media.giphy.com/media/26BRuo6sLetdllPAQ/giphy.gif' },
+            { title: 'Banana Dance-Off',       url: 'https://media.giphy.com/media/l4FGp6wKxMULEHgA0/giphy.gif' },
+            { title: 'Tic Tac Toe Dog',        url: 'https://media.giphy.com/media/3oEdv6sy3ulljPMGdy/giphy.gif' },
+            { title: 'Parent Dog Sacrifice',   url: 'https://media.giphy.com/media/l0HlNQ03J5JxX2rGM/giphy.gif' },
+            { title: 'Mirror Hand Illusion',   url: 'https://media.giphy.com/media/3o7TKNdMi3mPFaCnzG/giphy.gif' },
+            { title: 'Highway 180° Drift',     url: 'https://media.giphy.com/media/3ohzdIuqJoo8QdKlnW/giphy.gif' },
+            { title: 'Road Rage Hug',          url: 'https://media.giphy.com/media/l0MYGb1LuZ3n7dRnO/giphy.gif' },
+            { title: 'Birthday Cake Face',     url: 'https://media.giphy.com/media/g9582DNuQppxC/giphy.gif' }
+        ];
+
+        // ── State ───────────────────────────────────────────
+        var recording = false;
+        var startTime = 0;
+        var clicks = [];          // [{x, y, t}]
+        var moves = [];           // [{x, y, t}]
+        var events = [];          // [{type, x, y, t}]
+        var showHeatmap = true;
+        var showTrail = false;
+        var replayTimer = null;
+
+        // ── DOM ─────────────────────────────────────────────
+        var gifImg = document.getElementById('gifImage');
+        var heatmapCanvas = document.getElementById('heatmapCanvas');
+        var trailCanvas = document.getElementById('trailCanvas');
+        var heatCtx = heatmapCanvas.getContext('2d');
+        var trailCtx = trailCanvas.getContext('2d');
+        var area = document.getElementById('heatmapArea');
+        var recordBtn = document.getElementById('recordBtn');
+        var replayBtn = document.getElementById('replayBtn');
+        var clearBtn = document.getElementById('clearBtn');
+        var toggleHeatmapBtn = document.getElementById('toggleHeatmap');
+        var toggleTrailBtn = document.getElementById('toggleTrail');
+        var modeBadge = document.getElementById('modeBadge');
+        var gifSelect = document.getElementById('gifSelect');
+        var eventLog = document.getElementById('eventLog');
+
+        // ── Load GIF ────────────────────────────────────────
+        function loadGif(index) {
+            var g = GIFS[index];
+            if (!g) return;
+            gifImg.src = g.url;
+            gifImg.alt = g.title + ' CAPTCHA GIF';
+        }
+
+        gifSelect.addEventListener('change', function() {
+            loadGif(parseInt(this.value, 10));
+            clearData();
+        });
+
+        gifImg.addEventListener('load', function() {
+            resizeCanvases();
+        });
+
+        function resizeCanvases() {
+            var w = area.offsetWidth;
+            var h = area.offsetHeight;
+            heatmapCanvas.width = w;
+            heatmapCanvas.height = h;
+            trailCanvas.width = w;
+            trailCanvas.height = h;
+        }
+
+        window.addEventListener('resize', function() {
+            resizeCanvases();
+            renderHeatmap();
+            renderTrail();
+        });
+
+        // ── Recording ───────────────────────────────────────
+        function startRecording() {
+            recording = true;
+            startTime = performance.now();
+            clicks = [];
+            moves = [];
+            events = [];
+            recordBtn.textContent = '⏹ Stop';
+            recordBtn.title = 'Stop recording';
+            replayBtn.disabled = true;
+            modeBadge.textContent = 'RECORDING';
+            modeBadge.className = 'mode-badge mode-record';
+            eventLog.innerHTML = '';
+            clearCanvases();
+            logEvent('system', 'Recording started');
+        }
+
+        function stopRecording() {
+            recording = false;
+            recordBtn.textContent = '⏺ Record';
+            recordBtn.title = 'Start recording interactions';
+            replayBtn.disabled = clicks.length === 0 && moves.length === 0;
+            modeBadge.textContent = 'STOPPED';
+            modeBadge.className = 'mode-badge mode-idle';
+            logEvent('system', 'Recording stopped — ' + clicks.length + ' clicks, ' + moves.length + ' moves');
+            updateStats();
+            analyzePatterns();
+            renderHeatmap();
+            renderTrail();
+        }
+
+        recordBtn.addEventListener('click', function() {
+            if (recording) stopRecording();
+            else startRecording();
+        });
+
+        // ── Mouse event handlers ────────────────────────────
+        area.addEventListener('click', function(e) {
+            if (!recording) return;
+            var rect = area.getBoundingClientRect();
+            var x = (e.clientX - rect.left) / rect.width;
+            var y = (e.clientY - rect.top) / rect.height;
+            var t = performance.now() - startTime;
+            clicks.push({ x: x, y: y, t: t });
+            events.push({ type: 'click', x: x, y: y, t: t });
+            logEvent('click', 'Click at (' + (x * 100).toFixed(1) + '%, ' + (y * 100).toFixed(1) + '%) @ ' + (t / 1000).toFixed(2) + 's');
+            updateStats();
+            if (showHeatmap) renderHeatmap();
+        });
+
+        area.addEventListener('mousemove', function(e) {
+            if (!recording) return;
+            var rect = area.getBoundingClientRect();
+            var x = (e.clientX - rect.left) / rect.width;
+            var y = (e.clientY - rect.top) / rect.height;
+            var t = performance.now() - startTime;
+            // Throttle: only record every ~30ms
+            if (moves.length > 0 && t - moves[moves.length - 1].t < 30) return;
+            moves.push({ x: x, y: y, t: t });
+            events.push({ type: 'move', x: x, y: y, t: t });
+            if (showTrail) renderTrail();
+        });
+
+        // ── Heatmap rendering ───────────────────────────────
+        function renderHeatmap() {
+            var w = heatmapCanvas.width;
+            var h = heatmapCanvas.height;
+            heatCtx.clearRect(0, 0, w, h);
+            if (!showHeatmap || clicks.length === 0) return;
+
+            // Draw Gaussian blobs for each click
+            var radius = Math.max(30, Math.min(w, h) * 0.08);
+
+            // Create temporary canvas for intensity
+            var tmpCanvas = document.createElement('canvas');
+            tmpCanvas.width = w;
+            tmpCanvas.height = h;
+            var tmpCtx = tmpCanvas.getContext('2d');
+
+            for (var i = 0; i < clicks.length; i++) {
+                var cx = clicks[i].x * w;
+                var cy = clicks[i].y * h;
+                var gradient = tmpCtx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+                gradient.addColorStop(0, 'rgba(255, 255, 255, 0.4)');
+                gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+                tmpCtx.fillStyle = gradient;
+                tmpCtx.fillRect(cx - radius, cy - radius, radius * 2, radius * 2);
+            }
+
+            // Colorize: read pixel data and map intensity to heat colors
+            var imageData = tmpCtx.getImageData(0, 0, w, h);
+            var data = imageData.data;
+            for (var p = 0; p < data.length; p += 4) {
+                var intensity = data[p] / 255; // white channel = intensity
+                if (intensity < 0.01) {
+                    data[p + 3] = 0; // transparent
+                    continue;
+                }
+                var r, g, b;
+                if (intensity < 0.25) {
+                    // Blue to cyan
+                    var t2 = intensity / 0.25;
+                    r = 0; g = Math.round(t2 * 255); b = 255;
+                } else if (intensity < 0.5) {
+                    // Cyan to green
+                    var t2 = (intensity - 0.25) / 0.25;
+                    r = 0; g = 255; b = Math.round(255 * (1 - t2));
+                } else if (intensity < 0.75) {
+                    // Green to yellow
+                    var t2 = (intensity - 0.5) / 0.25;
+                    r = Math.round(255 * t2); g = 255; b = 0;
+                } else {
+                    // Yellow to red
+                    var t2 = (intensity - 0.75) / 0.25;
+                    r = 255; g = Math.round(255 * (1 - t2)); b = 0;
+                }
+                data[p] = r;
+                data[p + 1] = g;
+                data[p + 2] = b;
+                data[p + 3] = Math.round(intensity * 180);
+            }
+            heatCtx.putImageData(imageData, 0, 0);
+        }
+
+        // ── Trail rendering ─────────────────────────────────
+        function renderTrail() {
+            var w = trailCanvas.width;
+            var h = trailCanvas.height;
+            trailCtx.clearRect(0, 0, w, h);
+            if (!showTrail || moves.length < 2) return;
+
+            trailCtx.lineWidth = 2;
+            trailCtx.lineCap = 'round';
+            trailCtx.lineJoin = 'round';
+
+            for (var i = 1; i < moves.length; i++) {
+                var progress = i / moves.length;
+                var alpha = 0.3 + progress * 0.5;
+                trailCtx.strokeStyle = 'rgba(188, 140, 255, ' + alpha + ')';
+                trailCtx.beginPath();
+                trailCtx.moveTo(moves[i - 1].x * w, moves[i - 1].y * h);
+                trailCtx.lineTo(moves[i].x * w, moves[i].y * h);
+                trailCtx.stroke();
+            }
+
+            // Draw click markers
+            trailCtx.fillStyle = 'rgba(88, 166, 255, 0.8)';
+            for (var j = 0; j < clicks.length; j++) {
+                trailCtx.beginPath();
+                trailCtx.arc(clicks[j].x * w, clicks[j].y * h, 5, 0, Math.PI * 2);
+                trailCtx.fill();
+            }
+        }
+
+        function clearCanvases() {
+            heatCtx.clearRect(0, 0, heatmapCanvas.width, heatmapCanvas.height);
+            trailCtx.clearRect(0, 0, trailCanvas.width, trailCanvas.height);
+        }
+
+        // ── Toggle buttons ──────────────────────────────────
+        toggleHeatmapBtn.addEventListener('click', function() {
+            showHeatmap = !showHeatmap;
+            this.classList.toggle('active-toggle', showHeatmap);
+            renderHeatmap();
+        });
+
+        toggleTrailBtn.addEventListener('click', function() {
+            showTrail = !showTrail;
+            this.classList.toggle('active-toggle', showTrail);
+            renderTrail();
+        });
+
+        // ── Clear data ──────────────────────────────────────
+        function clearData() {
+            recording = false;
+            clicks = [];
+            moves = [];
+            events = [];
+            startTime = 0;
+            recordBtn.textContent = '⏺ Record';
+            replayBtn.disabled = true;
+            modeBadge.textContent = 'IDLE';
+            modeBadge.className = 'mode-badge mode-idle';
+            clearCanvases();
+            resetStats();
+            resetPatterns();
+            eventLog.innerHTML = '<div style="color:var(--muted);">Waiting for interactions...</div>';
+            if (replayTimer) { clearTimeout(replayTimer); replayTimer = null; }
+        }
+
+        clearBtn.addEventListener('click', clearData);
+
+        // ── Stats ───────────────────────────────────────────
+        function updateStats() {
+            document.getElementById('statClicks').textContent = clicks.length;
+
+            // Total mouse distance (in normalized space, convert to px)
+            var dist = 0;
+            var areaW = area.offsetWidth;
+            var areaH = area.offsetHeight;
+            for (var i = 1; i < moves.length; i++) {
+                var dx = (moves[i].x - moves[i - 1].x) * areaW;
+                var dy = (moves[i].y - moves[i - 1].y) * areaH;
+                dist += Math.sqrt(dx * dx + dy * dy);
+            }
+            document.getElementById('statDistance').textContent = Math.round(dist) + ' px';
+
+            // Duration
+            var elapsed = 0;
+            if (events.length > 0) {
+                elapsed = events[events.length - 1].t;
+            }
+            document.getElementById('statDuration').textContent = (elapsed / 1000).toFixed(1) + 's';
+
+            // Average speed
+            if (elapsed > 0) {
+                document.getElementById('statSpeed').textContent = Math.round(dist / (elapsed / 1000)) + ' px/s';
+            }
+
+            // First click time
+            if (clicks.length > 0) {
+                document.getElementById('statFirstClick').textContent = (clicks[0].t / 1000).toFixed(2) + 's';
+            }
+
+            // Click entropy (spatial dispersion using grid-based Shannon entropy)
+            if (clicks.length >= 2) {
+                document.getElementById('statEntropy').textContent = calculateEntropy().toFixed(2);
+            }
+        }
+
+        function calculateEntropy() {
+            // Divide area into 5x5 grid, count clicks per cell
+            var gridSize = 5;
+            var cells = new Array(gridSize * gridSize).fill(0);
+            for (var i = 0; i < clicks.length; i++) {
+                var col = Math.min(Math.floor(clicks[i].x * gridSize), gridSize - 1);
+                var row = Math.min(Math.floor(clicks[i].y * gridSize), gridSize - 1);
+                cells[row * gridSize + col]++;
+            }
+            var total = clicks.length;
+            var entropy = 0;
+            for (var j = 0; j < cells.length; j++) {
+                if (cells[j] > 0) {
+                    var p = cells[j] / total;
+                    entropy -= p * Math.log2(p);
+                }
+            }
+            return entropy;
+        }
+
+        function resetStats() {
+            document.getElementById('statClicks').textContent = '0';
+            document.getElementById('statDistance').textContent = '0 px';
+            document.getElementById('statSpeed').textContent = '0 px/s';
+            document.getElementById('statDuration').textContent = '0.0s';
+            document.getElementById('statFirstClick').textContent = '—';
+            document.getElementById('statEntropy').textContent = '—';
+        }
+
+        // ── Timing breakdown ────────────────────────────────
+        function updateTimingBars() {
+            if (events.length < 2) return;
+
+            var totalTime = events[events.length - 1].t;
+            var thinkTime = clicks.length > 0 ? clicks[0].t : totalTime;
+            var moveTime = 0;
+            var idleThreshold = 500; // ms
+            var idleTime = 0;
+
+            // Calculate move vs idle time from move events
+            for (var i = 1; i < moves.length; i++) {
+                var dt = moves[i].t - moves[i - 1].t;
+                if (dt > idleThreshold) {
+                    idleTime += dt;
+                } else {
+                    moveTime += dt;
+                }
+            }
+
+            var clickTime = totalTime - thinkTime - moveTime - idleTime;
+            if (clickTime < 0) clickTime = 0;
+
+            var max = Math.max(thinkTime, moveTime, clickTime, idleTime, 1);
+
+            setBar('barThink', 'valThink', thinkTime, max);
+            setBar('barMove', 'valMove', moveTime, max);
+            setBar('barClick', 'valClick', clickTime, max);
+            setBar('barIdle', 'valIdle', idleTime, max);
+        }
+
+        function setBar(barId, valId, ms, maxMs) {
+            var pct = maxMs > 0 ? (ms / maxMs) * 100 : 0;
+            document.getElementById(barId).style.width = Math.min(pct, 100) + '%';
+            document.getElementById(valId).textContent = (ms / 1000).toFixed(1) + 's';
+        }
+
+        // ── Pattern analysis ────────────────────────────────
+        function analyzePatterns() {
+            if (moves.length < 5 && clicks.length < 2) {
+                resetPatterns();
+                return;
+            }
+
+            // 1. Movement smoothness: low angle variance = smoother
+            var smoothness = calcSmoothness();
+            setMeter('meterSmooth', 'valSmooth', smoothness);
+
+            // 2. Click regularity: low variance in inter-click timing = more bot-like
+            var regularity = calcClickRegularity();
+            setMeter('meterRegularity', 'valRegularity', regularity);
+
+            // 3. Spatial coverage: how much of the area was visited
+            var coverage = calcCoverage();
+            setMeter('meterCoverage', 'valCoverage', coverage);
+
+            // 4. Path efficiency: straight-line distance / actual distance
+            var efficiency = calcPathEfficiency();
+            setMeter('meterEfficiency', 'valEfficiency', efficiency);
+
+            // Verdict
+            updateVerdict(smoothness, regularity, coverage, efficiency);
+            updateTimingBars();
+        }
+
+        function calcSmoothness() {
+            if (moves.length < 3) return 0.5;
+            var angles = [];
+            for (var i = 2; i < moves.length; i++) {
+                var dx1 = moves[i - 1].x - moves[i - 2].x;
+                var dy1 = moves[i - 1].y - moves[i - 2].y;
+                var dx2 = moves[i].x - moves[i - 1].x;
+                var dy2 = moves[i].y - moves[i - 1].y;
+                var a1 = Math.atan2(dy1, dx1);
+                var a2 = Math.atan2(dy2, dx2);
+                var diff = Math.abs(a2 - a1);
+                if (diff > Math.PI) diff = 2 * Math.PI - diff;
+                angles.push(diff);
+            }
+            // Average angle change — lower = smoother
+            var avg = angles.reduce(function(s, v) { return s + v; }, 0) / angles.length;
+            // Normalize: 0 = very jerky (pi), 1 = very smooth (0)
+            return Math.max(0, Math.min(1, 1 - avg / Math.PI));
+        }
+
+        function calcClickRegularity() {
+            if (clicks.length < 3) return 0.5;
+            var intervals = [];
+            for (var i = 1; i < clicks.length; i++) {
+                intervals.push(clicks[i].t - clicks[i - 1].t);
+            }
+            var mean = intervals.reduce(function(s, v) { return s + v; }, 0) / intervals.length;
+            var variance = intervals.reduce(function(s, v) { return s + (v - mean) * (v - mean); }, 0) / intervals.length;
+            var cv = mean > 0 ? Math.sqrt(variance) / mean : 0; // coefficient of variation
+            // Low CV = regular (bot-like), high CV = irregular (human-like)
+            // Normalize: 0 = very regular, 1 = very irregular
+            return Math.max(0, Math.min(1, cv));
+        }
+
+        function calcCoverage() {
+            if (moves.length === 0) return 0;
+            // What fraction of a 10x10 grid was visited?
+            var gridSize = 10;
+            var visited = new Set();
+            for (var i = 0; i < moves.length; i++) {
+                var col = Math.min(Math.floor(moves[i].x * gridSize), gridSize - 1);
+                var row = Math.min(Math.floor(moves[i].y * gridSize), gridSize - 1);
+                visited.add(row * gridSize + col);
+            }
+            return visited.size / (gridSize * gridSize);
+        }
+
+        function calcPathEfficiency() {
+            if (moves.length < 2) return 0;
+            var first = moves[0];
+            var last = moves[moves.length - 1];
+            var directDist = Math.sqrt(
+                Math.pow(last.x - first.x, 2) + Math.pow(last.y - first.y, 2)
+            );
+            var totalDist = 0;
+            for (var i = 1; i < moves.length; i++) {
+                totalDist += Math.sqrt(
+                    Math.pow(moves[i].x - moves[i - 1].x, 2) +
+                    Math.pow(moves[i].y - moves[i - 1].y, 2)
+                );
+            }
+            return totalDist > 0 ? Math.min(1, directDist / totalDist) : 0;
+        }
+
+        function updateVerdict(smoothness, regularity, coverage, efficiency) {
+            var box = document.getElementById('verdictBox');
+            // Scoring: bots tend to have high smoothness, low regularity (very regular),
+            // low coverage, and high path efficiency (straight lines)
+            var botScore = 0;
+            botScore += smoothness > 0.85 ? 1 : 0;     // too smooth
+            botScore += regularity < 0.2 ? 1 : 0;       // too regular
+            botScore += coverage < 0.15 ? 1 : 0;        // barely moved
+            botScore += efficiency > 0.8 ? 1 : 0;       // too direct
+
+            if (botScore >= 3) {
+                box.textContent = '🤖 Bot-like behavior detected — too precise and regular';
+                box.className = 'verdict-box verdict-bot';
+            } else if (botScore <= 1 && clicks.length >= 2) {
+                box.textContent = '✅ Human-like interaction pattern — natural movement and timing';
+                box.className = 'verdict-box verdict-human';
+            } else {
+                box.textContent = '⚠️ Inconclusive — need more interaction data';
+                box.className = 'verdict-box verdict-uncertain';
+            }
+        }
+
+        function setMeter(meterId, valId, value) {
+            document.getElementById(meterId).style.width = (value * 100) + '%';
+            document.getElementById(valId).textContent = Math.round(value * 100) + '%';
+        }
+
+        function resetPatterns() {
+            ['meterSmooth', 'meterRegularity', 'meterCoverage', 'meterEfficiency'].forEach(function(id) {
+                document.getElementById(id).style.width = '0%';
+            });
+            ['valSmooth', 'valRegularity', 'valCoverage', 'valEfficiency'].forEach(function(id) {
+                document.getElementById(id).textContent = '—';
+            });
+            ['barThink', 'barMove', 'barClick', 'barIdle'].forEach(function(id) {
+                document.getElementById(id).style.width = '0%';
+            });
+            ['valThink', 'valMove', 'valClick', 'valIdle'].forEach(function(id) {
+                document.getElementById(id).textContent = '—';
+            });
+            var box = document.getElementById('verdictBox');
+            box.textContent = 'Interact with the CAPTCHA above to analyze behavior patterns';
+            box.className = 'verdict-box verdict-uncertain';
+        }
+
+        // ── Event log ───────────────────────────────────────
+        function logEvent(type, message) {
+            var cssClass = 'log-' + type;
+            var time = startTime > 0 ? ((performance.now() - startTime) / 1000).toFixed(2) : '0.00';
+            var entry = document.createElement('div');
+            entry.className = cssClass;
+            entry.textContent = '[' + time + 's] ' + message;
+            eventLog.appendChild(entry);
+            eventLog.scrollTop = eventLog.scrollHeight;
+        }
+
+        // ── Replay ──────────────────────────────────────────
+        replayBtn.addEventListener('click', function() {
+            if (events.length === 0) return;
+            modeBadge.textContent = 'REPLAYING';
+            modeBadge.className = 'mode-badge mode-replay';
+            clearCanvases();
+
+            var replayClicks = [];
+            var replayMoves = [];
+            var idx = 0;
+
+            function replayStep() {
+                if (idx >= events.length) {
+                    modeBadge.textContent = 'IDLE';
+                    modeBadge.className = 'mode-badge mode-idle';
+                    return;
+                }
+                var ev = events[idx];
+                if (ev.type === 'click') {
+                    replayClicks.push(ev);
+                    // Temporarily swap clicks for render
+                    var origClicks = clicks;
+                    clicks = replayClicks;
+                    if (showHeatmap) renderHeatmap();
+                    clicks = origClicks;
+                } else if (ev.type === 'move') {
+                    replayMoves.push(ev);
+                    var origMoves = moves;
+                    moves = replayMoves;
+                    if (showTrail) renderTrail();
+                    moves = origMoves;
+                }
+                idx++;
+                var nextDelay = idx < events.length ? events[idx].t - ev.t : 0;
+                // Speed up replay (max 100ms between events)
+                nextDelay = Math.min(nextDelay, 100);
+                replayTimer = setTimeout(replayStep, nextDelay);
+            }
+
+            replayStep();
+        });
+
+        // ── Init ────────────────────────────────────────────
+        loadGif(0);
+    })();
+    </script>
+</body>
+</html>

@@ -6244,10 +6244,14 @@ function createAdaptiveTimeout(options) {
       }
     }
     arr.splice(lo, 0, value);
-    // Evict oldest if over capacity (remove from start since
-    // oldest entries are randomly distributed, just trim length)
+    // Evict when over capacity. Previous code used arr.shift() which always
+    // removed the *smallest* value from the sorted array, systematically
+    // biasing percentile calculations upward over time. Instead, remove
+    // from the middle of the array (median-adjacent) to avoid skewing
+    // either tail of the distribution.
     if (arr.length > maxHistoryPerDifficulty) {
-      arr.shift();
+      var evictIdx = arr.length >>> 1;
+      arr.splice(evictIdx, 1);
     }
   }
 

@@ -38,6 +38,120 @@ function _nnOpt(val, fallback) {
   return val != null && val >= 0 ? val : fallback;
 }
 
+// ── LRU Order Tracker (O(1) touch/evict) ────────────────────────────
+
+/**
+ * A doubly-linked-list backed LRU order tracker.
+ *
+ * Replaces the array + indexOf + splice pattern used across multiple
+ * subsystems for O(n) LRU tracking with an O(1) implementation.
+ *
+ * API:
+ *   push(key)        — add key to the end (most recent)
+ *   touch(key)       — move key to end (most recent), no-op if absent
+ *   evictOldest()    — remove & return the oldest key (or undefined)
+ *   remove(key)      — remove a specific key, returns true if existed
+ *   has(key)         — check membership
+ *   length           — number of tracked keys (property)
+ *   toArray()        — return keys in insertion order (for serialization)
+ *   clear()          — remove all keys
+ *
+ * ES5-compatible. Uses an object-based doubly-linked list internally.
+ *
+ * @constructor
+ */
+function LruTracker() {
+  this._map = Object.create(null); // key → {key, prev, next}
+  this._head = null; // oldest
+  this._tail = null; // newest
+  this.length = 0;
+}
+
+LruTracker.prototype.push = function (key) {
+  if (this._map[key]) {
+    this.touch(key);
+    return;
+  }
+  var node = { key: key, prev: this._tail, next: null };
+  if (this._tail) {
+    this._tail.next = node;
+  } else {
+    this._head = node;
+  }
+  this._tail = node;
+  this._map[key] = node;
+  this.length++;
+};
+
+LruTracker.prototype.touch = function (key) {
+  var node = this._map[key];
+  if (!node || node === this._tail) return;
+  // Unlink
+  if (node.prev) node.prev.next = node.next;
+  else this._head = node.next;
+  if (node.next) node.next.prev = node.prev;
+  // Append to tail
+  node.prev = this._tail;
+  node.next = null;
+  this._tail.next = node;
+  this._tail = node;
+};
+
+LruTracker.prototype.evictOldest = function () {
+  if (!this._head) return undefined;
+  var node = this._head;
+  this._head = node.next;
+  if (this._head) this._head.prev = null;
+  else this._tail = null;
+  delete this._map[node.key];
+  this.length--;
+  return node.key;
+};
+
+LruTracker.prototype.remove = function (key) {
+  var node = this._map[key];
+  if (!node) return false;
+  if (node.prev) node.prev.next = node.next;
+  else this._head = node.next;
+  if (node.next) node.next.prev = node.prev;
+  else this._tail = node.prev;
+  delete this._map[node.key];
+  this.length--;
+  return true;
+};
+
+LruTracker.prototype.has = function (key) {
+  return !!this._map[key];
+};
+
+LruTracker.prototype.toArray = function () {
+  var result = [];
+  var node = this._head;
+  while (node) {
+    result.push(node.key);
+    node = node.next;
+  }
+  return result;
+};
+
+LruTracker.prototype.clear = function () {
+  this._map = Object.create(null);
+  this._head = null;
+  this._tail = null;
+  this.length = 0;
+};
+
+/**
+ * Re-populate from a serialized array (for state restore).
+ * @param {string[]} arr - keys in oldest-to-newest order
+ */
+LruTracker.prototype.fromArray = function (arr) {
+  this.clear();
+  for (var i = 0; i < arr.length; i++) {
+    this.push(arr[i]);
+  }
+};
+
 // ── Crypto-secure Randomness ────────────────────────────────────────
 
 var _crypto = null;
@@ -3701,8 +3815,8 @@ function createReputationTracker(options) {
   var blocklist = Object.create(null);
   var entryCount = 0;
 
-  // Ordered list for LRU eviction
-  var evictionOrder = [];
+  // O(1) LRU eviction tracker (replaces array + indexOf + splice)
+  var evictionOrder = new LruTracker();
 
   function _now() {
     return Date.now();
@@ -3750,9 +3864,8 @@ function createReputationTracker(options) {
   }
 
   function _evictOldest() {
-    if (evictionOrder.length === 0) return;
-    var oldestId = evictionOrder.shift();
-    if (entries[oldestId]) {
+    var oldestId = evictionOrder.evictOldest();
+    if (oldestId !== undefined && entries[oldestId]) {
       delete entries[oldestId];
       entryCount--;
     }
@@ -3762,11 +3875,7 @@ function createReputationTracker(options) {
    * Move an identifier to the end of the eviction order (most recent).
    */
   function _touchEviction(id) {
-    var idx = evictionOrder.indexOf(id);
-    if (idx !== -1) {
-      evictionOrder.splice(idx, 1);
-    }
-    evictionOrder.push(id);
+    evictionOrder.touch(id);
   }
 
   /**
@@ -4067,8 +4176,7 @@ function createReputationTracker(options) {
     if (!entries[id]) return false;
     delete entries[id];
     entryCount--;
-    var idx = evictionOrder.indexOf(id);
-    if (idx !== -1) evictionOrder.splice(idx, 1);
+    evictionOrder.remove(id);
     return true;
   }
 
@@ -4080,7 +4188,7 @@ function createReputationTracker(options) {
     allowlist = Object.create(null);
     blocklist = Object.create(null);
     entryCount = 0;
-    evictionOrder = [];
+    evictionOrder.clear();
   }
 
   /**
@@ -5302,7 +5410,7 @@ function createClientFingerprinter(options) {
 
   // Storage: fingerprint hash -> { signals, firstSeen, lastSeen, visits, ipSet, meta }
   var store = {};
-  var storeOrder = []; // LRU tracking: oldest first
+  var storeOrder = new LruTracker(); // O(1) LRU tracking
 
   // IP -> [{ fingerprintHash, timestamp }] for change tracking
   var ipHistory = {};
@@ -5395,21 +5503,19 @@ function createClientFingerprinter(options) {
    */
   function evict() {
     var now = Date.now();
-    // Remove expired
-    var i = 0;
-    while (i < storeOrder.length) {
-      var hash = storeOrder[i];
+    // Remove expired — iterate from oldest (head) since expired entries tend to be oldest
+    var keys = storeOrder.toArray();
+    for (var i = 0; i < keys.length; i++) {
+      var hash = keys[i];
       if (store[hash] && (now - store[hash].lastSeen) > ttlMs) {
         delete store[hash];
-        storeOrder.splice(i, 1);
-      } else {
-        i++;
+        storeOrder.remove(hash);
       }
     }
-    // LRU eviction if over limit
+    // LRU eviction if over limit — evict oldest first
     while (storeOrder.length > maxFingerprints) {
-      var oldest = storeOrder.shift();
-      delete store[oldest];
+      var oldest = storeOrder.evictOldest();
+      if (oldest !== undefined) delete store[oldest];
     }
   }
 
@@ -5513,12 +5619,8 @@ function createClientFingerprinter(options) {
       entry.ips[m.ip] = (entry.ips[m.ip] || 0) + 1;
     }
 
-    // Move to end of LRU
-    var idx = storeOrder.indexOf(hash);
-    if (idx !== -1 && idx !== storeOrder.length - 1) {
-      storeOrder.splice(idx, 1);
-      storeOrder.push(hash);
-    }
+    // Move to end of LRU (O(1) via LruTracker)
+    storeOrder.touch(hash);
 
     recordIpChange(m.ip, hash, now);
     var botSignals = detectBotSignals(signals);
@@ -5621,7 +5723,7 @@ function createClientFingerprinter(options) {
   function exportState() {
     return {
       store: JSON.parse(JSON.stringify(store)),
-      storeOrder: storeOrder.slice(),
+      storeOrder: storeOrder.toArray(),
       ipHistory: JSON.parse(JSON.stringify(ipHistory)),
     };
   }
@@ -5641,7 +5743,7 @@ function createClientFingerprinter(options) {
       }
     }
     if (Array.isArray(state.storeOrder)) {
-      storeOrder = state.storeOrder.slice();
+      storeOrder.fromArray(state.storeOrder);
     }
     if (state.ipHistory) {
       ipHistory = {};
@@ -5658,7 +5760,7 @@ function createClientFingerprinter(options) {
    */
   function reset() {
     store = {};
-    storeOrder = [];
+    storeOrder.clear();
     ipHistory = {};
   }
 
@@ -6822,7 +6924,7 @@ function createSessionRecorder(options) {
   var defaultTags = Array.isArray(options.tags) ? options.tags.slice() : [];
 
   var sessions = Object.create(null);
-  var sessionOrder = []; // oldest first for LRU
+  var sessionOrder = new LruTracker(); // O(1) LRU tracking
   var sessionCount = 0;
   var nextId = 1;
   var totalRecorded = 0;
@@ -6857,8 +6959,8 @@ function createSessionRecorder(options) {
   }
 
   function _evictOldest() {
-    if (sessionOrder.length === 0) return;
-    var oldest = sessionOrder.shift();
+    var oldest = sessionOrder.evictOldest();
+    if (oldest === undefined) return;
     delete sessions[oldest];
     sessionCount--;
     totalEvicted++;
@@ -7090,8 +7192,9 @@ function createSessionRecorder(options) {
     var results = [];
     var limit = filters.limit > 0 ? filters.limit : Infinity;
 
-    for (var i = sessionOrder.length - 1; i >= 0 && results.length < limit; i--) {
-      var s = sessions[sessionOrder[i]];
+    var order = sessionOrder.toArray();
+    for (var i = order.length - 1; i >= 0 && results.length < limit; i--) {
+      var s = sessions[order[i]];
       if (!s) continue;
 
       if (filters.status && s.status !== filters.status) continue;
@@ -7282,8 +7385,9 @@ function createSessionRecorder(options) {
    */
   function exportState() {
     var sessionsArr = [];
-    for (var i = 0; i < sessionOrder.length; i++) {
-      var s = sessions[sessionOrder[i]];
+    var order = sessionOrder.toArray();
+    for (var i = 0; i < order.length; i++) {
+      var s = sessions[order[i]];
       if (s) sessionsArr.push(s);
     }
     return {
@@ -7302,7 +7406,7 @@ function createSessionRecorder(options) {
     if (!state || !Array.isArray(state.sessions)) return;
 
     sessions = Object.create(null);
-    sessionOrder = [];
+    sessionOrder.clear();
     sessionCount = 0;
 
     var imported = state.sessions;
@@ -7345,8 +7449,7 @@ function createSessionRecorder(options) {
   function deleteSession(sessionId) {
     if (!sessions[sessionId]) return false;
     delete sessions[sessionId];
-    var idx = sessionOrder.indexOf(sessionId);
-    if (idx !== -1) sessionOrder.splice(idx, 1);
+    sessionOrder.remove(sessionId);
     sessionCount--;
     return true;
   }
@@ -7356,7 +7459,7 @@ function createSessionRecorder(options) {
    */
   function reset() {
     sessions = Object.create(null);
-    sessionOrder = [];
+    sessionOrder.clear();
     sessionCount = 0;
     nextId = 1;
     totalRecorded = 0;
@@ -7948,7 +8051,7 @@ function createABExperimentRunner(options) {
   var earlyStoppingConfidence = typeof options.earlyStoppingConfidence === 'number' ? options.earlyStoppingConfidence : 0.01;
 
   var experiments = {};
-  var experimentOrder = [];
+  var experimentOrder = new LruTracker();
   var onResultCallbacks = [];
 
   // ── Helpers ──
@@ -8372,8 +8475,9 @@ function createABExperimentRunner(options) {
   function listExperiments(filters) {
     filters = filters || {};
     var results = [];
-    for (var i = 0; i < experimentOrder.length; i++) {
-      var exp = experiments[experimentOrder[i]];
+    var order = experimentOrder.toArray();
+    for (var i = 0; i < order.length; i++) {
+      var exp = experiments[order[i]];
       if (!exp) continue;
       if (filters.status && exp.status !== filters.status) continue;
       results.push(getExperiment(exp.id));
@@ -8389,8 +8493,7 @@ function createABExperimentRunner(options) {
   function deleteExperiment(experimentId) {
     if (!experiments[experimentId]) return false;
     delete experiments[experimentId];
-    var idx = experimentOrder.indexOf(experimentId);
-    if (idx >= 0) experimentOrder.splice(idx, 1);
+    experimentOrder.remove(experimentId);
     return true;
   }
 
@@ -8434,8 +8537,9 @@ function createABExperimentRunner(options) {
    */
   function exportState() {
     var data = [];
-    for (var i = 0; i < experimentOrder.length; i++) {
-      var exp = experiments[experimentOrder[i]];
+    var order = experimentOrder.toArray();
+    for (var i = 0; i < order.length; i++) {
+      var exp = experiments[order[i]];
       if (!exp) continue;
       var variantExport = {};
       for (var j = 0; j < exp.variantNames.length; j++) {
@@ -8605,7 +8709,7 @@ function createFraudRingDetector(options) {
   var maxRings = options.maxRings > 0 ? options.maxRings : 200;
 
   var clients = {};
-  var clientOrder = [];
+  var clientOrder = new LruTracker();
   var rings = {};
   var ringCounter = 0;
   var onRingCallbacks = [];
@@ -8629,10 +8733,12 @@ function createFraudRingDetector(options) {
   function getClient(clientId) {
     if (!clients[clientId]) {
       if (clientOrder.length >= maxClients) {
-        var evicted = clientOrder.shift();
-        delete clients[evicted];
-        delete parent[evicted];
-        delete rank[evicted];
+        var evicted = clientOrder.evictOldest();
+        if (evicted !== undefined) {
+          delete clients[evicted];
+          delete parent[evicted];
+          delete rank[evicted];
+        }
       }
       clients[clientId] = {
         id: clientId, events: [], fingerprints: [], ips: [], userAgents: [],
@@ -8640,8 +8746,7 @@ function createFraudRingDetector(options) {
       };
       clientOrder.push(clientId);
     } else {
-      var idx = clientOrder.indexOf(clientId);
-      if (idx > -1) { clientOrder.splice(idx, 1); clientOrder.push(clientId); }
+      clientOrder.touch(clientId);
     }
     return clients[clientId];
   }
@@ -8957,13 +9062,13 @@ function createFraudRingDetector(options) {
   }
 
   function exportState() {
-    return { clients: JSON.parse(JSON.stringify(clients)), clientOrder: clientOrder.slice(), rings: JSON.parse(JSON.stringify(rings)), ringCounter: ringCounter };
+    return { clients: JSON.parse(JSON.stringify(clients)), clientOrder: clientOrder.toArray(), rings: JSON.parse(JSON.stringify(rings)), ringCounter: ringCounter };
   }
 
   function importState(state) {
     if (!state || typeof state !== 'object') return false;
     if (state.clients) clients = JSON.parse(JSON.stringify(state.clients));
-    if (Array.isArray(state.clientOrder)) clientOrder = state.clientOrder.slice();
+    if (Array.isArray(state.clientOrder)) clientOrder.fromArray(state.clientOrder);
     if (state.rings) rings = JSON.parse(JSON.stringify(state.rings));
     if (typeof state.ringCounter === 'number') ringCounter = state.ringCounter;
     return true;
@@ -8984,7 +9089,7 @@ function createFraudRingDetector(options) {
     return lines.join('\n');
   }
 
-  function reset() { clients = {}; clientOrder = []; rings = {}; parent = {}; rank = {}; ringCounter = 0; }
+  function reset() { clients = {}; clientOrder.clear(); rings = {}; parent = {}; rank = {}; ringCounter = 0; }
 
   return {
     recordEvent: recordEvent, detectRings: detectRings, checkClient: checkClient,
@@ -10263,7 +10368,7 @@ function createTrustScoreEngine(options) {
 
   // clientId → { score, signals, action, timestamp, history: [{ score, timestamp }] }
   var clients = Object.create(null);
-  var clientOrder = []; // LRU order
+  var clientOrder = new LruTracker(); // O(1) LRU order
   var totalEvaluations = 0;
   var actionCounts = { block: 0, challenge: 0, softChallenge: 0, pass: 0 };
 
@@ -10276,14 +10381,12 @@ function createTrustScoreEngine(options) {
 
   function _evictIfNeeded() {
     while (clientOrder.length > maxClients) {
-      var oldest = clientOrder.shift();
-      delete clients[oldest];
+      var oldest = clientOrder.evictOldest();
+      if (oldest !== undefined) delete clients[oldest];
     }
   }
 
   function _touchClient(clientId) {
-    var idx = clientOrder.indexOf(clientId);
-    if (idx !== -1) clientOrder.splice(idx, 1);
     clientOrder.push(clientId);
   }
 
@@ -10558,8 +10661,7 @@ function createTrustScoreEngine(options) {
    */
   function clearClient(clientId) {
     delete clients[clientId];
-    var idx = clientOrder.indexOf(clientId);
-    if (idx !== -1) clientOrder.splice(idx, 1);
+    clientOrder.remove(clientId);
   }
 
   /**
@@ -10614,9 +10716,10 @@ function createTrustScoreEngine(options) {
     var clientCount = clientOrder.length;
     var scoreSum = 0;
     var scoreCounts = { high: 0, medium: 0, low: 0, veryLow: 0 };
+    var order = clientOrder.toArray();
 
-    for (var i = 0; i < clientOrder.length; i++) {
-      var c = clients[clientOrder[i]];
+    for (var i = 0; i < order.length; i++) {
+      var c = clients[order[i]];
       if (c) {
         scoreSum += c.score;
         if (c.score > passThreshold) scoreCounts.high++;
@@ -10652,8 +10755,9 @@ function createTrustScoreEngine(options) {
     if (typeof threshold !== "number") threshold = 0.5;
     var results = [];
     var now = _now();
-    for (var i = 0; i < clientOrder.length; i++) {
-      var id = clientOrder[i];
+    var order2 = clientOrder.toArray();
+    for (var i = 0; i < order2.length; i++) {
+      var id = order2[i];
       var c = clients[id];
       if (c && c.score < threshold) {
         results.push({
@@ -10712,8 +10816,9 @@ function createTrustScoreEngine(options) {
    */
   function exportState() {
     var state = {};
-    for (var i = 0; i < clientOrder.length; i++) {
-      var id = clientOrder[i];
+    var order3 = clientOrder.toArray();
+    for (var i = 0; i < order3.length; i++) {
+      var id = order3[i];
       var c = clients[id];
       if (c) {
         state[id] = {
@@ -10772,7 +10877,7 @@ function createTrustScoreEngine(options) {
    */
   function reset() {
     clients = Object.create(null);
-    clientOrder = [];
+    clientOrder.clear();
     totalEvaluations = 0;
     actionCounts = { block: 0, challenge: 0, softChallenge: 0, pass: 0 };
   }

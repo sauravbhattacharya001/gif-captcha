@@ -34,6 +34,36 @@ const { createChallenge, createAttemptTracker, createSessionManager } = require(
   - [createBotDetector](#createbotdetector)
   - [createReputationTracker](#createreputationtracker)
   - [createChallengeRouter](#createchallengerouter)
+- [GIF Loading](#gif-loading)
+  - [loadGifWithRetry](#loadgifwithretrycontainer-challenge-attempt)
+  - [installRoundRectPolyfill](#installroundrectpolyfill)
+- [Rate Limiting](#rate-limiting)
+  - [createRateLimiter](#createratelimiteroptions)
+- [Client Fingerprinting](#client-fingerprinting)
+  - [createClientFingerprinter](#createclientfingerprinteroptions)
+- [Incident Correlation](#incident-correlation)
+  - [createIncidentCorrelator](#createincidentcorrelatoroptions)
+- [Adaptive Timeout](#adaptive-timeout)
+  - [createAdaptiveTimeout](#createadaptivetimeoutoptions)
+- [Audit Trail](#audit-trail)
+  - [createAuditTrail](#createaudittrailoptions)
+- [Session Recording](#session-recording)
+  - [createSessionRecorder](#createsessionrecorderoptions)
+- [Load Testing](#load-testing)
+  - [createLoadTester](#createloadtesteroptions)
+- [A/B Experiment Runner](#ab-experiment-runner)
+  - [createABExperimentRunner](#createabexperimentrunneroptions)
+- [Fraud Ring Detection](#fraud-ring-detection)
+  - [createFraudRingDetector](#createfraudringdetectoroptions)
+- [Compliance Reporting](#compliance-reporting)
+  - [createComplianceReporter](#createcompliancereporteroptions)
+- [Metrics Aggregation](#metrics-aggregation)
+  - [createMetricsAggregator](#createmetricsaggregatoroptions)
+- [Trust Score Engine](#trust-score-engine)
+  - [createTrustScoreEngine](#createtrustscoreengineoptions)
+- [Event Emitter](#event-emitter)
+  - [createEventEmitter](#createeventemitteroptions)
+- [Constants](#constants)
 
 ---
 
@@ -430,6 +460,437 @@ const router2 = createChallengeRouter({
     priority: 10,
   }],
 });
+```
+
+---
+
+## GIF Loading
+
+### `loadGifWithRetry(container, challenge, attempt)`
+
+Load a GIF image into a DOM container with automatic retry on failure.
+Shows a fallback with a link or hint after exhausting retries.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `container` | `HTMLElement` | DOM element to render into |
+| `challenge` | `Object` | Challenge object |
+| `challenge.title` | `string` | Human-readable challenge title |
+| `challenge.gifUrl` | `string` | URL of the GIF image |
+| `challenge.sourceUrl` | `string?` | Original source URL for fallback link |
+| `attempt` | `number?` | Current attempt, 0-indexed (default `0`) |
+
+```js
+loadGifWithRetry(document.getElementById('captcha'), {
+  title: 'Select the dancing cat',
+  gifUrl: 'https://example.com/cat.gif',
+  sourceUrl: 'https://example.com/original'
+});
+```
+
+### `installRoundRectPolyfill()`
+
+Install a `roundRect` polyfill for `CanvasRenderingContext2D`. No-op if already available or not in a browser environment.
+
+```js
+installRoundRectPolyfill(); // Safe to call multiple times
+```
+
+---
+
+## Rate Limiting
+
+### `createRateLimiter(options)`
+
+Sliding-window rate limiter with burst detection, allowlists/blocklists, and per-client tracking.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `windowMs` | `number` | `60000` | Time window in ms |
+| `maxRequests` | `number` | `10` | Max requests per window |
+| `burstThreshold` | `number` | `5` | Requests within burst window to trigger burst detection |
+| `burstWindowMs` | `number` | `5000` | Burst detection window in ms |
+| `maxDelay` | `number` | `30000` | Maximum delay for rate-limited clients (ms) |
+| `baseDelay` | `number` | `1000` | Base delay for rate-limited clients (ms) |
+| `maxClients` | `number` | `10000` | Maximum tracked clients (LRU eviction) |
+
+**Returns:** `{ check, checkBatch, peek, resetClient, allow, block, unlist, getStats, topClients, exportState, importState, reset, getConfig }`
+
+```js
+const limiter = createRateLimiter({ maxRequests: 5, windowMs: 60000 });
+
+const result = limiter.check('client-123');
+// { allowed: true, remaining: 4, retryAfterMs: 0 }
+
+limiter.block('abusive-ip');   // Permanently block a client
+limiter.allow('trusted-ip');   // Permanently allow a client
+
+const stats = limiter.getStats();
+// { totalClients, blockedClients, allowedClients, ... }
+```
+
+---
+
+## Client Fingerprinting
+
+### `createClientFingerprinter(options)`
+
+Browser fingerprinting for CAPTCHA sessions. Combines user agent, screen size, timezone, language, and other signals to identify and track clients.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `maxFingerprints` | `number` | `10000` | Maximum stored fingerprints (LRU eviction) |
+| `ttlMs` | `number` | `86400000` | Fingerprint TTL in ms (24 hours) |
+| `suspiciousChangeThreshold` | `number` | `5` | Fingerprint changes before flagging as suspicious |
+| `changeWindowMs` | `number` | `3600000` | Window for tracking changes (1 hour) |
+
+**Returns:** `{ identify, findSimilar, getFingerprint, getStats, exportState, importState, reset, getConfig }`
+
+```js
+const fp = createClientFingerprinter();
+
+const result = fp.identify({
+  userAgent: 'Mozilla/5.0...',
+  screen: '1920x1080',
+  timezone: 'America/New_York',
+  language: 'en-US'
+});
+// { fingerprintId, isNew, suspiciousChanges, ... }
+
+const similar = fp.findSimilar(result.fingerprintId);
+// Clients with similar fingerprint signals
+```
+
+---
+
+## Incident Correlation
+
+### `createIncidentCorrelator(options)`
+
+Correlates security signals (failed CAPTCHAs, rate limit hits, fingerprint anomalies) into incidents for investigation.
+
+**Returns:** `{ ingest, getIncident, getClientIncident, closeIncident, queryIncidents, getStats, reset, exportState, SIGNAL_TYPES, SEVERITY }`
+
+```js
+const correlator = createIncidentCorrelator();
+
+correlator.ingest({
+  type: 'captcha_failure',
+  clientId: 'client-123',
+  severity: 'warning',
+  metadata: { attempts: 5 }
+});
+
+const incidents = correlator.queryIncidents({ status: 'open' });
+const stats = correlator.getStats();
+```
+
+---
+
+## Adaptive Timeout
+
+### `createAdaptiveTimeout(options)`
+
+Calculates per-client CAPTCHA timeouts based on observed response latencies. Slower clients get more time; fast bots get tighter windows.
+
+**Returns:** `{ calculate, recordResponse, recordLatency, getClientLatency, getBaseline, getStats, exportState, importState, reset, getConfig }`
+
+```js
+const timeout = createAdaptiveTimeout();
+
+// Record actual response times
+timeout.recordResponse('client-123', 3500);
+timeout.recordResponse('client-123', 4200);
+
+// Get an adapted timeout for this client
+const ms = timeout.calculate('client-123');
+// Returns a timeout tuned to the client's observed speed
+```
+
+---
+
+## Audit Trail
+
+### `createAuditTrail(options)`
+
+Immutable event log for CAPTCHA operations. Records challenges, verifications, administrative actions, and security events in a ring buffer.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `maxEntries` | `number` | `10000` | Maximum stored events (ring buffer) |
+| `includeMetadata` | `boolean` | `true` | Attach extra metadata to events |
+| `onEvent` | `Function?` | — | Optional callback for each event |
+| `enabledTypes` | `string[]?` | — | If set, only record these event types |
+
+**Returns:** Audit trail instance with event recording and querying.
+
+```js
+const audit = createAuditTrail({ maxEntries: 5000 });
+
+audit.record('challenge_issued', {
+  clientId: 'client-123',
+  challengeType: 'gif-selection'
+});
+
+const events = audit.query({ type: 'challenge_issued', since: Date.now() - 3600000 });
+```
+
+---
+
+## Session Recording
+
+### `createSessionRecorder(options)`
+
+Records full CAPTCHA session timelines for replay, analysis, and comparison. Captures challenges, inputs, submissions, results, and custom events.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `maxSessions` | `number` | `1000` | Maximum stored sessions |
+| `sessionTimeoutMs` | `number` | `300000` | Session timeout (5 minutes) |
+| `captureInputs` | `boolean` | `true` | Whether to capture input events |
+| `onSessionEnd` | `Function?` | — | Callback when a session ends |
+| `tags` | `string[]?` | `[]` | Default tags for new sessions |
+
+**Returns:** `{ startSession, endSession, recordChallenge, recordInput, recordSubmission, recordResult, recordSkip, recordRefresh, recordError, recordCustom, getSession, addTags, querySessions, createReplay, compareSessions, getAnalytics, mergedTimeline, exportState, importState, getStats, deleteSession, reset, EVENT_TYPES }`
+
+```js
+const recorder = createSessionRecorder();
+
+const session = recorder.startSession('client-123');
+recorder.recordChallenge(session.id, { type: 'gif-selection', difficulty: 3 });
+recorder.recordSubmission(session.id, { answer: 'cat', timeMs: 3200 });
+recorder.recordResult(session.id, { passed: true });
+recorder.endSession(session.id);
+
+const replay = recorder.createReplay(session.id);
+const analytics = recorder.getAnalytics();
+```
+
+---
+
+## Load Testing
+
+### `createLoadTester(options)`
+
+Simulates concurrent CAPTCHA traffic for performance testing. Generates a mix of human-like and bot-like request patterns.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `concurrency` | `number` | `10` | Concurrent simulated users |
+| `requestsPerUser` | `number` | `50` | Requests per simulated user |
+| `rampUpMs` | `number` | `1000` | Ramp-up period in ms |
+| `thinkTimeMs` | `number` | `100` | Simulated think time between requests |
+| `humanRatio` | `number` | `0.8` | Fraction of users behaving like humans (0–1) |
+
+**Returns:** `{ run, stop, reset, getConfig, getPhase, PHASE }`
+
+```js
+const tester = createLoadTester({
+  concurrency: 50,
+  requestsPerUser: 100,
+  humanRatio: 0.7
+});
+
+const results = tester.run(handleRequest);
+// { totalRequests, successRate, avgResponseMs, p99ResponseMs, ... }
+```
+
+---
+
+## A/B Experiment Runner
+
+### `createABExperimentRunner(options)`
+
+Run A/B tests on CAPTCHA configurations. Tracks assignments, conversion events, and performs statistical analysis with optional early stopping.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `maxExperiments` | `number` | `50` | Maximum concurrent experiments |
+| `significanceLevel` | `number` | `0.05` | Default p-value threshold |
+| `minSampleSize` | `number` | `30` | Minimum samples before analysis |
+| `earlyStoppingEnabled` | `boolean` | `true` | Stop early when results are significant |
+| `earlyStoppingConfidence` | `number` | `0.01` | p-value for early stopping |
+
+**Returns:** `{ createExperiment, assignUser, recordEvent, analyzeExperiment, stopExperiment, getExperiment, listExperiments, deleteExperiment, getAssignmentCounts, onResult, exportState, importState, textReport }`
+
+```js
+const ab = createABExperimentRunner();
+
+ab.createExperiment('timeout-test', {
+  variants: ['short-timeout', 'long-timeout'],
+  trafficSplit: [0.5, 0.5]
+});
+
+const variant = ab.assignUser('timeout-test', 'user-123');
+// 'short-timeout' or 'long-timeout'
+
+ab.recordEvent('timeout-test', 'user-123', { converted: true, timeMs: 4200 });
+
+const analysis = ab.analyzeExperiment('timeout-test');
+// { significant, pValue, winner, sampleSizes, ... }
+
+console.log(ab.textReport('timeout-test'));
+```
+
+---
+
+## Fraud Ring Detection
+
+### `createFraudRingDetector(options)`
+
+Detects coordinated bot attacks by clustering clients that share fingerprints, timing patterns, IP addresses, or sequential behavior. Uses union-find for efficient cluster detection.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `maxClients` | `number` | `5000` | Maximum tracked clients |
+| `timingWindowMs` | `number` | `5000` | Window for timing correlation |
+| `minRingSize` | `number` | `3` | Minimum clients to form a ring |
+| `suspicionThreshold` | `number` | `60` | Score threshold to flag a ring |
+| `signalDecayMs` | `number` | `3600000` | Signal decay period (1 hour) |
+| `maxRings` | `number` | `200` | Maximum tracked rings |
+
+**Returns:** `{ recordEvent, detectRings, checkClient, getRing, listRings, dismissRing, onRingDetected, getStats, findTimingClusters, findSharedFingerprints, findIPClusters, findSequentialPatterns, computeRingScore, exportState, importState, generateReport, reset }`
+
+```js
+const detector = createFraudRingDetector({ minRingSize: 3 });
+
+detector.recordEvent('client-1', { ip: '1.2.3.4', fingerprint: 'fp-A', timestamp: Date.now() });
+detector.recordEvent('client-2', { ip: '1.2.3.4', fingerprint: 'fp-A', timestamp: Date.now() + 50 });
+detector.recordEvent('client-3', { ip: '1.2.3.5', fingerprint: 'fp-A', timestamp: Date.now() + 100 });
+
+const rings = detector.detectRings();
+// [{ id, members: ['client-1', 'client-2', 'client-3'], score: 85, signals: [...] }]
+
+detector.onRingDetected(ring => console.log('Ring detected!', ring));
+```
+
+---
+
+## Compliance Reporting
+
+### `createComplianceReporter(options)`
+
+Generates compliance reports for CAPTCHA configurations against accessibility, security, and privacy standards.
+
+**Returns:** `{ generateReport, getRecommendedConfig, compareReports, formatReportText, formatReportHtml, SEVERITY, CATEGORY }`
+
+```js
+const reporter = createComplianceReporter();
+
+const report = reporter.generateReport({
+  challengeTypes: ['gif-selection'],
+  timeoutMs: 30000,
+  maxAttempts: 5,
+  hasAudioAlternative: true
+});
+// { score, grade, findings: [{ category, severity, message, recommendation }] }
+
+const text = reporter.formatReportText(report);
+const html = reporter.formatReportHtml(report);
+const recommended = reporter.getRecommendedConfig();
+```
+
+---
+
+## Metrics Aggregation
+
+### `createMetricsAggregator(options)`
+
+Aggregates metrics from multiple CAPTCHA subsystems (rate limiter, bot detector, etc.) into unified snapshots with trend analysis and alerting.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `historySize` | `number` | `60` | Number of snapshots to retain |
+| `thresholds.passRate` | `number` | `0.3` | Alert if pass rate drops below this |
+| `thresholds.avgResponseMs` | `number` | `30000` | Alert if avg response exceeds this |
+| `thresholds.dangerousRate` | `number` | `0.25` | Alert on high dangerous activity rate |
+| `thresholds.botDetectionRate` | `number` | `0.4` | Alert on high bot detection rate |
+
+**Returns:** `{ register, unregister, listSubsystems, snapshot, lastSnapshot, getTrends, getSummary, clearHistory, reset, startAutoCapture, stopAutoCapture, isAutoCapturing, onAlert, exportHistory }`
+
+```js
+const aggregator = createMetricsAggregator();
+
+// Register subsystems to collect from
+aggregator.register('rateLimiter', () => limiter.getStats());
+aggregator.register('botDetector', () => botDetector.getStats());
+
+// Take a snapshot
+const snap = aggregator.snapshot();
+// { timestamp, subsystems: { rateLimiter: {...}, botDetector: {...} }, alerts: [...] }
+
+// Auto-capture every 10 seconds
+aggregator.startAutoCapture(10000);
+
+// Get trends over time
+const trends = aggregator.getTrends();
+
+// Alert callback
+aggregator.onAlert(alert => console.warn('ALERT:', alert));
+```
+
+---
+
+## Trust Score Engine
+
+### `createTrustScoreEngine(options)`
+
+Composite trust scoring that combines signals from multiple providers (reputation, fingerprint, bot detection, rate limiting, response quality, behavior entropy) into a single 0–100 trust score per client.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `weights.reputation` | `number` | `1.0` | Weight for reputation signal |
+| `weights.fingerprint` | `number` | `1.0` | Weight for fingerprint signal |
+| `weights.botDetection` | `number` | `1.0` | Weight for bot detection signal |
+| `weights.rateLimit` | `number` | `1.0` | Weight for rate limit signal |
+| `weights.responseQuality` | `number` | `1.0` | Weight for response quality signal |
+| `weights.behaviorEntropy` | `number` | `1.0` | Weight for behavior entropy signal |
+
+**Returns:** `{ registerProvider, unregisterProvider, evaluate, batchEvaluate, getScore, getScoreTrend, invalidate, clearClient, setThresholds, getThresholds, setWeights, getWeights, getStats, getLowScoreClients, compareClients, exportState, importState, reset }`
+
+```js
+const trust = createTrustScoreEngine();
+
+// Register signal providers
+trust.registerProvider('reputation', clientId => reputation.getScore(clientId));
+trust.registerProvider('botDetection', clientId => botDetector.check(clientId));
+
+// Evaluate a client
+const score = trust.evaluate('client-123');
+// { score: 72, grade: 'B', providers: { reputation: 85, botDetection: 60 }, decision: 'allow' }
+
+// Set thresholds for automatic decisions
+trust.setThresholds({ block: 20, challenge: 50, allow: 70 });
+
+// Track trends
+const trend = trust.getScoreTrend('client-123');
+// { direction: 'declining', scores: [...], change: -15 }
+
+// Find suspicious clients
+const lowScore = trust.getLowScoreClients(30);
+```
+
+---
+
+## Event Emitter
+
+### `createEventEmitter(options)`
+
+Lightweight pub/sub event emitter for CAPTCHA lifecycle hooks. Supports `on`, `once`, `off`, wildcards, and piping between emitters.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `maxListeners` | `number` | `50` | Max listeners per event (0 = unlimited) |
+| `onError` | `Function?` | — | Error handler for listener exceptions |
+
+```js
+const emitter = createEventEmitter();
+
+emitter.on('challenge:issued', data => console.log('Issued:', data));
+emitter.once('session:end', data => console.log('Session ended'));
+emitter.on('*', (event, data) => console.log(`[${event}]`, data));
+
+emitter.emit('challenge:issued', { type: 'gif-selection', clientId: 'c-1' });
 ```
 
 ---

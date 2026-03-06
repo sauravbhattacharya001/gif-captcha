@@ -5761,6 +5761,7 @@ function createIncidentCorrelator(options) {
   // incidentId -> incident object
   var incidents = {};
   var incidentOrder = []; // oldest first for LRU eviction
+  var incidentOrderStart = 0; // pointer to first live entry (avoids O(n) shift)
   var nextIncidentId = 1;
 
   // Global stats
@@ -5785,10 +5786,15 @@ function createIncidentCorrelator(options) {
 
   /**
    * Evict oldest incidents when over maxIncidents.
+   * Uses an index pointer instead of Array.shift() to avoid O(n)
+   * element shifting on every eviction.
    */
   function evictIfNeeded() {
-    while (incidentOrder.length > maxIncidents) {
-      var oldId = incidentOrder.shift();
+    var liveCount = incidentOrder.length - incidentOrderStart;
+    while (liveCount > maxIncidents) {
+      var oldId = incidentOrder[incidentOrderStart];
+      incidentOrderStart++;
+      liveCount--;
       var old = incidents[oldId];
       if (old) {
         if (old.clientId && clientIncidents[old.clientId] === oldId) {
@@ -5800,12 +5806,27 @@ function createIncidentCorrelator(options) {
         delete incidents[oldId];
       }
     }
+    // Compact the array when the dead prefix grows too large
+    // (> 2x live entries) to prevent unbounded memory growth
+    if (incidentOrderStart > liveCount * 2 && incidentOrderStart > 100) {
+      incidentOrder = incidentOrder.slice(incidentOrderStart);
+      incidentOrderStart = 0;
+    }
   }
 
   /**
    * Get a read-only summary of an incident.
+   * Uses manual shallow copy for signalTypes instead of
+   * JSON.parse(JSON.stringify(...)) — ~10x faster for flat objects.
    */
   function getIncidentSummary(incident) {
+    // Shallow-copy the flat { type: count } map
+    var typesCopy = {};
+    for (var t in incident.signalTypes) {
+      if (incident.signalTypes.hasOwnProperty(t)) {
+        typesCopy[t] = incident.signalTypes[t];
+      }
+    }
     return {
       id: incident.id,
       clientId: incident.clientId,
@@ -5813,7 +5834,7 @@ function createIncidentCorrelator(options) {
       status: incident.status,
       signalCount: incident.signalCount,
       weightedCount: incident.weightedCount,
-      signalTypes: JSON.parse(JSON.stringify(incident.signalTypes)),
+      signalTypes: typesCopy,
       firstSignalAt: incident.firstSignalAt,
       lastSignalAt: incident.lastSignalAt,
       durationMs: incident.lastSignalAt - incident.firstSignalAt,
@@ -6004,19 +6025,36 @@ function createIncidentCorrelator(options) {
 
   /**
    * Get correlator statistics.
+   * Uses manual shallow copy instead of JSON round-trip for flat maps.
+   * Counts active incidents from the live portion of incidentOrder only.
    * @returns {object} Current stats snapshot
    */
   function getStats() {
+    var activeCount = 0;
+    for (var i = incidentOrderStart; i < incidentOrder.length; i++) {
+      var inc = incidents[incidentOrder[i]];
+      if (inc && inc.status === "open") activeCount++;
+    }
+    var byTypeCopy = {};
+    for (var st in stats.signalsByType) {
+      if (stats.signalsByType.hasOwnProperty(st)) {
+        byTypeCopy[st] = stats.signalsByType[st];
+      }
+    }
+    var bySevCopy = {};
+    for (var sv in stats.incidentsBySeverity) {
+      if (stats.incidentsBySeverity.hasOwnProperty(sv)) {
+        bySevCopy[sv] = stats.incidentsBySeverity[sv];
+      }
+    }
     return {
       totalSignals: stats.totalSignals,
       totalIncidents: stats.totalIncidents,
-      activeIncidents: incidentOrder.reduce(function (n, id) {
-        return n + (incidents[id] && incidents[id].status === "open" ? 1 : 0);
-      }, 0),
+      activeIncidents: activeCount,
       totalAlerts: stats.totalAlerts,
       totalEscalations: stats.totalEscalations,
-      signalsByType: JSON.parse(JSON.stringify(stats.signalsByType)),
-      incidentsBySeverity: JSON.parse(JSON.stringify(stats.incidentsBySeverity)),
+      signalsByType: byTypeCopy,
+      incidentsBySeverity: bySevCopy,
     };
   }
 
@@ -6027,6 +6065,7 @@ function createIncidentCorrelator(options) {
     clientIncidents = {};
     incidents = {};
     incidentOrder = [];
+    incidentOrderStart = 0;
     nextIncidentId = 1;
     stats.totalSignals = 0;
     stats.totalIncidents = 0;
@@ -6041,10 +6080,13 @@ function createIncidentCorrelator(options) {
    * @returns {object} Serializable state
    */
   function exportState() {
+    var liveIncidents = [];
+    for (var i = incidentOrderStart; i < incidentOrder.length; i++) {
+      var inc = incidents[incidentOrder[i]];
+      if (inc) liveIncidents.push(getIncidentSummary(inc));
+    }
     return {
-      incidents: incidentOrder.map(function (id) {
-        return incidents[id] ? getIncidentSummary(incidents[id]) : null;
-      }).filter(Boolean),
+      incidents: liveIncidents,
       stats: getStats(),
       config: {
         correlationWindowMs: correlationWindowMs,

@@ -10905,6 +10905,213 @@ function createTrustScoreEngine(options) {
 }
 
 
+// ── Event Emitter ───────────────────────────────────────────────────
+//
+// Lightweight pub/sub for CAPTCHA lifecycle events.
+//
+// Usage:
+//   var emitter = gifCaptcha.createEventEmitter();
+//   emitter.on('challenge.created', function(data) { console.log(data); });
+//   emitter.on('challenge.passed', function(data) { sendToAnalytics(data); });
+//   emitter.emit('challenge.created', { id: 'abc', difficulty: 3 });
+//
+// Supported event conventions (users can use any string):
+//   challenge.created   — a new challenge was generated
+//   challenge.presented — challenge shown to user
+//   challenge.answered  — user submitted an answer
+//   challenge.passed    — answer accepted
+//   challenge.failed    — answer rejected
+//   challenge.expired   — challenge timed out
+//   challenge.suspicious — bot-like behavior detected
+//   session.started     — new verification session
+//   session.completed   — session finished (pass or fail)
+//
+// Features:
+//   .on(event, fn)       — subscribe (returns unsubscribe function)
+//   .once(event, fn)     — subscribe for one firing only
+//   .off(event, fn)      — unsubscribe specific handler
+//   .emit(event, data)   — fire event, returns count of handlers called
+//   .listeners(event)    — list handlers for an event
+//   .removeAll([event])  — clear handlers (optionally for one event)
+//   .pipe(otherEmitter)  — forward all events to another emitter
+
+/**
+ * Create an event emitter for CAPTCHA lifecycle hooks.
+ *
+ * @param {Object} [options]
+ * @param {number} [options.maxListeners=50] Max listeners per event (0 = unlimited)
+ * @param {function} [options.onError] Error handler for listener exceptions
+ * @returns {Object} emitter instance
+ */
+function createEventEmitter(options) {
+  var opts = options || {};
+  var maxListeners = _nnOpt(opts.maxListeners, 50);
+  var onError = typeof opts.onError === "function" ? opts.onError : null;
+  var handlers = Object.create(null); // event → [{fn, once}]
+  var pipes = [];
+
+  function _ensure(event) {
+    if (!handlers[event]) handlers[event] = [];
+    return handlers[event];
+  }
+
+  /**
+   * Subscribe to an event. Returns an unsubscribe function.
+   * @param {string} event
+   * @param {function} fn
+   * @returns {function} unsubscribe
+   */
+  function on(event, fn) {
+    if (typeof event !== "string" || typeof fn !== "function") return function () {};
+    var list = _ensure(event);
+    if (maxListeners > 0 && list.length >= maxListeners) {
+      if (onError) onError(new Error("Max listeners (" + maxListeners + ") reached for event: " + event));
+      return function () {};
+    }
+    var entry = { fn: fn, once: false };
+    list.push(entry);
+    return function () {
+      var idx = list.indexOf(entry);
+      if (idx !== -1) list.splice(idx, 1);
+    };
+  }
+
+  /**
+   * Subscribe to an event for a single firing.
+   * @param {string} event
+   * @param {function} fn
+   * @returns {function} unsubscribe
+   */
+  function once(event, fn) {
+    if (typeof event !== "string" || typeof fn !== "function") return function () {};
+    var list = _ensure(event);
+    if (maxListeners > 0 && list.length >= maxListeners) {
+      if (onError) onError(new Error("Max listeners (" + maxListeners + ") reached for event: " + event));
+      return function () {};
+    }
+    var entry = { fn: fn, once: true };
+    list.push(entry);
+    return function () {
+      var idx = list.indexOf(entry);
+      if (idx !== -1) list.splice(idx, 1);
+    };
+  }
+
+  /**
+   * Unsubscribe a specific handler from an event.
+   * @param {string} event
+   * @param {function} fn
+   */
+  function off(event, fn) {
+    var list = handlers[event];
+    if (!list) return;
+    for (var i = list.length - 1; i >= 0; i--) {
+      if (list[i].fn === fn) { list.splice(i, 1); break; }
+    }
+  }
+
+  /**
+   * Emit an event with optional data. Returns count of handlers invoked.
+   * @param {string} event
+   * @param {*} [data]
+   * @returns {number}
+   */
+  function emit(event, data) {
+    var count = 0;
+    var list = handlers[event];
+    if (list) {
+      // Snapshot to allow modifications during iteration
+      var snapshot = list.slice();
+      for (var i = 0; i < snapshot.length; i++) {
+        var entry = snapshot[i];
+        if (entry.once) {
+          var idx = list.indexOf(entry);
+          if (idx !== -1) list.splice(idx, 1);
+        }
+        try {
+          entry.fn(data);
+        } catch (err) {
+          if (onError) onError(err);
+        }
+        count++;
+      }
+    }
+    // Wildcard listeners
+    var wild = handlers["*"];
+    if (wild) {
+      var ws = wild.slice();
+      for (var j = 0; j < ws.length; j++) {
+        var we = ws[j];
+        if (we.once) {
+          var wi = wild.indexOf(we);
+          if (wi !== -1) wild.splice(wi, 1);
+        }
+        try {
+          we.fn({ event: event, data: data });
+        } catch (err2) {
+          if (onError) onError(err2);
+        }
+        count++;
+      }
+    }
+    // Forward to piped emitters
+    for (var p = 0; p < pipes.length; p++) {
+      try { pipes[p].emit(event, data); } catch (_) {}
+    }
+    return count;
+  }
+
+  /**
+   * List handler functions for an event.
+   * @param {string} event
+   * @returns {function[]}
+   */
+  function listeners(event) {
+    var list = handlers[event];
+    if (!list) return [];
+    var result = [];
+    for (var i = 0; i < list.length; i++) result.push(list[i].fn);
+    return result;
+  }
+
+  /**
+   * Remove all listeners, optionally for a specific event only.
+   * @param {string} [event]
+   */
+  function removeAll(event) {
+    if (event) {
+      delete handlers[event];
+    } else {
+      handlers = Object.create(null);
+    }
+  }
+
+  /**
+   * Forward all events to another emitter.
+   * @param {Object} otherEmitter Must have an emit(event, data) method
+   * @returns {function} unpipe function
+   */
+  function pipe(otherEmitter) {
+    if (!otherEmitter || typeof otherEmitter.emit !== "function") return function () {};
+    pipes.push(otherEmitter);
+    return function () {
+      var idx = pipes.indexOf(otherEmitter);
+      if (idx !== -1) pipes.splice(idx, 1);
+    };
+  }
+
+  return {
+    on: on,
+    once: once,
+    off: off,
+    emit: emit,
+    listeners: listeners,
+    removeAll: removeAll,
+    pipe: pipe
+  };
+}
+
+
 var gifCaptcha = {
   sanitize: sanitize,
   createSanitizer: createSanitizer,
@@ -10941,6 +11148,7 @@ var gifCaptcha = {
   createTrustScoreEngine: createTrustScoreEngine,
   GIF_MAX_RETRIES: GIF_MAX_RETRIES,
   GIF_RETRY_DELAY_MS: GIF_RETRY_DELAY_MS,
+  createEventEmitter: createEventEmitter,
 };
 
 // UMD export — works in Node.js, AMD, and browser globals

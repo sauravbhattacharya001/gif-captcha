@@ -144,6 +144,141 @@ Features a dark-themed UI with:
 - Linked GIF sources for manual verification
 - Key findings with visual callouts
 
+### ⚡ Response Time Benchmark
+
+**[Try Benchmark →](https://sauravbhattacharya001.github.io/gif-captcha/benchmark.html)**
+
+Measure how fast you can decode GIF CAPTCHAs with precision timing:
+- **Timed Challenges** — Each CAPTCHA is timed from display to correct answer submission
+- **Performance Metrics** — Track your average, best, and worst response times
+- **Speed Distribution** — See where your performance falls on the curve
+
+### 🧠 Cognitive Load Analyzer
+
+**[View Cognitive Load →](https://sauravbhattacharya001.github.io/gif-captcha/cognitive-load.html)**
+
+Measure the cognitive complexity of GIF CAPTCHAs across 6 dimensions:
+- **6 Cognitive Dimensions** — Temporal sequencing, narrative surprise, cultural context, motion tracking, humor detection, object recognition
+- **Per-CAPTCHA Breakdown** — How cognitively demanding each challenge is
+- **Human vs AI Cognitive Profiles** — Compare what humans and AI find difficult
+
+### 📊 Multi-Model Comparison
+
+**[View Comparison →](https://sauravbhattacharya001.github.io/gif-captcha/comparison.html)**
+
+Compare AI model performance against GIF CAPTCHAs side by side:
+- **Multiple AI Models** — GPT-4, GPT-4V, GPT-4o, Claude 3.5, Gemini 1.5 Pro
+- **Per-Challenge Scoring** — Pass/fail breakdown for each model × CAPTCHA pair
+- **Capability Radar** — Visual overlay of model strengths and weaknesses
+
+### 📈 Effectiveness Dashboard
+
+**[View Effectiveness →](https://sauravbhattacharya001.github.io/gif-captcha/effectiveness.html)**
+
+How well do GIF CAPTCHAs distinguish humans from AI models?
+- **Detection Rate Charts** — Human pass rate vs AI pass rate over time
+- **Effectiveness Metrics** — True positive, false positive, and discrimination power
+- **Model Evolution** — How AI capabilities have changed from 2023 to 2025
+
+### 🔥 Interaction Heatmap
+
+**[View Heatmap →](https://sauravbhattacharya001.github.io/gif-captcha/heatmap.html)**
+
+Visualize user interaction patterns during CAPTCHA solving:
+- **Click Heatmaps** — Where users click on GIFs during evaluation
+- **Mouse Trails** — Movement patterns revealing attention flow
+- **Timing Overlays** — Heat-coded response time data per region
+
+### 🧪 A/B Testing Configurator
+
+**[Open A/B Configurator →](https://sauravbhattacharya001.github.io/gif-captcha/abtest.html)**
+
+Plan and analyze CAPTCHA A/B experiments with statistical rigor:
+- **Experiment Design** — Configure test/control groups, sample sizes, and duration
+- **Statistical Analysis** — Chi-squared tests, confidence intervals, effect sizes
+- **Results Visualization** — Charts comparing variant performance
+
+### ♿ Accessibility Audit
+
+**[View Accessibility Audit →](https://sauravbhattacharya001.github.io/gif-captcha/accessibility.html)**
+
+Evaluate GIF CAPTCHA accessibility against WCAG 2.1 criteria:
+- **WCAG Compliance Checklist** — Perceivable, operable, understandable, robust
+- **Accessibility Scores** — Per-CAPTCHA accessibility ratings
+- **Remediation Suggestions** — How to improve CAPTCHA accessibility
+
+### 📋 Batch Validator
+
+**[Open Batch Validator →](https://sauravbhattacharya001.github.io/gif-captcha/batch.html)**
+
+Import response data and validate against challenges in bulk:
+- **Bulk Import** — Paste or upload JSON response datasets
+- **Automated Scoring** — Run all responses against challenge answer keys
+- **Pattern Analysis** — Identify common failure patterns and outliers
+
+### 🎯 Daily Challenge
+
+**[Play Daily Challenge →](https://sauravbhattacharya001.github.io/gif-captcha/daily.html)**
+
+A new GIF CAPTCHA challenge every day:
+- **Daily Rotation** — Fresh challenge each day from the full pool
+- **Streak Tracking** — Track your consecutive-day solving record
+- **Performance History** — Review your past daily challenge results
+
+### 🔗 Embed Widget Generator
+
+**[Create Embed →](https://sauravbhattacharya001.github.io/gif-captcha/embed.html)**
+
+Generate embeddable GIF CAPTCHA widgets for your website:
+- **Configuration UI** — Set challenge count, difficulty, appearance, and callback URLs
+- **Code Generation** — Copy-paste HTML/JS embed snippets
+- **Preview** — See exactly how the widget will look before deploying
+
+### 🔍 Frame Inspector
+
+**[Open Frame Inspector →](https://sauravbhattacharya001.github.io/gif-captcha/frame-inspector.html)**
+
+Analyze individual frames from GIF CAPTCHAs:
+- **Frame-by-Frame Scrubbing** — Step through each frame of a GIF animation
+- **Frame Metadata** — Display timing, dimensions, and pixel data
+- **AI Perspective** — See what an AI model "sees" when processing frames independently
+
+### 🏆 Leaderboard
+
+**[View Leaderboard →](https://sauravbhattacharya001.github.io/gif-captcha/leaderboard.html)**
+
+Your personal GIF CAPTCHA performance dashboard:
+- **Score Tracking** — Cumulative accuracy and speed scores
+- **Ranking System** — Compare against community benchmarks
+- **Achievement Badges** — Unlock badges for CAPTCHA-solving milestones
+
+### 🎲 Challenge Playground
+
+**[Open Playground →](https://sauravbhattacharya001.github.io/gif-captcha/playground.html)**
+
+Create, test, and export custom GIF CAPTCHA challenge sets:
+- **Build Mode** — Add challenges with GIF URLs, answers, categories, and difficulty
+- **Test Mode** — Run through your challenge set as a user would
+- **Export** — Download as JSON or generate shareable links
+
+### 🔥 Streak Mode
+
+**[Play Streak Mode →](https://sauravbhattacharya001.github.io/gif-captcha/streak.html)**
+
+How many GIFs can you describe in a row?
+- **Continuous Challenge** — Each wrong answer or timeout breaks your streak
+- **Increasing Difficulty** — Harder CAPTCHAs as your streak grows
+- **High Score Tracking** — Local storage persistence for best streaks
+
+### ⏱️ Response Time Analyzer
+
+**[View Timing Analysis →](https://sauravbhattacharya001.github.io/gif-captcha/timing.html)**
+
+Analyze response time patterns across CAPTCHA types:
+- **Per-Category Timing** — Average solve times by cognitive category
+- **Time Distribution Charts** — Histogram of response times
+- **Outlier Detection** — Flag unusually fast (bot?) or slow responses
+
 ## 🛠️ Tech Stack
 
 | Technology | Purpose |
@@ -203,18 +338,34 @@ Or use via CDN in the browser:
 ```
 gif-captcha/
 ├── src/
-│   └── index.js    # Core library (UMD — browser + Node.js)
-├── index.html      # Interactive case study page
-├── demo.html       # Interactive CAPTCHA demo (try it yourself!)
-├── analysis.html   # Research analysis dashboard with charts & taxonomy
-├── generator.html  # CAPTCHA Workshop — create custom challenge sets
-├── simulator.html  # AI Response Simulator — model comparison & capability analysis
-├── temporal.html   # Temporal Sequence Challenge — event ordering CAPTCHA format
-├── shared.js       # Browser-specific shared utilities
-├── shared.css      # Shared dark theme styles
-├── tests/          # Test suite (Node.js built-in test runner)
-├── README.md       # This file
-└── LICENSE         # MIT License
+│   └── index.js          # Core library (UMD — browser + Node.js)
+├── index.html            # Interactive case study page
+├── demo.html             # Interactive CAPTCHA demo
+├── analysis.html         # Research analysis dashboard
+├── generator.html        # CAPTCHA Workshop — create challenge sets
+├── simulator.html        # AI Response Simulator
+├── temporal.html         # Temporal Sequence Challenge
+├── abtest.html           # A/B Testing Configurator
+├── accessibility.html    # Accessibility Audit (WCAG 2.1)
+├── batch.html            # Batch Validator — bulk response analysis
+├── benchmark.html        # Response Time Benchmark
+├── cognitive-load.html   # Cognitive Load Analyzer
+├── comparison.html       # Multi-Model Comparison
+├── daily.html            # Daily Challenge mode
+├── effectiveness.html    # Effectiveness Dashboard
+├── embed.html            # Embed Widget Generator
+├── frame-inspector.html  # GIF Frame Inspector
+├── heatmap.html          # Interaction Heatmap
+├── leaderboard.html      # Performance Leaderboard
+├── playground.html       # Challenge Playground
+├── streak.html           # Streak Mode
+├── timing.html           # Response Time Analyzer
+├── shared.js             # Browser-specific shared utilities
+├── shared.css            # Shared dark theme styles
+├── tests/                # Test suite (Node.js built-in test runner, 43 test files)
+├── API.md                # API reference
+├── README.md             # This file
+└── LICENSE               # MIT License
 ```
 
 ## 📖 API Reference

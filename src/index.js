@@ -816,7 +816,8 @@ function createSetAnalyzer(challenges) {
     });
 
     var uniqueKeywords = Object.keys(keywordFrequency).length;
-    var coverageRatio = challengesWithKeywords / _challenges.length;
+    var coverageRatio = _challenges.length > 0
+      ? challengesWithKeywords / _challenges.length : 0;
 
     return {
       totalKeywords: totalKeywords,
@@ -880,7 +881,8 @@ function createSetAnalyzer(challenges) {
 
     // keywordSpread: uniqueKeywords / (challengeCount × 2) × 100, capped at 100
     var kc = keywordCoverage();
-    var keywordSpread = Math.min(100, (kc.uniqueKeywords / (_challenges.length * 2)) * 100);
+    var keywordSpread = _challenges.length > 0
+      ? Math.min(100, (kc.uniqueKeywords / (_challenges.length * 2)) * 100) : 0;
 
     // titleUniqueness: uniqueTitles / totalChallenges × 100
     var titleSet = {};
@@ -889,7 +891,8 @@ function createSetAnalyzer(challenges) {
       titleSet[t] = true;
     });
     var uniqueTitles = Object.keys(titleSet).length;
-    var titleUniqueness = (uniqueTitles / _challenges.length) * 100;
+    var titleUniqueness = _challenges.length > 0
+      ? (uniqueTitles / _challenges.length) * 100 : 0;
 
     // Overall: weighted average
     var score = answerDiversity * 0.5 + keywordSpread * 0.3 + titleUniqueness * 0.2;
@@ -1728,7 +1731,9 @@ function createSecurityScorer(challenges) {
 
     // evenness: ideal is 1/3 each
     var total = withDiff.length;
-    var easyP = easy / total, medP = medium / total, hardP = hard / total;
+    var easyP = total > 0 ? easy / total : 0;
+    var medP = total > 0 ? medium / total : 0;
+    var hardP = total > 0 ? hard / total : 0;
     var ideal = 1 / 3;
     var deviation = Math.abs(easyP - ideal) + Math.abs(medP - ideal) + Math.abs(hardP - ideal);
     // max deviation is ~1.33 (all in one bucket)

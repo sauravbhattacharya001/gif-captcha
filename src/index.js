@@ -10355,7 +10355,8 @@ function createTrustScoreEngine(options) {
   var cacheTtlMs = typeof options.cacheTtlMs === "number" && options.cacheTtlMs >= 0 ? options.cacheTtlMs : 30000;
   var maxClients = typeof options.maxClients === "number" && options.maxClients > 0 ? options.maxClients : 5000;
   var maxHistory = typeof options.maxHistory === "number" && options.maxHistory > 0 ? options.maxHistory : 100;
-  var decayFactor = typeof options.decayFactor === "number" ? options.decayFactor : 0.95;
+  var decayFactor = typeof options.decayFactor === "number" ? options.decayFactor : 0.7;
+  var anomalyDropThreshold = typeof options.anomalyDropThreshold === "number" ? options.anomalyDropThreshold : 0.3;
 
   // clientId → { score, signals, action, timestamp, history: [{ score, timestamp }] }
   var clients = Object.create(null);
@@ -10499,15 +10500,33 @@ function createTrustScoreEngine(options) {
 
     var rawScore = totalWeight > 0 ? weightedSum / totalWeight : 0.5;
 
-    // Blend with historical average
+    // Blend with historical average (recency-weighted)
     var blendedScore = rawScore;
     if (cached && cached.history && cached.history.length > 0) {
-      var histSum = 0;
-      for (var hi = 0; hi < cached.history.length; hi++) {
-        histSum += cached.history[hi].score;
+      // Recency-weighted average: more recent scores count more.
+      // Weight_i = (i+1) / sum(1..n), so last entry gets highest weight.
+      var histLen = cached.history.length;
+      var weightDenom = (histLen * (histLen + 1)) / 2; // sum of 1..n
+      var histWeightedSum = 0;
+      for (var hi = 0; hi < histLen; hi++) {
+        histWeightedSum += cached.history[hi].score * (hi + 1);
       }
-      var histAvg = histSum / cached.history.length;
-      blendedScore = rawScore * (1 - decayFactor) + histAvg * decayFactor;
+      var histAvg = histWeightedSum / weightDenom;
+
+      // Anomaly detection: if rawScore drops sharply from historical
+      // average, use a more aggressive weight for the current evaluation
+      // to react faster to behavioral changes (e.g., trust-washing attacks).
+      var effectiveDecay = decayFactor;
+      var drop = histAvg - rawScore;
+      if (drop > anomalyDropThreshold) {
+        // Scale decay down proportionally — bigger drop = less history weight
+        // At drop=0.3 with threshold=0.3: effectiveDecay = decayFactor * 0.5
+        // At drop=0.6: effectiveDecay = decayFactor * 0.25 (floor)
+        var dropRatio = Math.min(drop / anomalyDropThreshold, 2);
+        effectiveDecay = decayFactor * Math.max(0.25, 1 - dropRatio * 0.5);
+      }
+
+      blendedScore = rawScore * (1 - effectiveDecay) + histAvg * effectiveDecay;
     }
 
     var finalScore = _clamp(Math.round(blendedScore * 1000) / 1000, 0, 1);
@@ -10516,9 +10535,11 @@ function createTrustScoreEngine(options) {
     // Sort breakdown by contribution descending
     breakdown.sort(function (a, b) { return b.contribution - a.contribution; });
 
-    // Update cache
+    // Update cache — store RAW scores in history (not blended) to prevent
+    // compounding feedback loop where blended-of-blended scores create
+    // exponential dampening of behavioral changes.
     var history = (cached && cached.history) ? cached.history.slice() : [];
-    history.push({ score: finalScore, timestamp: _now() });
+    history.push({ score: rawScore, timestamp: _now() });
     if (history.length > maxHistory) {
       history = history.slice(history.length - maxHistory);
     }

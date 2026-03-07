@@ -13131,6 +13131,411 @@ function createGeoRiskScorer(options) {
   };
 }
 
+// ── Proof of Work ───────────────────────────────────────────────────
+
+/**
+ * Create a Hashcash-style proof-of-work challenge gate.
+ *
+ * Requires clients to find a nonce such that
+ *   SHA-256(prefix + ":" + nonce)
+ * has at least `difficulty` leading zero bits.  Server issues challenges
+ * in O(1), client solves in O(2^difficulty), server verifies in O(1).
+ *
+ * This adds an economic cost to every CAPTCHA attempt, deterring large-
+ * scale bot farms and automated solvers.  Typical difficulty of 16–20
+ * takes 50–500 ms on a modern browser, negligible for humans but
+ * expensive at scale for attackers.
+ *
+ * Options:
+ *   difficulty          {number}  Leading zero bits required (default 16)
+ *   challengeTtlMs      {number}  Challenge expiry (default 60 000 ms)
+ *   maxPendingPerIp     {number}  Max concurrent challenges per IP (default 10)
+ *   maxPending          {number}  Global pending-challenge cap (default 50 000)
+ *   adaptiveDifficulty  {boolean} Auto-scale difficulty based on solve rate (default false)
+ *   targetSolveMs       {number}  Adaptive: target solve time (default 200 ms)
+ *   minDifficulty       {number}  Adaptive: floor (default 8)
+ *   maxDifficulty       {number}  Adaptive: ceiling (default 28)
+ *   adjustWindowSize    {number}  Adaptive: rolling window size (default 50)
+ *
+ * @param {Object} [options]
+ * @returns {Object} Proof-of-work challenge manager
+ */
+function createProofOfWork(options) {
+  var opts = options || {};
+
+  if (!_crypto || typeof _crypto.createHash !== 'function') {
+    throw new Error('Proof-of-work requires Node.js crypto module');
+  }
+
+  var difficulty = _posOpt(opts.difficulty, 16);
+  var challengeTtlMs = _posOpt(opts.challengeTtlMs, 60000);
+  var maxPendingPerIp = _posOpt(opts.maxPendingPerIp, 10);
+  var maxPending = _posOpt(opts.maxPending, 50000);
+  var adaptiveDifficulty = !!opts.adaptiveDifficulty;
+  var targetSolveMs = _posOpt(opts.targetSolveMs, 200);
+  var minDifficulty = _posOpt(opts.minDifficulty, 8);
+  var maxDifficulty = _posOpt(opts.maxDifficulty, 28);
+  var adjustWindowSize = _posOpt(opts.adjustWindowSize, 50);
+
+  // Current effective difficulty (may change if adaptive)
+  var effectiveDifficulty = difficulty;
+
+  // Pending challenges: prefixHex → { ip, difficulty, issuedAt }
+  var _pending = Object.create(null);
+  var _pendingCount = 0;
+  var _pendingByIp = Object.create(null); // ip → count
+
+  // Stats
+  var _issued = 0;
+  var _verified = 0;
+  var _rejected = 0;
+  var _expired = 0;
+  var _replayBlocked = 0;
+
+  // Used prefixes (replay prevention): prefixHex → true
+  var _used = Object.create(null);
+  var _usedList = []; // for bounded eviction
+  var MAX_USED = 100000;
+
+  // Adaptive difficulty tracking
+  var _solveTimes = []; // rolling window of solve durations (ms)
+
+  // ── Internal helpers ───────────────────────────────────────────
+
+  function _sha256hex(data) {
+    return _crypto.createHash('sha256').update(data).digest('hex');
+  }
+
+  function _randomPrefix() {
+    return _crypto.randomBytes(16).toString('hex');
+  }
+
+  /**
+   * Count leading zero bits in a hex hash string.
+   * Each hex digit represents 4 bits: '0' = 4 zeros, '1' = 3, etc.
+   */
+  function _countLeadingZeroBits(hexStr) {
+    var bits = 0;
+    for (var i = 0; i < hexStr.length; i++) {
+      var nibble = parseInt(hexStr[i], 16);
+      if (nibble === 0) {
+        bits += 4;
+      } else {
+        // Count leading zeros in this 4-bit nibble
+        if (nibble < 2) bits += 3;
+        else if (nibble < 4) bits += 2;
+        else if (nibble < 8) bits += 1;
+        break;
+      }
+    }
+    return bits;
+  }
+
+  function _cleanExpired() {
+    var now = Date.now();
+    var keys = Object.keys(_pending);
+    for (var i = 0; i < keys.length; i++) {
+      var entry = _pending[keys[i]];
+      if (now - entry.issuedAt > challengeTtlMs) {
+        _removePending(keys[i]);
+        _expired++;
+      }
+    }
+  }
+
+  function _removePending(prefix) {
+    var entry = _pending[prefix];
+    if (!entry) return;
+    var ip = entry.ip;
+    delete _pending[prefix];
+    _pendingCount--;
+    if (ip && _pendingByIp[ip]) {
+      _pendingByIp[ip]--;
+      if (_pendingByIp[ip] <= 0) delete _pendingByIp[ip];
+    }
+  }
+
+  function _recordUsed(prefix) {
+    if (_usedList.length >= MAX_USED) {
+      var evict = _usedList.shift();
+      delete _used[evict];
+    }
+    _used[prefix] = true;
+    _usedList.push(prefix);
+  }
+
+  function _updateAdaptiveDifficulty(solveMs) {
+    _solveTimes.push(solveMs);
+    while (_solveTimes.length > adjustWindowSize) {
+      _solveTimes.shift();
+    }
+    if (_solveTimes.length < 5) return; // need enough samples
+
+    var avg = 0;
+    for (var i = 0; i < _solveTimes.length; i++) avg += _solveTimes[i];
+    avg /= _solveTimes.length;
+
+    // If solving too fast, increase difficulty; too slow, decrease
+    if (avg < targetSolveMs * 0.5 && effectiveDifficulty < maxDifficulty) {
+      effectiveDifficulty++;
+    } else if (avg > targetSolveMs * 2 && effectiveDifficulty > minDifficulty) {
+      effectiveDifficulty--;
+    }
+  }
+
+  // ── Public API ─────────────────────────────────────────────────
+
+  /**
+   * Issue a new proof-of-work challenge.
+   *
+   * @param {Object} [params]
+   * @param {string} [params.ip]        Client IP for per-IP limiting
+   * @param {number} [params.difficulty] Override difficulty for this challenge
+   * @returns {{ prefix: string, difficulty: number, algorithm: string, expiresAt: number }}
+   * @throws {Error} If IP has too many pending challenges or global cap exceeded
+   */
+  function issue(params) {
+    params = params || {};
+    var ip = params.ip || null;
+
+    _cleanExpired();
+
+    // Per-IP throttle
+    if (ip) {
+      var ipCount = _pendingByIp[ip] || 0;
+      if (ipCount >= maxPendingPerIp) {
+        throw new Error(
+          'Too many pending challenges for this IP (max ' + maxPendingPerIp + ')'
+        );
+      }
+    }
+
+    // Global cap
+    if (_pendingCount >= maxPending) {
+      throw new Error(
+        'Global pending-challenge limit reached (' + maxPending + ')'
+      );
+    }
+
+    var prefix = _randomPrefix();
+    var diff = params.difficulty || effectiveDifficulty;
+    var now = Date.now();
+
+    _pending[prefix] = {
+      ip: ip,
+      difficulty: diff,
+      issuedAt: now
+    };
+    _pendingCount++;
+    if (ip) {
+      _pendingByIp[ip] = (_pendingByIp[ip] || 0) + 1;
+    }
+    _issued++;
+
+    return {
+      prefix: prefix,
+      difficulty: diff,
+      algorithm: 'sha256',
+      expiresAt: now + challengeTtlMs
+    };
+  }
+
+  /**
+   * Verify a client's proof-of-work solution.
+   *
+   * @param {Object} params
+   * @param {string} params.prefix  The challenge prefix from issue()
+   * @param {string} params.nonce   The nonce found by the client
+   * @param {string} [params.ip]    Client IP for binding verification
+   * @returns {{ valid: boolean, reason: string, hash: string|null, leadingZeros: number, solveMs: number|null }}
+   */
+  function verify(params) {
+    if (!params || typeof params.prefix !== 'string' || typeof params.nonce !== 'string') {
+      _rejected++;
+      return { valid: false, reason: 'missing_params', hash: null, leadingZeros: 0, solveMs: null };
+    }
+
+    var prefix = params.prefix;
+    var nonce = params.nonce;
+    var ip = params.ip || null;
+
+    // Replay detection: already used?
+    if (_used[prefix]) {
+      _replayBlocked++;
+      _rejected++;
+      return { valid: false, reason: 'replay', hash: null, leadingZeros: 0, solveMs: null };
+    }
+
+    // Is it pending?
+    var entry = _pending[prefix];
+    if (!entry) {
+      // Could be expired or never issued
+      _rejected++;
+      return { valid: false, reason: 'unknown_challenge', hash: null, leadingZeros: 0, solveMs: null };
+    }
+
+    // TTL check
+    var now = Date.now();
+    if (now - entry.issuedAt > challengeTtlMs) {
+      _removePending(prefix);
+      _expired++;
+      _rejected++;
+      return { valid: false, reason: 'expired', hash: null, leadingZeros: 0, solveMs: null };
+    }
+
+    // IP binding: if challenge was issued with IP, verify same IP submits
+    if (entry.ip && ip && entry.ip !== ip) {
+      _rejected++;
+      return { valid: false, reason: 'ip_mismatch', hash: null, leadingZeros: 0, solveMs: null };
+    }
+
+    // Compute and check hash
+    var data = prefix + ':' + nonce;
+    var hash = _sha256hex(data);
+    var zeros = _countLeadingZeroBits(hash);
+    var requiredDiff = entry.difficulty;
+    var solveMs = now - entry.issuedAt;
+
+    // Remove from pending regardless of outcome
+    _removePending(prefix);
+
+    if (zeros < requiredDiff) {
+      _rejected++;
+      return {
+        valid: false,
+        reason: 'insufficient_work',
+        hash: hash,
+        leadingZeros: zeros,
+        solveMs: solveMs
+      };
+    }
+
+    // Success — record prefix to prevent replay
+    _recordUsed(prefix);
+    _verified++;
+
+    if (adaptiveDifficulty) {
+      _updateAdaptiveDifficulty(solveMs);
+    }
+
+    return {
+      valid: true,
+      reason: 'ok',
+      hash: hash,
+      leadingZeros: zeros,
+      solveMs: solveMs
+    };
+  }
+
+  /**
+   * Solve a challenge (utility for testing and client-side use).
+   * Iterates nonces until SHA-256(prefix:nonce) has enough leading zeros.
+   *
+   * @param {string} prefix     The challenge prefix
+   * @param {number} diff       Required leading zero bits
+   * @returns {{ nonce: string, hash: string, iterations: number }}
+   */
+  function solve(prefix, diff) {
+    for (var i = 0; i < 100000000; i++) {
+      var nonce = i.toString(36);
+      var data = prefix + ':' + nonce;
+      var hash = _sha256hex(data);
+      if (_countLeadingZeroBits(hash) >= diff) {
+        return { nonce: nonce, hash: hash, iterations: i + 1 };
+      }
+    }
+    throw new Error('Could not solve challenge within 100M iterations');
+  }
+
+  /**
+   * Estimate average iterations required for a given difficulty.
+   *
+   * @param {number} [diff] Difficulty (defaults to current effective)
+   * @returns {{ difficulty: number, expectedIterations: number, estimatedMs: string }}
+   */
+  function estimateCost(diff) {
+    var d = diff || effectiveDifficulty;
+    var expected = Math.pow(2, d);
+    var ms;
+    if (expected < 1000) ms = '< 1ms';
+    else if (expected < 100000) ms = '~' + Math.round(expected / 1000) + 'ms';
+    else if (expected < 10000000) ms = '~' + Math.round(expected / 100000) / 10 + 's';
+    else ms = '~' + Math.round(expected / 1000000) + 's';
+    return {
+      difficulty: d,
+      expectedIterations: expected,
+      estimatedMs: ms
+    };
+  }
+
+  /**
+   * Get the current effective difficulty.
+   *
+   * @returns {number}
+   */
+  function getDifficulty() {
+    return effectiveDifficulty;
+  }
+
+  /**
+   * Get pending-challenge count for an IP (or global).
+   *
+   * @param {string} [ip] Specific IP to query
+   * @returns {number}
+   */
+  function pendingCount(ip) {
+    if (ip) return _pendingByIp[ip] || 0;
+    return _pendingCount;
+  }
+
+  /**
+   * Get summary statistics.
+   *
+   * @returns {{ issued: number, verified: number, rejected: number, expired: number, replayBlocked: number, pending: number, difficulty: number, adaptiveEnabled: boolean }}
+   */
+  function summary() {
+    return {
+      issued: _issued,
+      verified: _verified,
+      rejected: _rejected,
+      expired: _expired,
+      replayBlocked: _replayBlocked,
+      pending: _pendingCount,
+      difficulty: effectiveDifficulty,
+      adaptiveEnabled: adaptiveDifficulty
+    };
+  }
+
+  /**
+   * Reset all state (for testing).
+   */
+  function reset() {
+    _pending = Object.create(null);
+    _pendingCount = 0;
+    _pendingByIp = Object.create(null);
+    _issued = 0;
+    _verified = 0;
+    _rejected = 0;
+    _expired = 0;
+    _replayBlocked = 0;
+    _used = Object.create(null);
+    _usedList = [];
+    _solveTimes = [];
+    effectiveDifficulty = difficulty;
+  }
+
+  return {
+    issue: issue,
+    verify: verify,
+    solve: solve,
+    estimateCost: estimateCost,
+    getDifficulty: getDifficulty,
+    pendingCount: pendingCount,
+    summary: summary,
+    reset: reset
+  };
+}
+
 var gifCaptcha = {
   sanitize: sanitize,
   createSanitizer: createSanitizer,
@@ -13173,6 +13578,7 @@ var gifCaptcha = {
   createConfigValidator: createConfigValidator,
   createChallengeAnalytics: createChallengeAnalytics,
   createGeoRiskScorer: createGeoRiskScorer,
+  createProofOfWork: createProofOfWork,
 };
 
 // UMD export — works in Node.js, AMD, and browser globals

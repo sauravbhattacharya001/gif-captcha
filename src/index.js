@@ -190,6 +190,20 @@ function secureRandomInt(max) {
   );
 }
 
+// ── Shared Helpers ──────────────────────────────────────────────────
+
+/** @returns {number} Current time in milliseconds (Date.now()). */
+function _now() { return Date.now(); }
+
+/**
+ * Clamp a numeric value to [lo, hi].
+ * @param {number} v
+ * @param {number} lo - Lower bound
+ * @param {number} hi - Upper bound
+ * @returns {number}
+ */
+function _clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+
 // ── Text Sanitizer ──────────────────────────────────────────────────
 
 /**
@@ -474,10 +488,6 @@ function createAttemptTracker(options) {
   // user-supplied challengeIds collide with Object.prototype keys
   // (e.g. "__proto__", "constructor", "toString").
   var challenges = Object.create(null);
-
-  function _now() {
-    return Date.now();
-  }
 
   function _getEntry(challengeId) {
     var id = String(challengeId);
@@ -1284,7 +1294,7 @@ function createDifficultyCalibrator(challenges) {
 
     // Weighted combination
     var difficulty = (accuracyScore * 0.4) + (skipScore * 0.2) + (timeScore * 0.4);
-    return Math.round(Math.min(100, Math.max(0, difficulty)));
+    return Math.round(_clamp(difficulty, 0, 100));
   }
 
   /**
@@ -1518,7 +1528,7 @@ function createSecurityScorer(challenges) {
 
   // ── helpers ──
   function clamp(v) {
-    return Math.max(0, Math.min(100, v));
+    return _clamp(v, 0, 100);
   }
 
   function getWords(text) {
@@ -2090,10 +2100,6 @@ function createSessionManager(options) {
   var sessions = Object.create(null);
   var sessionCount = 0;
 
-  function _now() {
-    return Date.now();
-  }
-
   function _generateId() {
     var chars = "abcdefghijklmnopqrstuvwxyz0123456789";
     var id = "";
@@ -2397,8 +2403,6 @@ function createPoolManager(options) {
   // Use null-prototype object to prevent prototype pollution via crafted challenge IDs.
   var registry = Object.create(null);
   var activeIds = [];
-
-  function _now() { return Date.now(); }
 
   function _rebuildActive() {
     activeIds = [];
@@ -2892,7 +2896,7 @@ function createResponseAnalyzer(opts) {
     if (descriptiveCount >= Math.ceil(submissions.length / 2)) score = Math.min(100, score + 5);
     if (duplicates.uniqueRatio >= 0.95 && submissions.length >= 3) score = Math.min(100, score + 5);
 
-    score = Math.max(0, Math.min(100, score));
+    score = _clamp(score, 0, 100);
 
     var verdict;
     if (score >= 80) verdict = 'likely_human';
@@ -3786,7 +3790,7 @@ function createReputationTracker(options) {
   var trustedThreshold = _nnOpt(options.trustedThreshold, 0.8);
   var blockThreshold = _nnOpt(options.blockThreshold, 0.1);
   var initialScore = (typeof options.initialScore === "number")
-    ? Math.max(0, Math.min(1, options.initialScore)) : 0.5;
+    ? _clamp(options.initialScore, 0, 1) : 0.5;
   var solveWeight = _posOpt(options.solveWeight, 0.1);
   var failWeight = _posOpt(options.failWeight, 0.15);
   var timeoutWeight = _posOpt(options.timeoutWeight, 0.05);
@@ -3803,13 +3807,6 @@ function createReputationTracker(options) {
   // O(1) LRU eviction tracker (replaces array + indexOf + splice)
   var evictionOrder = new LruTracker();
 
-  function _now() {
-    return Date.now();
-  }
-
-  function _clampScore(score) {
-    return Math.max(0, Math.min(1, score));
-  }
 
   /**
    * Apply exponential decay to a score based on time elapsed.
@@ -3902,10 +3899,10 @@ function createReputationTracker(options) {
     entry.score = _applyDecay(entry);
     entry.solves++;
     entry.totalAttempts++;
-    entry.score = _clampScore(entry.score + solveWeight);
+    entry.score = _clamp(entry.score + solveWeight, 0, 1);
     var isBurst = _checkBurst(entry);
     if (isBurst) {
-      entry.score = _clampScore(entry.score - burstPenalty);
+      entry.score = _clamp(entry.score - burstPenalty, 0, 1);
     }
     entry.lastActivity = _now();
     _touchEviction(id);
@@ -3930,10 +3927,10 @@ function createReputationTracker(options) {
     entry.score = _applyDecay(entry);
     entry.fails++;
     entry.totalAttempts++;
-    entry.score = _clampScore(entry.score - failWeight);
+    entry.score = _clamp(entry.score - failWeight, 0, 1);
     var isBurst = _checkBurst(entry);
     if (isBurst) {
-      entry.score = _clampScore(entry.score - burstPenalty);
+      entry.score = _clamp(entry.score - burstPenalty, 0, 1);
     }
     entry.lastActivity = _now();
     _touchEviction(id);
@@ -3958,7 +3955,7 @@ function createReputationTracker(options) {
     entry.score = _applyDecay(entry);
     entry.timeouts++;
     entry.totalAttempts++;
-    entry.score = _clampScore(entry.score - timeoutWeight);
+    entry.score = _clamp(entry.score - timeoutWeight, 0, 1);
     entry.lastActivity = _now();
     _touchEviction(id);
     return { score: entry.score, classification: _classify(entry.score) };
@@ -4221,7 +4218,7 @@ function createReputationTracker(options) {
         var src = data.entries[id];
         if (!src || typeof src !== "object") continue;
         var entry = _ensureEntry(id);
-        if (typeof src.score === "number") entry.score = _clampScore(src.score);
+        if (typeof src.score === "number") entry.score = _clamp(src.score, 0, 1);
         if (typeof src.solves === "number") entry.solves = Math.max(0, Math.floor(src.solves));
         if (typeof src.fails === "number") entry.fails = Math.max(0, Math.floor(src.fails));
         if (typeof src.timeouts === "number") entry.timeouts = Math.max(0, Math.floor(src.timeouts));
@@ -4341,15 +4338,13 @@ function createChallengeRouter(options) {
 
   function _clampInt(val, min, max, fallback) {
     if (typeof val !== "number" || isNaN(val)) return fallback;
-    return Math.max(min, Math.min(max, Math.floor(val)));
+    return _clamp(Math.floor(val), min, max);
   }
 
   function _clampFloat(val, min, max, fallback) {
     if (typeof val !== "number" || isNaN(val)) return fallback;
-    return Math.max(min, Math.min(max, val));
+    return _clamp(val, min, max);
   }
-
-  function _now() { return Date.now(); }
 
   function _validateRules(rules) {
     if (!Array.isArray(rules)) return [];
@@ -4361,7 +4356,7 @@ function createChallengeRouter(options) {
         valid.push({
           name: r.name,
           test: r.test,
-          difficulty: Math.max(1, Math.min(maxEscalation, Math.floor(r.difficulty))),
+          difficulty: _clamp(Math.floor(r.difficulty), 1, maxEscalation),
           priority: typeof r.priority === "number" ? r.priority : 0,
         });
       }
@@ -4501,7 +4496,7 @@ function createChallengeRouter(options) {
     var combinedAdjustment = Math.round(
       reputationWeight * repAdjustment + historyWeight * histAdjustment
     );
-    var finalLevel = Math.max(1, Math.min(maxEscalation, baseLevel + combinedAdjustment));
+    var finalLevel = _clamp(baseLevel + combinedAdjustment, 1, maxEscalation);
 
     var reason = "computed";
     if (combinedAdjustment > 0) {
@@ -6462,7 +6457,7 @@ function createAdaptiveTimeout(options) {
 
     // Step 5: Clamp
     var finalTimeout = Math.round(
-      Math.max(minTimeoutMs, Math.min(maxTimeoutMs, afterLatency))
+      _clamp(afterLatency, minTimeoutMs, maxTimeoutMs)
     );
 
     return {
@@ -6941,10 +6936,6 @@ function createSessionRecorder(options) {
   var eventTypeSet = Object.create(null);
   for (var i = 0; i < EVENT_TYPES.length; i++) {
     eventTypeSet[EVENT_TYPES[i]] = true;
-  }
-
-  function _now() {
-    return Date.now();
   }
 
   function _evictOldest() {
@@ -7765,7 +7756,7 @@ function createLoadTester(options) {
   function _percentile(sorted, p) {
     if (sorted.length === 0) return 0;
     var idx = Math.ceil(p / 100 * sorted.length) - 1;
-    return sorted[Math.max(0, Math.min(idx, sorted.length - 1))];
+    return sorted[_clamp(idx, 0, sorted.length - 1)];
   }
 
   /**
@@ -10368,10 +10359,6 @@ function createTrustScoreEngine(options) {
 
   // Registered signal providers: name → function(clientId) → { score: 0-1, confidence: 0-1, detail: string }
   var providers = Object.create(null);
-
-  function _now() { return Date.now(); }
-
-  function _clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
 
   function _evictIfNeeded() {
     while (clientOrder.length > maxClients) {

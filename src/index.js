@@ -11432,6 +11432,375 @@ function createI18n(options) {
 }
 
 
+// ── Accessibility Auditor ───────────────────────────────────────────
+
+/**
+ * Create an accessibility auditor that checks CAPTCHA configurations
+ * against WCAG 2.1 guidelines and produces actionable recommendations.
+ *
+ * The auditor evaluates:
+ *   - Keyboard navigability (2.1.1)
+ *   - Sufficient time (2.2.1)
+ *   - Seizure safety / animation (2.3.1)
+ *   - Text alternatives (1.1.1)
+ *   - Color contrast & non-color cues (1.4.1, 1.4.3)
+ *   - Error identification & suggestion (3.3.1, 3.3.3)
+ *   - Focus visibility (2.4.7)
+ *   - Touch target size (2.5.5 / 2.5.8)
+ *   - Alternative access methods (non-visual)
+ *
+ * @param {Object} [options] - Auditor configuration
+ * @param {string} [options.level="AA"] - Target conformance level: "A", "AA", or "AAA"
+ * @param {boolean} [options.strict=false] - Treat warnings as failures
+ * @returns {Object} Auditor instance
+ *
+ * @example
+ *   var auditor = gifCaptcha.createAccessibilityAuditor({ level: "AA" });
+ *   var report = auditor.audit({
+ *     timeoutMs: 15000,
+ *     hasAltText: true,
+ *     hasKeyboardNav: true,
+ *     hasAudioFallback: false,
+ *     touchTargetPx: 40,
+ *     animationDurationMs: 3000,
+ *     flashesPerSecond: 2,
+ *     hasErrorMessages: true,
+ *     hasFocusIndicator: true,
+ *     contrastRatio: 4.5,
+ *     hasNonColorCues: true,
+ *     maxAttempts: 5,
+ *     hasSkipOption: false,
+ *   });
+ *   // report.score  → 0.78 (0–1)
+ *   // report.grade  → "B"
+ *   // report.issues → [{rule, severity, wcag, message, recommendation}]
+ *   // report.passed → [{rule, wcag, message}]
+ */
+function createAccessibilityAuditor(options) {
+  options = options || {};
+  var level = (options.level || "AA").toUpperCase();
+  if (level !== "A" && level !== "AA" && level !== "AAA") {
+    throw new Error("Conformance level must be A, AA, or AAA");
+  }
+  var strict = !!options.strict;
+
+  // Each rule: { id, wcag, level, check(config) → {pass, severity, message, recommendation} }
+  var rules = [
+    {
+      id: "text-alternatives",
+      wcag: "1.1.1",
+      level: "A",
+      check: function (c) {
+        if (c.hasAltText) return { pass: true, message: "Images have text alternatives." };
+        return {
+          pass: false,
+          severity: "error",
+          message: "CAPTCHA images lack text alternatives.",
+          recommendation: "Add descriptive alt text to all CAPTCHA images, or provide an audio/text fallback challenge."
+        };
+      }
+    },
+    {
+      id: "non-color-cues",
+      wcag: "1.4.1",
+      level: "A",
+      check: function (c) {
+        if (c.hasNonColorCues !== false) return { pass: true, message: "Information is not conveyed by color alone." };
+        return {
+          pass: false,
+          severity: "error",
+          message: "Color is the sole indicator for some UI elements.",
+          recommendation: "Add icons, patterns, or text labels alongside color cues (e.g. ✓/✗ icons for pass/fail)."
+        };
+      }
+    },
+    {
+      id: "contrast-ratio",
+      wcag: "1.4.3",
+      level: "AA",
+      check: function (c) {
+        var ratio = c.contrastRatio != null ? c.contrastRatio : 4.5;
+        var threshold = level === "AAA" ? 7.0 : 4.5;
+        if (ratio >= threshold) return { pass: true, message: "Contrast ratio (" + ratio + ":1) meets " + level + " threshold (" + threshold + ":1)." };
+        return {
+          pass: false,
+          severity: "warning",
+          message: "Contrast ratio (" + ratio + ":1) is below " + level + " threshold (" + threshold + ":1).",
+          recommendation: "Increase text/background contrast to at least " + threshold + ":1. Use darker text or lighter backgrounds."
+        };
+      }
+    },
+    {
+      id: "keyboard-nav",
+      wcag: "2.1.1",
+      level: "A",
+      check: function (c) {
+        if (c.hasKeyboardNav) return { pass: true, message: "CAPTCHA is keyboard navigable." };
+        return {
+          pass: false,
+          severity: "error",
+          message: "CAPTCHA cannot be operated via keyboard alone.",
+          recommendation: "Ensure all interactive elements are focusable (tabindex) and operable with Enter/Space. Add arrow-key navigation between options."
+        };
+      }
+    },
+    {
+      id: "sufficient-time",
+      wcag: "2.2.1",
+      level: "A",
+      check: function (c) {
+        var timeout = c.timeoutMs != null ? c.timeoutMs : 30000;
+        if (timeout === 0 || timeout === null) return { pass: true, message: "No time limit applied." };
+        if (timeout >= 20000) return { pass: true, message: "Timeout (" + (timeout / 1000) + "s) provides sufficient time." };
+        return {
+          pass: false,
+          severity: "warning",
+          message: "Timeout (" + (timeout / 1000) + "s) may not provide sufficient time for users with disabilities.",
+          recommendation: "Increase timeout to at least 20 seconds, or allow users to extend the time limit. Consider offering an 'extend time' button."
+        };
+      }
+    },
+    {
+      id: "seizure-safety",
+      wcag: "2.3.1",
+      level: "A",
+      check: function (c) {
+        var fps = c.flashesPerSecond != null ? c.flashesPerSecond : 0;
+        if (fps < 3) return { pass: true, message: "Animation is below the 3-flash-per-second threshold." };
+        return {
+          pass: false,
+          severity: "error",
+          message: "Animation flashes " + fps + " times per second, exceeding the safe threshold of 3.",
+          recommendation: "Reduce animation speed below 3 flashes per second, or add a reduced-motion option (prefers-reduced-motion media query)."
+        };
+      }
+    },
+    {
+      id: "animation-duration",
+      wcag: "2.3.1",
+      level: "A",
+      check: function (c) {
+        var dur = c.animationDurationMs != null ? c.animationDurationMs : 0;
+        if (dur === 0) return { pass: true, message: "No auto-playing animation." };
+        if (dur <= 5000) return { pass: true, message: "Animation duration (" + (dur / 1000) + "s) is within acceptable range." };
+        return {
+          pass: false,
+          severity: "warning",
+          message: "Animation plays for " + (dur / 1000) + "s which may be distracting.",
+          recommendation: "Limit auto-play to 5 seconds or provide a pause/stop control. Respect prefers-reduced-motion."
+        };
+      }
+    },
+    {
+      id: "focus-indicator",
+      wcag: "2.4.7",
+      level: "AA",
+      check: function (c) {
+        if (c.hasFocusIndicator !== false) return { pass: true, message: "Focus indicators are visible." };
+        return {
+          pass: false,
+          severity: "error",
+          message: "No visible focus indicator for keyboard users.",
+          recommendation: "Add a visible focus ring (outline: 2px solid) to all interactive CAPTCHA elements. Never use outline:none without a replacement."
+        };
+      }
+    },
+    {
+      id: "error-messages",
+      wcag: "3.3.1",
+      level: "A",
+      check: function (c) {
+        if (c.hasErrorMessages) return { pass: true, message: "Error messages are provided for failed attempts." };
+        return {
+          pass: false,
+          severity: "warning",
+          message: "No descriptive error messages on failed CAPTCHA attempts.",
+          recommendation: "Provide clear error messages explaining what went wrong and how to retry. Use aria-live regions for screen reader announcements."
+        };
+      }
+    },
+    {
+      id: "touch-target",
+      wcag: "2.5.8",
+      level: "AA",
+      check: function (c) {
+        var size = c.touchTargetPx != null ? c.touchTargetPx : 44;
+        var threshold = level === "AAA" ? 44 : 24;
+        if (size >= threshold) return { pass: true, message: "Touch targets (" + size + "px) meet minimum size (" + threshold + "px)." };
+        return {
+          pass: false,
+          severity: "warning",
+          message: "Touch targets (" + size + "px) are smaller than recommended minimum (" + threshold + "px).",
+          recommendation: "Increase interactive element size to at least " + threshold + "px. Consider 44px for optimal mobile accessibility."
+        };
+      }
+    },
+    {
+      id: "audio-fallback",
+      wcag: "1.1.1",
+      level: "A",
+      check: function (c) {
+        if (c.hasAudioFallback) return { pass: true, message: "Audio fallback challenge is available." };
+        return {
+          pass: false,
+          severity: level === "AAA" ? "error" : "warning",
+          message: "No audio fallback for visually impaired users.",
+          recommendation: "Provide an audio-based CAPTCHA alternative so blind and low-vision users can complete verification."
+        };
+      }
+    },
+    {
+      id: "skip-option",
+      wcag: "3.3.3",
+      level: "AAA",
+      check: function (c) {
+        if (c.hasSkipOption) return { pass: true, message: "Alternative verification method is available." };
+        return {
+          pass: false,
+          severity: "info",
+          message: "No alternative verification method if CAPTCHA is unsolvable.",
+          recommendation: "Offer an email verification or support contact link as a fallback for users who cannot complete the CAPTCHA."
+        };
+      }
+    },
+    {
+      id: "retry-limit",
+      wcag: "3.3.3",
+      level: "AA",
+      check: function (c) {
+        var max = c.maxAttempts != null ? c.maxAttempts : 5;
+        if (max >= 3) return { pass: true, message: "Users get " + max + " attempts before lockout." };
+        return {
+          pass: false,
+          severity: "warning",
+          message: "Only " + max + " attempt(s) allowed, which may frustrate users with motor/cognitive disabilities.",
+          recommendation: "Allow at least 3 attempts before lockout. Consider progressive delays instead of hard lockouts."
+        };
+      }
+    }
+  ];
+
+  /**
+   * Audit a CAPTCHA configuration.
+   * @param {Object} config - Configuration properties to audit
+   * @returns {Object} Audit report
+   */
+  function audit(config) {
+    config = config || {};
+    var issues = [];
+    var passed = [];
+    var levelWeight = { "A": 1, "AA": 2, "AAA": 3 };
+    var targetWeight = levelWeight[level] || 2;
+
+    for (var i = 0; i < rules.length; i++) {
+      var rule = rules[i];
+      var ruleWeight = levelWeight[rule.level] || 1;
+      if (ruleWeight > targetWeight) continue; // skip rules above target level
+
+      var result = rule.check(config);
+      if (result.pass) {
+        passed.push({ rule: rule.id, wcag: rule.wcag, message: result.message });
+      } else {
+        var severity = result.severity || "warning";
+        if (strict && severity === "warning") severity = "error";
+        issues.push({
+          rule: rule.id,
+          severity: severity,
+          wcag: rule.wcag,
+          level: rule.level,
+          message: result.message,
+          recommendation: result.recommendation || ""
+        });
+      }
+    }
+
+    var total = passed.length + issues.length;
+    var score = total > 0 ? passed.length / total : 1;
+    var errorCount = 0;
+    var warningCount = 0;
+    var infoCount = 0;
+    for (var j = 0; j < issues.length; j++) {
+      if (issues[j].severity === "error") errorCount++;
+      else if (issues[j].severity === "warning") warningCount++;
+      else infoCount++;
+    }
+
+    var grade;
+    if (score >= 0.95 && errorCount === 0) grade = "A+";
+    else if (score >= 0.9 && errorCount === 0) grade = "A";
+    else if (score >= 0.8 && errorCount <= 1) grade = "B";
+    else if (score >= 0.65) grade = "C";
+    else if (score >= 0.5) grade = "D";
+    else grade = "F";
+
+    return {
+      score: Math.round(score * 100) / 100,
+      grade: grade,
+      level: level,
+      total: total,
+      passedCount: passed.length,
+      issueCount: issues.length,
+      errorCount: errorCount,
+      warningCount: warningCount,
+      infoCount: infoCount,
+      issues: issues,
+      passed: passed,
+      conformant: errorCount === 0
+    };
+  }
+
+  /**
+   * Get a plain-text summary of an audit report.
+   * @param {Object} report - Report from audit()
+   * @returns {string} Human-readable summary
+   */
+  function summarize(report) {
+    var lines = [];
+    lines.push("WCAG " + report.level + " Accessibility Audit — Grade: " + report.grade + " (" + (report.score * 100).toFixed(0) + "%)");
+    lines.push("Passed: " + report.passedCount + " / " + report.total + " checks");
+    if (report.conformant) {
+      lines.push("✓ No critical accessibility errors found.");
+    } else {
+      lines.push("✗ " + report.errorCount + " critical error(s) must be fixed for " + report.level + " conformance.");
+    }
+    if (report.warningCount > 0) {
+      lines.push("⚠ " + report.warningCount + " warning(s) should be addressed.");
+    }
+    lines.push("");
+    if (report.issues.length > 0) {
+      lines.push("Issues:");
+      for (var i = 0; i < report.issues.length; i++) {
+        var issue = report.issues[i];
+        var icon = issue.severity === "error" ? "✗" : issue.severity === "warning" ? "⚠" : "ℹ";
+        lines.push("  " + icon + " [WCAG " + issue.wcag + "] " + issue.message);
+        if (issue.recommendation) {
+          lines.push("    → " + issue.recommendation);
+        }
+      }
+    }
+    return lines.join("\n");
+  }
+
+  /**
+   * List all rules the auditor checks.
+   * @returns {Object[]} Array of {id, wcag, level} for each rule
+   */
+  function listRules() {
+    var result = [];
+    for (var i = 0; i < rules.length; i++) {
+      result.push({ id: rules[i].id, wcag: rules[i].wcag, level: rules[i].level });
+    }
+    return result;
+  }
+
+  return {
+    audit: audit,
+    summarize: summarize,
+    listRules: listRules
+  };
+}
+
+
 var gifCaptcha = {
   sanitize: sanitize,
   createSanitizer: createSanitizer,
@@ -11470,6 +11839,7 @@ var gifCaptcha = {
   GIF_RETRY_DELAY_MS: GIF_RETRY_DELAY_MS,
   createEventEmitter: createEventEmitter,
   createI18n: createI18n,
+  createAccessibilityAuditor: createAccessibilityAuditor,
 };
 
 // UMD export — works in Node.js, AMD, and browser globals

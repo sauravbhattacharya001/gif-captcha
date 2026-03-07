@@ -6703,10 +6703,20 @@ function createAuditTrail(options) {
   ];
 
   var entries = [];
+  var _head = 0;   // Ring buffer: index of oldest entry in entries[]
+  var _size = 0;    // Ring buffer: number of live entries
   var nextId = 1;
   var totalLogged = 0;
   var evictedCount = 0;
   var typeCounts = Object.create(null);
+
+  /**
+   * Ring buffer helper: get the logical-index-th entry (0 = oldest).
+   * O(1) access without needing Array.shift().
+   */
+  function _rbGet(logicalIndex) {
+    return entries[(_head + logicalIndex) % maxEntries];
+  }
 
   function record(type, data, meta) {
     if (typeof type !== "string" || type.length === 0) return null;
@@ -6735,11 +6745,16 @@ function createAuditTrail(options) {
       }
     }
 
-    if (entries.length >= maxEntries) {
-      entries.shift();
+    if (_size >= maxEntries) {
+      // O(1) eviction: overwrite the oldest slot and advance _head,
+      // instead of O(n) Array.shift() that copies every element.
+      entries[(_head + _size) % maxEntries] = entry;
+      _head = (_head + 1) % maxEntries;
       evictedCount++;
+    } else {
+      entries.push(entry);
+      _size++;
     }
-    entries.push(entry);
     totalLogged++;
 
     typeCounts[type] = (typeCounts[type] || 0) + 1;
@@ -6756,8 +6771,8 @@ function createAuditTrail(options) {
     var limit = q.limit != null && q.limit > 0 ? q.limit : 100;
     var results = [];
 
-    for (var i = entries.length - 1; i >= 0 && results.length < limit; i--) {
-      var e = entries[i];
+    for (var i = _size - 1; i >= 0 && results.length < limit; i--) {
+      var e = _rbGet(i);
       if (q.type && e.type !== q.type) continue;
       if (q.typePrefix && e.type.indexOf(q.typePrefix) !== 0) continue;
       if (q.since && e.timestamp < q.since) continue;
@@ -6772,20 +6787,20 @@ function createAuditTrail(options) {
 
   function recent(n) {
     n = n != null && n > 0 ? n : 10;
-    var start = Math.max(0, entries.length - n);
+    var start = Math.max(0, _size - n);
     var result = [];
-    for (var i = entries.length - 1; i >= start; i--) {
-      result.push(entries[i]);
+    for (var i = _size - 1; i >= start; i--) {
+      result.push(_rbGet(i));
     }
     return result;
   }
 
   function getById(id) {
-    if (entries.length === 0) return null;
-    var firstId = entries[0].id;
+    if (_size === 0) return null;
+    var firstId = _rbGet(0).id;
     var idx = id - firstId;
-    if (idx < 0 || idx >= entries.length) return null;
-    var entry = entries[idx];
+    if (idx < 0 || idx >= _size) return null;
+    var entry = _rbGet(idx);
     return entry && entry.id === id ? entry : null;
   }
 
@@ -6797,12 +6812,12 @@ function createAuditTrail(options) {
     }
     return {
       totalLogged: totalLogged,
-      currentSize: entries.length,
+      currentSize: _size,
       maxEntries: maxEntries,
       evictedCount: evictedCount,
       typeCounts: typeCountsCopy,
-      oldestTimestamp: entries.length > 0 ? entries[0].timestamp : null,
-      newestTimestamp: entries.length > 0 ? entries[entries.length - 1].timestamp : null,
+      oldestTimestamp: _size > 0 ? _rbGet(0).timestamp : null,
+      newestTimestamp: _size > 0 ? _rbGet(_size - 1).timestamp : null,
     };
   }
 
@@ -6818,8 +6833,8 @@ function createAuditTrail(options) {
       return counts;
     }
 
-    for (var j = 0; j < entries.length; j++) {
-      var e = entries[j];
+    for (var j = 0; j < _size; j++) {
+      var e = _rbGet(j);
       if (opts.since && e.timestamp < opts.since) continue;
       if (opts.until && e.timestamp > opts.until) continue;
       counts[e.type] = (counts[e.type] || 0) + 1;
@@ -6832,8 +6847,8 @@ function createAuditTrail(options) {
       return { buckets: [], total: 0 };
     }
 
-    var since = opts.since || (entries.length > 0 ? entries[0].timestamp : 0);
-    var until = opts.until || (entries.length > 0 ? entries[entries.length - 1].timestamp : 0);
+    var since = opts.since || (_size > 0 ? _rbGet(0).timestamp : 0);
+    var until = opts.until || (_size > 0 ? _rbGet(_size - 1).timestamp : 0);
     if (since > until) return { buckets: [], total: 0 };
 
     var buckets = [];
@@ -6849,8 +6864,8 @@ function createAuditTrail(options) {
     }
 
     var total = 0;
-    for (var i = 0; i < entries.length; i++) {
-      var e = entries[i];
+    for (var i = 0; i < _size; i++) {
+      var e = _rbGet(i);
       if (e.timestamp < since || e.timestamp > until) continue;
       if (opts.type && e.type !== opts.type) continue;
       var bucketIdx = Math.floor((e.timestamp - since) / opts.bucketMs);
@@ -6864,8 +6879,13 @@ function createAuditTrail(options) {
   }
 
   function exportState() {
+    // Linearise ring buffer to a plain array for serialisation
+    var arr = new Array(_size);
+    for (var i = 0; i < _size; i++) {
+      arr[i] = _rbGet(i);
+    }
     return {
-      entries: entries.slice(),
+      entries: arr,
       nextId: nextId,
       totalLogged: totalLogged,
       evictedCount: evictedCount,
@@ -6876,25 +6896,31 @@ function createAuditTrail(options) {
   function importState(state) {
     if (!state || typeof state !== "object") return;
     if (Array.isArray(state.entries)) {
-      entries = state.entries.slice();
-      if (entries.length > maxEntries) {
-        var excess = entries.length - maxEntries;
-        entries = entries.slice(excess);
+      var imported = state.entries.slice();
+      if (imported.length > maxEntries) {
+        var excess = imported.length - maxEntries;
+        imported = imported.slice(excess);
         evictedCount += excess;
       }
+      // Reset ring buffer and load imported entries linearly
+      entries = imported;
+      _head = 0;
+      _size = imported.length;
     }
     if (typeof state.nextId === "number") nextId = state.nextId;
     if (typeof state.totalLogged === "number") totalLogged = state.totalLogged;
     if (typeof state.evictedCount === "number") evictedCount = state.evictedCount;
     typeCounts = Object.create(null);
-    for (var i = 0; i < entries.length; i++) {
-      var t = entries[i].type;
+    for (var i = 0; i < _size; i++) {
+      var t = _rbGet(i).type;
       typeCounts[t] = (typeCounts[t] || 0) + 1;
     }
   }
 
   function reset() {
     entries = [];
+    _head = 0;
+    _size = 0;
     nextId = 1;
     totalLogged = 0;
     evictedCount = 0;

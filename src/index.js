@@ -8118,8 +8118,9 @@ function createABExperimentRunner(options) {
 
   /** Compute per-variant stats */
   function computeVariantStats(variantData) {
-    var attempts = variantData.solves + variantData.fails + variantData.abandons;
-    var solveRate = attempts > 0 ? variantData.solves / attempts : 0;
+    var completedAttempts = variantData.solves + variantData.fails;
+    var totalAttempts = completedAttempts + variantData.abandons;
+    var solveRate = completedAttempts > 0 ? variantData.solves / completedAttempts : 0;
     var times = variantData.solveTimes;
     var avgTime = 0;
     var medianTime = 0;
@@ -8135,7 +8136,8 @@ function createABExperimentRunner(options) {
     return {
       name: variantData.name,
       config: variantData.config,
-      attempts: attempts,
+      attempts: completedAttempts,
+      totalAttempts: totalAttempts,
       solves: variantData.solves,
       fails: variantData.fails,
       abandons: variantData.abandons,
@@ -8143,7 +8145,7 @@ function createABExperimentRunner(options) {
       avgSolveTimeMs: Math.round(avgTime),
       medianSolveTimeMs: Math.round(medianTime),
       p95SolveTimeMs: Math.round(p95Time),
-      abandonRate: attempts > 0 ? variantData.abandons / attempts : 0,
+      abandonRate: totalAttempts > 0 ? variantData.abandons / totalAttempts : 0,
     };
   }
 
@@ -8338,12 +8340,12 @@ function createABExperimentRunner(options) {
 
     // Pairwise z-tests: each variant vs control
     var controlData = exp.variants['control'];
-    var controlAttempts = controlData.solves + controlData.fails + controlData.abandons;
+    var controlAttempts = controlData.solves + controlData.fails;
     var pairwise = [];
     for (var j = 1; j < exp.variantNames.length; j++) {
       var vName = exp.variantNames[j];
       var vData = exp.variants[vName];
-      var vAttempts = vData.solves + vData.fails + vData.abandons;
+      var vAttempts = vData.solves + vData.fails;
       var zResult = proportionZTest(controlAttempts, controlData.solves, vAttempts, vData.solves);
       var controlRate = controlAttempts > 0 ? controlData.solves / controlAttempts : 0;
       var variantRate = vAttempts > 0 ? vData.solves / vAttempts : 0;

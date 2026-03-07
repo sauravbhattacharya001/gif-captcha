@@ -1134,15 +1134,25 @@ function createSetAnalyzer(challenges) {
  * ratings based on statistical performance analysis.
  *
  * @param {Object[]} challenges - Array of challenge objects
+ * @param {Object} [opts] - Options
+ * @param {number} [opts.maxResponsesPerChallenge=1000] - Maximum stored responses per challenge (FIFO eviction)
+ * @param {number} [opts.maxTotalResponses=50000] - Maximum total responses across all challenges
  * @returns {Object} DifficultyCalibrator instance
  */
-function createDifficultyCalibrator(challenges) {
+function createDifficultyCalibrator(challenges, opts) {
   if (!Array.isArray(challenges) || challenges.length === 0) {
     throw new Error("challenges must be a non-empty array");
   }
 
+  opts = opts || {};
+  var _maxPerChallenge = typeof opts.maxResponsesPerChallenge === 'number' && opts.maxResponsesPerChallenge > 0
+    ? Math.floor(opts.maxResponsesPerChallenge) : 1000;
+  var _maxTotal = typeof opts.maxTotalResponses === 'number' && opts.maxTotalResponses > 0
+    ? Math.floor(opts.maxTotalResponses) : 50000;
+
   var _challenges = challenges.slice();
   var _responses = Object.create(null);
+  var _totalCount = 0;
 
   /**
    * Record a response for a challenge.
@@ -1163,11 +1173,37 @@ function createDifficultyCalibrator(challenges) {
       throw new Error("response.correct must be a boolean");
     }
     if (!_responses[challengeId]) _responses[challengeId] = [];
-    _responses[challengeId].push({
+    var bucket = _responses[challengeId];
+
+    // Enforce per-challenge cap (FIFO eviction)
+    if (bucket.length >= _maxPerChallenge) {
+      bucket.shift();
+      _totalCount--;
+    }
+
+    // Enforce total cap — evict oldest from the largest bucket
+    if (_totalCount >= _maxTotal) {
+      var largestId = null;
+      var largestLen = 0;
+      var ids = Object.keys(_responses);
+      for (var ri = 0; ri < ids.length; ri++) {
+        if (_responses[ids[ri]].length > largestLen) {
+          largestLen = _responses[ids[ri]].length;
+          largestId = ids[ri];
+        }
+      }
+      if (largestId && _responses[largestId].length > 0) {
+        _responses[largestId].shift();
+        _totalCount--;
+      }
+    }
+
+    bucket.push({
       timeMs: response.timeMs,
       correct: response.correct,
       skipped: Boolean(response.skipped),
     });
+    _totalCount++;
   }
 
   /**
@@ -1452,6 +1488,7 @@ function createDifficultyCalibrator(challenges) {
     Object.keys(_responses).forEach(function (k) {
       delete _responses[k];
     });
+    _totalCount = 0;
   }
 
   /**
@@ -1468,11 +1505,7 @@ function createDifficultyCalibrator(challenges) {
    * @returns {number}
    */
   function totalResponses() {
-    var count = 0;
-    Object.keys(_responses).forEach(function (id) {
-      count += _responses[id].length;
-    });
-    return count;
+    return _totalCount;
   }
 
   return {

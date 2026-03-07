@@ -204,6 +204,9 @@ function _now() { return Date.now(); }
  */
 function _clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
 
+/** Numeric ascending comparator for Array.sort(). */
+function _numAsc(a, b) { return a - b; }
+
 /**
  * Compute the arithmetic mean of a numeric array.
  * @param {number[]} arr
@@ -223,7 +226,7 @@ function _mean(arr) {
  */
 function _median(arr) {
   if (arr.length === 0) return 0;
-  var sorted = arr.slice().sort(function (a, b) { return a - b; });
+  var sorted = arr.slice().sort(_numAsc);
   var mid = Math.floor(sorted.length / 2);
   return sorted.length % 2 === 0
     ? (sorted[mid - 1] + sorted[mid]) / 2
@@ -822,7 +825,7 @@ function createSetAnalyzer(challenges) {
    */
   function answerLengthStats() {
     var lengths = _challenges.map(function (c) { return c.humanAnswer.length; });
-    lengths.sort(function (a, b) { return a - b; });
+    lengths.sort(_numAsc);
     var n = lengths.length;
     var min = lengths[0];
     var max = lengths[n - 1];
@@ -1282,7 +1285,7 @@ function createDifficultyCalibrator(challenges, opts) {
       if (!r.skipped) times.push(r.timeMs);
     });
 
-    times.sort(function (a, b) { return a - b; });
+    times.sort(_numAsc);
 
     var avgTime = 0;
     var medianTime = 0;
@@ -1294,7 +1297,7 @@ function createDifficultyCalibrator(challenges, opts) {
       avgTime = _mean(times);
       medianTime = _median(times);
 
-      times.sort(function (a, b) { return a - b; });
+      times.sort(_numAsc);
       minTime = times[0];
       maxTime = times[times.length - 1];
 
@@ -1352,7 +1355,7 @@ function createDifficultyCalibrator(challenges, opts) {
 
     var timeScore = 50; // default
     if (allMedians.length > 1 && stats.medianTimeMs > 0) {
-      allMedians.sort(function (a, b) { return a - b; });
+      allMedians.sort(_numAsc);
       // Percentile rank
       var rank = 0;
       allMedians.forEach(function (m) {
@@ -2791,7 +2794,7 @@ function createResponseAnalyzer(opts) {
                tooFastCount: 0, isUniform: false, suspicionFlags: ['no_timing_data'] };
     }
 
-    var sorted = responseTimes.slice().sort(function (a, b) { return a - b; });
+    var sorted = responseTimes.slice().sort(_numAsc);
     var avg = _mean(sorted);
     var median = _median(sorted);
     var stdDev = _stddev(sorted, avg);
@@ -7906,7 +7909,7 @@ function createLoadTester(options) {
    */
   function _buildReport() {
     var duration = endTime - startTime;
-    var sortedTimes = metrics.responseTimes.slice().sort(function (a, b) { return a - b; });
+    var sortedTimes = metrics.responseTimes.slice().sort(_numAsc);
 
     var avgTime = sortedTimes.length > 0
       ? sortedTimes.reduce(function (s, v) { return s + v; }, 0) / sortedTimes.length
@@ -7936,7 +7939,7 @@ function createLoadTester(options) {
 
     // Per-user summaries
     var userSummaries = userResults.map(function (u) {
-      var uSorted = u.responseTimes.slice().sort(function (a, b) { return a - b; });
+      var uSorted = u.responseTimes.slice().sort(_numAsc);
       return {
         userId: u.userId,
         isHuman: u.isHuman,
@@ -8199,7 +8202,7 @@ function createABExperimentRunner(options) {
     var medianTime = _median(times);
     var p95Time = 0;
     if (times.length > 0) {
-      var sorted = times.slice().sort(function (a, b) { return a - b; });
+      var sorted = times.slice().sort(_numAsc);
       p95Time = sorted[Math.floor(sorted.length * 0.95)];
     }
     return {
@@ -8994,7 +8997,7 @@ function createFraudRingDetector(options) {
         if (client.events[r].type === 'solve') solveTimes.push(client.events[r].timestamp);
       }
     }
-    solveTimes.sort(function(a, b) { return a - b; });
+    solveTimes.sort(_numAsc);
     var closeCount = 0;
     for (var s = 1; s < solveTimes.length; s++) { if (solveTimes[s] - solveTimes[s - 1] < timingWindowMs) closeCount++; }
     var timingScore = solveTimes.length > 1 ? Math.min(20, Math.floor(closeCount / (solveTimes.length - 1) * 20)) : 0;
@@ -12779,7 +12782,7 @@ function createChallengeAnalytics(options) {
 
   function _percentile(arr, p) {
     if (arr.length === 0) return 0;
-    var sorted = arr.slice().sort(function (a, b) { return a - b; });
+    var sorted = arr.slice().sort(_numAsc);
     var idx = (p / 100) * (sorted.length - 1);
     var lo = Math.floor(idx);
     var hi = Math.ceil(idx);
@@ -12790,7 +12793,7 @@ function createChallengeAnalytics(options) {
   function _computeTimingStats(arr) {
     if (arr.length === 0) return { count: 0, mean: 0, median: 0, stddev: 0, p5: 0, p95: 0, min: 0, max: 0 };
     var m = _mean(arr);
-    var sorted = arr.slice().sort(function (a, b) { return a - b; });
+    var sorted = arr.slice().sort(_numAsc);
     return {
       count: arr.length,
       mean: Math.round(m * 100) / 100,

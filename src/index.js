@@ -204,6 +204,50 @@ function _now() { return Date.now(); }
  */
 function _clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
 
+/**
+ * Compute the arithmetic mean of a numeric array.
+ * @param {number[]} arr
+ * @returns {number} Mean, or 0 for empty arrays
+ */
+function _mean(arr) {
+  if (arr.length === 0) return 0;
+  var sum = 0;
+  for (var i = 0; i < arr.length; i++) sum += arr[i];
+  return sum / arr.length;
+}
+
+/**
+ * Compute the median of a numeric array (does NOT mutate the input).
+ * @param {number[]} arr
+ * @returns {number} Median, or 0 for empty arrays
+ */
+function _median(arr) {
+  if (arr.length === 0) return 0;
+  var sorted = arr.slice().sort(function (a, b) { return a - b; });
+  var mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? (sorted[mid - 1] + sorted[mid]) / 2
+    : sorted[mid];
+}
+
+/**
+ * Compute the sample standard deviation of a numeric array.
+ * Uses Bessel's correction (n-1 denominator).
+ * @param {number[]} arr
+ * @param {number} [avg] - Pre-computed mean (avoids recomputation)
+ * @returns {number} Standard deviation, or 0 for arrays with fewer than 2 elements
+ */
+function _stddev(arr, avg) {
+  if (arr.length < 2) return 0;
+  var m = avg !== undefined ? avg : _mean(arr);
+  var sumSq = 0;
+  for (var i = 0; i < arr.length; i++) {
+    var d = arr[i] - m;
+    sumSq += d * d;
+  }
+  return Math.sqrt(sumSq / (arr.length - 1));
+}
+
 // ── Text Sanitizer ──────────────────────────────────────────────────
 
 /**
@@ -782,18 +826,9 @@ function createSetAnalyzer(challenges) {
     var n = lengths.length;
     var min = lengths[0];
     var max = lengths[n - 1];
-    var sum = lengths.reduce(function (s, v) { return s + v; }, 0);
-    var mean = sum / n;
-    var median;
-    if (n % 2 === 1) {
-      median = lengths[Math.floor(n / 2)];
-    } else {
-      median = (lengths[n / 2 - 1] + lengths[n / 2]) / 2;
-    }
-    var variance = lengths.reduce(function (s, v) {
-      return s + (v - mean) * (v - mean);
-    }, 0);
-    var stdDev = n > 1 ? Math.sqrt(variance / (n - 1)) : 0;
+    var mean = _mean(lengths);
+    var median = _median(lengths);
+    var stdDev = _stddev(lengths, mean);
     return { min: min, max: max, mean: mean, median: median, stdDev: stdDev };
   }
 
@@ -1256,18 +1291,14 @@ function createDifficultyCalibrator(challenges, opts) {
     var stdDev = 0;
 
     if (times.length > 0) {
-      var sum = 0;
-      times.forEach(function (t) { sum += t; });
-      avgTime = sum / times.length;
+      avgTime = _mean(times);
+      medianTime = _median(times);
 
-      var mid = Math.floor(times.length / 2);
-      medianTime = times.length % 2 === 0
-        ? (times[mid - 1] + times[mid]) / 2
-        : times[mid];
-
+      times.sort(function (a, b) { return a - b; });
       minTime = times[0];
       maxTime = times[times.length - 1];
 
+      // Population stddev (n denominator) — preserved for API compatibility
       var sqDiffSum = 0;
       times.forEach(function (t) {
         var diff = t - avgTime;
@@ -1595,9 +1626,7 @@ function createSecurityScorer(challenges) {
     var uniqueWordRatio = totalWords > 0 ? uniqueCount / totalWords : 0;
 
     // coefficient of variation for answer lengths
-    var mean = 0;
-    for (var i = 0; i < lengths.length; i++) mean += lengths[i];
-    mean = lengths.length > 0 ? mean / lengths.length : 0;
+    var mean = _mean(lengths);
 
     var variance = 0;
     for (var i = 0; i < lengths.length; i++) {
@@ -2763,26 +2792,16 @@ function createResponseAnalyzer(opts) {
     }
 
     var sorted = responseTimes.slice().sort(function (a, b) { return a - b; });
-    var n = sorted.length;
-    var sum = sorted.reduce(function (s, v) { return s + v; }, 0);
-    var avg = sum / n;
-
-    var median;
-    if (n % 2 === 1) {
-      median = sorted[Math.floor(n / 2)];
-    } else {
-      median = (sorted[n / 2 - 1] + sorted[n / 2]) / 2;
-    }
-
-    var variance = sorted.reduce(function (s, v) { return s + (v - avg) * (v - avg); }, 0);
-    var stdDev = n > 1 ? Math.sqrt(variance / (n - 1)) : 0;
+    var avg = _mean(sorted);
+    var median = _median(sorted);
+    var stdDev = _stddev(sorted, avg);
     var cv = avg > 0 ? stdDev / avg : 0;
 
     var tooFastCount = sorted.filter(function (t) { return t < minResponseTimeMs; }).length;
-    var isUniform = n >= 3 && cv < maxTimingCvThreshold;
+    var isUniform = sorted.length >= 3 && cv < maxTimingCvThreshold;
 
     if (tooFastCount > 0) flags.push('fast_responses:' + tooFastCount);
-    if (tooFastCount === n) flags.push('all_responses_suspiciously_fast');
+    if (tooFastCount === sorted.length) flags.push('all_responses_suspiciously_fast');
     if (isUniform) flags.push('uniform_timing');
     if (avg < minResponseTimeMs) flags.push('avg_below_threshold');
 
@@ -8176,15 +8195,11 @@ function createABExperimentRunner(options) {
     var totalAttempts = completedAttempts + variantData.abandons;
     var solveRate = completedAttempts > 0 ? variantData.solves / completedAttempts : 0;
     var times = variantData.solveTimes;
-    var avgTime = 0;
-    var medianTime = 0;
+    var avgTime = _mean(times);
+    var medianTime = _median(times);
     var p95Time = 0;
     if (times.length > 0) {
-      var sum = 0;
-      for (var i = 0; i < times.length; i++) sum += times[i];
-      avgTime = sum / times.length;
       var sorted = times.slice().sort(function (a, b) { return a - b; });
-      medianTime = sorted[Math.floor(sorted.length / 2)];
       p95Time = sorted[Math.floor(sorted.length * 0.95)];
     }
     return {
@@ -8996,9 +9011,7 @@ function createFraudRingDetector(options) {
     }
     var uniformScore = 0;
     if (responseTimes.length >= 3) {
-      var mean = 0;
-      for (var v = 0; v < responseTimes.length; v++) mean += responseTimes[v];
-      mean /= responseTimes.length;
+      var mean = _mean(responseTimes);
       var variance = 0;
       for (var w = 0; w < responseTimes.length; w++) variance += (responseTimes[w] - mean) * (responseTimes[w] - mean);
       variance /= responseTimes.length;
@@ -12762,32 +12775,7 @@ function createChallengeAnalytics(options) {
   }
 
   // -- Internal helpers --
-
-  function _mean(arr) {
-    if (arr.length === 0) return 0;
-    var sum = 0;
-    for (var i = 0; i < arr.length; i++) sum += arr[i];
-    return sum / arr.length;
-  }
-
-  function _median(arr) {
-    if (arr.length === 0) return 0;
-    var sorted = arr.slice().sort(function (a, b) { return a - b; });
-    var mid = Math.floor(sorted.length / 2);
-    return sorted.length % 2 === 0
-      ? (sorted[mid - 1] + sorted[mid]) / 2
-      : sorted[mid];
-  }
-
-  function _stddev(arr, mean) {
-    if (arr.length < 2) return 0;
-    var sumSq = 0;
-    for (var i = 0; i < arr.length; i++) {
-      var d = arr[i] - mean;
-      sumSq += d * d;
-    }
-    return Math.sqrt(sumSq / (arr.length - 1));
-  }
+  // _mean, _median, _stddev are provided by shared top-level helpers
 
   function _percentile(arr, p) {
     if (arr.length === 0) return 0;

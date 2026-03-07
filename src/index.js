@@ -363,18 +363,22 @@ function textSimilarity(a, b) {
   if (wordsA.length === 0 || wordsB.length === 0) return 0;
 
   var setA = {};
-  var setB = {};
-  wordsA.forEach(function (w) { setA[w] = true; });
-  wordsB.forEach(function (w) { setB[w] = true; });
+  var uniqueA = 0;
+  wordsA.forEach(function (w) { if (!setA[w]) { setA[w] = true; uniqueA++; } });
 
   var intersection = 0;
-  var union = Object.assign({}, setA);
-  Object.keys(setB).forEach(function (w) {
-    if (setA[w]) intersection++;
-    union[w] = true;
+  var uniqueB = 0;
+  var setB = {};
+  wordsB.forEach(function (w) {
+    if (!setB[w]) {
+      setB[w] = true;
+      uniqueB++;
+      if (setA[w]) intersection++;
+    }
   });
 
-  return intersection / Object.keys(union).length;
+  // |A ∪ B| = |A| + |B| − |A ∩ B|  (avoids allocating a union object)
+  return intersection / (uniqueA + uniqueB - intersection);
 }
 
 /**
@@ -8754,6 +8758,7 @@ function createFraudRingDetector(options) {
       }
       clients[clientId] = {
         id: clientId, events: [], fingerprints: [], ips: [], userAgents: [],
+        _ipSet: {}, _fpSet: {}, _uaSet: {},
         solveCount: 0, failCount: 0, firstSeen: Date.now(), lastSeen: Date.now(), ringId: null
       };
       clientOrder.push(clientId);
@@ -8777,9 +8782,9 @@ function createFraudRingDetector(options) {
     client.lastSeen = ts;
     if (event.type === 'solve') client.solveCount++;
     if (event.type === 'fail') client.failCount++;
-    if (event.ip && client.ips.indexOf(event.ip) === -1) client.ips.push(event.ip);
-    if (event.fingerprint && client.fingerprints.indexOf(event.fingerprint) === -1) client.fingerprints.push(event.fingerprint);
-    if (event.userAgent && client.userAgents.indexOf(event.userAgent) === -1) client.userAgents.push(event.userAgent);
+    if (event.ip && !client._ipSet[event.ip]) { client._ipSet[event.ip] = true; client.ips.push(event.ip); }
+    if (event.fingerprint && !client._fpSet[event.fingerprint]) { client._fpSet[event.fingerprint] = true; client.fingerprints.push(event.fingerprint); }
+    if (event.userAgent && !client._uaSet[event.userAgent]) { client._uaSet[event.userAgent] = true; client.userAgents.push(event.userAgent); }
     if (client.events.length > 200) client.events = client.events.slice(-200);
     return record;
   }
@@ -8813,18 +8818,25 @@ function createFraudRingDetector(options) {
   /**
    * Build a map of key → list of distinct client IDs that share that key.
    * Reused by findSharedFingerprints and findIPClusters to avoid code duplication.
+   * Uses a parallel set-of-sets for O(1) deduplication instead of O(n) indexOf
+   * per client — reduces from O(n*m) to O(n+m) for n clients with m keys each.
    * @param {string} prop – client property to group by ('fingerprints' | 'ips')
    * @returns {Object.<string, string[]>}
    */
   function _buildGroupMap(prop) {
     var map = {};
+    var seen = {};
     var ids = Object.keys(clients);
     for (var i = 0; i < ids.length; i++) {
-      var arr = clients[ids[i]][prop];
+      var cid = ids[i];
+      var arr = clients[cid][prop];
       for (var j = 0; j < arr.length; j++) {
         var key = arr[j];
-        if (!map[key]) map[key] = [];
-        if (map[key].indexOf(ids[i]) === -1) map[key].push(ids[i]);
+        if (!map[key]) { map[key] = []; seen[key] = {}; }
+        if (!seen[key][cid]) {
+          seen[key][cid] = true;
+          map[key].push(cid);
+        }
       }
     }
     return map;

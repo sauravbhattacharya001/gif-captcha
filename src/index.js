@@ -6331,13 +6331,17 @@ function createAdaptiveTimeout(options) {
       }
     }
     arr.splice(lo, 0, value);
-    // Evict when over capacity. Previous code used arr.shift() which always
-    // removed the *smallest* value from the sorted array, systematically
-    // biasing percentile calculations upward over time. Instead, remove
-    // from the middle of the array (median-adjacent) to avoid skewing
-    // either tail of the distribution.
+    // Evict when over capacity.  The original arr.shift() systematically
+    // removed the *smallest* value, biasing percentile calculations upward.
+    // The subsequent fix evicted from the middle (arr.length >>> 1), which
+    // systematically removed median values and created a bimodal
+    // distribution — overrepresenting both tails and inflating higher
+    // percentiles used for timeout calibration.
+    //
+    // Correct approach: evict at a random index so no part of the
+    // distribution is systematically thinned.
     if (arr.length > maxHistoryPerDifficulty) {
-      var evictIdx = arr.length >>> 1;
+      var evictIdx = secureRandomInt(arr.length);
       arr.splice(evictIdx, 1);
     }
   }

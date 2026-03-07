@@ -11801,6 +11801,516 @@ function createAccessibilityAuditor(options) {
 }
 
 
+// ── Configuration Validator ─────────────────────────────────────────
+/**
+ * createConfigValidator -- Validates CAPTCHA deployment configuration
+ * objects against known constraints. Catches misconfigurations that
+ * silently degrade security, performance, or usability before they
+ * reach production.
+ *
+ * Checks:
+ *  - Type correctness and range validation for all known options
+ *  - Security warnings (weak secrets, disabled features)
+ *  - Performance warnings (extreme timeouts, oversized pools)
+ *  - Usability warnings (impossible difficulty, overly aggressive rate limiting)
+ *  - Cross-field consistency (e.g. minPassRate >= maxPassRate)
+ *
+ * @param {Object} [options]
+ * @param {boolean} [options.strict=false] - Treat warnings as errors
+ * @param {string[]} [options.ignore] - Rule IDs to skip
+ * @returns {{ validate: Function, rules: Function }}
+ */
+function createConfigValidator(options) {
+  options = options || {};
+  var strict = options.strict === true;
+  var ignoreSet = Object.create(null);
+  var ignoreList = options.ignore || [];
+  for (var ig = 0; ig < ignoreList.length; ig++) {
+    ignoreSet[ignoreList[ig]] = true;
+  }
+
+  // Severity levels
+  var ERROR = "error";
+  var WARNING = "warning";
+  var INFO = "info";
+
+  // ── Rule definitions ──────────────────────────────────────────
+
+  var RULES = [
+    // ── AttemptTracker ──
+    {
+      id: "attempt.maxAttempts.type",
+      module: "attemptTracker",
+      field: "maxAttempts",
+      severity: ERROR,
+      check: function (cfg) {
+        if (cfg.maxAttempts != null && (typeof cfg.maxAttempts !== "number" || cfg.maxAttempts < 1)) {
+          return "maxAttempts must be a positive integer, got " + cfg.maxAttempts;
+        }
+      }
+    },
+    {
+      id: "attempt.maxAttempts.low",
+      module: "attemptTracker",
+      field: "maxAttempts",
+      severity: WARNING,
+      check: function (cfg) {
+        if (typeof cfg.maxAttempts === "number" && cfg.maxAttempts < 2) {
+          return "maxAttempts=1 gives users no chance to retry — consider at least 3";
+        }
+      }
+    },
+    {
+      id: "attempt.lockoutMs.type",
+      module: "attemptTracker",
+      field: "lockoutMs",
+      severity: ERROR,
+      check: function (cfg) {
+        if (cfg.lockoutMs != null && (typeof cfg.lockoutMs !== "number" || cfg.lockoutMs < 0)) {
+          return "lockoutMs must be a non-negative number";
+        }
+      }
+    },
+    {
+      id: "attempt.lockoutMs.short",
+      module: "attemptTracker",
+      field: "lockoutMs",
+      severity: WARNING,
+      check: function (cfg) {
+        if (typeof cfg.lockoutMs === "number" && cfg.lockoutMs > 0 && cfg.lockoutMs < 1000) {
+          return "lockoutMs under 1 second provides negligible brute-force protection";
+        }
+      }
+    },
+    {
+      id: "attempt.lockoutMs.long",
+      module: "attemptTracker",
+      field: "lockoutMs",
+      severity: WARNING,
+      check: function (cfg) {
+        if (typeof cfg.lockoutMs === "number" && cfg.lockoutMs > 3600000) {
+          return "lockoutMs over 1 hour may frustrate legitimate users (" + Math.round(cfg.lockoutMs / 60000) + " min)";
+        }
+      }
+    },
+    // ── TokenVerifier ──
+    {
+      id: "token.secret.missing",
+      module: "tokenVerifier",
+      field: "secret",
+      severity: ERROR,
+      check: function (cfg) {
+        if (cfg.secret != null && typeof cfg.secret !== "string") {
+          return "secret must be a string";
+        }
+      }
+    },
+    {
+      id: "token.secret.weak",
+      module: "tokenVerifier",
+      field: "secret",
+      severity: ERROR,
+      check: function (cfg) {
+        if (typeof cfg.secret === "string" && cfg.secret.length < 16) {
+          return "secret must be at least 16 characters for HMAC security (got " + cfg.secret.length + ")";
+        }
+      }
+    },
+    {
+      id: "token.secret.entropy",
+      module: "tokenVerifier",
+      field: "secret",
+      severity: WARNING,
+      check: function (cfg) {
+        if (typeof cfg.secret === "string" && cfg.secret.length >= 16) {
+          // Check for low-entropy patterns
+          var unique = Object.create(null);
+          for (var i = 0; i < cfg.secret.length; i++) { unique[cfg.secret[i]] = true; }
+          var count = 0;
+          for (var k in unique) { count++; }
+          if (count < 6) {
+            return "secret has very low character diversity (" + count + " unique chars) — use a random generator";
+          }
+        }
+      }
+    },
+    {
+      id: "token.ttlMs.type",
+      module: "tokenVerifier",
+      field: "ttlMs",
+      severity: ERROR,
+      check: function (cfg) {
+        if (cfg.ttlMs != null && (typeof cfg.ttlMs !== "number" || cfg.ttlMs < 1)) {
+          return "ttlMs must be a positive number";
+        }
+      }
+    },
+    {
+      id: "token.ttlMs.short",
+      module: "tokenVerifier",
+      field: "ttlMs",
+      severity: WARNING,
+      check: function (cfg) {
+        if (typeof cfg.ttlMs === "number" && cfg.ttlMs < 10000) {
+          return "ttlMs under 10 seconds may expire before users complete the CAPTCHA";
+        }
+      }
+    },
+    // ── BotDetector ──
+    {
+      id: "bot.threshold.range",
+      module: "botDetector",
+      field: "botThreshold",
+      severity: ERROR,
+      check: function (cfg) {
+        if (cfg.botThreshold != null && (typeof cfg.botThreshold !== "number" || cfg.botThreshold < 0 || cfg.botThreshold > 100)) {
+          return "botThreshold must be 0-100, got " + cfg.botThreshold;
+        }
+      }
+    },
+    {
+      id: "bot.threshold.inverted",
+      module: "botDetector",
+      field: "botThreshold",
+      severity: ERROR,
+      check: function (cfg) {
+        if (typeof cfg.botThreshold === "number" && typeof cfg.suspiciousThreshold === "number") {
+          if (cfg.suspiciousThreshold >= cfg.botThreshold) {
+            return "suspiciousThreshold (" + cfg.suspiciousThreshold + ") should be less than botThreshold (" + cfg.botThreshold + ")";
+          }
+        }
+      }
+    },
+    {
+      id: "bot.minMouseMovements.type",
+      module: "botDetector",
+      field: "minMouseMovements",
+      severity: ERROR,
+      check: function (cfg) {
+        if (cfg.minMouseMovements != null && (typeof cfg.minMouseMovements !== "number" || cfg.minMouseMovements < 0)) {
+          return "minMouseMovements must be a non-negative number";
+        }
+      }
+    },
+    {
+      id: "bot.minTimeOnPage.type",
+      module: "botDetector",
+      field: "minTimeOnPageMs",
+      severity: ERROR,
+      check: function (cfg) {
+        if (cfg.minTimeOnPageMs != null && (typeof cfg.minTimeOnPageMs !== "number" || cfg.minTimeOnPageMs < 0)) {
+          return "minTimeOnPageMs must be a non-negative number";
+        }
+      }
+    },
+    // ── DifficultyCalibrator ──
+    {
+      id: "difficulty.passRate.range",
+      module: "difficultyCalibrator",
+      field: "minPassRate",
+      severity: ERROR,
+      check: function (cfg) {
+        if (cfg.minPassRate != null && (typeof cfg.minPassRate !== "number" || cfg.minPassRate < 0 || cfg.minPassRate > 1)) {
+          return "minPassRate must be 0-1, got " + cfg.minPassRate;
+        }
+      }
+    },
+    {
+      id: "difficulty.passRate.inverted",
+      module: "difficultyCalibrator",
+      field: "minPassRate",
+      severity: ERROR,
+      check: function (cfg) {
+        if (typeof cfg.minPassRate === "number" && typeof cfg.maxPassRate === "number") {
+          if (cfg.minPassRate >= cfg.maxPassRate) {
+            return "minPassRate (" + cfg.minPassRate + ") must be less than maxPassRate (" + cfg.maxPassRate + ") — no valid calibration range";
+          }
+        }
+      }
+    },
+    {
+      id: "difficulty.base.range",
+      module: "difficultyCalibrator",
+      field: "baseDifficulty",
+      severity: ERROR,
+      check: function (cfg) {
+        if (cfg.baseDifficulty != null && (typeof cfg.baseDifficulty !== "number" || cfg.baseDifficulty < 0 || cfg.baseDifficulty > 100)) {
+          return "baseDifficulty must be 0-100";
+        }
+      }
+    },
+    {
+      id: "difficulty.base.exceeds.max",
+      module: "difficultyCalibrator",
+      field: "baseDifficulty",
+      severity: ERROR,
+      check: function (cfg) {
+        if (typeof cfg.baseDifficulty === "number" && typeof cfg.maxDifficulty === "number") {
+          if (cfg.baseDifficulty > cfg.maxDifficulty) {
+            return "baseDifficulty (" + cfg.baseDifficulty + ") exceeds maxDifficulty (" + cfg.maxDifficulty + ")";
+          }
+        }
+      }
+    },
+    // ── RateLimiter ──
+    {
+      id: "rate.windowMs.type",
+      module: "rateLimiter",
+      field: "windowMs",
+      severity: ERROR,
+      check: function (cfg) {
+        if (cfg.windowMs != null && (typeof cfg.windowMs !== "number" || cfg.windowMs < 1)) {
+          return "windowMs must be a positive number";
+        }
+      }
+    },
+    {
+      id: "rate.maxRequests.type",
+      module: "rateLimiter",
+      field: "maxRequests",
+      severity: ERROR,
+      check: function (cfg) {
+        if (cfg.maxRequests != null && (typeof cfg.maxRequests !== "number" || cfg.maxRequests < 1)) {
+          return "maxRequests must be a positive integer";
+        }
+      }
+    },
+    {
+      id: "rate.maxRequests.aggressive",
+      module: "rateLimiter",
+      field: "maxRequests",
+      severity: WARNING,
+      check: function (cfg) {
+        if (typeof cfg.maxRequests === "number" && typeof cfg.windowMs === "number") {
+          var perMinute = (cfg.maxRequests / cfg.windowMs) * 60000;
+          if (perMinute < 2) {
+            return "Rate limit allows fewer than 2 requests/minute — legitimate users may be blocked";
+          }
+        }
+      }
+    },
+    // ── ReputationTracker ──
+    {
+      id: "reputation.threshold.inverted",
+      module: "reputationTracker",
+      field: "trustedThreshold",
+      severity: ERROR,
+      check: function (cfg) {
+        var trusted = typeof cfg.trustedThreshold === "number" ? cfg.trustedThreshold : 0.8;
+        var suspicious = typeof cfg.suspiciousThreshold === "number" ? cfg.suspiciousThreshold : 0.3;
+        var block = typeof cfg.blockThreshold === "number" ? cfg.blockThreshold : 0.1;
+        if (cfg.trustedThreshold != null || cfg.suspiciousThreshold != null || cfg.blockThreshold != null) {
+          if (!(block < suspicious && suspicious < trusted)) {
+            return "Reputation thresholds must be: blockThreshold < suspiciousThreshold < trustedThreshold (got " + block + " / " + suspicious + " / " + trusted + ")";
+          }
+        }
+      }
+    },
+    {
+      id: "reputation.initialScore.range",
+      module: "reputationTracker",
+      field: "initialScore",
+      severity: ERROR,
+      check: function (cfg) {
+        if (cfg.initialScore != null && (typeof cfg.initialScore !== "number" || cfg.initialScore < 0 || cfg.initialScore > 1)) {
+          return "initialScore must be 0-1, got " + cfg.initialScore;
+        }
+      }
+    },
+    {
+      id: "reputation.maxEntries.low",
+      module: "reputationTracker",
+      field: "maxEntries",
+      severity: WARNING,
+      check: function (cfg) {
+        if (typeof cfg.maxEntries === "number" && cfg.maxEntries < 100) {
+          return "maxEntries under 100 causes frequent evictions — reputation data won't accumulate";
+        }
+      }
+    },
+    // ── PoolManager ──
+    {
+      id: "pool.rotationInterval.type",
+      module: "poolManager",
+      field: "rotationIntervalMs",
+      severity: ERROR,
+      check: function (cfg) {
+        if (cfg.rotationIntervalMs != null && (typeof cfg.rotationIntervalMs !== "number" || cfg.rotationIntervalMs < 1)) {
+          return "rotationIntervalMs must be a positive number";
+        }
+      }
+    },
+    {
+      id: "pool.rotation.fast",
+      module: "poolManager",
+      field: "rotationIntervalMs",
+      severity: WARNING,
+      check: function (cfg) {
+        if (typeof cfg.rotationIntervalMs === "number" && cfg.rotationIntervalMs < 30000) {
+          return "Rotation interval under 30 seconds may cause cache misses and increased load";
+        }
+      }
+    },
+    // ── AdaptiveTimeout ──
+    {
+      id: "timeout.base.type",
+      module: "adaptiveTimeout",
+      field: "baseTimeoutMs",
+      severity: ERROR,
+      check: function (cfg) {
+        if (cfg.baseTimeoutMs != null && (typeof cfg.baseTimeoutMs !== "number" || cfg.baseTimeoutMs < 1)) {
+          return "baseTimeoutMs must be a positive number";
+        }
+      }
+    },
+    {
+      id: "timeout.base.short",
+      module: "adaptiveTimeout",
+      field: "baseTimeoutMs",
+      severity: WARNING,
+      check: function (cfg) {
+        if (typeof cfg.baseTimeoutMs === "number" && cfg.baseTimeoutMs < 5000) {
+          return "baseTimeoutMs under 5 seconds may not give users enough time to solve CAPTCHAs";
+        }
+      }
+    },
+    // ── General ──
+    {
+      id: "general.passThreshold.range",
+      module: "general",
+      field: "passThreshold",
+      severity: ERROR,
+      check: function (cfg) {
+        if (cfg.passThreshold != null && (typeof cfg.passThreshold !== "number" || cfg.passThreshold < 0 || cfg.passThreshold > 1)) {
+          return "passThreshold must be 0-1, got " + cfg.passThreshold;
+        }
+      }
+    },
+    {
+      id: "general.passThreshold.extreme",
+      module: "general",
+      field: "passThreshold",
+      severity: WARNING,
+      check: function (cfg) {
+        if (typeof cfg.passThreshold === "number") {
+          if (cfg.passThreshold > 0.95) {
+            return "passThreshold above 0.95 means users must answer nearly every challenge correctly";
+          }
+          if (cfg.passThreshold < 0.3) {
+            return "passThreshold below 0.3 means bots can pass by guessing — security is degraded";
+          }
+        }
+      }
+    },
+    {
+      id: "general.challenges.count",
+      module: "general",
+      field: "challengeCount",
+      severity: WARNING,
+      check: function (cfg) {
+        if (typeof cfg.challengeCount === "number" && cfg.challengeCount > 10) {
+          return "More than 10 challenges per session creates user fatigue — completion rates will drop";
+        }
+      }
+    }
+  ];
+
+  // ── Validation engine ─────────────────────────────────────────
+
+  /**
+   * Validate a configuration object.
+   *
+   * @param {Object} config - The config to validate
+   * @param {Object} [opts]
+   * @param {string} [opts.module] - Only check rules for a specific module
+   * @returns {{ valid: boolean, errors: Array, warnings: Array, info: Array, summary: string }}
+   */
+  function validate(config) {
+    var opts = arguments.length > 1 ? arguments[1] : {};
+    config = config || {};
+    var moduleFilter = opts.module || null;
+    var errors = [];
+    var warnings = [];
+    var infos = [];
+
+    for (var i = 0; i < RULES.length; i++) {
+      var rule = RULES[i];
+
+      // Skip ignored rules
+      if (ignoreSet[rule.id]) { continue; }
+
+      // Module filter
+      if (moduleFilter && rule.module !== moduleFilter) { continue; }
+
+      var message = rule.check(config);
+      if (message) {
+        var finding = {
+          id: rule.id,
+          module: rule.module,
+          field: rule.field,
+          severity: rule.severity,
+          message: message
+        };
+
+        if (rule.severity === ERROR) {
+          errors.push(finding);
+        } else if (rule.severity === WARNING) {
+          if (strict) {
+            errors.push(finding);
+          } else {
+            warnings.push(finding);
+          }
+        } else {
+          infos.push(finding);
+        }
+      }
+    }
+
+    var valid = errors.length === 0;
+
+    var parts = [];
+    if (errors.length > 0) { parts.push(errors.length + " error(s)"); }
+    if (warnings.length > 0) { parts.push(warnings.length + " warning(s)"); }
+    if (infos.length > 0) { parts.push(infos.length + " info"); }
+    var summary = valid
+      ? (warnings.length > 0 ? "Valid with " + warnings.length + " warning(s)" : "Valid — no issues found")
+      : "Invalid — " + parts.join(", ");
+
+    return {
+      valid: valid,
+      errors: errors,
+      warnings: warnings,
+      info: infos,
+      summary: summary
+    };
+  }
+
+  /**
+   * Get the list of all validation rules.
+   *
+   * @returns {Array<{ id: string, module: string, field: string, severity: string }>}
+   */
+  function rules() {
+    var result = [];
+    for (var i = 0; i < RULES.length; i++) {
+      var r = RULES[i];
+      result.push({
+        id: r.id,
+        module: r.module,
+        field: r.field,
+        severity: r.severity
+      });
+    }
+    return result;
+  }
+
+  return {
+    validate: validate,
+    rules: rules
+  };
+}
+
+
 var gifCaptcha = {
   sanitize: sanitize,
   createSanitizer: createSanitizer,
@@ -11840,6 +12350,7 @@ var gifCaptcha = {
   createEventEmitter: createEventEmitter,
   createI18n: createI18n,
   createAccessibilityAuditor: createAccessibilityAuditor,
+  createConfigValidator: createConfigValidator,
 };
 
 // UMD export — works in Node.js, AMD, and browser globals

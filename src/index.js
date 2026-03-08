@@ -5046,9 +5046,6 @@ function createRateLimiter(options) {
 
   /**
    * Remove expired timestamps from a client's record.
-   */
-  /**
-   * Remove expired timestamps from a client's record.
    * Uses in-place splice instead of slice to avoid allocating a new array
    * on every prune call — reduces GC pressure on the hot path.
    */
@@ -12972,7 +12969,9 @@ function createGeoRiskScorer(options) {
 
   function _pushCapped(arr, item, cap) {
     arr.push(item);
-    while (arr.length > cap) { arr.shift(); }
+    if (arr.length > cap) {
+      arr.splice(0, arr.length - cap);
+    }
   }
 
   function _toAction(score) {

@@ -81,7 +81,10 @@ function createGeoRiskScorer(options) {
 
   function _pushCapped(arr, item, cap) {
     arr.push(item);
-    while (arr.length > cap) { arr.shift(); }
+    if (arr.length > cap) {
+      // Splice from front in one call instead of repeated shift() — O(n) once vs O(k*n)
+      arr.splice(0, arr.length - cap);
+    }
   }
 
   function _toAction(score) {
@@ -247,13 +250,24 @@ function createGeoRiskScorer(options) {
     if (country) {
       var cc = country.toUpperCase();
       var s = _regionStats[cc];
-      return s ? { country: cc, attempts: s.attempts, solves: s.solves, solveRate: s.attempts > 0 ? Math.round((s.solves / s.attempts) * 1000) / 1000 : 0 } : null;
+      if (!s) return null;
+      return {
+        country: cc,
+        attempts: s.attempts,
+        solves: s.solves,
+        solveRate: s.attempts > 0 ? Math.round((s.solves / s.attempts) * 1000) / 1000 : 0
+      };
     }
     var result = [];
     var keys = Object.keys(_regionStats);
     for (var i = 0; i < keys.length; i++) {
       var st = _regionStats[keys[i]];
-      result.push({ country: keys[i], attempts: st.attempts, solves: st.solves, solveRate: st.attempts > 0 ? Math.round((st.solves / st.attempts) * 1000) / 1000 : 0 });
+      result.push({
+        country: keys[i],
+        attempts: st.attempts,
+        solves: st.solves,
+        solveRate: st.attempts > 0 ? Math.round((st.solves / st.attempts) * 1000) / 1000 : 0
+      });
     }
     result.sort(function (a, b) { return b.attempts - a.attempts; });
     return result;

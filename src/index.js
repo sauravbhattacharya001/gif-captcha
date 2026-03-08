@@ -13832,6 +13832,9 @@ function createDeviceCohortAnalyzer(options) {
   return { record: record, getCohortProfile: getCohortProfile, getAllProfiles: getAllProfiles, compareCohorts: compareCohorts, summary: dcaSummary, reset: reset, exportState: exportState, importState: importState };
 }
 
+
+// ── Honeypot Injector (loaded from separate file) ───────────────────
+var createHoneypotInjector = require("./honeypot-injector").createHoneypotInjector;
 var gifCaptcha = {
   sanitize: sanitize,
   createSanitizer: createSanitizer,
@@ -13876,6 +13879,7 @@ var gifCaptcha = {
   createGeoRiskScorer: createGeoRiskScorer,
   createProofOfWork: createProofOfWork,
   createDeviceCohortAnalyzer: createDeviceCohortAnalyzer,
+  createHoneypotInjector: createHoneypotInjector,
 };
 
 // UMD export — works in Node.js, AMD, and browser globals

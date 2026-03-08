@@ -63,6 +63,24 @@ const { createChallenge, createAttemptTracker, createSessionManager } = require(
   - [createTrustScoreEngine](#createtrustscoreengineoptions)
 - [Event Emitter](#event-emitter)
   - [createEventEmitter](#createeventemitteroptions)
+- [Internationalization (i18n)](#internationalization-i18n)
+  - [createI18n](#createi18noptions)
+- [Accessibility Auditor](#accessibility-auditor)
+  - [createAccessibilityAuditor](#createaccessibilityauditoroptions)
+- [Configuration Validator](#configuration-validator)
+  - [createConfigValidator](#createconfigvalidatoroptions)
+- [Challenge Analytics](#challenge-analytics)
+  - [createChallengeAnalytics](#createchallengeanalyticsoptions)
+- [Geographic Risk Scorer](#geographic-risk-scorer)
+  - [createGeoRiskScorer](#creategeoriskscoreroptions)
+- [Proof of Work](#proof-of-work)
+  - [createProofOfWork](#createproofofworkoptions)
+- [Behavioral Biometrics](#behavioral-biometrics)
+  - [createBehavioralBiometrics](#createbehavioralbiometricsoptions)
+- [Challenge Decay Manager](#challenge-decay-manager)
+  - [createChallengeDecayManager](#createchallengedecaymanageroptions)
+- [Solve Pattern Fingerprinter](#solve-pattern-fingerprinter)
+  - [createSolvePatternFingerprinter](#createsolvepatternfingerprinteroptions)
 - [Constants](#constants)
 
 ---
@@ -891,6 +909,285 @@ emitter.once('session:end', data => console.log('Session ended'));
 emitter.on('*', (event, data) => console.log(`[${event}]`, data));
 
 emitter.emit('challenge:issued', { type: 'gif-selection', clientId: 'c-1' });
+```
+
+---
+
+## Internationalization (i18n)
+
+### `createI18n(options)`
+
+Multi-language support for CAPTCHA UI strings — instructions, errors, accessibility text. Ships with 12 built-in locales. Supports interpolation (`{name}` placeholders) and runtime locale registration.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `locale` | `string` | `"en"` | Active locale code |
+| `fallbackLocale` | `string` | `"en"` | Fallback when key is missing in active locale |
+| `locales` | `Object?` | — | Extra locale maps to merge (key → translations object) |
+
+**Built-in locales:** en, es, fr, de, pt, ja, zh, ko, ar, hi, ru, it
+
+**Returns:** `{ t, addLocale, setLocale, getLocale, getAvailableLocales, hasKey, exportCatalog }`
+
+```js
+const i18n = createI18n({ locale: "es" });
+i18n.t("instructions");                    // "Selecciona la imagen correcta..."
+i18n.t("timer.remaining", { seconds: 30 }); // "Tiempo restante: 30 segundos"
+i18n.setLocale("fr");
+i18n.addLocale("th", { instructions: "เลือกภาพ..." });
+```
+
+---
+
+## Accessibility Auditor
+
+### `createAccessibilityAuditor(options)`
+
+Audits CAPTCHA configuration and DOM structure against WCAG 2.1 accessibility guidelines. Checks for alt text, keyboard navigation, color contrast, focus management, audio alternatives, and screen reader compatibility.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `level` | `string` | `"AA"` | WCAG conformance level (`"A"`, `"AA"`, `"AAA"`) |
+| `includeRecommendations` | `boolean` | `true` | Include best-practice recommendations |
+
+**Returns:** `{ audit, summarize, listRules }`
+
+```js
+const auditor = createAccessibilityAuditor({ level: "AA" });
+
+const results = auditor.audit(captchaConfig);
+// [{ pass: false, severity: "error", message: "...", recommendation: "..." }, ...]
+
+const summary = auditor.summarize(results);
+// { total: 12, passed: 9, failed: 3, errors: 1, warnings: 2 }
+
+const rules = auditor.listRules();
+```
+
+---
+
+## Configuration Validator
+
+### `createConfigValidator(options)`
+
+Validates CAPTCHA deployment configuration objects against known constraints. Catches misconfigurations — type errors, insecure defaults, range violations, deprecated fields — before they silently degrade security or usability in production.
+
+**Returns:** `{ validate, rules }`
+
+```js
+const validator = createConfigValidator();
+
+const result = validator.validate({
+  secret: "short",           // too short for HMAC
+  tokenTtlMs: -100,          // negative TTL
+  maxAttempts: 0,            // disables attempt limits
+});
+
+result.valid;      // false
+result.errors;     // [{ id: "token.secret.weak", message: "...", severity: "error" }]
+result.warnings;   // [{ id: "...", message: "...", severity: "warning" }]
+result.summary;    // "2 errors, 1 warning, 0 info"
+
+const rules = validator.rules();
+// [{ id: "token.secret.weak", module: "tokenVerifier", severity: "error" }, ...]
+```
+
+---
+
+## Challenge Analytics
+
+### `createChallengeAnalytics(options)`
+
+Tracks solve rates, timing distributions, difficulty effectiveness, and hourly patterns across challenges. Supports LRU eviction for long-running deployments.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `maxChallenges` | `number` | `1000` | Maximum tracked challenges (LRU eviction) |
+
+**Returns:** `{ record, getChallengeStats, ranking, poolStats, flagged, difficultyEffectiveness, hourlyPatterns, exportState, importState, getStats, reset }`
+
+```js
+const analytics = createChallengeAnalytics();
+
+analytics.record({
+  challengeId: "cat-gif-01",
+  event: "correct",
+  solveTimeMs: 3200,
+  difficulty: 3
+});
+
+const stats = analytics.getChallengeStats("cat-gif-01");
+// { solveRate: 0.72, abandonRate: 0.15, timing: { mean: 3400, ... } }
+
+const top = analytics.ranking("solveRate", { limit: 5 });
+const flagged = analytics.flagged({ minSolveRate: 0.95 });
+const patterns = analytics.hourlyPatterns();
+```
+
+---
+
+## Geographic Risk Scorer
+
+### `createGeoRiskScorer(options)`
+
+Scores CAPTCHA attempts based on geographic signals — country risk tiers, VPN/proxy/Tor detection, distance anomalies, and IP reputation. Supports manual block/allow lists per IP.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `highRiskCountries` | `string[]` | Built-in list | ISO country codes considered high-risk |
+| `blockedCountries` | `string[]` | `[]` | Countries to block outright |
+| `vpnPenalty` | `number` | `30` | Score penalty for VPN/proxy detection |
+| `torPenalty` | `number` | `50` | Score penalty for Tor exit nodes |
+
+**Returns:** `{ score, scoreBatch, recordAttempt, getRegionStats, blockIP, allowIP, unblockIP, unallowIP, isBlocked, isAllowed, summary, reset }`
+
+```js
+const geo = createGeoRiskScorer();
+
+const risk = geo.score({
+  ip: "198.51.100.42",
+  country: "NG",
+  isVpn: true
+});
+// { name: "high_risk_country", score: 60, detail: "NG is high-risk" }
+
+geo.blockIP("10.0.0.1");
+geo.isBlocked("10.0.0.1"); // true
+
+const stats = geo.getRegionStats();
+```
+
+---
+
+## Proof of Work
+
+### `createProofOfWork(options)`
+
+SHA-256 hash-based proof-of-work challenges. Clients must find a nonce that produces a hash with N leading zero bits, proving computational effort. Adaptive difficulty adjusts based on solve times.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `difficulty` | `number` | `16` | Required leading zero bits |
+| `challengeTtlMs` | `number` | `60000` | Challenge expiration (1 minute) |
+| `maxPending` | `number` | `1000` | Max outstanding challenges |
+| `adaptiveDifficulty` | `boolean` | `false` | Auto-adjust difficulty from solve times |
+| `bindIp` | `boolean` | `true` | Bind challenges to originating IP |
+
+**Returns:** `{ issue, verify, solve, estimateCost, getDifficulty, pendingCount, summary, reset }`
+
+```js
+const pow = createProofOfWork({ difficulty: 16 });
+
+// Server: issue challenge
+const challenge = pow.issue({ ip: "192.0.2.1" });
+// { prefix: "a1b2c3...", difficulty: 16, algorithm: "sha256", expiresAt: ... }
+
+// Client: solve it
+const solution = pow.solve(challenge.prefix, challenge.difficulty);
+// { nonce: "...", hash: "0000...", iterations: 42310 }
+
+// Server: verify
+const result = pow.verify({
+  prefix: challenge.prefix,
+  nonce: solution.nonce,
+  ip: "192.0.2.1"
+});
+// { valid: true, reason: "ok", hash: "0000...", leadingZeros: 17 }
+```
+
+---
+
+## Behavioral Biometrics
+
+### `createBehavioralBiometrics(options)`
+
+*Separate module: `require('gif-captcha/src/behavioral-biometrics')`*
+
+Collects and analyzes mouse movements, clicks, keystrokes, and scroll events to distinguish human interaction patterns from bot automation. Produces per-channel risk scores and an overall bot probability.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `maxEvents` | `number` | `500` | Maximum events stored per channel |
+| `minEventsForAnalysis` | `number` | `5` | Minimum events before analysis is meaningful |
+| `clickTimingWindowMs` | `number` | `200` | Window for double-click detection |
+
+**Returns:** `{ recordMouseMove, recordClick, recordKeystroke, recordScroll, analyze, analyzeMouseMovement, analyzeClicks, analyzeKeystrokes, analyzeScrolls, getRiskLevel, getEventCounts, exportEvents, reset }`
+
+```js
+const { createBehavioralBiometrics } = require('gif-captcha/src/behavioral-biometrics');
+const bio = createBehavioralBiometrics();
+
+bio.recordMouseMove({ x: 100, y: 200, timestamp: Date.now() });
+bio.recordClick({ x: 150, y: 220, timestamp: Date.now() });
+bio.recordKeystroke({ key: "a", timestamp: Date.now() });
+
+const result = bio.analyze();
+// { botProbability: 0.12, riskLevel: "low", mouse: {...}, clicks: {...}, ... }
+```
+
+---
+
+## Challenge Decay Manager
+
+### `createChallengeDecayManager(options)`
+
+*Separate module: `require('gif-captcha/src/challenge-decay-manager')`*
+
+Tracks challenge freshness and automates rotation. Monitors exposure counts, solve rates, and time-since-last-use to identify stale challenges that bots may have learned. Supports sweep-based batch retirement.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `maxAge` | `number` | `86400000` | Max age before staleness (24h) |
+| `maxExposures` | `number` | `100` | Max exposures before staleness |
+| `minSolveRate` | `number` | `0.1` | Solve rate below this triggers flag |
+| `maxSolveRate` | `number` | `0.95` | Solve rate above this triggers flag (too easy / leaked) |
+
+**Returns:** `{ addChallenge, recordExposure, recordSolve, retire, getStats, getFreshness, sweep, getPoolHealth, getFreshest, getStalest, remove, reset }`
+
+```js
+const { createChallengeDecayManager } = require('gif-captcha/src/challenge-decay-manager');
+const decay = createChallengeDecayManager({ maxExposures: 50 });
+
+decay.addChallenge("cat-01", { category: "animals" });
+decay.recordExposure("cat-01");
+decay.recordSolve("cat-01", true);
+
+const health = decay.getPoolHealth();
+// { total: 1, fresh: 1, stale: 0, retired: 0, avgFreshness: 0.95 }
+
+const stale = decay.sweep(); // returns retired challenge IDs
+```
+
+---
+
+## Solve Pattern Fingerprinter
+
+### `createSolvePatternFingerprinter(options)`
+
+*Separate module: `require('gif-captcha/src/solve-pattern-fingerprinter')`*
+
+Builds behavioral fingerprints from CAPTCHA solve patterns — timing sequences, accuracy rates, difficulty preferences — to detect shared bot accounts or solve farms. Supports profile storage and cross-session similarity matching.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `maxSessions` | `number` | `500` | Maximum sessions tracked |
+| `maxProfiles` | `number` | `100` | Maximum saved profiles |
+| `similarityThreshold` | `number` | `0.8` | Threshold for "similar" fingerprints |
+
+**Returns:** `{ recordSolve, getFingerprint, compareFingerprints, saveProfile, matchAgainstProfiles, findSimilarSessions, removeSession, removeProfile, getStats, reset }`
+
+```js
+const { createSolvePatternFingerprinter } = require('gif-captcha/src/solve-pattern-fingerprinter');
+const fp = createSolvePatternFingerprinter();
+
+fp.recordSolve("session-1", { correct: true, timeMs: 3200, difficulty: 3 });
+fp.recordSolve("session-1", { correct: true, timeMs: 2800, difficulty: 4 });
+
+const print = fp.getFingerprint("session-1");
+fp.saveProfile("known-bot-1", print);
+
+const matches = fp.matchAgainstProfiles(fp.getFingerprint("session-2"));
+// [{ profileId: "known-bot-1", similarity: 0.92 }]
 ```
 
 ---

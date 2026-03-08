@@ -196,6 +196,36 @@ function secureRandomInt(max) {
 function _now() { return Date.now(); }
 
 /**
+ * Constant-time string comparison to prevent timing side-channel attacks.
+ * Uses crypto.timingSafeEqual when available (Node.js), otherwise
+ * performs a bitwise XOR comparison over all characters regardless of
+ * where the first mismatch occurs.
+ *
+ * @param {string} a - First string
+ * @param {string} b - Second string
+ * @returns {boolean} True if strings are identical
+ */
+function _constantTimeEqual(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  if (a.length !== b.length) return false;
+
+  // Prefer crypto.timingSafeEqual for strongest guarantee
+  if (_crypto && typeof _crypto.timingSafeEqual === 'function') {
+    var bufA = Buffer.from(a, 'utf8');
+    var bufB = Buffer.from(b, 'utf8');
+    if (bufA.length !== bufB.length) return false;
+    return _crypto.timingSafeEqual(bufA, bufB);
+  }
+
+  // Fallback: bitwise XOR over all chars (constant-time in character count)
+  var mismatch = 0;
+  for (var i = 0; i < a.length; i++) {
+    mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return mismatch === 0;
+}
+
+/**
  * Clamp a numeric value to [lo, hi].
  * @param {number} v
  * @param {number} lo - Lower bound
@@ -3066,16 +3096,55 @@ function createBotDetector(options) {
 
   // JS verification token — must be retrieved by client-side JS
   var _jsTokens = Object.create(null);
+  var _jsTokenCount = 0;
+
+  /** Maximum number of unverified JS tokens before oldest are evicted. */
+  var JS_TOKEN_MAX = 10000;
+  /** JS tokens expire after 5 minutes (300 000 ms). */
+  var JS_TOKEN_TTL_MS = 300000;
+
+  /**
+   * Purge expired JS tokens and enforce capacity limit.
+   * Called on every getJsToken() to prevent unbounded memory growth.
+   * @private
+   */
+  function _purgeExpiredJsTokens() {
+    var now = Date.now();
+    var ids = Object.keys(_jsTokens);
+    for (var i = 0; i < ids.length; i++) {
+      if (now - _jsTokens[ids[i]].createdAt > JS_TOKEN_TTL_MS) {
+        delete _jsTokens[ids[i]];
+        _jsTokenCount--;
+      }
+    }
+    // If still over capacity after TTL purge, evict oldest entries
+    if (_jsTokenCount > JS_TOKEN_MAX) {
+      var remaining = Object.keys(_jsTokens);
+      remaining.sort(function (a, b) {
+        return _jsTokens[a].createdAt - _jsTokens[b].createdAt;
+      });
+      var toRemove = _jsTokenCount - JS_TOKEN_MAX;
+      for (var j = 0; j < toRemove && j < remaining.length; j++) {
+        delete _jsTokens[remaining[j]];
+        _jsTokenCount--;
+      }
+    }
+  }
 
   /**
    * Generate a one-time JS verification token.
    * The client must call this (proving JS execution) and submit it.
    *
+   * Tokens expire after 5 minutes. A maximum of 10 000 tokens are held
+   * in memory; oldest are evicted when the limit is reached.
+   *
    * @param {string} [sessionId] - Optional session identifier for binding
    * @returns {string} Token string to include in form submission
    */
   function getJsToken(sessionId) {
+    _purgeExpiredJsTokens();
     var id = sessionId || '_default';
+    if (!_jsTokens[id]) _jsTokenCount++;
     var token = '';
     for (var i = 0; i < 32; i++) {
       token += secureRandomInt(36).toString(36);
@@ -3086,15 +3155,27 @@ function createBotDetector(options) {
 
   /**
    * Verify a submitted JS token.
+   *
+   * Uses constant-time comparison to prevent timing side-channel attacks
+   * that could allow an attacker to brute-force token values one character
+   * at a time (CWE-208).
+   *
    * @private
    */
   function _verifyJsToken(submittedToken, sessionId) {
     var id = sessionId || '_default';
     var entry = _jsTokens[id];
     if (!entry) return false;
-    var valid = entry.token === submittedToken;
+    // Reject expired tokens
+    if (Date.now() - entry.createdAt > JS_TOKEN_TTL_MS) {
+      delete _jsTokens[id];
+      _jsTokenCount--;
+      return false;
+    }
+    var valid = _constantTimeEqual(entry.token, submittedToken);
     // One-time use: delete after verification
     delete _jsTokens[id];
+    _jsTokenCount--;
     return valid;
   }
 

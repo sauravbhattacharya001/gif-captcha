@@ -12429,21 +12429,19 @@ function createChallengeAnalytics(options) {
   // challengeId -> { events: [], stats cache }
   var store = Object.create(null);
   var challengeCount = 0;
-  var evictionOrder = [];  // oldest-first for LRU eviction
+  var evictionOrder = new LruTracker();  // true LRU via doubly-linked list
 
   function _ensureEntry(challengeId) {
     if (store[challengeId]) {
+      evictionOrder.push(challengeId);  // promote to most-recently-used
       return store[challengeId];
     }
     if (challengeCount >= maxChallenges) {
-      // Evict oldest
-      while (evictionOrder.length > 0) {
-        var oldest = evictionOrder.shift();
-        if (store[oldest]) {
-          delete store[oldest];
-          challengeCount--;
-          break;
-        }
+      // Evict least-recently-used
+      var oldest = evictionOrder.evictOldest();
+      if (oldest !== undefined && store[oldest]) {
+        delete store[oldest];
+        challengeCount--;
       }
     }
     store[challengeId] = { events: [], dirty: true };
@@ -12774,7 +12772,7 @@ function createChallengeAnalytics(options) {
   function reset() {
     store = Object.create(null);
     challengeCount = 0;
-    evictionOrder = [];
+    evictionOrder.clear();
   }
 
   // -- Internal helpers --

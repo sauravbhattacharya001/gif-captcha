@@ -418,9 +418,14 @@ function loadGifWithRetry(container, challenge, attempt) {
     container.innerHTML = errorHtml;
   };
 
-  img.src = attempt > 0
-    ? challenge.gifUrl + "?retry=" + attempt
-    : challenge.gifUrl;
+  // Cache-buster on retry to bypass cached failures.
+  // Use & if URL already has query parameters, ? otherwise.
+  if (attempt > 0) {
+    var separator = challenge.gifUrl.indexOf("?") !== -1 ? "&" : "?";
+    img.src = challenge.gifUrl + separator + "retry=" + attempt;
+  } else {
+    img.src = challenge.gifUrl;
+  }
 }
 
 // ── Challenge Validation ────────────────────────────────────────────

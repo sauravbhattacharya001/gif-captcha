@@ -22,6 +22,25 @@ function sanitize(str) {
     return _sanitizeEl.innerHTML;
 }
 
+// ===== URL Sanitizer =====
+
+/**
+ * Sanitize a URL for safe use in href attributes.
+ * Rejects dangerous schemes (javascript:, data:, vbscript:, blob:, file:)
+ * to prevent XSS via URL injection.
+ *
+ * @param {string} url - Untrusted URL
+ * @returns {string} Safe URL, or empty string if dangerous
+ */
+function sanitizeUrl(url) {
+    if (!url || typeof url !== "string") return "";
+    var trimmed = url.replace(/^[\x00-\x1f\s]+/, "").trim();
+    if (trimmed.length === 0) return "";
+    var lower = trimmed.toLowerCase();
+    if (/^(javascript|data|vbscript|blob|file|ftp):/.test(lower)) return "";
+    return trimmed;
+}
+
 // ===== GIF Loading with Retry =====
 var GIF_MAX_RETRIES = 2;
 var GIF_RETRY_DELAY_MS = 1500;
@@ -54,13 +73,14 @@ function loadGifWithRetry(container, challenge, attempt) {
             return;
         }
 
-        var hasSource = challenge.sourceUrl && challenge.sourceUrl !== "#";
+        var safeSource = sanitizeUrl(challenge.sourceUrl);
+        var hasSource = safeSource && safeSource !== "#";
         var errorHtml = '<div class="gif-error">' +
             "<p>⚠️ GIF couldn't load (CDN may be blocking direct access).</p>";
 
         if (hasSource) {
             errorHtml +=
-                '<p><a href="' + sanitize(challenge.sourceUrl) +
+                '<p><a href="' + sanitize(safeSource) +
                 '" target="_blank" rel="noopener noreferrer">Open GIF in new tab →</a></p>' +
                 '<p style="margin-top:0.5rem;font-size:0.8rem;">Watch it there, then come back and describe what happened.</p>';
         } else {
@@ -74,10 +94,14 @@ function loadGifWithRetry(container, challenge, attempt) {
         container.innerHTML = errorHtml;
     };
 
-    // Cache-buster on retry to bypass cached failures
-    img.src = attempt > 0
-        ? challenge.gifUrl + "?retry=" + attempt
-        : challenge.gifUrl;
+    // Cache-buster on retry to bypass cached failures.
+    // Use & if URL already has query parameters, ? otherwise.
+    if (attempt > 0) {
+        var separator = challenge.gifUrl.indexOf("?") !== -1 ? "&" : "?";
+        img.src = challenge.gifUrl + separator + "retry=" + attempt;
+    } else {
+        img.src = challenge.gifUrl;
+    }
 }
 
 // ===== Canvas roundRect Polyfill =====

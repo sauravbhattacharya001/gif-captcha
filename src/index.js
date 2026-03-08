@@ -13615,6 +13615,219 @@ function createProofOfWork(options) {
   };
 }
 
+// ── Device Cohort Analyzer ──────────────────────────────────────────
+
+var DCA_DEVICE_CATEGORIES = {
+  mobile: { label: "Mobile", patterns: ["iphone", "ipad", "android", "mobile", "phone", "tablet"] },
+  desktop: { label: "Desktop", patterns: ["windows", "macintosh", "mac os", "linux", "x11", "cros"] },
+  bot: { label: "Bot/Crawler", patterns: ["bot", "crawler", "spider", "headless", "phantom", "puppeteer", "selenium"] },
+  unknown: { label: "Unknown", patterns: [] }
+};
+
+var DCA_CAPABILITY_TIERS = {
+  high: { minScreenWidth: 1440, minMemory: 8 },
+  mid: { minScreenWidth: 768, minMemory: 4 },
+  low: { minScreenWidth: 0, minMemory: 0 }
+};
+
+/**
+ * Create a DeviceCohortAnalyzer — groups CAPTCHA sessions by device type/capability,
+ * detects statistical anomalies within cohorts, and produces per-cohort risk profiles.
+ *
+ * @param {Object} [options]
+ * @param {number} [options.anomalyThreshold=2.0] Z-score threshold for anomaly detection
+ * @param {number} [options.minCohortSize=5] Minimum sessions before cohort analysis triggers
+ * @param {number} [options.maxCohorts=200] Maximum tracked cohorts
+ * @param {number} [options.maxSessionsPerCohort=1000] Max sessions stored per cohort
+ * @param {number} [options.suspiciousSolveMs=500] Solve time below this is suspicious
+ * @param {number} [options.botSolveMs=200] Solve time below this is bot-like
+ * @returns {Object} DeviceCohortAnalyzer instance
+ */
+function createDeviceCohortAnalyzer(options) {
+  options = options || {};
+  var anomalyThreshold = options.anomalyThreshold > 0 ? options.anomalyThreshold : 2.0;
+  var minCohortSize = options.minCohortSize > 0 ? options.minCohortSize : 5;
+  var maxCohorts = options.maxCohorts > 0 ? options.maxCohorts : 200;
+  var maxSessionsPerCohort = options.maxSessionsPerCohort > 0 ? options.maxSessionsPerCohort : 1000;
+  var suspiciousSolveMs = options.suspiciousSolveMs > 0 ? options.suspiciousSolveMs : 500;
+  var botSolveMs = options.botSolveMs > 0 ? options.botSolveMs : 200;
+
+  var _cohorts = Object.create(null);
+  var _cohortKeys = [];
+  var _totalRecorded = 0;
+  var _totalAnomalies = 0;
+
+  function _classifyDevice(ua) {
+    if (!ua) return "unknown";
+    var lower = ua.toLowerCase();
+    var cats = Object.keys(DCA_DEVICE_CATEGORIES);
+    for (var i = 0; i < cats.length; i++) {
+      var pats = DCA_DEVICE_CATEGORIES[cats[i]].patterns;
+      for (var j = 0; j < pats.length; j++) {
+        if (lower.indexOf(pats[j]) !== -1) return cats[i];
+      }
+    }
+    return "unknown";
+  }
+
+  function _classifyCap(info) {
+    if (!info) return "low";
+    var sw = info.screenWidth || 0, mem = info.memory || 0;
+    if (sw >= DCA_CAPABILITY_TIERS.high.minScreenWidth && mem >= DCA_CAPABILITY_TIERS.high.minMemory) return "high";
+    if (sw >= DCA_CAPABILITY_TIERS.mid.minScreenWidth && mem >= DCA_CAPABILITY_TIERS.mid.minMemory) return "mid";
+    return "low";
+  }
+
+  function _cKey(cat, cap) { return cat + ":" + cap; }
+
+  function _ensure(key, cat, cap) {
+    if (!_cohorts[key]) {
+      if (_cohortKeys.length >= maxCohorts) { delete _cohorts[_cohortKeys.shift()]; }
+      _cohorts[key] = { category: cat, capability: cap, sessions: [], stats: { count: 0, totalSolveMs: 0, totalAttempts: 0, solves: 0, failures: 0 } };
+      _cohortKeys.push(key);
+    } else {
+      var idx = _cohortKeys.indexOf(key);
+      if (idx !== -1 && idx !== _cohortKeys.length - 1) { _cohortKeys.splice(idx, 1); _cohortKeys.push(key); }
+    }
+    return _cohorts[key];
+  }
+
+  function _dcaMean(a) { if (!a.length) return 0; var s = 0; for (var i = 0; i < a.length; i++) s += a[i]; return s / a.length; }
+  function _dcaStddev(a, m) { if (a.length < 2) return 0; var s = 0; for (var i = 0; i < a.length; i++) { var d = a[i] - m; s += d * d; } return Math.sqrt(s / a.length); }
+  function _dcaMedian(a) { if (!a.length) return 0; var s = a.slice().sort(function(x,y){return x-y;}); var m = Math.floor(s.length/2); return s.length%2 ? s[m] : (s[m-1]+s[m])/2; }
+  function _dcaPct(a, p) { if (!a.length) return 0; var s = a.slice().sort(function(x,y){return x-y;}); var i = (p/100)*(s.length-1); var lo = Math.floor(i), hi = Math.ceil(i); return lo===hi ? s[lo] : s[lo]+(s[hi]-s[lo])*(i-lo); }
+
+  function _detectAnomalies(key, entry) {
+    var c = _cohorts[key];
+    if (!c || c.sessions.length < minCohortSize) return [];
+    var anomalies = [], times = [];
+    for (var i = 0; i < c.sessions.length; i++) times.push(c.sessions[i].solveTimeMs);
+    var avg = _dcaMean(times), sd = _dcaStddev(times, avg);
+    if (sd > 0) {
+      var z = (entry.solveTimeMs - avg) / sd;
+      if (Math.abs(z) > anomalyThreshold) {
+        anomalies.push({ type: "zscore_outlier", severity: Math.abs(z) > anomalyThreshold * 2 ? "critical" : "high", detail: "Solve time z-score: " + z.toFixed(2), zScore: Math.round(z * 100) / 100 });
+      }
+    }
+    if (entry.solveTimeMs < botSolveMs) {
+      anomalies.push({ type: "bot_speed", severity: "critical", detail: "Solve time " + entry.solveTimeMs + "ms below bot threshold (" + botSolveMs + "ms)" });
+    } else if (entry.solveTimeMs < suspiciousSolveMs) {
+      anomalies.push({ type: "suspicious_speed", severity: "high", detail: "Solve time " + entry.solveTimeMs + "ms below suspicious threshold (" + suspiciousSolveMs + "ms)" });
+    }
+    var fast = 0;
+    for (var j = 0; j < c.sessions.length; j++) { if (c.sessions[j].solveTimeMs < suspiciousSolveMs) fast++; }
+    var fr = fast / c.sessions.length;
+    if (fr > 0.5 && c.sessions.length >= minCohortSize) {
+      anomalies.push({ type: "cohort_suspicious", severity: "critical", detail: Math.round(fr * 100) + "% of cohort solves below " + suspiciousSolveMs + "ms", fastRatio: Math.round(fr * 100) / 100 });
+    }
+    return anomalies;
+  }
+
+  function record(session) {
+    if (!session) throw new Error("session is required");
+    if (typeof session.solveTimeMs !== "number" || session.solveTimeMs < 0) throw new Error("solveTimeMs must be a non-negative number");
+    var cat = _classifyDevice(session.userAgent);
+    var cap = _classifyCap(session.deviceInfo);
+    var key = _cKey(cat, cap);
+    var cohort = _ensure(key, cat, cap);
+    var entry = { solveTimeMs: session.solveTimeMs, solved: !!session.solved, attempts: session.attempts > 0 ? session.attempts : 1, ip: session.ip || null, timestamp: session.timestamp || Date.now() };
+    cohort.sessions.push(entry);
+    if (cohort.sessions.length > maxSessionsPerCohort) cohort.sessions.shift();
+    cohort.stats.count++; cohort.stats.totalSolveMs += entry.solveTimeMs; cohort.stats.totalAttempts += entry.attempts;
+    if (entry.solved) cohort.stats.solves++; else cohort.stats.failures++;
+    _totalRecorded++;
+    var anomalies = _detectAnomalies(key, entry);
+    if (anomalies.length > 0) _totalAnomalies++;
+    return { cohortKey: key, category: cat, capability: cap, anomalies: anomalies };
+  }
+
+  function getCohortProfile(cohortKey) {
+    var c = _cohorts[cohortKey];
+    if (!c) return null;
+    var times = [], ips = Object.create(null), ipCount = 0;
+    for (var i = 0; i < c.sessions.length; i++) {
+      times.push(c.sessions[i].solveTimeMs);
+      if (c.sessions[i].ip && !ips[c.sessions[i].ip]) { ips[c.sessions[i].ip] = true; ipCount++; }
+    }
+    var avg = _dcaMean(times), sd = _dcaStddev(times, avg);
+    var solveRate = c.stats.count > 0 ? c.stats.solves / c.stats.count : 0;
+    var cv = avg > 0 ? sd / avg : 0;
+    var riskScore = 0, factors = [];
+    if (avg < botSolveMs) { riskScore += 0.4; factors.push("Average solve time (" + Math.round(avg) + "ms) below bot threshold"); }
+    else if (avg < suspiciousSolveMs) { riskScore += 0.2; factors.push("Average solve time (" + Math.round(avg) + "ms) suspiciously fast"); }
+    if (cv < 0.05 && c.sessions.length >= minCohortSize) { riskScore += 0.3; factors.push("Extremely low variance (CV: " + (cv*100).toFixed(1) + "%)"); }
+    else if (cv < 0.15 && c.sessions.length >= minCohortSize) { riskScore += 0.15; factors.push("Low variance (CV: " + (cv*100).toFixed(1) + "%)"); }
+    if (solveRate > 0.99 && c.stats.count >= minCohortSize) { riskScore += 0.2; factors.push("Near-perfect solve rate (" + (solveRate*100).toFixed(1) + "%)"); }
+    if (c.stats.count >= minCohortSize * 2 && ipCount > 0) {
+      var spi = c.stats.count / ipCount;
+      if (spi > 20) { riskScore += 0.2; factors.push("High sessions-per-IP (" + spi.toFixed(1) + ")"); }
+    }
+    if (c.category === "bot") { riskScore += 0.3; factors.push("User-agent classified as bot/crawler"); }
+    riskScore = Math.min(1, riskScore);
+    var level = riskScore >= 0.7 ? "critical" : riskScore >= 0.5 ? "high" : riskScore >= 0.3 ? "medium" : "low";
+    return {
+      cohortKey: cohortKey, category: c.category, capability: c.capability,
+      sessionCount: c.stats.count, uniqueIPs: ipCount,
+      solveRate: Math.round(solveRate * 1000) / 1000,
+      timing: { mean: Math.round(avg*100)/100, median: Math.round(_dcaMedian(times)*100)/100, stddev: Math.round(sd*100)/100, p5: Math.round(_dcaPct(times,5)*100)/100, p95: Math.round(_dcaPct(times,95)*100)/100, cv: Math.round(cv*1000)/1000 },
+      risk: { score: Math.round(riskScore*100)/100, level: level, factors: factors }
+    };
+  }
+
+  function getAllProfiles(opts) {
+    opts = opts || {};
+    var sortBy = opts.sortBy || "risk", minRisk = opts.minRisk || null;
+    var ro = { low: 0, medium: 1, high: 2, critical: 3 };
+    var out = [];
+    for (var i = 0; i < _cohortKeys.length; i++) {
+      var p = getCohortProfile(_cohortKeys[i]);
+      if (p && (!minRisk || ro[p.risk.level] >= ro[minRisk])) out.push(p);
+    }
+    if (sortBy === "risk") out.sort(function(a,b){ return (ro[b.risk.level]-ro[a.risk.level]) || (b.risk.score-a.risk.score); });
+    else if (sortBy === "count") out.sort(function(a,b){ return b.sessionCount - a.sessionCount; });
+    else out.sort(function(a,b){ return a.cohortKey < b.cohortKey ? -1 : 1; });
+    return out;
+  }
+
+  function compareCohorts(keyA, keyB) {
+    var a = getCohortProfile(keyA), b = getCohortProfile(keyB);
+    if (!a || !b) return null;
+    var td = Math.abs(a.timing.mean - b.timing.mean), srd = Math.abs(a.solveRate - b.solveRate), cvd = Math.abs(a.timing.cv - b.timing.cv);
+    var sim = 1 - Math.min(1, (td / Math.max(a.timing.mean, b.timing.mean, 1)) * 0.4 + srd * 0.3 + cvd * 0.3);
+    var spoofs = [];
+    if (sim > 0.9 && a.category !== b.category) spoofs.push("Different device categories with very similar behavior");
+    if (a.risk.level === "critical" && b.risk.level === "low" && sim > 0.7) spoofs.push("High-risk cohort mimicking low-risk patterns");
+    return { cohortA: keyA, cohortB: keyB, similarity: Math.round(sim*1000)/1000, timingDiff: Math.round(td*100)/100, solveRateDiff: Math.round(srd*1000)/1000, spoofingIndicators: spoofs, verdict: spoofs.length > 0 ? "suspicious" : "normal" };
+  }
+
+  function dcaSummary() {
+    var profiles = getAllProfiles();
+    var byCat = Object.create(null), byCap = Object.create(null), byRisk = { low: 0, medium: 0, high: 0, critical: 0 };
+    for (var i = 0; i < profiles.length; i++) {
+      byCat[profiles[i].category] = (byCat[profiles[i].category] || 0) + profiles[i].sessionCount;
+      byCap[profiles[i].capability] = (byCap[profiles[i].capability] || 0) + profiles[i].sessionCount;
+      byRisk[profiles[i].risk.level]++;
+    }
+    return { totalSessions: _totalRecorded, totalCohorts: _cohortKeys.length, totalAnomalies: _totalAnomalies, sessionsByCategory: byCat, sessionsByCapability: byCap, cohortsByRisk: byRisk, profiles: profiles };
+  }
+
+  function reset() { _cohorts = Object.create(null); _cohortKeys = []; _totalRecorded = 0; _totalAnomalies = 0; }
+
+  function exportState() { return { cohorts: JSON.parse(JSON.stringify(_cohorts)), cohortKeys: _cohortKeys.slice(), totalRecorded: _totalRecorded, totalAnomalies: _totalAnomalies }; }
+
+  function importState(state) {
+    if (!state || !state.cohorts) throw new Error("Invalid state");
+    _cohorts = Object.create(null);
+    var keys = Object.keys(state.cohorts);
+    for (var i = 0; i < keys.length; i++) _cohorts[keys[i]] = state.cohorts[keys[i]];
+    _cohortKeys = state.cohortKeys ? state.cohortKeys.slice() : keys;
+    _totalRecorded = state.totalRecorded || 0;
+    _totalAnomalies = state.totalAnomalies || 0;
+  }
+
+  return { record: record, getCohortProfile: getCohortProfile, getAllProfiles: getAllProfiles, compareCohorts: compareCohorts, summary: dcaSummary, reset: reset, exportState: exportState, importState: importState };
+}
+
 var gifCaptcha = {
   sanitize: sanitize,
   createSanitizer: createSanitizer,
@@ -13658,6 +13871,7 @@ var gifCaptcha = {
   createChallengeAnalytics: createChallengeAnalytics,
   createGeoRiskScorer: createGeoRiskScorer,
   createProofOfWork: createProofOfWork,
+  createDeviceCohortAnalyzer: createDeviceCohortAnalyzer,
 };
 
 // UMD export — works in Node.js, AMD, and browser globals

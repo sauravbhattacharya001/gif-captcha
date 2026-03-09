@@ -11810,6 +11810,7 @@ function createDeviceCohortAnalyzer(options) {
 
 // ── Extracted modules (loaded from separate files) ──────────────────
 var createHoneypotInjector = require("./honeypot-injector").createHoneypotInjector;
+var createChallengeRotationScheduler = require("./challenge-rotation-scheduler").createChallengeRotationScheduler;
 var createComplianceReporter = require("./compliance-reporter").createComplianceReporter;
 var createABExperimentRunner = require("./ab-experiment-runner").createABExperimentRunner;
 var createTrustScoreEngine = require("./trust-score-engine").createTrustScoreEngine;
@@ -11858,6 +11859,7 @@ var gifCaptcha = {
   createProofOfWork: createProofOfWork,
   createDeviceCohortAnalyzer: createDeviceCohortAnalyzer,
   createHoneypotInjector: createHoneypotInjector,
+  createChallengeRotationScheduler: createChallengeRotationScheduler,
 };
 
 // UMD export — works in Node.js, AMD, and browser globals

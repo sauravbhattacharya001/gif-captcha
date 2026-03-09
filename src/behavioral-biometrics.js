@@ -58,7 +58,7 @@ function entropy(arr) {
   for (var b = 0; b < buckets; b++) {
     if (counts[b] > 0) {
       var p = counts[b] / arr.length;
-      h -= p * Math.log2(p);
+      h -= p * (Math.log(p) / Math.LN2);
     }
   }
   return h;

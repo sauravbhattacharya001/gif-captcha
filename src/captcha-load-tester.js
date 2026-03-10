@@ -634,7 +634,14 @@ function createCaptchaLoadTester(options) {
    * Import state from JSON.
    */
   function importState(json) {
-    var data = typeof json === 'string' ? JSON.parse(json) : json;
+    var data;
+    if (typeof json === 'string') {
+      try { data = JSON.parse(json); } catch (e) {
+        throw new Error('importState: invalid JSON — ' + e.message);
+      }
+    } else {
+      data = json;
+    }
     if (data.history && Array.isArray(data.history)) {
       runHistory = data.history;
     }

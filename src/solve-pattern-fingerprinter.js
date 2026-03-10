@@ -183,7 +183,7 @@ function createSolvePatternFingerprinter(options) {
   function compareFingerprints(fpA, fpB) {
     if (!fpA || !fpB) return { similarity: 0, dimensions: {}, match: false };
 
-    var dims = {};
+    var dims = Object.create(null);
 
     // Timing profile (40% weight)
     dims.avgTime = _valueSimilarity(fpA.avgSolveTimeMs, fpB.avgSolveTimeMs);

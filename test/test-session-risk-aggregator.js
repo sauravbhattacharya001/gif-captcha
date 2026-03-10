@@ -484,6 +484,226 @@ test("unknown module gets default weight", function () {
   assert.ok(v.moduleScores.custom_module !== undefined);
 });
 
+// ── Regression: stats drift fixes ───────────────────────────────────
+
+test("blockedSessions does not double-count on re-evaluation", function () {
+  var agg = createSessionRiskAggregator({
+    thresholds: { low: 0.3, medium: 0.5, high: 0.7, critical: 0.9 },
+    actions: { low: "allow", medium: "challenge", high: "block", critical: "block" }
+  });
+  agg.addSignal("s1", { module: "geo", score: 0.95, timestamp: NOW });
+  agg.addSignal("s1", { module: "biometrics", score: 0.95, timestamp: NOW });
+  agg.addSignal("s1", { module: "fingerprint", score: 0.95, timestamp: NOW });
+
+  var v1 = agg.evaluate("s1", { now: NOW });
+  assert.strictEqual(v1.action, "block");
+  assert.strictEqual(agg.getStats().blockedSessions, 1);
+
+  // Re-evaluate same blocked session — should NOT increment again
+  var v2 = agg.evaluate("s1", { now: NOW + 1000 });
+  assert.strictEqual(v2.action, "block");
+  assert.strictEqual(agg.getStats().blockedSessions, 1);
+});
+
+test("removeSession decrements totalSessions", function () {
+  var agg = createSessionRiskAggregator();
+  agg.addSignal("s1", { module: "geo", score: 0.3, timestamp: NOW });
+  agg.addSignal("s2", { module: "geo", score: 0.3, timestamp: NOW });
+  assert.strictEqual(agg.getStats().totalSessions, 2);
+
+  agg.removeSession("s1");
+  assert.strictEqual(agg.getStats().totalSessions, 1);
+});
+
+test("removeSession decrements blockedSessions for locked session", function () {
+  var agg = createSessionRiskAggregator({
+    actions: { low: "allow", medium: "challenge", high: "block", critical: "block" }
+  });
+  agg.addSignal("s1", { module: "geo", score: 0.99, timestamp: NOW });
+  agg.addSignal("s1", { module: "biometrics", score: 0.99, timestamp: NOW });
+  agg.addSignal("s1", { module: "fingerprint", score: 0.99, timestamp: NOW });
+  agg.evaluate("s1", { now: NOW });
+  assert.strictEqual(agg.getStats().blockedSessions, 1);
+
+  agg.removeSession("s1");
+  assert.strictEqual(agg.getStats().blockedSessions, 0);
+});
+
+test("prune decrements totalSessions for expired sessions", function () {
+  var agg = createSessionRiskAggregator({ sessionTTLMs: 5000 });
+  agg.addSignal("s1", { module: "geo", score: 0.3, timestamp: NOW });
+  agg.addSignal("s2", { module: "geo", score: 0.3, timestamp: NOW + 4000 });
+  assert.strictEqual(agg.getStats().totalSessions, 2);
+
+  // At NOW + 6000, s1 has been idle >5000ms, should be pruned
+  agg.prune(NOW + 6000);
+  assert.strictEqual(agg.getStats().totalSessions, 1);
+});
+
+test("prune decrements blockedSessions for expired blocked sessions", function () {
+  var agg = createSessionRiskAggregator({
+    sessionTTLMs: 5000,
+    actions: { low: "allow", medium: "challenge", high: "block", critical: "block" }
+  });
+  agg.addSignal("s1", { module: "geo", score: 0.99, timestamp: NOW });
+  agg.addSignal("s1", { module: "biometrics", score: 0.99, timestamp: NOW });
+  agg.addSignal("s1", { module: "fingerprint", score: 0.99, timestamp: NOW });
+  agg.evaluate("s1", { now: NOW });
+  assert.strictEqual(agg.getStats().blockedSessions, 1);
+
+  agg.prune(NOW + 6000);
+  assert.strictEqual(agg.getStats().blockedSessions, 0);
+  assert.strictEqual(agg.getStats().totalSessions, 0);
+});
+
+// ── Edge cases ──────────────────────────────────────────────────────
+
+test("evaluate with includeTimeline sorts by timestamp", function () {
+  var agg = createSessionRiskAggregator();
+  agg.addSignal("s1", { module: "geo", score: 0.3, timestamp: NOW + 200 });
+  agg.addSignal("s1", { module: "biometrics", score: 0.5, timestamp: NOW + 100 });
+  agg.addSignal("s1", { module: "fingerprint", score: 0.2, timestamp: NOW + 300 });
+
+  var v = agg.evaluate("s1", { now: NOW + 500, includeTimeline: true });
+  assert.ok(v.timeline);
+  assert.strictEqual(v.timeline.length, 3);
+  // Should be in ascending timestamp order
+  for (var i = 0; i < v.timeline.length - 1; i++) {
+    assert.ok(v.timeline[i].timestamp <= v.timeline[i + 1].timestamp,
+      "timeline should be sorted by timestamp");
+  }
+});
+
+test("evaluate with all modules reporting", function () {
+  var agg = createSessionRiskAggregator();
+  var modules = ["geo", "biometrics", "fingerprint", "cohort", "difficulty", "honeypot", "template"];
+  for (var i = 0; i < modules.length; i++) {
+    agg.addSignal("s1", { module: modules[i], score: 0.4, timestamp: NOW });
+  }
+  var v = agg.evaluate("s1", { now: NOW });
+  assert.strictEqual(v.modulesReporting, 7);
+  assert.ok(v.score > 0);
+});
+
+test("addSignal with module alias georisk normalizes to geo", function () {
+  var agg = createSessionRiskAggregator();
+  var r = agg.addSignal("s1", { module: "georisk", score: 0.5, timestamp: NOW });
+  assert.strictEqual(r.module, "geo");
+});
+
+test("addSignal with module alias behavioral normalizes to biometrics", function () {
+  var agg = createSessionRiskAggregator();
+  var r = agg.addSignal("s1", { module: "behavioral", score: 0.5, timestamp: NOW });
+  assert.strictEqual(r.module, "biometrics");
+});
+
+test("addSignal with module alias solve-pattern normalizes to fingerprint", function () {
+  var agg = createSessionRiskAggregator();
+  var r = agg.addSignal("s1", { module: "solve-pattern", score: 0.5, timestamp: NOW });
+  assert.strictEqual(r.module, "fingerprint");
+});
+
+test("setMetadata merges with existing metadata", function () {
+  var agg = createSessionRiskAggregator();
+  agg.addSignal("s1", { module: "geo", score: 0.3, timestamp: NOW });
+  agg.setMetadata("s1", { ip: "1.2.3.4" });
+  agg.setMetadata("s1", { userAgent: "test" });
+
+  var s = agg.getSession("s1");
+  assert.strictEqual(s.metadata.ip, "1.2.3.4");
+  assert.strictEqual(s.metadata.userAgent, "test");
+});
+
+test("evaluateAll summary includes correct p50 and p90", function () {
+  var agg = createSessionRiskAggregator();
+  for (var i = 1; i <= 10; i++) {
+    agg.addSignal("s" + i, { module: "geo", score: i * 0.1, timestamp: NOW });
+  }
+  var result = agg.evaluateAll({ now: NOW });
+  assert.strictEqual(result.sessions.length, 10);
+  assert.ok(result.summary.p50Score >= 0);
+  assert.ok(result.summary.p90Score >= result.summary.p50Score);
+});
+
+test("correlation fingerprint_replay fires with fingerprint+geo", function () {
+  var agg = createSessionRiskAggregator();
+  agg.addSignal("s1", { module: "fingerprint", score: 0.8, timestamp: NOW });
+  agg.addSignal("s1", { module: "geo", score: 0.6, timestamp: NOW });
+  var v = agg.evaluate("s1", { now: NOW });
+  var rules = v.correlations.map(function(c) { return c.rule; });
+  assert.ok(rules.indexOf("fingerprint_replay") !== -1);
+});
+
+test("getTrend returns stable for small score changes", function () {
+  var agg = createSessionRiskAggregator();
+  agg.addSignal("s1", { module: "geo", score: 0.5, timestamp: NOW });
+  agg.evaluate("s1", { now: NOW });
+  agg.addSignal("s1", { module: "geo", score: 0.52, timestamp: NOW + 1000 });
+  agg.evaluate("s1", { now: NOW + 1000 });
+  var trend = agg.getTrend("s1");
+  assert.strictEqual(trend.direction, "stable");
+});
+
+test("report contains module score bars", function () {
+  var agg = createSessionRiskAggregator();
+  agg.addSignal("s1", { module: "geo", score: 0.7, timestamp: NOW });
+  agg.addSignal("s1", { module: "biometrics", score: 0.3, timestamp: NOW });
+  var r = agg.report("s1");
+  assert.ok(r.indexOf("Module Scores") !== -1);
+  assert.ok(r.indexOf("geo") !== -1);
+  assert.ok(r.indexOf("biometrics") !== -1);
+});
+
+test("exportData and importData preserve locked state", function () {
+  var agg = createSessionRiskAggregator({
+    actions: { low: "allow", medium: "challenge", high: "block", critical: "block" }
+  });
+  agg.addSignal("s1", { module: "geo", score: 0.99, timestamp: NOW });
+  agg.addSignal("s1", { module: "biometrics", score: 0.99, timestamp: NOW });
+  agg.addSignal("s1", { module: "fingerprint", score: 0.99, timestamp: NOW });
+  agg.evaluate("s1", { now: NOW });
+  var exported = agg.exportData();
+
+  var agg2 = createSessionRiskAggregator({
+    actions: { low: "allow", medium: "challenge", high: "block", critical: "block" }
+  });
+  agg2.importData(exported);
+
+  // Session should still be locked
+  var r = agg2.addSignal("s1", { module: "geo", score: 0.1, timestamp: NOW + 1000 });
+  assert.strictEqual(r.ok, false);
+  assert.strictEqual(r.error, "session is locked (blocked)");
+});
+
+test("stats totalSignals increments with each signal", function () {
+  var agg = createSessionRiskAggregator();
+  assert.strictEqual(agg.getStats().totalSignals, 0);
+  agg.addSignal("s1", { module: "geo", score: 0.3, timestamp: NOW });
+  assert.strictEqual(agg.getStats().totalSignals, 1);
+  agg.addSignal("s1", { module: "biometrics", score: 0.5, timestamp: NOW });
+  assert.strictEqual(agg.getStats().totalSignals, 2);
+  agg.addSignal("s2", { module: "geo", score: 0.1, timestamp: NOW });
+  assert.strictEqual(agg.getStats().totalSignals, 3);
+});
+
+test("stats moduleSignalCounts tracks per-module", function () {
+  var agg = createSessionRiskAggregator();
+  agg.addSignal("s1", { module: "geo", score: 0.3, timestamp: NOW });
+  agg.addSignal("s1", { module: "geo", score: 0.5, timestamp: NOW });
+  agg.addSignal("s1", { module: "biometrics", score: 0.2, timestamp: NOW });
+  var counts = agg.getStats().moduleSignalCounts;
+  assert.strictEqual(counts.geo, 2);
+  assert.strictEqual(counts.biometrics, 1);
+});
+
+test("evaluate increments verdictCounts", function () {
+  var agg = createSessionRiskAggregator();
+  agg.addSignal("s1", { module: "geo", score: 0.1, timestamp: NOW });
+  agg.evaluate("s1", { now: NOW });
+  assert.strictEqual(agg.getStats().verdictCounts.low, 1);
+  assert.strictEqual(agg.getStats().totalEvaluations, 1);
+});
+
 // ── Summary ─────────────────────────────────────────────────────────
 
 console.log("\n" + passed + " passed, " + failed + " failed, " + (passed + failed) + " total");

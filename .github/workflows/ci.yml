@@ -43,6 +43,9 @@ jobs:
           path: coverage/
           retention-days: 30
 
+      - name: Enforce coverage thresholds
+        run: npm run coverage:check
+
       - name: Coverage summary
         if: always()
         run: |

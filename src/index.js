@@ -7872,7 +7872,7 @@ function createLoadTester(options) {
         if (isHuman) {
           // Human: give a somewhat relevant answer (50-90% similarity)
           var words = challenge.humanAnswer.split(/\s+/);
-          var useWords = Math.max(2, Math.floor(words.length * (0.5 + Math.random() * 0.4)));
+          var useWords = Math.max(2, Math.floor(words.length * (0.5 + secureRandomInt(40) / 100)));
           answer = words.slice(0, useWords).join(" ");
         } else {
           // Bot: random gibberish or exact copy

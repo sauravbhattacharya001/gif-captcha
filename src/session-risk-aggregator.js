@@ -273,7 +273,11 @@ function createSessionRiskAggregator(options) {
     var ids = Object.keys(sessions);
     for (var i = 0; i < ids.length; i++) {
       if (now - sessions[ids[i]].lastSeen > sessionTTL) {
+        if (sessions[ids[i]].locked) {
+          stats.blockedSessions = Math.max(0, stats.blockedSessions - 1);
+        }
         delete sessions[ids[i]];
+        stats.totalSessions = Math.max(0, stats.totalSessions - 1);
       }
     }
   }
@@ -454,8 +458,8 @@ function createSessionRiskAggregator(options) {
 
     if (timeline.length > 0) verdict.timeline = timeline;
 
-    // Lock session if blocked
-    if (action === "block") {
+    // Lock session if blocked (avoid double-counting)
+    if (action === "block" && !session.locked) {
       session.locked = true;
       stats.blockedSessions++;
     }
@@ -571,7 +575,11 @@ function createSessionRiskAggregator(options) {
    */
   function removeSession(sessionId) {
     if (!sessions[sessionId]) return { ok: false, error: "session not found" };
+    if (sessions[sessionId].locked) {
+      stats.blockedSessions = Math.max(0, stats.blockedSessions - 1);
+    }
     delete sessions[sessionId];
+    stats.totalSessions = Math.max(0, stats.totalSessions - 1);
     return { ok: true };
   }
 

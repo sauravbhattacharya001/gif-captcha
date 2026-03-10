@@ -1,5 +1,38 @@
 'use strict';
 
+// Use cryptographic randomness for honeypot IDs and strategy selection.
+// Math.random() is predictable (CWE-330) — an attacker who can predict
+// which fields are honeypots can avoid them entirely, defeating the purpose.
+var _crypto;
+try { _crypto = require('crypto'); } catch (e) { _crypto = null; }
+
+/**
+ * Cryptographically secure random integer in [0, exclusiveMax).
+ * Falls back to Math.random() only if no crypto module is available
+ * (browser without Web Crypto, very old Node.js).
+ * @private
+ */
+function _secureRandomInt(exclusiveMax) {
+  if (exclusiveMax <= 0) return 0;
+  if (_crypto && typeof _crypto.randomInt === 'function') {
+    return _crypto.randomInt(exclusiveMax);
+  }
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    var arr = new Uint32Array(1);
+    crypto.getRandomValues(arr);
+    return arr[0] % exclusiveMax;
+  }
+  // Last resort — log a warning on first use
+  if (!_secureRandomInt._warned) {
+    _secureRandomInt._warned = true;
+    if (typeof console !== 'undefined' && console.warn) {
+      console.warn('honeypot-injector: no crypto source available, falling back to Math.random()');
+    }
+  }
+  return Math.floor(Math.random() * exclusiveMax);
+}
+
+
 /**
  * createHoneypotInjector — invisible decoy CAPTCHA challenge injection for bot detection.
  *
@@ -68,12 +101,12 @@ function createHoneypotInjector(options) {
   function _generateId() {
     var chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
     var id = 'hp_';
-    for (var k = 0; k < 12; k++) id += chars.charAt(Math.floor(Math.random() * chars.length));
+    for (var k = 0; k < 12; k++) id += chars.charAt(_secureRandomInt(chars.length));
     return id;
   }
 
-  function _pickFieldName() { return fieldNames[Math.floor(Math.random() * fieldNames.length)]; }
-  function _pickStrategy() { return strategies[Math.floor(Math.random() * strategies.length)]; }
+  function _pickFieldName() { return fieldNames[_secureRandomInt(fieldNames.length)]; }
+  function _pickStrategy() { return strategies[_secureRandomInt(strategies.length)]; }
 
   function _evictExpired() {
     var now = Date.now(), keys = Object.keys(traps);
@@ -99,7 +132,7 @@ function createHoneypotInjector(options) {
 
   function _randomLabel() {
     var labels = ['Website', 'Your URL', 'Homepage', 'Fax', 'Alternate Email', 'Company Website', 'Secondary Phone', 'Referral'];
-    return labels[Math.floor(Math.random() * labels.length)];
+    return labels[_secureRandomInt(labels.length)];
   }
 
   function _generateHTML(fieldName, strategy, trapId) {
@@ -155,7 +188,7 @@ function createHoneypotInjector(options) {
     var count = (opts.count != null && opts.count > 0) ? Math.min(Math.floor(opts.count), strategies.length) : Math.min(3, strategies.length);
     var usedStrategies = strategies.slice(), results = [];
     for (var q = 0; q < count; q++) {
-      var idx = Math.floor(Math.random() * usedStrategies.length);
+      var idx = _secureRandomInt(usedStrategies.length);
       var strat = usedStrategies.splice(idx, 1)[0];
       if (!strat) strat = _pickStrategy();
       results.push(createTrap({ sessionId: opts.sessionId, strategy: strat }));

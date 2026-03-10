@@ -31,12 +31,6 @@ function stddev(arr) {
   return Math.sqrt(sqDiffs / (arr.length - 1));
 }
 
-function median(arr) {
-  if (!arr || arr.length === 0) return 0;
-  var sorted = arr.slice().sort(function (a, b) { return a - b; });
-  var mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-}
 
 function entropy(arr) {
   if (!arr || arr.length < 2) return 0;

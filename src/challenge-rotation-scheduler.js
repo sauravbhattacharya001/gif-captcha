@@ -277,10 +277,10 @@ function createChallengeRotationScheduler(options) {
     }
     if (enabledTypes.length === 1) {
       var only = enabledTypes[0].id;
-      var changed = _currentTypeId !== only;
+      var prev = _currentTypeId;
       _currentTypeId = only;
-      _recordRotation(_currentTypeId, only, reason);
-      return { from: _currentTypeId, to: only, reason: reason };
+      _recordRotation(prev, only, reason);
+      return { from: prev, to: only, reason: reason };
     }
 
     var prev = _currentTypeId;

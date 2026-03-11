@@ -71,7 +71,7 @@ function _deepCopy(obj) {
 }
 
 function _merge(base, override) {
-  var result = {};
+  var result = Object.create(null);
   var k;
   for (k in base) {
     if (base.hasOwnProperty(k)) result[k] = base[k];
@@ -216,7 +216,7 @@ function createSessionRiskAggregator(options) {
   var allRules = CORRELATION_RULES.concat(customRules);
 
   // sessionId -> { signals: { module: [...] }, firstSeen, lastSeen, metadata }
-  var sessions = {};
+  var sessions = Object.create(null);
 
   // Global stats
   var stats = {
@@ -355,7 +355,7 @@ function createSessionRiskAggregator(options) {
     }
 
     var session = sessions[sessionId];
-    var moduleScores = {};
+    var moduleScores = Object.create(null);
     var activeModules = [];
     var activeWeights = [];
     var activeValues = [];
@@ -524,7 +524,7 @@ function createSessionRiskAggregator(options) {
     var session = sessions[sessionId];
     if (!session) return null;
 
-    var moduleSummary = {};
+    var moduleSummary = Object.create(null);
     var mods = Object.keys(session.signals);
     for (var i = 0; i < mods.length; i++) {
       moduleSummary[mods[i]] = {
@@ -749,7 +749,7 @@ function createSessionRiskAggregator(options) {
    * Reset all state.
    */
   function reset() {
-    sessions = {};
+    sessions = Object.create(null);
     stats = {
       totalSignals: 0,
       totalEvaluations: 0,

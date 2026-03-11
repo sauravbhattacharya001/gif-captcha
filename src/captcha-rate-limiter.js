@@ -151,6 +151,37 @@ function createCaptchaRateLimiter(options) {
   var totalBanned = 0;
   var evictions = 0;
 
+  // ── Shared Helpers ──────────────────────────────────────────────
+
+  /**
+   * Validate that key is a non-empty string.
+   * @param {string} key
+   * @throws {Error} If key is falsy or not a string
+   */
+  function _validateKey(key) {
+    if (!key || typeof key !== "string") {
+      throw new Error("Key must be a non-empty string");
+    }
+  }
+
+  /**
+   * Check if a key is currently banned.
+   * @param {string} key
+   * @param {number} now - Current timestamp
+   * @returns {Object|null} Ban result object if banned, null otherwise
+   */
+  function _checkBanStatus(key, now) {
+    if (!enableBans || !bans[key]) return null;
+    var ban = bans[key];
+    if (now < ban.expiresAt) {
+      return { banned: true, expiresAt: ban.expiresAt, retryAfterMs: ban.expiresAt - now };
+    }
+    // Ban expired — clean up
+    delete bans[key];
+    delete strikes[key];
+    return null;
+  }
+
   // ── Sliding Window ──────────────────────────────────────────────
 
   function _checkSlidingWindow(key, now) {
@@ -297,9 +328,7 @@ function createCaptchaRateLimiter(options) {
    * @returns {Object} Result with allowed, remaining, retryAfterMs, etc.
    */
   function check(key, now) {
-    if (!key || typeof key !== "string") {
-      throw new Error("Key must be a non-empty string");
-    }
+    _validateKey(key);
     now = now || Date.now();
     checkCount++;
 
@@ -309,22 +338,17 @@ function createCaptchaRateLimiter(options) {
     }
 
     // Check ban status
-    if (enableBans && bans[key]) {
-      var ban = bans[key];
-      if (now < ban.expiresAt) {
-        totalRejected++;
-        return {
-          allowed: false,
-          remaining: 0,
-          retryAfterMs: ban.expiresAt - now,
-          banned: true,
-          banExpiresAt: ban.expiresAt,
-          reason: "Temporarily banned after " + banThreshold + " consecutive rejections"
-        };
-      }
-      // Ban expired — clear it
-      delete bans[key];
-      delete strikes[key];
+    var banResult = _checkBanStatus(key, now);
+    if (banResult) {
+      totalRejected++;
+      return {
+        allowed: false,
+        remaining: 0,
+        retryAfterMs: banResult.retryAfterMs,
+        banned: true,
+        banExpiresAt: banResult.expiresAt,
+        reason: "Temporarily banned after " + banThreshold + " consecutive rejections"
+      };
     }
 
     // Run algorithm check
@@ -396,16 +420,13 @@ function createCaptchaRateLimiter(options) {
    * @returns {Object} Current status
    */
   function peek(key, now) {
-    if (!key || typeof key !== "string") {
-      throw new Error("Key must be a non-empty string");
-    }
+    _validateKey(key);
     now = now || Date.now();
 
     // Check ban
-    if (enableBans && bans[key]) {
-      if (now < bans[key].expiresAt) {
-        return { allowed: false, banned: true, retryAfterMs: bans[key].expiresAt - now };
-      }
+    var banResult = _checkBanStatus(key, now);
+    if (banResult) {
+      return { allowed: false, banned: true, retryAfterMs: banResult.retryAfterMs };
     }
 
     var entry = store[key];
@@ -460,9 +481,7 @@ function createCaptchaRateLimiter(options) {
    * @param {number} [now] - Current timestamp
    */
   function ban(key, durationMs, now) {
-    if (!key || typeof key !== "string") {
-      throw new Error("Key must be a non-empty string");
-    }
+    _validateKey(key);
     now = now || Date.now();
     durationMs = durationMs || banDurationMs;
     bans[key] = { expiresAt: now + durationMs, bannedAt: now };
@@ -620,9 +639,7 @@ function createCaptchaRateLimiter(options) {
    * @param {string} key
    */
   function whitelistAdd(key) {
-    if (!key || typeof key !== "string") {
-      throw new Error("Key must be a non-empty string");
-    }
+    _validateKey(key);
     whitelist[key] = true;
   }
 

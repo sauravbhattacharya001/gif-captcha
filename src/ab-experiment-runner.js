@@ -181,7 +181,7 @@ function createABExperimentRunner(options) {
   var earlyStoppingEnabled = options.earlyStoppingEnabled !== false;
   var earlyStoppingConfidence = typeof options.earlyStoppingConfidence === 'number' ? options.earlyStoppingConfidence : 0.01;
 
-  var experiments = {};
+  var experiments = Object.create(null);
   var experimentOrder = new LruTracker();
   var onResultCallbacks = [];
 
@@ -336,7 +336,7 @@ function createABExperimentRunner(options) {
       allVariants.push({ name: spec.variants[j].name, config: spec.variants[j].config || {} });
     }
 
-    var variantData = {};
+    var variantData = Object.create(null);
     for (var k = 0; k < allVariants.length; k++) {
       variantData[allVariants[k].name] = {
         name: allVariants[k].name,
@@ -634,7 +634,7 @@ function createABExperimentRunner(options) {
   function getAssignmentCounts(experimentId) {
     var exp = experiments[experimentId];
     if (!exp) throw new Error('Unknown experiment: ' + experimentId);
-    var counts = {};
+    var counts = Object.create(null);
     for (var i = 0; i < exp.variantNames.length; i++) {
       counts[exp.variantNames[i]] = 0;
     }
@@ -670,7 +670,7 @@ function createABExperimentRunner(options) {
     for (var i = 0; i < order.length; i++) {
       var exp = experiments[order[i]];
       if (!exp) continue;
-      var variantExport = {};
+      var variantExport = Object.create(null);
       for (var j = 0; j < exp.variantNames.length; j++) {
         var name = exp.variantNames[j];
         var vd = exp.variants[name];
@@ -711,7 +711,7 @@ function createABExperimentRunner(options) {
       if (!e.id || experiments[e.id]) continue;
       if (experimentOrder.length >= maxExperiments) break;
 
-      var variantData = {};
+      var variantData = Object.create(null);
       for (var j = 0; j < e.variantNames.length; j++) {
         var name = e.variantNames[j];
         var src = (e.variants && e.variants[name]) || {};

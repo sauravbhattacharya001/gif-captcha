@@ -159,7 +159,7 @@ function createTrustScoreEngine(options) {
     behaviorEntropy: 1.0
   };
 
-  var weights = {};
+  var weights = Object.create(null);
   var userWeights = options.weights || {};
   var wKeys = Object.keys(defaultWeights);
   for (var wi = 0; wi < wKeys.length; wi++) {
@@ -257,7 +257,7 @@ function createTrustScoreEngine(options) {
     }
 
     manualSignals = manualSignals || {};
-    var signals = {};
+    var signals = Object.create(null);
     var breakdown = [];
 
     // Collect signals from providers
@@ -537,7 +537,7 @@ function createTrustScoreEngine(options) {
    * @returns {Object}
    */
   function getWeights() {
-    var copy = {};
+    var copy = Object.create(null);
     var k = Object.keys(weights);
     for (var i = 0; i < k.length; i++) copy[k[i]] = weights[k[i]];
     return copy;
@@ -619,7 +619,7 @@ function createTrustScoreEngine(options) {
     if (!a || !b) return null;
 
     var signalDiffs = [];
-    var allSignals = {};
+    var allSignals = Object.create(null);
     var sk;
     for (sk in a.signals) allSignals[sk] = true;
     for (sk in b.signals) allSignals[sk] = true;
@@ -650,7 +650,7 @@ function createTrustScoreEngine(options) {
    * @returns {Object}
    */
   function exportState() {
-    var state = {};
+    var state = Object.create(null);
     var order3 = clientOrder.toArray();
     for (var i = 0; i < order3.length; i++) {
       var id = order3[i];

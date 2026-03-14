@@ -54,6 +54,11 @@ function createGeoRiskScorer(options) {
   var suspiciousSpeedKmh = options.suspiciousTravelSpeedKmh || SUSPICIOUS_TRAVEL_SPEED_KMH;
   var velocityWindowMs = options.velocityWindowMs || VELOCITY_WINDOW_MS;
   var maxHistory = options.maxHistory || 500;
+  var maxTrackedIPs = options.maxTrackedIPs || 50000;
+  var maxTrackedSessions = options.maxTrackedSessions || 50000;
+  var blocklistTTLMs = options.blocklistTTLMs || 86400000; // 24h default
+  var allowlistTTLMs = options.allowlistTTLMs || 86400000;
+  var cleanupIntervalMs = options.cleanupIntervalMs || 60000; // sweep at most once/min
 
   // Thresholds for action mapping
   var thresholds = options.thresholds || {};
@@ -74,6 +79,9 @@ function createGeoRiskScorer(options) {
   var _totalScored = 0;
   var _totalBlocked = 0;
   var _totalChallenged = 0;
+  var _ipAccessOrder = [];    // LRU tracking: array of IPs in access order
+  var _sessionAccessOrder = []; // LRU tracking: array of session IDs
+  var _lastCleanup = 0;       // timestamp of last periodic sweep
 
   // ── Helpers ──────────────────────────────────────────────────────
 
@@ -99,6 +107,61 @@ function createGeoRiskScorer(options) {
     if (score >= challengeThreshold) return "high";
     if (score >= warnThreshold) return "medium";
     return "low";
+  }
+
+  // ── LRU eviction for bounded maps ────────────────────────────────
+
+  function _touchLRU(orderList, map, key, maxSize) {
+    // Append to end (most recent). We don't remove duplicates on every
+    // touch — instead we skip stale entries during eviction.
+    orderList.push(key);
+    // Evict oldest entries when over capacity
+    while (Object.keys(map).length > maxSize && orderList.length > 0) {
+      var oldest = orderList.shift();
+      // Skip if this key was re-accessed (will appear later in the list)
+      if (map[oldest] !== undefined) {
+        // Check if this key appears again later (still active)
+        var dominated = false;
+        for (var k = 0; k < orderList.length; k++) {
+          if (orderList[k] === oldest) { dominated = true; break; }
+        }
+        if (!dominated) {
+          delete map[oldest];
+        }
+      }
+    }
+    // Compact order list periodically to avoid unbounded growth of the
+    // tracking array itself (remove entries whose keys no longer exist)
+    if (orderList.length > maxSize * 3) {
+      var compacted = [];
+      for (var j = 0; j < orderList.length; j++) {
+        if (map[orderList[j]] !== undefined) compacted.push(orderList[j]);
+      }
+      orderList.length = 0;
+      for (var m = 0; m < compacted.length; m++) orderList.push(compacted[m]);
+    }
+  }
+
+  // ── TTL-based cleanup for blocklist/allowlist ────────────────────
+
+  function _periodicCleanup(now) {
+    if (now - _lastCleanup < cleanupIntervalMs) return;
+    _lastCleanup = now;
+
+    // Expire blocked IPs past TTL
+    var blockedKeys = Object.keys(_blockedIPs);
+    for (var i = 0; i < blockedKeys.length; i++) {
+      if (now - _blockedIPs[blockedKeys[i]] > blocklistTTLMs) {
+        delete _blockedIPs[blockedKeys[i]];
+      }
+    }
+    // Expire allowed IPs past TTL
+    var allowedKeys = Object.keys(_allowedIPs);
+    for (var j = 0; j < allowedKeys.length; j++) {
+      if (now - _allowedIPs[allowedKeys[j]] > allowlistTTLMs) {
+        delete _allowedIPs[allowedKeys[j]];
+      }
+    }
   }
 
   // ── Factor Evaluators ────────────────────────────────────────────
@@ -183,6 +246,9 @@ function createGeoRiskScorer(options) {
     var ts = meta.timestamp || Date.now();
     var factors = [];
 
+    // Periodic TTL-based cleanup of blocklist/allowlist
+    _periodicCleanup(ts);
+
     // Allowlist/blocklist short-circuits
     if (meta.ip && _allowedIPs[meta.ip]) {
       return { score: 0, level: "low", factors: [{ name: "ip_allowlisted", score: 0, detail: meta.ip }], action: "allow" };
@@ -219,14 +285,16 @@ function createGeoRiskScorer(options) {
     var action = _toAction(composite);
     var level = _toLevel(composite);
 
-    // Update history
+    // Update history with LRU eviction
     if (meta.ip && meta.lat != null && meta.lon != null) {
       if (!_ipHistory[meta.ip]) _ipHistory[meta.ip] = [];
       _pushCapped(_ipHistory[meta.ip], { lat: meta.lat, lon: meta.lon, ts: ts, country: (meta.country || "").toUpperCase() }, maxHistory);
+      _touchLRU(_ipAccessOrder, _ipHistory, meta.ip, maxTrackedIPs);
     }
     if (meta.sessionId && meta.country) {
       if (!_sessionGeo[meta.sessionId]) _sessionGeo[meta.sessionId] = [];
       _pushCapped(_sessionGeo[meta.sessionId], { country: meta.country.toUpperCase(), ts: ts }, maxHistory);
+      _touchLRU(_sessionAccessOrder, _sessionGeo, meta.sessionId, maxTrackedSessions);
     }
 
     _totalScored++;
@@ -275,8 +343,8 @@ function createGeoRiskScorer(options) {
 
   // ── IP Management ────────────────────────────────────────────────
 
-  function blockIP(ip) { _blockedIPs[ip] = true; }
-  function allowIP(ip) { _allowedIPs[ip] = true; }
+  function blockIP(ip) { _blockedIPs[ip] = Date.now(); }
+  function allowIP(ip) { _allowedIPs[ip] = Date.now(); }
   function unblockIP(ip) { delete _blockedIPs[ip]; }
   function unallowIP(ip) { delete _allowedIPs[ip]; }
   function isBlocked(ip) { return !!_blockedIPs[ip]; }
@@ -320,6 +388,9 @@ function createGeoRiskScorer(options) {
     _totalScored = 0;
     _totalBlocked = 0;
     _totalChallenged = 0;
+    _ipAccessOrder.length = 0;
+    _sessionAccessOrder.length = 0;
+    _lastCleanup = 0;
   }
 
   return {
@@ -334,7 +405,8 @@ function createGeoRiskScorer(options) {
     isBlocked: isBlocked,
     isAllowed: isAllowed,
     summary: summary,
-    reset: reset
+    reset: reset,
+    cleanup: function () { _periodicCleanup(Date.now()); }
   };
 }
 

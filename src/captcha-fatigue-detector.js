@@ -87,19 +87,19 @@ function createSession(sessionId, timestamp) {
 }
 
 function createCaptchaFatigueDetector(options) {
-  var opts = {};
+  var opts = Object.create(null);
   var key;
   for (key in DEFAULT_OPTIONS) {
-    if (DEFAULT_OPTIONS.hasOwnProperty(key)) opts[key] = DEFAULT_OPTIONS[key];
+    if (Object.prototype.hasOwnProperty.call(DEFAULT_OPTIONS, key)) opts[key] = DEFAULT_OPTIONS[key];
   }
   if (options) {
     for (key in options) {
-      if (options.hasOwnProperty(key)) {
+      if (Object.prototype.hasOwnProperty.call(options, key)) {
         if (key === "weights" && typeof options[key] === "object") {
-          opts.weights = {};
+          opts.weights = Object.create(null);
           for (var w in DEFAULT_OPTIONS.weights) {
-            if (DEFAULT_OPTIONS.weights.hasOwnProperty(w)) {
-              opts.weights[w] = (options.weights && options.weights.hasOwnProperty(w))
+            if (Object.prototype.hasOwnProperty.call(DEFAULT_OPTIONS.weights, w)) {
+              opts.weights[w] = (options.weights && Object.prototype.hasOwnProperty.call(options.weights, w))
                 ? options.weights[w] : DEFAULT_OPTIONS.weights[w];
             }
           }
@@ -110,9 +110,9 @@ function createCaptchaFatigueDetector(options) {
     }
   }
 
-  var sessions = {};
+  var sessions = Object.create(null);
   var sessionCount = 0;
-  var listeners = {};
+  var listeners = Object.create(null);
   var globalStats = {
     totalEvents: 0, totalSessions: 0,
     fatigueDetections: { none: 0, mild: 0, moderate: 0, severe: 0 },
@@ -268,7 +268,7 @@ function createCaptchaFatigueDetector(options) {
 
     var score = 0;
     for (var d in dims) {
-      if (dims.hasOwnProperty(d) && opts.weights.hasOwnProperty(d))
+      if (Object.prototype.hasOwnProperty.call(dims, d) && Object.prototype.hasOwnProperty.call(opts.weights, d))
         score += dims[d] * opts.weights[d];
     }
     score = clamp(Math.round(score * 100) / 100, 0, 100);

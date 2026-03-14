@@ -369,15 +369,15 @@ function createChallengeTemplateEngine(options) {
 
   // ── State ───────────────────────────────────────────────────────
 
-  var templates = {};     // name → template definition
+  var templates = Object.create(null);     // name → template definition
   var templateNames = []; // ordered list for random selection
-  var pending = {};       // challengeId → { templateName, params, createdAt }
+  var pending = Object.create(null);       // challengeId → { templateName, params, createdAt }
   var pendingCount = 0;
   var history = [];       // completed challenges (ring buffer)
   var historyIndex = 0;
 
   // Per-template stats
-  var stats = {};  // name → { generated, validated, passed, failed, avgResponseMs }
+  var stats = Object.create(null);  // name → { generated, validated, passed, failed, avgResponseMs }
 
   // ── Init built-ins ──────────────────────────────────────────────
 
@@ -567,12 +567,12 @@ function createChallengeTemplateEngine(options) {
   }
 
   function _extractDisplayData(params) {
-    var data = {};
+    var data = Object.create(null);
     // Include things needed for rendering, exclude the answer
     if (params.distractors) data.distractors = params.distractors;
     if (params.target && typeof params.target === "object") {
       // For color_shape: include target descriptor but not position
-      data.targetDescription = {};
+      data.targetDescription = Object.create(null);
       if (params.target.color) data.targetDescription.color = params.target.color;
       if (params.target.shape) data.targetDescription.shape = params.target.shape;
       if (params.target.object) data.targetDescription.object = params.target.object;
@@ -660,7 +660,7 @@ function createChallengeTemplateEngine(options) {
    */
   function getStats() {
     var totalGenerated = 0, totalPassed = 0, totalFailed = 0;
-    var perTemplate = {};
+    var perTemplate = Object.create(null);
 
     for (var i = 0; i < templateNames.length; i++) {
       var name = templateNames[i];
@@ -702,7 +702,7 @@ function createChallengeTemplateEngine(options) {
    * @returns {Object} { 1: count, 2: count, ... }
    */
   function getDifficultyDistribution() {
-    var dist = {};
+    var dist = Object.create(null);
     for (var i = 0; i < templateNames.length; i++) {
       var d = templates[templateNames[i]].difficulty;
       dist[d] = (dist[d] || 0) + 1;
@@ -729,7 +729,7 @@ function createChallengeTemplateEngine(options) {
    * @returns {Object} { category: count, ... }
    */
   function getCategories() {
-    var cats = {};
+    var cats = Object.create(null);
     for (var i = 0; i < templateNames.length; i++) {
       var cat = templates[templateNames[i]].category;
       cats[cat] = (cats[cat] || 0) + 1;
@@ -903,7 +903,7 @@ function createChallengeTemplateEngine(options) {
         totalResponseMs: 0, avgResponseMs: 0
       };
     }
-    pending = {};
+    pending = Object.create(null);
     pendingCount = 0;
     history = [];
     historyIndex = 0;

@@ -48,13 +48,13 @@ function _countSeverities(findings, SEV) {
  * @returns {Object} Map of category -> { score, total, passed, criticals, warnings }
  */
 function _computeAllCategoryScores(findings, SEV) {
-  var buckets = {};
+  var buckets = Object.create(null);
   for (var i = 0; i < findings.length; i++) {
     var cat = findings[i].category;
     if (!buckets[cat]) buckets[cat] = [];
     buckets[cat].push(findings[i]);
   }
-  var scores = {};
+  var scores = Object.create(null);
   var cats = Object.keys(buckets);
   for (var c = 0; c < cats.length; c++) {
     var catName = cats[c];
@@ -485,12 +485,12 @@ function createComplianceReporter(options) {
     if (!oldReport || !newReport || !oldReport.findings || !newReport.findings) {
       return { error: "invalid_reports", improved: 0, regressed: 0, unchanged: 0, details: [] };
     }
-    var oldMap = {};
+    var oldMap = Object.create(null);
     for (var oi = 0; oi < oldReport.findings.length; oi++) {
       oldMap[oldReport.findings[oi].id] = oldReport.findings[oi].severity;
     }
 
-    var severityRank = {};
+    var severityRank = Object.create(null);
     severityRank[SEVERITY.PASS] = 0;
     severityRank[SEVERITY.INFO] = 1;
     severityRank[SEVERITY.WARNING] = 2;

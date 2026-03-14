@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 
 var { describe, it, beforeEach } = require('node:test');
 var assert = require('node:assert/strict');
@@ -59,7 +59,7 @@ describe('createTrustScoreEngine', function () {
       engine.registerProvider('', function () { return { score: 1 }; });
       engine.registerProvider('test', 'not a function');
       var result = engine.evaluate('client1');
-      assert.deepEqual(result.signals, {});
+      assert.equal(Object.keys(result.signals).length, 0);
     });
 
     it('should unregister a provider', function () {

@@ -65,21 +65,21 @@ function now() {
 }
 
 function shallowMerge(defaults, overrides) {
-  var result = {};
+  var result = Object.create(null);
   var key;
   for (key in defaults) {
-    if (defaults.hasOwnProperty(key)) {
-      result[key] = overrides && overrides.hasOwnProperty(key) ? overrides[key] : defaults[key];
+    if (Object.prototype.hasOwnProperty.call(defaults, key)) {
+      result[key] = overrides && Object.prototype.hasOwnProperty.call(overrides, key) ? overrides[key] : defaults[key];
     }
   }
   return result;
 }
 
 function deepCopyDimensions(dims) {
-  var result = {};
+  var result = Object.create(null);
   var key;
   for (key in dims) {
-    if (dims.hasOwnProperty(key)) {
+    if (Object.prototype.hasOwnProperty.call(dims, key)) {
       result[key] = {
         weight: dims[key].weight,
         min: dims[key].min,
@@ -207,7 +207,7 @@ function createAdaptiveDifficultyTuner(options) {
   var history = new AdjustmentHistory(opts.maxHistory);
   var lastAdjustmentTs = 0;
   var evaluationTimer = null;
-  var listeners = {};
+  var listeners = Object.create(null);
   var totalSolves = 0;
   var totalFails = 0;
   var paused = false;
@@ -250,7 +250,7 @@ function createAdaptiveDifficultyTuner(options) {
     var totalWeight = 0;
     var weightedSum = 0;
     for (var key in dimensions) {
-      if (dimensions.hasOwnProperty(key)) {
+      if (Object.prototype.hasOwnProperty.call(dimensions, key)) {
         var dim = dimensions[key];
         // Normalize to 0-1 range, then scale to minDifficulty-maxDifficulty
         var normalized = (dim.value - dim.min) / (dim.max - dim.min || 1);
@@ -270,7 +270,7 @@ function createAdaptiveDifficultyTuner(options) {
     // Scale all dimensions proportionally
     var fraction = (target - opts.minDifficulty) / (opts.maxDifficulty - opts.minDifficulty || 1);
     for (var key in dimensions) {
-      if (dimensions.hasOwnProperty(key)) {
+      if (Object.prototype.hasOwnProperty.call(dimensions, key)) {
         var dim = dimensions[key];
         dim.value = Math.round((dim.min + fraction * (dim.max - dim.min)) * 100) / 100;
       }
@@ -396,9 +396,9 @@ function createAdaptiveDifficultyTuner(options) {
   }
 
   function getAllDimensions() {
-    var result = {};
+    var result = Object.create(null);
     for (var key in dimensions) {
-      if (dimensions.hasOwnProperty(key)) {
+      if (Object.prototype.hasOwnProperty.call(dimensions, key)) {
         result[key] = getDimension(key);
       }
     }
@@ -601,7 +601,7 @@ function createAdaptiveDifficultyTuner(options) {
     }
     if (state.dimensions) {
       for (var key in state.dimensions) {
-        if (state.dimensions.hasOwnProperty(key) && dimensions[key]) {
+        if (Object.prototype.hasOwnProperty.call(state.dimensions, key) && dimensions[key]) {
           dimensions[key].value = state.dimensions[key].value;
         }
       }
@@ -624,7 +624,7 @@ function createAdaptiveDifficultyTuner(options) {
 
   function destroy() {
     stopAutoEval();
-    listeners = {};
+    listeners = Object.create(null);
     eventWindow.clear();
   }
 

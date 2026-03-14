@@ -444,13 +444,13 @@ function textSimilarity(a, b) {
   var wordsB = String(b).toLowerCase().split(/\s+/).filter(Boolean);
   if (wordsA.length === 0 || wordsB.length === 0) return 0;
 
-  var setA = {};
+  var setA = Object.create(null);
   var uniqueA = 0;
   wordsA.forEach(function (w) { if (!setA[w]) { setA[w] = true; uniqueA++; } });
 
   var intersection = 0;
   var uniqueB = 0;
-  var setB = {};
+  var setB = Object.create(null);
   wordsB.forEach(function (w) {
     if (!setB[w]) {
       setB[w] = true;
@@ -807,7 +807,7 @@ function createSetAnalyzer(challenges) {
     if (_wordSets) return _wordSets;
     _wordSets = _challenges.map(function (c) {
       var words = String(c.humanAnswer || "").toLowerCase().split(/\s+/).filter(Boolean);
-      var set = {};
+      var set = Object.create(null);
       words.forEach(function (w) { set[w] = true; });
       return set;
     });
@@ -845,7 +845,7 @@ function createSetAnalyzer(challenges) {
     var keysB = Object.keys(setB);
     if (keysA.length === 0 || keysB.length === 0) return 0;
     var intersection = 0;
-    var union = {};
+    var union = Object.create(null);
     keysA.forEach(function (w) { union[w] = true; });
     keysB.forEach(function (w) {
       if (setA[w]) intersection++;
@@ -881,7 +881,7 @@ function createSetAnalyzer(challenges) {
    */
   function keywordCoverage() {
     var totalKeywords = 0;
-    var keywordFrequency = {};
+    var keywordFrequency = Object.create(null);
     var challengesWithKeywords = 0;
     var challengesWithoutKeywords = 0;
 
@@ -969,7 +969,7 @@ function createSetAnalyzer(challenges) {
       ? Math.min(100, (kc.uniqueKeywords / (_challenges.length * 2)) * 100) : 0;
 
     // titleUniqueness: uniqueTitles / totalChallenges × 100
-    var titleSet = {};
+    var titleSet = Object.create(null);
     _challenges.forEach(function (c) {
       var t = (c.title || "").toLowerCase();
       titleSet[t] = true;
@@ -1002,7 +1002,7 @@ function createSetAnalyzer(challenges) {
     return _challenges.map(function (c) {
       var words = c.humanAnswer.split(/\s+/).filter(Boolean);
       var wordCount = words.length;
-      var lowerWords = {};
+      var lowerWords = Object.create(null);
       words.forEach(function (w) { lowerWords[w.toLowerCase()] = true; });
       var uniqueWords = Object.keys(lowerWords).length;
       var totalWordLen = words.reduce(function (s, w) { return s + w.length; }, 0);
@@ -1075,7 +1075,7 @@ function createSetAnalyzer(challenges) {
     }
 
     // identical_titles — group by title in single pass
-    var titleGroups = {};
+    var titleGroups = Object.create(null);
     _challenges.forEach(function (c) {
       var t = (c.title || "").toLowerCase();
       if (!titleGroups[t]) titleGroups[t] = [];
@@ -1656,7 +1656,7 @@ function createSecurityScorer(challenges) {
     }
 
     var totalWords = allWords.length;
-    var uniqueSet = {};
+    var uniqueSet = Object.create(null);
     for (var i = 0; i < allWords.length; i++) {
       uniqueSet[allWords[i]] = true;
     }
@@ -1772,7 +1772,7 @@ function createSecurityScorer(challenges) {
       };
     }
 
-    var uniqueSet = {};
+    var uniqueSet = Object.create(null);
     var weakCount = 0;
     var totalLen = 0;
     for (var i = 0; i < allKeywords.length; i++) {
@@ -1934,7 +1934,7 @@ function createSecurityScorer(challenges) {
     }
 
     // first-word diversity — single object tracks both counts and diversity
-    var firstWordCounts = {};
+    var firstWordCounts = Object.create(null);
     for (var i = 0; i < answers.length; i++) {
       var w = getWords(answers[i]);
       if (w.length > 0) {
@@ -1956,7 +1956,7 @@ function createSecurityScorer(challenges) {
 
     // bigram uniqueness
     var totalBigrams = 0;
-    var uniqueBigrams = {};
+    var uniqueBigrams = Object.create(null);
     for (var i = 0; i < answers.length; i++) {
       var words = getWords(answers[i]);
       for (var j = 0; j < words.length - 1; j++) {
@@ -2609,7 +2609,7 @@ function createPoolManager(options) {
     }
 
     var picked = [];
-    var usedIndices = {};
+    var usedIndices = Object.create(null);
     for (var n = 0; n < count; n++) {
       var rand = (secureRandomInt(1000000) / 1000000) * totalWeight;
       var cumulative = 0;
@@ -2863,7 +2863,7 @@ function createResponseAnalyzer(opts) {
         avgWordLength: 0, hasDescriptiveWords: false, specificity: 'empty' };
     }
 
-    var uniqueSet = {};
+    var uniqueSet = Object.create(null);
     words.forEach(function (w) { uniqueSet[w] = true; });
     var unique = Object.keys(uniqueSet).length;
     var ttr = unique / n;
@@ -2907,7 +2907,7 @@ function createResponseAnalyzer(opts) {
     }
 
     var pairs = [];
-    var duplicatedIndices = {};
+    var duplicatedIndices = Object.create(null);
     for (var i = 0; i < responses.length; i++) {
       for (var j = i + 1; j < responses.length; j++) {
         var sim = textSimilarity(responses[i], responses[j]);
@@ -2951,7 +2951,7 @@ function createResponseAnalyzer(opts) {
 
     var analyses = responses.map(analyzeResponse);
     var totalWords = 0, descriptiveCount = 0, emptyCount = 0;
-    var specificities = {};
+    var specificities = Object.create(null);
     analyses.forEach(function (a) {
       totalWords += a.wordCount;
       if (a.hasDescriptiveWords) descriptiveCount++;
@@ -3740,7 +3740,7 @@ function createTokenVerifier(options) {
       if (metaKeys.length > 10) {
         throw new Error('metadata cannot have more than 10 keys');
       }
-      payload.meta = {};
+      payload.meta = Object.create(null);
       for (var i = 0; i < metaKeys.length; i++) {
         var k = metaKeys[i];
         var v = params.metadata[k];
@@ -5028,13 +5028,13 @@ function createRateLimiter(options) {
   var maxClients = _posOpt(options.maxClients, 10000);
 
   // Sets for O(1) lookup
-  var allowSet = {};
-  var blockSet = {};
+  var allowSet = Object.create(null);
+  var blockSet = Object.create(null);
   (options.allowlist || []).forEach(function (id) { allowSet[id] = true; });
   (options.blocklist || []).forEach(function (id) { blockSet[id] = true; });
 
   // clientId -> { timestamps: number[], lastAccess: number }
-  var clients = {};
+  var clients = Object.create(null);
   var clientCount = 0;
 
   // Stats
@@ -5256,7 +5256,7 @@ function createRateLimiter(options) {
    * @returns {Object} Map of clientId -> check result
    */
   function checkBatch(clientIds, opts) {
-    var results = {};
+    var results = Object.create(null);
     for (var i = 0; i < clientIds.length; i++) {
       results[clientIds[i]] = check(clientIds[i], opts);
     }
@@ -5364,7 +5364,7 @@ function createRateLimiter(options) {
    * @returns {Object}
    */
   function exportState() {
-    var clientData = {};
+    var clientData = Object.create(null);
     Object.keys(clients).forEach(function (id) {
       clientData[id] = {
         timestamps: clients[id].timestamps.slice(),
@@ -5387,7 +5387,7 @@ function createRateLimiter(options) {
     if (!state || typeof state !== "object") return;
 
     if (state.clients) {
-      clients = {};
+      clients = Object.create(null);
       clientCount = 0;
       Object.keys(state.clients).forEach(function (id) {
         clients[id] = {
@@ -5399,11 +5399,11 @@ function createRateLimiter(options) {
     }
 
     if (state.allowlist) {
-      allowSet = {};
+      allowSet = Object.create(null);
       state.allowlist.forEach(function (id) { allowSet[id] = true; });
     }
     if (state.blocklist) {
-      blockSet = {};
+      blockSet = Object.create(null);
       state.blocklist.forEach(function (id) { blockSet[id] = true; });
     }
   }
@@ -5439,7 +5439,7 @@ function createRateLimiter(options) {
    * Reset all state.
    */
   function reset() {
-    clients = {};
+    clients = Object.create(null);
     clientCount = 0;
     totalChecks = 0;
     totalAllowed = 0;
@@ -5520,10 +5520,10 @@ function createClientFingerprinter(options) {
     webglVendor: 0.10,
     fonts: 0.10,
   };
-  var signalWeights = {};
+  var signalWeights = Object.create(null);
   var k;
   for (k in defaultWeights) {
-    if (defaultWeights.hasOwnProperty(k)) {
+    if (Object.prototype.hasOwnProperty.call(defaultWeights, k)) {
       signalWeights[k] = (opts.signalWeights && opts.signalWeights[k] !== undefined)
         ? opts.signalWeights[k]
         : defaultWeights[k];
@@ -5531,11 +5531,11 @@ function createClientFingerprinter(options) {
   }
 
   // Storage: fingerprint hash -> { signals, firstSeen, lastSeen, visits, ipSet, meta }
-  var store = {};
+  var store = Object.create(null);
   var storeOrder = new LruTracker(); // O(1) LRU tracking
 
   // IP -> [{ fingerprintHash, timestamp }] for change tracking
-  var ipHistory = {};
+  var ipHistory = Object.create(null);
 
   // Known bot fingerprint patterns
   var botPatterns = [
@@ -5610,7 +5610,7 @@ function createClientFingerprinter(options) {
     var score = 0;
     var totalWeight = 0;
     for (var key in signalWeights) {
-      if (!signalWeights.hasOwnProperty(key)) continue;
+      if (!Object.prototype.hasOwnProperty.call(signalWeights, key)) continue;
       var w = signalWeights[key];
       totalWeight += w;
       if (a[key] === b[key] && a[key] !== "" && a[key] !== "0" && a[key] !== "0x0") {
@@ -5679,7 +5679,7 @@ function createClientFingerprinter(options) {
     var now = Date.now();
     var cutoff = now - changeWindowMs;
     var recent = ipHistory[ip].filter(function (e) { return e.timestamp >= cutoff; });
-    var uniqueHashes = {};
+    var uniqueHashes = Object.create(null);
     for (var i = 0; i < recent.length; i++) {
       uniqueHashes[recent[i].fingerprintHash] = true;
     }
@@ -5779,7 +5779,7 @@ function createClientFingerprinter(options) {
     var signals = normalizeSignals(rawSignals);
     var results = [];
     for (var hash in store) {
-      if (!store.hasOwnProperty(hash)) continue;
+      if (!Object.prototype.hasOwnProperty.call(store, hash)) continue;
       var sim = computeSimilarity(signals, store[hash].signals);
       if (sim >= threshold) {
         results.push({
@@ -5819,12 +5819,12 @@ function createClientFingerprinter(options) {
    */
   function getStats() {
     var totalVisits = 0;
-    var totalIps = {};
+    var totalIps = Object.create(null);
     for (var hash in store) {
-      if (!store.hasOwnProperty(hash)) continue;
+      if (!Object.prototype.hasOwnProperty.call(store, hash)) continue;
       totalVisits += store[hash].visits;
       for (var ip in store[hash].ips) {
-        if (store[hash].ips.hasOwnProperty(ip)) {
+        if (Object.prototype.hasOwnProperty.call(store[hash].ips, ip)) {
           totalIps[ip] = true;
         }
       }
@@ -5857,9 +5857,9 @@ function createClientFingerprinter(options) {
   function importState(state) {
     if (!state || typeof state !== "object") return;
     if (state.store) {
-      store = {};
+      store = Object.create(null);
       for (var h in state.store) {
-        if (state.store.hasOwnProperty(h)) {
+        if (Object.prototype.hasOwnProperty.call(state.store, h)) {
           store[h] = state.store[h];
         }
       }
@@ -5868,9 +5868,9 @@ function createClientFingerprinter(options) {
       storeOrder.fromArray(state.storeOrder);
     }
     if (state.ipHistory) {
-      ipHistory = {};
+      ipHistory = Object.create(null);
       for (var ip in state.ipHistory) {
-        if (state.ipHistory.hasOwnProperty(ip)) {
+        if (Object.prototype.hasOwnProperty.call(state.ipHistory, ip)) {
           ipHistory[ip] = state.ipHistory[ip];
         }
       }
@@ -5881,9 +5881,9 @@ function createClientFingerprinter(options) {
    * Reset all state.
    */
   function reset() {
-    store = {};
+    store = Object.create(null);
     storeOrder.clear();
-    ipHistory = {};
+    ipHistory = Object.create(null);
   }
 
   /**
@@ -5981,9 +5981,9 @@ function createIncidentCorrelator(options) {
   };
 
   // clientId -> incidentId mapping for correlation
-  var clientIncidents = {};
+  var clientIncidents = Object.create(null);
   // incidentId -> incident object
-  var incidents = {};
+  var incidents = Object.create(null);
   var incidentOrder = []; // oldest first for LRU eviction
   var incidentOrderStart = 0; // pointer to first live entry (avoids O(n) shift)
   var nextIncidentId = 1;
@@ -6045,9 +6045,9 @@ function createIncidentCorrelator(options) {
    */
   function getIncidentSummary(incident) {
     // Shallow-copy the flat { type: count } map
-    var typesCopy = {};
+    var typesCopy = Object.create(null);
     for (var t in incident.signalTypes) {
-      if (incident.signalTypes.hasOwnProperty(t)) {
+      if (Object.prototype.hasOwnProperty.call(incident.signalTypes, t)) {
         typesCopy[t] = incident.signalTypes[t];
       }
     }
@@ -6259,15 +6259,15 @@ function createIncidentCorrelator(options) {
       var inc = incidents[incidentOrder[i]];
       if (inc && inc.status === "open") activeCount++;
     }
-    var byTypeCopy = {};
+    var byTypeCopy = Object.create(null);
     for (var st in stats.signalsByType) {
-      if (stats.signalsByType.hasOwnProperty(st)) {
+      if (Object.prototype.hasOwnProperty.call(stats.signalsByType, st)) {
         byTypeCopy[st] = stats.signalsByType[st];
       }
     }
-    var bySevCopy = {};
+    var bySevCopy = Object.create(null);
     for (var sv in stats.incidentsBySeverity) {
-      if (stats.incidentsBySeverity.hasOwnProperty(sv)) {
+      if (Object.prototype.hasOwnProperty.call(stats.incidentsBySeverity, sv)) {
         bySevCopy[sv] = stats.incidentsBySeverity[sv];
       }
     }
@@ -6286,8 +6286,8 @@ function createIncidentCorrelator(options) {
    * Reset all state.
    */
   function reset() {
-    clientIncidents = {};
-    incidents = {};
+    clientIncidents = Object.create(null);
+    incidents = Object.create(null);
     incidentOrder = [];
     incidentOrderStart = 0;
     nextIncidentId = 1;
@@ -6295,7 +6295,7 @@ function createIncidentCorrelator(options) {
     stats.totalIncidents = 0;
     stats.totalAlerts = 0;
     stats.totalEscalations = 0;
-    stats.signalsByType = {};
+    stats.signalsByType = Object.create(null);
     stats.incidentsBySeverity = { info: 0, warning: 0, high: 0, critical: 0 };
   }
 
@@ -8189,13 +8189,13 @@ function createFraudRingDetector(options) {
   var signalDecayMs = options.signalDecayMs > 0 ? options.signalDecayMs : 3600000;
   var maxRings = options.maxRings > 0 ? options.maxRings : 200;
 
-  var clients = {};
+  var clients = Object.create(null);
   var clientOrder = new LruTracker();
-  var rings = {};
+  var rings = Object.create(null);
   var ringCounter = 0;
   var onRingCallbacks = [];
-  var parent = {};
-  var rank = {};
+  var parent = Object.create(null);
+  var rank = Object.create(null);
 
   function ufFind(x) {
     if (parent[x] === undefined) { parent[x] = x; rank[x] = 0; }
@@ -8289,15 +8289,15 @@ function createFraudRingDetector(options) {
    * @returns {Object.<string, string[]>}
    */
   function _buildGroupMap(prop) {
-    var map = {};
-    var seen = {};
+    var map = Object.create(null);
+    var seen = Object.create(null);
     var ids = Object.keys(clients);
     for (var i = 0; i < ids.length; i++) {
       var cid = ids[i];
       var arr = clients[cid][prop];
       for (var j = 0; j < arr.length; j++) {
         var key = arr[j];
-        if (!map[key]) { map[key] = []; seen[key] = {}; }
+        if (!map[key]) { map[key] = []; seen[key] = Object.create(null); }
         if (!seen[key][cid]) {
           seen[key][cid] = true;
           map[key].push(cid);
@@ -8324,7 +8324,7 @@ function createFraudRingDetector(options) {
     for (var k = 0; k < ips.length; k++) {
       if (ipMap[ips[k]].length >= 2) clusters.push({ ip: ips[k], clients: ipMap[ips[k]] });
     }
-    var subnetMap = {};
+    var subnetMap = Object.create(null);
     for (var s = 0; s < ips.length; s++) {
       var parts = ips[s].split('.');
       if (parts.length === 4) {
@@ -8382,7 +8382,7 @@ function createFraudRingDetector(options) {
     factors.push({ name: 'ringSize', score: sizeScore, detail: clientIds.length + ' clients' });
 
     // Shared fingerprints (up to 25)
-    var fpSets = {};
+    var fpSets = Object.create(null);
     for (var i = 0; i < clientIds.length; i++) {
       var c = clients[clientIds[i]];
       if (c) for (var j = 0; j < c.fingerprints.length; j++) {
@@ -8398,7 +8398,7 @@ function createFraudRingDetector(options) {
     factors.push({ name: 'sharedFingerprint', score: fpScore, detail: maxShared + '/' + clientIds.length + ' share fingerprint' });
 
     // IP proximity (up to 20)
-    var allIps = {};
+    var allIps = Object.create(null);
     for (var m = 0; m < clientIds.length; m++) {
       var cl = clients[clientIds[m]];
       if (cl) for (var n = 0; n < cl.ips.length; n++) { allIps[cl.ips[n]] = (allIps[cl.ips[n]] || 0) + 1; }
@@ -8449,7 +8449,7 @@ function createFraudRingDetector(options) {
   }
 
   function detectRings() {
-    parent = {}; rank = {};
+    parent = Object.create(null); rank = Object.create(null);
 
     var fpGroups = findSharedFingerprints();
     for (var i = 0; i < fpGroups.length; i++) {
@@ -8475,7 +8475,7 @@ function createFraudRingDetector(options) {
       for (var r = 1; r < pat.length; r++) ufUnion(pat[0], pat[r]);
     }
 
-    var components = {};
+    var components = Object.create(null);
     var ids = Object.keys(clients);
     for (var s = 0; s < ids.length; s++) {
       var root = ufFind(ids[s]);
@@ -8581,7 +8581,7 @@ function createFraudRingDetector(options) {
     return lines.join('\n');
   }
 
-  function reset() { clients = {}; clientOrder.clear(); rings = {}; parent = {}; rank = {}; ringCounter = 0; }
+  function reset() { clients = Object.create(null); clientOrder.clear(); rings = Object.create(null); parent = Object.create(null); rank = Object.create(null); ringCounter = 0; }
 
   return {
     recordEvent: recordEvent, detectRings: detectRings, checkClient: checkClient,
@@ -9540,7 +9540,7 @@ function createI18n(options) {
 
   function addLocale(locale, strings) {
     if (typeof locale !== "string" || !strings || typeof strings !== "object") return;
-    if (!catalogs[locale]) catalogs[locale] = {};
+    if (!catalogs[locale]) catalogs[locale] = Object.create(null);
     var keys = Object.keys(strings);
     for (var i = 0; i < keys.length; i++) {
       catalogs[locale][keys[i]] = String(strings[keys[i]]);
@@ -9563,10 +9563,10 @@ function createI18n(options) {
   }
 
   function exportCatalog() {
-    var result = {};
+    var result = Object.create(null);
     var locales = Object.keys(catalogs);
     for (var i = 0; i < locales.length; i++) {
-      result[locales[i]] = {};
+      result[locales[i]] = Object.create(null);
       var keys = Object.keys(catalogs[locales[i]]);
       for (var j = 0; j < keys.length; j++) {
         result[locales[i]][keys[j]] = catalogs[locales[i]][keys[j]];

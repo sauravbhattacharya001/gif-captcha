@@ -36,7 +36,16 @@ function createResponseTimeProfiler(options) {
     if (!typeProfiles[type]) typeProfiles[type]={times:[],solved:[],difficulties:[]};
     var p=typeProfiles[type]; p.times.push(entry.responseTimeMs); p.solved.push(entry.solved);
     if (entry.difficulty!=null) p.difficulties.push(entry.difficulty);
-    if (p.times.length>maxSamples){p.times.shift();p.solved.shift();if(p.difficulties.length>maxSamples)p.difficulties.shift();}
+    // Trim oldest entries when over capacity. Uses splice(0, excess)
+    // instead of repeated shift() to avoid O(n) per call overhead.
+    if (p.times.length > maxSamples) {
+      var excess = p.times.length - maxSamples;
+      p.times.splice(0, excess);
+      p.solved.splice(0, excess);
+    }
+    if (p.difficulties.length > maxSamples) {
+      p.difficulties.splice(0, p.difficulties.length - maxSamples);
+    }
     if (!sessions[entry.sessionId]) {
       if (sessionCount>=maxSessions) { var oldest=null,oldTs=Infinity,ks=Object.keys(sessions); for(var i=0;i<ks.length;i++){var s=sessions[ks[i]];if(s.solves.length>0&&s.solves[0].ts<oldTs){oldTs=s.solves[0].ts;oldest=ks[i];}} if(oldest){delete sessions[oldest];sessionCount--;} }
       sessions[entry.sessionId]={solves:[],classification:null}; sessionCount++;

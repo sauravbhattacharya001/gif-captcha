@@ -210,7 +210,7 @@ function createHoneypotInjector(options) {
       if (stats.byStrategy[trap.strategy]) stats.byStrategy[trap.strategy].tripped++;
       if (stats.bySession[trap.sessionId]) stats.bySession[trap.sessionId].tripped++;
       trippedHistory.push({ trapId: trap.id, sessionId: trap.sessionId, value: String(value).substring(0, 200), timestamp: Date.now(), strategy: trap.strategy, fieldName: trap.fieldName });
-      if (trippedHistory.length > maxTrippedHistory) trippedHistory.shift();
+      if (trippedHistory.length > maxTrippedHistory) trippedHistory.splice(0, trippedHistory.length - maxTrippedHistory);
       var confidence = _looksAutomated(value) ? 0.99 : 0.95;
       return { tripped: true, confidence: confidence, trapId: trap.id, strategy: trap.strategy, detail: 'honeypot_triggered', sessionId: trap.sessionId };
     }

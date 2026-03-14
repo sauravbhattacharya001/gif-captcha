@@ -252,7 +252,8 @@ function createSolvePatternFingerprinter(options) {
 
     sess.solves.push(record);
     if (sess.solves.length > maxSamples) {
-      sess.solves.shift();
+      var excess = sess.solves.length - maxSamples;
+      sess.solves.splice(0, excess);
     }
 
     // Regenerate fingerprint if we have enough samples

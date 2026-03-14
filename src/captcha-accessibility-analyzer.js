@@ -291,7 +291,7 @@
         severityCounts: sev, summary: summary.join("\n")
       };
       for (var csi = 0; csi < keys.length; csi++) report.criterionScores[keys[csi]] = checks[keys[csi]].score;
-      history.push(report); if (history.length > 100) history.shift();
+      history.push(report); if (history.length > 100) history.splice(0, history.length - 100);
       return report;
     }
 

@@ -106,8 +106,9 @@ function createStatsCollector(options = {}) {
     };
     windows.push(bucket);
     // Evict old windows
-    while (windows.length > maxWindows) {
-      windows.shift();
+    if (windows.length > maxWindows) {
+      var excess = windows.length - maxWindows;
+      windows.splice(0, excess);
     }
     return bucket;
   }
@@ -157,8 +158,9 @@ function createStatsCollector(options = {}) {
 
     rawRecords.push({ ...entry, timestamp: ts });
     // Cap raw records at 10x maxWindows to bound memory
-    while (rawRecords.length > maxWindows * 100) {
-      rawRecords.shift();
+    if (rawRecords.length > maxWindows * 100) {
+      var excess = rawRecords.length - maxWindows * 100;
+      rawRecords.splice(0, excess);
     }
   }
 

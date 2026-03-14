@@ -77,7 +77,7 @@ function _xorshift32(seed) {
 // ── Main factory ────────────────────────────────────────────────────
 
 function createChallengeRotationScheduler(options) {
-  var opts = {};
+  var opts = Object.create(null);
   var key;
   for (key in DEFAULT_OPTIONS) {
     if (DEFAULT_OPTIONS.hasOwnProperty(key)) {
@@ -114,7 +114,7 @@ function createChallengeRotationScheduler(options) {
   var _totalRotations = 0;
 
   /** @type {Object<string, Array<{solved:boolean, timeMs:number, ts:number}>>} */
-  var _solveHistory = {};
+  var _solveHistory = Object.create(null);
 
   /** @type {Array<{from:string|null, to:string, ts:number, reason:string}>} */
   var _rotationLog = [];
@@ -126,7 +126,7 @@ function createChallengeRotationScheduler(options) {
   var _timerHandle = null;
 
   /** @type {Object<string, Array<function>>} */
-  var _listeners = {};
+  var _listeners = Object.create(null);
 
 
   // ── Challenge type management ───────────────────────────────────
@@ -606,7 +606,7 @@ function createChallengeRotationScheduler(options) {
     for (var k in _solveHistory) {
       if (_solveHistory.hasOwnProperty(k)) delete _solveHistory[k];
     }
-    _listeners = {};
+    _listeners = Object.create(null);
   }
 
   /**

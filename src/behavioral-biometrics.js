@@ -258,7 +258,7 @@ function createBehavioralBiometrics(options) {
     var posScore = Math.min(posSpread / 100, 1.0);
 
     // 3. No two clicks at exact same position (bot signature)
-    var uniquePositions = {};
+    var uniquePositions = Object.create(null);
     var duplicates = 0;
     for (var k = 0; k < positions.length; k++) {
       var key = positions[k].x + "," + positions[k].y;

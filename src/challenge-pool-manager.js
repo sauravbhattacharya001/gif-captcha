@@ -155,13 +155,19 @@ function createChallengePoolManager(options) {
     var now = nowFn();
     var pool = pools[tier];
     var cutoff = now - maxAge;
-    var removed = 0;
-    while (pool.length > 0 && pool[0].createdAt < cutoff) {
-      pool.shift();
-      removed++;
+    // Binary search for first non-expired entry — O(log n)
+    // then splice once — O(n) total, instead of repeated
+    // shift() which is O(n) per call = O(n²) overall
+    var lo = 0, hi = pool.length;
+    while (lo < hi) {
+      var mid = (lo + hi) >>> 1;
+      if (pool[mid].createdAt < cutoff) lo = mid + 1;
+      else hi = mid;
     }
-    stats.totalExpired += removed;
-    return removed;
+    if (lo === 0) return 0;
+    pool.splice(0, lo);
+    stats.totalExpired += lo;
+    return lo;
   }
 
   function _generate(tier, count) {

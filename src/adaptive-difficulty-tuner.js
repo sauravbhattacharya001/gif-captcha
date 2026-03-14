@@ -65,7 +65,7 @@ function now() {
 }
 
 function shallowMerge(defaults, overrides) {
-  var result = {};
+  var result = Object.create(null);
   var key;
   for (key in defaults) {
     if (defaults.hasOwnProperty(key)) {
@@ -76,7 +76,7 @@ function shallowMerge(defaults, overrides) {
 }
 
 function deepCopyDimensions(dims) {
-  var result = {};
+  var result = Object.create(null);
   var key;
   for (key in dims) {
     if (dims.hasOwnProperty(key)) {
@@ -207,7 +207,7 @@ function createAdaptiveDifficultyTuner(options) {
   var history = new AdjustmentHistory(opts.maxHistory);
   var lastAdjustmentTs = 0;
   var evaluationTimer = null;
-  var listeners = {};
+  var listeners = Object.create(null);
   var totalSolves = 0;
   var totalFails = 0;
   var paused = false;
@@ -396,7 +396,7 @@ function createAdaptiveDifficultyTuner(options) {
   }
 
   function getAllDimensions() {
-    var result = {};
+    var result = Object.create(null);
     for (var key in dimensions) {
       if (dimensions.hasOwnProperty(key)) {
         result[key] = getDimension(key);
@@ -624,7 +624,7 @@ function createAdaptiveDifficultyTuner(options) {
 
   function destroy() {
     stopAutoEval();
-    listeners = {};
+    listeners = Object.create(null);
     eventWindow.clear();
   }
 

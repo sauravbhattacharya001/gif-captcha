@@ -342,32 +342,82 @@ function createSolvePatternFingerprinter(options) {
 
   /**
    * Find sessions with similar solve patterns (pairwise comparison).
-   * @returns {{ pairs: Array }}
+   *
+   * @param {object} [opts]
+   * @param {number} [opts.maxResults=100]    Cap on returned pairs (prevents unbounded arrays).
+   * @param {number} [opts.maxCompare=1000]   Max sessions to compare (most-recent first). Caps
+   *                                          the O(n²) window to at most maxCompare*(maxCompare-1)/2.
+   * @param {number} [opts.sessionTTLMs]      If set, evict sessions older than this many ms
+   *                                          before comparison (based on last solve timestamp).
+   * @param {number} [opts.offset=0]          Pagination offset into the sorted pairs list.
+   * @returns {{ pairs: Array, total: number, truncated: boolean }}
    */
-  function findSimilarSessions() {
-    var sessionIds = Object.keys(sessions);
-    var pairs = [];
+  function findSimilarSessions(opts) {
+    opts = opts || {};
+    var maxResults = opts.maxResults != null && opts.maxResults > 0 ? opts.maxResults : 100;
+    var maxCompare = opts.maxCompare != null && opts.maxCompare > 0 ? opts.maxCompare : 1000;
+    var offset = opts.offset != null && opts.offset >= 0 ? opts.offset : 0;
 
+    /* Optional TTL eviction — remove stale sessions before work */
+    if (opts.sessionTTLMs != null && opts.sessionTTLMs > 0) {
+      var cutoff = Date.now() - opts.sessionTTLMs;
+      var allIds = Object.keys(sessions);
+      for (var k = 0; k < allIds.length; k++) {
+        var sess = sessions[allIds[k]];
+        if (sess.solves.length > 0) {
+          var lastSolve = sess.solves[sess.solves.length - 1];
+          var ts = lastSolve.timestamp || lastSolve.ts || 0;
+          if (ts > 0 && ts < cutoff) {
+            delete sessions[allIds[k]];
+          }
+        }
+      }
+    }
+
+    /* Collect sessions that have fingerprints, sorted most-recent-first */
+    var sessionIds = Object.keys(sessions);
+    var candidates = [];
     for (var i = 0; i < sessionIds.length; i++) {
-      var fpA = sessions[sessionIds[i]].fingerprint;
-      if (!fpA) continue;
-      for (var j = i + 1; j < sessionIds.length; j++) {
-        var fpB = sessions[sessionIds[j]].fingerprint;
-        if (!fpB) continue;
+      var s = sessions[sessionIds[i]];
+      if (!s.fingerprint) continue;
+      var lastTs = 0;
+      if (s.solves.length > 0) {
+        var last = s.solves[s.solves.length - 1];
+        lastTs = last.timestamp || last.ts || 0;
+      }
+      candidates.push({ id: sessionIds[i], fingerprint: s.fingerprint, lastTs: lastTs });
+    }
+    /* Most-recent sessions first so we compare the most relevant window */
+    candidates.sort(function(a, b) { return b.lastTs - a.lastTs; });
+    if (candidates.length > maxCompare) {
+      candidates = candidates.slice(0, maxCompare);
+    }
+
+    var pairs = [];
+    var total = 0;
+    var targetEnd = offset + maxResults;
+
+    for (var m = 0; m < candidates.length; m++) {
+      var fpA = candidates[m].fingerprint;
+      for (var n = m + 1; n < candidates.length; n++) {
+        var fpB = candidates[n].fingerprint;
         var result = compareFingerprints(fpA, fpB);
         if (result.match) {
-          pairs.push({
-            sessionA: sessionIds[i],
-            sessionB: sessionIds[j],
-            similarity: result.similarity,
-            dimensions: result.dimensions
-          });
+          if (total >= offset && pairs.length < maxResults) {
+            pairs.push({
+              sessionA: candidates[m].id,
+              sessionB: candidates[n].id,
+              similarity: result.similarity,
+              dimensions: result.dimensions
+            });
+          }
+          total++;
         }
       }
     }
 
     pairs.sort(function(a, b) { return b.similarity - a.similarity; });
-    return { pairs: pairs };
+    return { pairs: pairs, total: total, truncated: total > targetEnd };
   }
 
   /**

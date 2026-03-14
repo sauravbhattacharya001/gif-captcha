@@ -110,9 +110,14 @@ EventWindow.prototype.record = function (solved) {
 
 EventWindow.prototype._prune = function () {
   var cutoff = now() - this.windowMs;
-  while (this._events.length > 0 && this._events[0].ts < cutoff) {
-    this._events.shift();
+  // Binary search for the first event that is >= cutoff, then splice
+  var lo = 0, hi = this._events.length;
+  while (lo < hi) {
+    var mid = (lo + hi) >>> 1;
+    if (this._events[mid].ts < cutoff) lo = mid + 1;
+    else hi = mid;
   }
+  if (lo > 0) this._events.splice(0, lo);
 };
 
 EventWindow.prototype.getStats = function () {
@@ -151,8 +156,9 @@ function AdjustmentHistory(maxEntries) {
 
 AdjustmentHistory.prototype.record = function (entry) {
   this._entries.push(entry);
-  while (this._entries.length > this._maxEntries) {
-    this._entries.shift();
+  if (this._entries.length > this._maxEntries) {
+    var excess = this._entries.length - this._maxEntries;
+    this._entries.splice(0, excess);
   }
 };
 

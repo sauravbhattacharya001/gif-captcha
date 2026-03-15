@@ -31,6 +31,35 @@
 
 "use strict";
 
+// -- Cryptographic randomness (CWE-330 mitigation) --
+var _crypto;
+try { _crypto = require("crypto"); } catch (e) { _crypto = null; }
+
+/** Crypto-safe random float in [0, 1). */
+function _secureRandom() {
+  if (_crypto && typeof _crypto.randomBytes === "function") {
+    return _crypto.randomBytes(4).readUInt32BE(0) / 4294967296;
+  }
+  if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+    var arr = new Uint32Array(1);
+    crypto.getRandomValues(arr);
+    return arr[0] / 4294967296;
+  }
+  return Math.random();
+}
+
+/** Crypto-safe random hex string of given length. */
+function _secureRandomHex(len) {
+  if (_crypto && typeof _crypto.randomBytes === "function") {
+    return _crypto.randomBytes(Math.ceil(len / 2)).toString("hex").slice(0, len);
+  }
+  var s = "";
+  for (var i = 0; i < len; i++) {
+    s += Math.floor(_secureRandom() * 16).toString(16);
+  }
+  return s;
+}
+
 // ── Defaults ────────────────────────────────────────────────────────
 
 var DEFAULT_TARGET_SIZE = 50;       // per tier
@@ -86,7 +115,7 @@ function _createEntry(challenge, tier, now) {
     challenge: challenge,
     tier: tier,
     createdAt: now,
-    id: challenge.id || (Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2))
+    id: challenge.id || _secureRandomHex(16)
   };
 }
 
@@ -197,7 +226,7 @@ function createChallengePoolManager(options) {
    * @returns {Object|null} The challenge object, or null if pool empty
    */
   function take(tier, takeOpts) {
-    var t = tier || tiers[Math.floor(Math.random() * tiers.length)];
+    var t = tier || tiers[Math.floor(_secureRandom() * tiers.length)];
     if (!tierSet[t]) return null;
 
     _purgeExpired(t);

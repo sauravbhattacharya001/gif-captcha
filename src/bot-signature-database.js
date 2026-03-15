@@ -1,5 +1,20 @@
 'use strict';
 
+// -- Cryptographic randomness (CWE-330) --
+var _crypto;
+try { _crypto = require("crypto"); } catch (e) { _crypto = null; }
+
+function _secureRandomHex(len) {
+  if (_crypto && typeof _crypto.randomBytes === "function") {
+    return _crypto.randomBytes(Math.ceil(len / 2)).toString("hex").slice(0, len);
+  }
+  var s = "";
+  for (var i = 0; i < len; i++) {
+    s += Math.floor(Math.random() * 16).toString(16);
+  }
+  return s;
+}
+
 /**
  * createBotSignatureDatabase — manages a database of known bot behavioral
  * signatures and matches incoming CAPTCHA solve sessions against them.
@@ -188,7 +203,7 @@ function createBotSignatureDatabase(options) {
   }
 
   function generateId() {
-    return 'sig-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+    return 'sig-' + Date.now().toString(36) + '-' + _secureRandomHex(8);
   }
 
   function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }

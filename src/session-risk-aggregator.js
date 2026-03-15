@@ -359,6 +359,7 @@ function createSessionRiskAggregator(options) {
     var activeModules = [];
     var activeWeights = [];
     var activeValues = [];
+    var factorSet = Object.create(null);
     var allFactors = [];
 
     // Score each module
@@ -372,12 +373,13 @@ function createSessionRiskAggregator(options) {
         activeValues.push(ms);
         activeWeights.push(weights[mod] || 0.1); // default weight for unknown modules
 
-        // Collect unique factors
+        // Collect unique factors (O(1) set lookup instead of O(n) indexOf)
         var sigs = session.signals[mod];
         for (var j = 0; j < sigs.length; j++) {
           var factors = sigs[j].factors || [];
           for (var f = 0; f < factors.length; f++) {
-            if (allFactors.indexOf(factors[f]) === -1) {
+            if (!factorSet[factors[f]]) {
+              factorSet[factors[f]] = true;
               allFactors.push(factors[f]);
             }
           }

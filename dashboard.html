@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Operations Dashboard — gif-captcha</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+.dash-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:1rem; margin-bottom:1.5rem; }
+.metric-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:1.2rem; position:relative; overflow:hidden; }
+.metric-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; }
+.metric-card.ok::before { background:var(--green); }
+.metric-card.warn::before { background:var(--yellow); }
+.metric-card.crit::before { background:var(--red); }
+.metric-label { font-size:.75rem; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin-bottom:.3rem; }
+.metric-value { font-size:1.8rem; font-weight:700; }
+.metric-value.green { color:var(--green); }
+.metric-value.yellow { color:var(--yellow); }
+.metric-value.red { color:var(--red); }
+.metric-delta { font-size:.75rem; margin-top:.2rem; }
+.metric-delta.up { color:var(--green); }
+.metric-delta.down { color:var(--red); }
+.metric-spark { height:30px; margin-top:.5rem; }
+
+.status-badge { display:inline-flex; align-items:center; gap:.4rem; padding:.25rem .8rem;
+    border-radius:999px; font-size:.8rem; font-weight:600; }
+.status-badge.healthy { background:var(--green-bg); color:var(--green); }
+.status-badge.degraded { background:var(--yellow-bg); color:var(--yellow); }
+.status-badge.unhealthy { background:var(--red-bg); color:var(--red); }
+.status-badge .dot { width:8px; height:8px; border-radius:50%; animation:pulse 2s infinite; }
+.status-badge.healthy .dot { background:var(--green); }
+.status-badge.degraded .dot { background:var(--yellow); }
+.status-badge.unhealthy .dot { background:var(--red); }
+@keyframes pulse { 0%,100%{opacity:1}50%{opacity:.4} }
+
+.section { background:var(--surface); border:1px solid var(--border); border-radius:10px;
+    padding:1.5rem; margin-bottom:1.5rem; }
+.section h3 { margin:0 0 1rem; font-size:1rem; color:var(--text); display:flex;
+    align-items:center; gap:.5rem; }
+
+.chart-container { height:200px; position:relative; }
+.chart-bar-group { display:flex; gap:2px; align-items:flex-end; height:100%; }
+.chart-bar { flex:1; min-width:3px; border-radius:2px 2px 0 0; transition:height .3s ease;
+    position:relative; cursor:crosshair; }
+.chart-bar:hover::after { content:attr(data-tip); position:absolute; bottom:calc(100% + 4px);
+    left:50%; transform:translateX(-50%); background:var(--surface); border:1px solid var(--border);
+    padding:2px 6px; border-radius:4px; font-size:.7rem; color:var(--text); white-space:nowrap; z-index:5; }
+
+.log-table { width:100%; border-collapse:collapse; font-size:.85rem; }
+.log-table th { text-align:left; color:var(--muted); font-weight:500; padding:.5rem;
+    border-bottom:1px solid var(--border); font-size:.75rem; text-transform:uppercase; }
+.log-table td { padding:.5rem; border-bottom:1px solid var(--border); color:var(--text); }
+.log-table tr:hover td { background:rgba(88,166,255,.05); }
+
+.tag { display:inline-block; padding:1px 6px; border-radius:4px; font-size:.7rem; font-weight:600; }
+.tag.bot { background:var(--red-bg); color:var(--red); }
+.tag.human { background:var(--green-bg); color:var(--green); }
+.tag.suspect { background:var(--yellow-bg); color:var(--yellow); }
+.tag.solved { background:var(--green-bg); color:var(--green); }
+.tag.failed { background:var(--red-bg); color:var(--red); }
+.tag.timeout { background:var(--yellow-bg); color:var(--yellow); }
+
+.controls { display:flex; gap:.75rem; flex-wrap:wrap; align-items:center; margin-bottom:1rem; }
+.ctrl-btn { padding:.35rem .9rem; border-radius:6px; border:1px solid var(--border);
+    background:var(--surface); color:var(--muted); font-size:.8rem; cursor:pointer; transition:all .15s; }
+.ctrl-btn:hover { border-color:var(--accent); color:var(--text); }
+.ctrl-btn.active { background:var(--accent); color:var(--bg); border-color:var(--accent); font-weight:600; }
+.ctrl-btn.danger { border-color:var(--red); color:var(--red); }
+.ctrl-btn.danger:hover { background:var(--red); color:var(--bg); }
+
+.geo-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:.5rem; }
+.geo-card { background:var(--bg); border-radius:6px; padding:.6rem .8rem;
+    display:flex; justify-content:space-between; align-items:center; font-size:.85rem; }
+.geo-card .region { color:var(--text); }
+.geo-card .pct { font-weight:600; }
+
+.timeline-row { display:flex; align-items:center; gap:.75rem; padding:.4rem 0;
+    border-bottom:1px solid var(--border); font-size:.85rem; }
+.timeline-time { color:var(--muted); font-size:.75rem; min-width:70px; }
+.timeline-msg { color:var(--text); flex:1; }
+</style>
+</head>
+<body>
+<header>
+    <h1>📊 Operations Dashboard</h1>
+    <p>Real-time CAPTCHA system monitoring — solve rates, bot detection, traffic patterns</p>
+</header>
+<main>
+    <div class="controls">
+        <span style="color:var(--muted);font-size:.85rem;">System Status:</span>
+        <span class="status-badge healthy" id="sysStatus"><span class="dot"></span> Healthy</span>
+        <span style="flex:1;"></span>
+        <button class="ctrl-btn active" data-speed="1">1×</button>
+        <button class="ctrl-btn" data-speed="3">3×</button>
+        <button class="ctrl-btn" data-speed="10">10×</button>
+        <button class="ctrl-btn danger" id="pauseBtn">⏸ Pause</button>
+        <span style="color:var(--muted);font-size:.75rem;" id="clock"></span>
+    </div>
+
+    <div class="dash-grid" id="metrics"></div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+        <div class="section">
+            <h3>📈 Solve Rate (last 60 intervals)</h3>
+            <div class="chart-container"><div class="chart-bar-group" id="solveChart"></div></div>
+        </div>
+        <div class="section">
+            <h3>⏱️ Response Time (ms)</h3>
+            <div class="chart-container"><div class="chart-bar-group" id="rtChart"></div></div>
+        </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:2fr 1fr;gap:1rem;">
+        <div class="section">
+            <h3>📋 Recent Events</h3>
+            <table class="log-table">
+                <thead><tr><th>Time</th><th>Type</th><th>Challenge</th><th>Result</th><th>Time (ms)</th><th>Verdict</th></tr></thead>
+                <tbody id="eventLog"></tbody>
+            </table>
+        </div>
+        <div class="section">
+            <h3>🌍 Traffic by Region</h3>
+            <div class="geo-grid" id="geoGrid"></div>
+            <div style="margin-top:1rem;">
+                <h3 style="font-size:.9rem;">🚨 Alerts</h3>
+                <div id="alertTimeline"></div>
+            </div>
+        </div>
+    </div>
+</main>
+<footer>
+    <a href="index.html">← Home</a> · <a href="analysis.html">Analysis</a> · <a href="heatmap.html">Heatmap</a> · <a href="config.html">Config</a>
+</footer>
+<script src="shared.js"></script>
+<script>
+(function(){
+'use strict';
+
+// ── Simulation state ──
+var SIM = {
+    running: true,
+    speed: 1,
+    tick: 0,
+    solveHistory: [],
+    rtHistory: [],
+    events: [],
+    alerts: [],
+    totals: { attempts:0, solved:0, failed:0, bots:0, timeouts:0, totalMs:0 },
+    regions: { US:0, EU:0, APAC:0, LATAM:0, MEA:0 },
+    challengeTypes: ['sequence','pattern','direction','counting','odd-one-out'],
+    interval: null
+};
+
+var REGIONS = ['US','EU','APAC','LATAM','MEA'];
+var REGION_WEIGHTS = [0.35, 0.28, 0.22, 0.10, 0.05];
+
+function weightedPick(items, weights) {
+    var r = Math.random(), cum = 0;
+    for (var i = 0; i < items.length; i++) { cum += weights[i]; if (r <= cum) return items[i]; }
+    return items[items.length - 1];
+}
+
+function fmt(n) { return n.toLocaleString(); }
+function pct(n, d) { return d === 0 ? '0%' : (n / d * 100).toFixed(1) + '%'; }
+
+// ── Metric cards ──
+var METRIC_DEFS = [
+    { id:'solveRate', label:'Solve Rate', fn:function(){ return pct(SIM.totals.solved, SIM.totals.attempts); },
+      cls:function(){ var r = SIM.totals.attempts ? SIM.totals.solved/SIM.totals.attempts : 1; return r > 0.65 ? 'ok' : r > 0.4 ? 'warn' : 'crit'; },
+      vcls:function(){ var r = SIM.totals.attempts ? SIM.totals.solved/SIM.totals.attempts : 1; return r > 0.65 ? 'green' : r > 0.4 ? 'yellow' : 'red'; } },
+    { id:'attempts', label:'Total Attempts', fn:function(){ return fmt(SIM.totals.attempts); }, cls:function(){return'ok';}, vcls:function(){return'green';} },
+    { id:'botRate', label:'Bot Detection', fn:function(){ return pct(SIM.totals.bots, SIM.totals.attempts); },
+      cls:function(){ var r = SIM.totals.attempts ? SIM.totals.bots/SIM.totals.attempts : 0; return r < 0.1 ? 'ok' : r < 0.25 ? 'warn' : 'crit'; },
+      vcls:function(){ var r = SIM.totals.attempts ? SIM.totals.bots/SIM.totals.attempts : 0; return r < 0.1 ? 'green' : r < 0.25 ? 'yellow' : 'red'; } },
+    { id:'avgRt', label:'Avg Response', fn:function(){ return SIM.totals.attempts ? (SIM.totals.totalMs/SIM.totals.attempts).toFixed(0)+'ms' : '—'; },
+      cls:function(){ var a = SIM.totals.attempts ? SIM.totals.totalMs/SIM.totals.attempts : 0; return a < 4000 ? 'ok' : a < 7000 ? 'warn' : 'crit'; },
+      vcls:function(){ var a = SIM.totals.attempts ? SIM.totals.totalMs/SIM.totals.attempts : 0; return a < 4000 ? 'green' : a < 7000 ? 'yellow' : 'red'; } },
+    { id:'timeouts', label:'Timeouts', fn:function(){ return fmt(SIM.totals.timeouts); },
+      cls:function(){ var r = SIM.totals.attempts ? SIM.totals.timeouts/SIM.totals.attempts : 0; return r < 0.05 ? 'ok' : r < 0.15 ? 'warn' : 'crit'; },
+      vcls:function(){ var r = SIM.totals.attempts ? SIM.totals.timeouts/SIM.totals.attempts : 0; return r < 0.05 ? 'green' : r < 0.15 ? 'yellow' : 'red'; } },
+    { id:'uptime', label:'Uptime', fn:function(){ return Math.floor(SIM.tick/60)+'m '+SIM.tick%60+'s'; }, cls:function(){return'ok';}, vcls:function(){return'green';} }
+];
+
+function initMetrics() {
+    var el = document.getElementById('metrics');
+    var h = '';
+    for (var i = 0; i < METRIC_DEFS.length; i++) {
+        var m = METRIC_DEFS[i];
+        h += '<div class="metric-card ok" id="mc-'+m.id+'">';
+        h += '<div class="metric-label">'+sanitize(m.label)+'</div>';
+        h += '<div class="metric-value green" id="mv-'+m.id+'">—</div>';
+        h += '</div>';
+    }
+    el.innerHTML = h;
+}
+
+function updateMetrics() {
+    for (var i = 0; i < METRIC_DEFS.length; i++) {
+        var m = METRIC_DEFS[i];
+        var card = document.getElementById('mc-'+m.id);
+        var val = document.getElementById('mv-'+m.id);
+        if (!card || !val) continue;
+        card.className = 'metric-card ' + m.cls();
+        val.className = 'metric-value ' + m.vcls();
+        val.textContent = m.fn();
+    }
+}
+
+// ── Charts ──
+function renderChart(containerId, data, maxVal, colorFn) {
+    var el = document.getElementById(containerId);
+    if (!el) return;
+    var h = '';
+    var max = maxVal || Math.max.apply(null, data) || 1;
+    for (var i = 0; i < data.length; i++) {
+        var pctH = Math.max(2, data[i] / max * 100);
+        var c = colorFn ? colorFn(data[i]) : 'var(--accent)';
+        h += '<div class="chart-bar" style="height:'+pctH+'%;background:'+c+'" data-tip="'+data[i].toFixed(1)+'"></div>';
+    }
+    el.innerHTML = h;
+}
+
+function solveRateColor(v) { return v > 0.65 ? 'var(--green)' : v > 0.4 ? 'var(--yellow)' : 'var(--red)'; }
+function rtColor(v) { return v < 3000 ? 'var(--green)' : v < 6000 ? 'var(--yellow)' : 'var(--red)'; }
+
+// ── Event log ──
+function addEvent(evt) {
+    SIM.events.unshift(evt);
+    if (SIM.events.length > 50) SIM.events = SIM.events.slice(0, 50);
+    renderEventLog();
+}
+
+function renderEventLog() {
+    var el = document.getElementById('eventLog');
+    var h = '';
+    var show = SIM.events.slice(0, 15);
+    for (var i = 0; i < show.length; i++) {
+        var e = show[i];
+        var resultCls = e.result === 'solved' ? 'solved' : e.result === 'timeout' ? 'timeout' : 'failed';
+        var verdictCls = e.verdict === 'bot' ? 'bot' : e.verdict === 'suspect' ? 'suspect' : 'human';
+        h += '<tr><td style="color:var(--muted);font-size:.8rem;">'+sanitize(e.time)+'</td>';
+        h += '<td>'+sanitize(e.challenge)+'</td>';
+        h += '<td>'+sanitize(e.type)+'</td>';
+        h += '<td><span class="tag '+resultCls+'">'+sanitize(e.result)+'</span></td>';
+        h += '<td>'+e.ms+'</td>';
+        h += '<td><span class="tag '+verdictCls+'">'+sanitize(e.verdict)+'</span></td></tr>';
+    }
+    el.innerHTML = h;
+}
+
+// ── Geo ──
+function renderGeo() {
+    var el = document.getElementById('geoGrid');
+    var total = 0;
+    for (var r in SIM.regions) total += SIM.regions[r];
+    var sorted = REGIONS.slice().sort(function(a,b){ return SIM.regions[b] - SIM.regions[a]; });
+    var h = '';
+    for (var i = 0; i < sorted.length; i++) {
+        var reg = sorted[i];
+        var p = total ? (SIM.regions[reg] / total * 100).toFixed(1) : '0.0';
+        h += '<div class="geo-card"><span class="region">'+sanitize(reg)+'</span><span class="pct" style="color:var(--accent)">'+p+'%</span></div>';
+    }
+    el.innerHTML = h;
+}
+
+// ── Alerts ──
+function addAlert(msg, level) {
+    SIM.alerts.unshift({ time: fmtTime(), msg: msg, level: level || 'warn' });
+    if (SIM.alerts.length > 10) SIM.alerts = SIM.alerts.slice(0, 10);
+    renderAlerts();
+}
+
+function renderAlerts() {
+    var el = document.getElementById('alertTimeline');
+    if (!SIM.alerts.length) { el.innerHTML = '<p style="color:var(--muted);font-size:.85rem;">No alerts</p>'; return; }
+    var h = '';
+    for (var i = 0; i < SIM.alerts.length; i++) {
+        var a = SIM.alerts[i];
+        var c = a.level === 'crit' ? 'var(--red)' : a.level === 'warn' ? 'var(--yellow)' : 'var(--green)';
+        h += '<div class="timeline-row"><span class="timeline-time">'+sanitize(a.time)+'</span>';
+        h += '<span class="timeline-msg" style="color:'+c+'">'+sanitize(a.msg)+'</span></div>';
+    }
+    el.innerHTML = h;
+}
+
+// ── Time ──
+function fmtTime() {
+    var m = Math.floor(SIM.tick / 60);
+    var s = SIM.tick % 60;
+    return (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+}
+
+// ── System status ──
+function updateSystemStatus() {
+    var el = document.getElementById('sysStatus');
+    var solveRate = SIM.totals.attempts ? SIM.totals.solved / SIM.totals.attempts : 1;
+    var botRate = SIM.totals.attempts ? SIM.totals.bots / SIM.totals.attempts : 0;
+    var avgRt = SIM.totals.attempts ? SIM.totals.totalMs / SIM.totals.attempts : 0;
+    var status = 'healthy';
+    if (solveRate < 0.4 || botRate > 0.25 || avgRt > 7000) status = 'unhealthy';
+    else if (solveRate < 0.65 || botRate > 0.1 || avgRt > 4000) status = 'degraded';
+    el.className = 'status-badge ' + status;
+    el.innerHTML = '<span class="dot"></span> ' + status.charAt(0).toUpperCase() + status.slice(1);
+}
+
+// ── Simulation tick ──
+function simulateTick() {
+    SIM.tick++;
+    document.getElementById('clock').textContent = fmtTime();
+
+    // Generate 1-4 events per tick
+    var count = 1 + Math.floor(Math.random() * 3);
+    var tickSolved = 0, tickTotal = 0, tickMs = 0;
+
+    for (var i = 0; i < count; i++) {
+        var isBot = Math.random() < 0.08;
+        var region = weightedPick(REGIONS, REGION_WEIGHTS);
+        var type = SIM.challengeTypes[Math.floor(Math.random() * SIM.challengeTypes.length)];
+        var ms, result, verdict;
+
+        if (isBot) {
+            ms = 200 + Math.floor(Math.random() * 800);
+            result = Math.random() < 0.15 ? 'solved' : 'failed';
+            verdict = 'bot';
+            SIM.totals.bots++;
+        } else if (Math.random() < 0.06) {
+            ms = 10000 + Math.floor(Math.random() * 5000);
+            result = 'timeout';
+            verdict = 'human';
+            SIM.totals.timeouts++;
+        } else {
+            ms = 1500 + Math.floor(Math.random() * 5000);
+            result = Math.random() < 0.72 ? 'solved' : 'failed';
+            verdict = Math.random() < 0.03 ? 'suspect' : 'human';
+        }
+
+        if (result === 'solved') { SIM.totals.solved++; tickSolved++; }
+        else { SIM.totals.failed++; }
+        SIM.totals.attempts++;
+        SIM.totals.totalMs += ms;
+        SIM.regions[region]++;
+        tickTotal++;
+        tickMs += ms;
+
+        addEvent({
+            time: fmtTime(),
+            challenge: 'cap-' + (SIM.totals.attempts).toString(36),
+            type: type,
+            result: result,
+            ms: ms,
+            verdict: verdict
+        });
+    }
+
+    // Update charts
+    if (tickTotal > 0) {
+        SIM.solveHistory.push(tickSolved / tickTotal);
+        SIM.rtHistory.push(tickMs / tickTotal);
+    }
+    if (SIM.solveHistory.length > 60) SIM.solveHistory = SIM.solveHistory.slice(-60);
+    if (SIM.rtHistory.length > 60) SIM.rtHistory = SIM.rtHistory.slice(-60);
+
+    renderChart('solveChart', SIM.solveHistory, 1, solveRateColor);
+    renderChart('rtChart', SIM.rtHistory, 15000, rtColor);
+
+    // Periodic updates
+    updateMetrics();
+    updateSystemStatus();
+    if (SIM.tick % 5 === 0) renderGeo();
+
+    // Random alerts
+    if (SIM.tick % 15 === 0 && Math.random() < 0.4) {
+        var msgs = [
+            ['Bot burst detected from APAC region', 'warn'],
+            ['Response time spike — avg > 5s', 'warn'],
+            ['Challenge pool running low (< 20 active)', 'crit'],
+            ['Rate limiter triggered for 3 IPs', 'warn'],
+            ['Solve rate recovered to normal', 'ok'],
+            ['New bot signature pattern identified', 'warn']
+        ];
+        var pick = msgs[Math.floor(Math.random() * msgs.length)];
+        addAlert(pick[0], pick[1]);
+    }
+}
+
+// ── Controls ──
+function setSpeed(s) {
+    SIM.speed = s;
+    var btns = document.querySelectorAll('[data-speed]');
+    for (var i = 0; i < btns.length; i++) {
+        btns[i].classList.toggle('active', parseInt(btns[i].getAttribute('data-speed'), 10) === s);
+    }
+    restartInterval();
+}
+
+function togglePause() {
+    SIM.running = !SIM.running;
+    var btn = document.getElementById('pauseBtn');
+    btn.textContent = SIM.running ? '⏸ Pause' : '▶ Resume';
+    if (SIM.running) restartInterval();
+    else if (SIM.interval) { clearInterval(SIM.interval); SIM.interval = null; }
+}
+
+function restartInterval() {
+    if (SIM.interval) clearInterval(SIM.interval);
+    if (!SIM.running) return;
+    SIM.interval = setInterval(simulateTick, 1000 / SIM.speed);
+}
+
+// ── Init ──
+function init() {
+    initMetrics();
+    renderGeo();
+    renderAlerts();
+
+    var speedBtns = document.querySelectorAll('[data-speed]');
+    for (var i = 0; i < speedBtns.length; i++) {
+        (function(btn) {
+            btn.addEventListener('click', function() { setSpeed(parseInt(btn.getAttribute('data-speed'), 10)); });
+        })(speedBtns[i]);
+    }
+    document.getElementById('pauseBtn').addEventListener('click', togglePause);
+
+    restartInterval();
+}
+
+init();
+})();
+</script>
+</body>
+</html>

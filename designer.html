@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Challenge Designer — gif-captcha</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0f172a;--surface:#1e293b;--border:#334155;--text:#e2e8f0;--muted:#94a3b8;
+  --accent:#3b82f6;--accent-hover:#60a5fa;--success:#22c55e;--warn:#f59e0b;--danger:#ef4444;
+  --radius:8px}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  background:var(--bg);color:var(--text);line-height:1.6;min-height:100vh}
+.app{display:grid;grid-template-columns:340px 1fr;grid-template-rows:auto 1fr;min-height:100vh}
+header{grid-column:1/-1;padding:1rem 1.5rem;background:var(--surface);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:1rem}
+header h1{font-size:1.3rem;font-weight:700}
+header .badge{background:var(--accent);color:#fff;padding:2px 10px;border-radius:12px;font-size:.75rem}
+.sidebar{background:var(--surface);border-right:1px solid var(--border);padding:1.2rem;overflow-y:auto}
+.main{padding:1.5rem;overflow-y:auto}
+h2{font-size:1.1rem;margin-bottom:.8rem;color:var(--accent-hover)}
+h3{font-size:.95rem;margin:1rem 0 .5rem;color:var(--muted)}
+label{display:block;font-size:.8rem;color:var(--muted);margin-bottom:.3rem;text-transform:uppercase;letter-spacing:.5px}
+input,select,textarea{width:100%;padding:.5rem .7rem;background:var(--bg);border:1px solid var(--border);
+  border-radius:var(--radius);color:var(--text);font-size:.9rem;font-family:inherit}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px rgba(59,130,246,.25)}
+textarea{resize:vertical;min-height:60px}
+.field{margin-bottom:.8rem}
+.btn{padding:.5rem 1rem;border:none;border-radius:var(--radius);cursor:pointer;font-size:.85rem;font-weight:600;transition:.15s}
+.btn-primary{background:var(--accent);color:#fff}
+.btn-primary:hover{background:var(--accent-hover)}
+.btn-success{background:var(--success);color:#fff}
+.btn-success:hover{opacity:.85}
+.btn-danger{background:var(--danger);color:#fff}
+.btn-danger:hover{opacity:.85}
+.btn-outline{background:transparent;border:1px solid var(--border);color:var(--text)}
+.btn-outline:hover{border-color:var(--accent);color:var(--accent)}
+.btn-sm{padding:.3rem .7rem;font-size:.8rem}
+.btn-group{display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.8rem}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1rem;margin-bottom:1rem}
+.challenge-list{display:flex;flex-direction:column;gap:.5rem;margin-top:.5rem}
+.challenge-item{padding:.6rem .8rem;border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;
+  transition:.15s;display:flex;justify-content:space-between;align-items:center}
+.challenge-item:hover,.challenge-item.active{border-color:var(--accent);background:rgba(59,130,246,.1)}
+.challenge-item .title{font-weight:600;font-size:.85rem}
+.challenge-item .meta{font-size:.7rem;color:var(--muted)}
+.diff-badge{display:inline-block;padding:1px 8px;border-radius:10px;font-size:.7rem;font-weight:600}
+.diff-easy{background:#166534;color:#86efac}
+.diff-medium{background:#854d0e;color:#fde047}
+.diff-hard{background:#991b1b;color:#fca5a5}
+.diff-expert{background:#581c87;color:#d8b4fe}
+.preview-card{background:var(--bg);border:2px solid var(--border);border-radius:12px;padding:1.5rem;
+  text-align:center;max-width:500px;margin:1rem auto}
+.preview-card .question{font-size:1.1rem;font-weight:600;margin:1rem 0}
+.preview-card .options{display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin-top:1rem}
+.preview-card .option{padding:.5rem;border:1px solid var(--border);border-radius:var(--radius);
+  cursor:pointer;transition:.15s;font-size:.85rem}
+.preview-card .option:hover{border-color:var(--accent);background:rgba(59,130,246,.1)}
+.preview-card .option.correct{border-color:var(--success);background:rgba(34,197,94,.1)}
+.preview-card .gif-placeholder{width:100%;height:200px;background:var(--surface);border-radius:var(--radius);
+  display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:.9rem;
+  border:2px dashed var(--border)}
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:.6rem;margin-bottom:1rem}
+.stat-card{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:.6rem;text-align:center}
+.stat-card .num{font-size:1.4rem;font-weight:700}
+.stat-card .lbl{font-size:.7rem;color:var(--muted);text-transform:uppercase}
+.tag{display:inline-block;padding:1px 8px;border-radius:10px;font-size:.7rem;background:var(--border);color:var(--text);margin:2px}
+.slider-row{display:flex;align-items:center;gap:.8rem}
+.slider-row input[type=range]{flex:1}
+.slider-row .val{min-width:30px;text-align:right;font-weight:600;font-size:.9rem}
+.export-area{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:1rem;
+  font-family:'Cascadia Code',Consolas,monospace;font-size:.8rem;white-space:pre-wrap;
+  max-height:400px;overflow-y:auto;color:var(--muted)}
+.tabs{display:flex;gap:0;margin-bottom:1rem}
+.tab{padding:.5rem 1rem;cursor:pointer;border:1px solid var(--border);background:transparent;
+  color:var(--muted);font-size:.85rem;transition:.15s}
+.tab:first-child{border-radius:var(--radius) 0 0 var(--radius)}
+.tab:last-child{border-radius:0 var(--radius) var(--radius) 0}
+.tab.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.tab-content{display:none}
+.tab-content.active{display:block}
+.empty-state{text-align:center;padding:3rem;color:var(--muted)}
+.empty-state .icon{font-size:3rem;margin-bottom:.5rem}
+@media(max-width:768px){.app{grid-template-columns:1fr}.sidebar{border-right:none;border-bottom:1px solid var(--border)}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <span style="font-size:1.5rem">🎨</span>
+    <h1>Challenge Designer</h1>
+    <span class="badge">gif-captcha</span>
+    <div style="flex:1"></div>
+    <button class="btn btn-outline btn-sm" onclick="importChallenges()">📥 Import</button>
+    <button class="btn btn-primary btn-sm" onclick="exportChallenges()">📤 Export JSON</button>
+  </header>
+
+  <div class="sidebar">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem">
+      <h2 style="margin:0">Challenges</h2>
+      <button class="btn btn-primary btn-sm" onclick="addChallenge()">+ New</button>
+    </div>
+    <div class="stats-grid" id="stats"></div>
+    <input type="text" id="search" placeholder="🔍 Search challenges..." style="margin-bottom:.8rem" oninput="renderList()">
+    <div class="challenge-list" id="challenge-list"></div>
+  </div>
+
+  <div class="main">
+    <div id="editor-area">
+      <div class="empty-state" id="empty-state">
+        <div class="icon">🎞️</div>
+        <p>Select a challenge or create a new one</p>
+        <button class="btn btn-primary" style="margin-top:1rem" onclick="addChallenge()">Create First Challenge</button>
+      </div>
+
+      <div id="editor" style="display:none">
+        <div class="tabs">
+          <div class="tab active" onclick="switchTab('edit')">✏️ Edit</div>
+          <div class="tab" onclick="switchTab('preview')">👁️ Preview</div>
+          <div class="tab" onclick="switchTab('json')">{ } JSON</div>
+        </div>
+
+        <div class="tab-content active" id="tab-edit">
+          <div class="card">
+            <h3>📋 Basic Info</h3>
+            <div class="field">
+              <label>Challenge Title</label>
+              <input type="text" id="f-title" placeholder="e.g., Dancing Cat Surprise" oninput="autoSave()">
+            </div>
+            <div class="field">
+              <label>Description</label>
+              <textarea id="f-desc" placeholder="Brief description of the GIF content and what makes it challenging" oninput="autoSave()"></textarea>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:.8rem">
+              <div class="field">
+                <label>Category</label>
+                <select id="f-category" onchange="autoSave()">
+                  <option value="narrative_twist">Narrative Twist</option>
+                  <option value="visual_illusion">Visual Illusion</option>
+                  <option value="unexpected_action">Unexpected Action</option>
+                  <option value="temporal_sequence">Temporal Sequence</option>
+                  <option value="object_tracking">Object Tracking</option>
+                  <option value="emotion_recognition">Emotion Recognition</option>
+                  <option value="spatial_reasoning">Spatial Reasoning</option>
+                  <option value="custom">Custom</option>
+                </select>
+              </div>
+              <div class="field">
+                <label>Difficulty</label>
+                <select id="f-difficulty" onchange="autoSave()">
+                  <option value="easy">Easy</option>
+                  <option value="medium">Medium</option>
+                  <option value="hard">Hard</option>
+                  <option value="expert">Expert</option>
+                </select>
+              </div>
+            </div>
+            <div class="field">
+              <label>Tags (comma-separated)</label>
+              <input type="text" id="f-tags" placeholder="e.g., animal, comedy, sports" oninput="autoSave()">
+            </div>
+          </div>
+
+          <div class="card">
+            <h3>🎞️ GIF Source</h3>
+            <div class="field">
+              <label>GIF URL</label>
+              <input type="url" id="f-gif-url" placeholder="https://example.com/challenge.gif" oninput="autoSave()">
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:.8rem">
+              <div class="field">
+                <label>Duration (seconds)</label>
+                <input type="number" id="f-duration" min="0.5" max="30" step="0.5" value="3" oninput="autoSave()">
+              </div>
+              <div class="field">
+                <label>Key Frame (second)</label>
+                <input type="number" id="f-keyframe" min="0" step="0.1" value="1.5"
+                  oninput="autoSave()" title="The moment the unexpected event occurs">
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3>❓ Question</h3>
+            <div class="field">
+              <label>Question Text</label>
+              <input type="text" id="f-question" placeholder="What unexpected event happens in this GIF?" oninput="autoSave()">
+            </div>
+            <div class="field">
+              <label>Question Template</label>
+              <select id="f-template" onchange="applyTemplate()">
+                <option value="">Custom question</option>
+                <option value="describe">Describe the unexpected event</option>
+                <option value="what_happens">What happens at the end?</option>
+                <option value="count">How many times does X appear?</option>
+                <option value="order">What order do the events occur?</option>
+                <option value="identify">Identify the object that changes</option>
+                <option value="emotion">What emotion is expressed?</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3>✅ Answer Options</h3>
+            <p style="font-size:.8rem;color:var(--muted);margin-bottom:.8rem">Click the ✓ button to mark the correct answer. At least 2 options required.</p>
+            <div id="options-list"></div>
+            <button class="btn btn-outline btn-sm" style="margin-top:.5rem" onclick="addOption()">+ Add Option</button>
+          </div>
+
+          <div class="card">
+            <h3>⚙️ Difficulty Tuning</h3>
+            <div class="field">
+              <label>Time Limit (seconds)</label>
+              <div class="slider-row">
+                <input type="range" id="f-timelimit" min="5" max="60" value="15" oninput="updateSlider(this,'timelimit-val');autoSave()">
+                <span class="val" id="timelimit-val">15</span>
+              </div>
+            </div>
+            <div class="field">
+              <label>Max Attempts</label>
+              <div class="slider-row">
+                <input type="range" id="f-attempts" min="1" max="5" value="3" oninput="updateSlider(this,'attempts-val');autoSave()">
+                <span class="val" id="attempts-val">3</span>
+              </div>
+            </div>
+            <div class="field">
+              <label>Playback Speed</label>
+              <div class="slider-row">
+                <input type="range" id="f-speed" min="0.5" max="3" step="0.25" value="1" oninput="updateSlider(this,'speed-val');autoSave()">
+                <span class="val" id="speed-val">1×</span>
+              </div>
+            </div>
+            <div class="field" style="display:flex;gap:1rem;align-items:center">
+              <label style="margin:0;min-width:fit-content">Loop GIF</label>
+              <input type="checkbox" id="f-loop" checked onchange="autoSave()" style="width:auto">
+              <label style="margin:0;min-width:fit-content">Shuffle Options</label>
+              <input type="checkbox" id="f-shuffle" checked onchange="autoSave()" style="width:auto">
+            </div>
+          </div>
+
+          <div class="btn-group">
+            <button class="btn btn-success" onclick="duplicateChallenge()">📋 Duplicate</button>
+            <button class="btn btn-danger" onclick="deleteChallenge()">🗑️ Delete</button>
+          </div>
+        </div>
+
+        <div class="tab-content" id="tab-preview">
+          <div id="preview-container"></div>
+        </div>
+
+        <div class="tab-content" id="tab-json">
+          <div class="export-area" id="single-json"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="import-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100;
+  align-items:center;justify-content:center">
+  <div class="card" style="max-width:500px;width:90%">
+    <h3>📥 Import Challenges</h3>
+    <p style="font-size:.8rem;color:var(--muted);margin-bottom:.8rem">Paste a JSON array of challenge objects</p>
+    <textarea id="import-text" rows="10" placeholder='[{"title":"...","question":"..."}]'></textarea>
+    <div class="btn-group">
+      <button class="btn btn-primary" onclick="doImport()">Import</button>
+      <button class="btn btn-outline" onclick="closeImport()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let challenges = [];
+let activeId = null;
+let nextId = 1;
+
+function save() {
+  try { localStorage.setItem('gc-designer', JSON.stringify({ challenges, nextId })); } catch(e) {}
+}
+function load() {
+  try {
+    const d = JSON.parse(localStorage.getItem('gc-designer'));
+    if (d && d.challenges) { challenges = d.challenges; nextId = d.nextId || challenges.length + 1; }
+  } catch(e) {}
+}
+
+function newChallenge() {
+  return {
+    id: nextId++, title: 'Untitled Challenge', description: '', category: 'narrative_twist',
+    difficulty: 'medium', tags: [], gifUrl: '', duration: 3, keyFrame: 1.5,
+    question: 'What unexpected event happens in this GIF?',
+    options: [{ text: '', correct: true },{ text: '', correct: false },{ text: '', correct: false },{ text: '', correct: false }],
+    timeLimit: 15, maxAttempts: 3, playbackSpeed: 1, loop: true, shuffleOptions: true,
+    createdAt: new Date().toISOString()
+  };
+}
+
+function addChallenge() {
+  const c = newChallenge(); challenges.unshift(c); activeId = c.id; save(); renderList(); loadEditor(c);
+}
+
+function deleteChallenge() {
+  if (!activeId || !confirm('Delete this challenge?')) return;
+  challenges = challenges.filter(c => c.id !== activeId);
+  activeId = challenges.length ? challenges[0].id : null;
+  save(); renderList();
+  if (activeId) loadEditor(challenges.find(c => c.id === activeId)); else showEmpty();
+}
+
+function duplicateChallenge() {
+  const src = challenges.find(c => c.id === activeId); if (!src) return;
+  const dup = JSON.parse(JSON.stringify(src));
+  dup.id = nextId++; dup.title = src.title + ' (Copy)'; dup.createdAt = new Date().toISOString();
+  challenges.unshift(dup); activeId = dup.id; save(); renderList(); loadEditor(dup);
+}
+
+function renderList() {
+  const q = document.getElementById('search').value.toLowerCase();
+  const filtered = q ? challenges.filter(c =>
+    c.title.toLowerCase().includes(q) || c.category.includes(q) || c.tags.some(t => t.toLowerCase().includes(q))
+  ) : challenges;
+  const stats = document.getElementById('stats');
+  const dc = { easy: 0, medium: 0, hard: 0, expert: 0 };
+  challenges.forEach(c => dc[c.difficulty] = (dc[c.difficulty] || 0) + 1);
+  stats.innerHTML = `
+    <div class="stat-card"><div class="num">${challenges.length}</div><div class="lbl">Total</div></div>
+    <div class="stat-card"><div class="num" style="color:var(--success)">${dc.easy}</div><div class="lbl">Easy</div></div>
+    <div class="stat-card"><div class="num" style="color:var(--warn)">${dc.medium}</div><div class="lbl">Medium</div></div>
+    <div class="stat-card"><div class="num" style="color:var(--danger)">${dc.hard + dc.expert}</div><div class="lbl">Hard+</div></div>`;
+  const list = document.getElementById('challenge-list');
+  if (!filtered.length) { list.innerHTML = '<div style="text-align:center;color:var(--muted);padding:1rem;font-size:.85rem">No challenges found</div>'; return; }
+  list.innerHTML = filtered.map(c => `
+    <div class="challenge-item ${c.id === activeId ? 'active' : ''}" onclick="selectChallenge(${c.id})">
+      <div><div class="title">${esc(c.title)}</div><div class="meta">${c.category.replace(/_/g,' ')} · ${c.options.length} options</div></div>
+      <span class="diff-badge diff-${c.difficulty}">${c.difficulty}</span>
+    </div>`).join('');
+}
+
+function selectChallenge(id) { activeId = id; renderList(); const c = challenges.find(x => x.id === id); if (c) loadEditor(c); }
+function showEmpty() { document.getElementById('empty-state').style.display = ''; document.getElementById('editor').style.display = 'none'; }
+
+function loadEditor(c) {
+  document.getElementById('empty-state').style.display = 'none';
+  document.getElementById('editor').style.display = '';
+  document.getElementById('f-title').value = c.title;
+  document.getElementById('f-desc').value = c.description;
+  document.getElementById('f-category').value = c.category;
+  document.getElementById('f-difficulty').value = c.difficulty;
+  document.getElementById('f-tags').value = c.tags.join(', ');
+  document.getElementById('f-gif-url').value = c.gifUrl;
+  document.getElementById('f-duration').value = c.duration;
+  document.getElementById('f-keyframe').value = c.keyFrame;
+  document.getElementById('f-question').value = c.question;
+  document.getElementById('f-timelimit').value = c.timeLimit;
+  document.getElementById('timelimit-val').textContent = c.timeLimit;
+  document.getElementById('f-attempts').value = c.maxAttempts;
+  document.getElementById('attempts-val').textContent = c.maxAttempts;
+  document.getElementById('f-speed').value = c.playbackSpeed;
+  document.getElementById('speed-val').textContent = c.playbackSpeed + '×';
+  document.getElementById('f-loop').checked = c.loop;
+  document.getElementById('f-shuffle').checked = c.shuffleOptions;
+  renderOptions(c.options); switchTab('edit');
+}
+
+function autoSave() {
+  const c = challenges.find(x => x.id === activeId); if (!c) return;
+  c.title = document.getElementById('f-title').value;
+  c.description = document.getElementById('f-desc').value;
+  c.category = document.getElementById('f-category').value;
+  c.difficulty = document.getElementById('f-difficulty').value;
+  c.tags = document.getElementById('f-tags').value.split(',').map(t => t.trim()).filter(Boolean);
+  c.gifUrl = document.getElementById('f-gif-url').value;
+  c.duration = parseFloat(document.getElementById('f-duration').value) || 3;
+  c.keyFrame = parseFloat(document.getElementById('f-keyframe').value) || 1.5;
+  c.question = document.getElementById('f-question').value;
+  c.timeLimit = parseInt(document.getElementById('f-timelimit').value) || 15;
+  c.maxAttempts = parseInt(document.getElementById('f-attempts').value) || 3;
+  c.playbackSpeed = parseFloat(document.getElementById('f-speed').value) || 1;
+  c.loop = document.getElementById('f-loop').checked;
+  c.shuffleOptions = document.getElementById('f-shuffle').checked;
+  save(); renderList();
+}
+
+function renderOptions(opts) {
+  document.getElementById('options-list').innerHTML = opts.map((o, i) => `
+    <div style="display:flex;gap:.5rem;align-items:center;margin-bottom:.4rem">
+      <button class="btn btn-sm ${o.correct ? 'btn-success' : 'btn-outline'}" title="Mark correct"
+        onclick="setCorrect(${i})" style="min-width:32px">${o.correct ? '✓' : '○'}</button>
+      <input type="text" value="${esc(o.text)}" placeholder="Option ${i+1}"
+        oninput="updateOption(${i},this.value)" style="flex:1">
+      <button class="btn btn-sm btn-outline" onclick="removeOption(${i})" title="Remove"
+        ${opts.length <= 2 ? 'disabled' : ''}>×</button>
+    </div>`).join('');
+}
+
+function addOption() { const c = challenges.find(x => x.id === activeId); if (!c || c.options.length >= 8) return; c.options.push({ text: '', correct: false }); save(); renderOptions(c.options); }
+function removeOption(i) { const c = challenges.find(x => x.id === activeId); if (!c || c.options.length <= 2) return; c.options.splice(i, 1); if (!c.options.some(o => o.correct)) c.options[0].correct = true; save(); renderOptions(c.options); }
+function setCorrect(i) { const c = challenges.find(x => x.id === activeId); if (!c) return; c.options.forEach((o, j) => o.correct = j === i); save(); renderOptions(c.options); }
+function updateOption(i, text) { const c = challenges.find(x => x.id === activeId); if (!c) return; c.options[i].text = text; save(); }
+
+function applyTemplate() {
+  const v = document.getElementById('f-template').value;
+  const t = { describe: 'Describe the unexpected event in this GIF', what_happens: 'What happens at the end of this GIF?',
+    count: 'How many times does the event occur?', order: 'In what order do the events happen?',
+    identify: 'Which object changes unexpectedly?', emotion: 'What emotion is expressed at the key moment?' };
+  if (t[v]) { document.getElementById('f-question').value = t[v]; autoSave(); }
+}
+
+function renderPreview() {
+  const c = challenges.find(x => x.id === activeId); if (!c) return;
+  const gif = c.gifUrl ? `<img src="${esc(c.gifUrl)}" style="max-width:100%;max-height:250px;border-radius:var(--radius)" alt="Challenge GIF" onerror="this.outerHTML='<div class=gif-placeholder>⚠️ Failed to load GIF</div>'">`
+    : '<div class="gif-placeholder">🎞️ No GIF URL set — add one in the Edit tab</div>';
+  const opts = c.options.map(o => `<div class="option ${o.correct ? 'correct' : ''}">${esc(o.text || '(empty)')}</div>`).join('');
+  document.getElementById('preview-container').innerHTML = `
+    <div class="preview-card">${gif}<div class="question">${esc(c.question)}</div>
+      <div style="display:flex;gap:.5rem;justify-content:center;flex-wrap:wrap;margin:.5rem 0">
+        <span class="diff-badge diff-${c.difficulty}">${c.difficulty}</span>
+        <span class="tag">${c.category.replace(/_/g,' ')}</span><span class="tag">⏱ ${c.timeLimit}s</span>
+        <span class="tag">${c.playbackSpeed}× speed</span>${c.loop ? '<span class="tag">🔁 loop</span>' : ''}
+      </div><div class="options">${opts}</div>
+      <p style="font-size:.7rem;color:var(--muted);margin-top:.8rem">✓ = correct answer (shown in green)</p>
+    </div>
+    <div class="card" style="margin-top:1rem"><h3>📊 Challenge Summary</h3>
+      <div class="stats-grid">
+        <div class="stat-card"><div class="num">${c.options.length}</div><div class="lbl">Options</div></div>
+        <div class="stat-card"><div class="num">${c.timeLimit}s</div><div class="lbl">Time Limit</div></div>
+        <div class="stat-card"><div class="num">${c.maxAttempts}</div><div class="lbl">Max Tries</div></div>
+        <div class="stat-card"><div class="num">${c.duration}s</div><div class="lbl">GIF Length</div></div>
+      </div>
+      <p style="font-size:.8rem;color:var(--muted)">${c.tags.length ? 'Tags: ' + c.tags.map(t => '<span class="tag">' + esc(t) + '</span>').join(' ') : 'No tags'}</p>
+    </div>`;
+}
+
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  const tabs = { edit: 0, preview: 1, json: 2 };
+  document.querySelectorAll('.tab')[tabs[name]].classList.add('active');
+  document.getElementById('tab-' + name).classList.add('active');
+  if (name === 'preview') renderPreview();
+  if (name === 'json') renderSingleJson();
+}
+
+function renderSingleJson() {
+  const c = challenges.find(x => x.id === activeId); if (!c) return;
+  document.getElementById('single-json').textContent = JSON.stringify(exportOne(c), null, 2);
+}
+
+function exportOne(c) {
+  return { title: c.title, description: c.description, category: c.category, difficulty: c.difficulty,
+    tags: c.tags, gifUrl: c.gifUrl, duration: c.duration, keyFrame: c.keyFrame, question: c.question,
+    options: c.options.map(o => ({ text: o.text, correct: o.correct })),
+    settings: { timeLimit: c.timeLimit, maxAttempts: c.maxAttempts, playbackSpeed: c.playbackSpeed, loop: c.loop, shuffleOptions: c.shuffleOptions }
+  };
+}
+
+function exportChallenges() {
+  const json = JSON.stringify(challenges.map(exportOne), null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = 'captcha-challenges.json'; a.click();
+  URL.revokeObjectURL(url);
+}
+
+function importChallenges() { document.getElementById('import-modal').style.display = 'flex'; document.getElementById('import-text').value = ''; }
+function closeImport() { document.getElementById('import-modal').style.display = 'none'; }
+
+function doImport() {
+  try {
+    const data = JSON.parse(document.getElementById('import-text').value);
+    const arr = Array.isArray(data) ? data : [data];
+    arr.forEach(d => {
+      const c = newChallenge();
+      c.title = d.title || 'Imported Challenge'; c.description = d.description || '';
+      c.category = d.category || 'narrative_twist'; c.difficulty = d.difficulty || 'medium';
+      c.tags = d.tags || []; c.gifUrl = d.gifUrl || ''; c.duration = d.duration || 3; c.keyFrame = d.keyFrame || 1.5;
+      c.question = d.question || '';
+      if (d.options && d.options.length >= 2) c.options = d.options;
+      if (d.settings) { c.timeLimit = d.settings.timeLimit || 15; c.maxAttempts = d.settings.maxAttempts || 3;
+        c.playbackSpeed = d.settings.playbackSpeed || 1; c.loop = d.settings.loop !== false; c.shuffleOptions = d.settings.shuffleOptions !== false; }
+      challenges.unshift(c);
+    });
+    save(); renderList(); closeImport(); alert(`Imported ${arr.length} challenge(s)`);
+  } catch(e) { alert('Invalid JSON: ' + e.message); }
+}
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+function updateSlider(el, valId) { document.getElementById(valId).textContent = valId === 'speed-val' ? el.value + '×' : el.value; }
+
+load(); renderList();
+if (challenges.length && !activeId) { activeId = challenges[0].id; selectChallenge(activeId); }
+else if (!challenges.length) showEmpty();
+</script>
+</body>
+</html>

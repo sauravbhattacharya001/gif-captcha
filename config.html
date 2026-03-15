@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src https: data:; frame-ancestors 'none'; base-uri 'self'; form-action 'none';">
+    <meta name="referrer" content="no-referrer">
+    <title>GIF CAPTCHA — Configuration Wizard</title>
+    <link rel="stylesheet" href="shared.css">
+    <style>
+        /* config.html — page-specific styles */
+        .wizard-container {
+            max-width: 960px;
+            margin: 0 auto;
+            padding: 0 1.5rem 3rem;
+        }
+
+        .wizard-step {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .wizard-step h3 {
+            font-size: 1.1rem;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .wizard-step p.desc {
+            color: var(--muted);
+            font-size: 0.9rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .option-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 0.75rem;
+        }
+
+        .option-card {
+            background: var(--bg);
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            text-align: center;
+        }
+
+        .option-card:hover {
+            border-color: var(--accent);
+            background: var(--surface-hover);
+        }
+
+        .option-card.selected {
+            border-color: var(--accent);
+            background: rgba(88, 166, 255, 0.08);
+        }
+
+        .option-card .icon {
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .option-card .label {
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+
+        .option-card .detail {
+            color: var(--muted);
+            font-size: 0.8rem;
+            margin-top: 0.25rem;
+        }
+
+        .slider-row {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin: 0.75rem 0;
+        }
+
+        .slider-row label {
+            min-width: 180px;
+            font-size: 0.9rem;
+        }
+
+        .slider-row input[type="range"] {
+            flex: 1;
+            accent-color: var(--accent);
+        }
+
+        .slider-row .slider-val {
+            min-width: 50px;
+            text-align: right;
+            font-family: monospace;
+            color: var(--accent);
+        }
+
+        .toggle-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.75rem 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .toggle-row:last-child { border-bottom: none; }
+
+        .toggle-row .toggle-info .toggle-label {
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+
+        .toggle-row .toggle-info .toggle-desc {
+            font-size: 0.8rem;
+            color: var(--muted);
+        }
+
+        .toggle-switch {
+            position: relative;
+            width: 44px;
+            height: 24px;
+            flex-shrink: 0;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: var(--border);
+            border-radius: 12px;
+            transition: 0.2s;
+        }
+
+        .toggle-slider::before {
+            content: "";
+            position: absolute;
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background: var(--text);
+            border-radius: 50%;
+            transition: 0.2s;
+        }
+
+        .toggle-switch input:checked + .toggle-slider {
+            background: var(--accent);
+        }
+
+        .toggle-switch input:checked + .toggle-slider::before {
+            transform: translateX(20px);
+        }
+
+        /* Output section */
+        .output-section {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 2rem;
+            margin-top: 2rem;
+        }
+
+        .output-section h3 {
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .code-block {
+            background: #0d1117;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1.5rem;
+            font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+            font-size: 0.85rem;
+            line-height: 1.7;
+            overflow-x: auto;
+            white-space: pre;
+            color: var(--text);
+            position: relative;
+        }
+
+        .copy-btn {
+            position: absolute;
+            top: 0.75rem;
+            right: 0.75rem;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            color: var(--muted);
+            padding: 0.35rem 0.75rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            transition: all 0.15s;
+        }
+
+        .copy-btn:hover {
+            color: var(--text);
+            border-color: var(--accent);
+        }
+
+        .copy-btn.copied {
+            color: var(--green);
+            border-color: var(--green);
+        }
+
+        /* Score summary */
+        .score-bar {
+            display: flex;
+            gap: 1rem;
+            margin: 1.5rem 0;
+            flex-wrap: wrap;
+        }
+
+        .score-chip {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            text-align: center;
+            flex: 1;
+            min-width: 120px;
+        }
+
+        .score-chip .score-val {
+            font-size: 1.4rem;
+            font-weight: 700;
+        }
+
+        .score-chip .score-label {
+            font-size: 0.75rem;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .tag {
+            display: inline-block;
+            padding: 0.15rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .tag-green  { background: var(--green-bg); color: var(--green); }
+        .tag-yellow { background: var(--yellow-bg); color: var(--yellow); }
+        .tag-red    { background: var(--red-bg); color: var(--red); }
+        .tag-blue   { background: var(--purple-bg); color: var(--purple); }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🎞️ GIF CAPTCHA</h1>
+        <p>Configuration Wizard</p>
+        <nav class="nav">
+            <a href="index.html">Case Study</a>
+            <a href="demo.html">Demo</a>
+            <a href="playground.html">Playground</a>
+            <a href="config.html" class="active">Config</a>
+            <a href="docs/">API Docs</a>
+        </nav>
+    </div>
+
+    <div class="wizard-container">
+        <p style="text-align:center; color:var(--muted); margin: 1.5rem 0 2rem; max-width:600px; margin-left:auto; margin-right:auto;">
+            Answer a few questions about your use case and get a ready-to-use configuration with recommended settings.
+        </p>
+
+        <!-- Step 1: Security Level -->
+        <div class="wizard-step">
+            <h3>🛡️ Security Level</h3>
+            <p class="desc">How critical is bot prevention for your application?</p>
+            <div class="option-grid" data-group="security">
+                <div class="option-card" data-value="low" onclick="selectOption(this)">
+                    <div class="icon">🟢</div>
+                    <div class="label">Low</div>
+                    <div class="detail">Blog comments, feedback forms</div>
+                </div>
+                <div class="option-card selected" data-value="medium" onclick="selectOption(this)">
+                    <div class="icon">🟡</div>
+                    <div class="label">Medium</div>
+                    <div class="detail">Sign-ups, contact forms</div>
+                </div>
+                <div class="option-card" data-value="high" onclick="selectOption(this)">
+                    <div class="icon">🔴</div>
+                    <div class="label">High</div>
+                    <div class="detail">Payments, auth, sensitive actions</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 2: Traffic Volume -->
+        <div class="wizard-step">
+            <h3>📊 Expected Traffic</h3>
+            <p class="desc">Approximate daily CAPTCHA challenges served.</p>
+            <div class="option-grid" data-group="traffic">
+                <div class="option-card" data-value="low" onclick="selectOption(this)">
+                    <div class="icon">👤</div>
+                    <div class="label">&lt; 1K/day</div>
+                    <div class="detail">Personal site, small app</div>
+                </div>
+                <div class="option-card selected" data-value="medium" onclick="selectOption(this)">
+                    <div class="icon">👥</div>
+                    <div class="label">1K – 50K/day</div>
+                    <div class="detail">Growing SaaS, community</div>
+                </div>
+                <div class="option-card" data-value="high" onclick="selectOption(this)">
+                    <div class="icon">🌐</div>
+                    <div class="label">&gt; 50K/day</div>
+                    <div class="detail">High-traffic platform</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 3: Tuning -->
+        <div class="wizard-step">
+            <h3>⚙️ Challenge Settings</h3>
+            <p class="desc">Fine-tune challenge behavior.</p>
+
+            <div class="slider-row">
+                <label>Max attempts</label>
+                <input type="range" id="maxAttempts" min="1" max="10" value="3" oninput="updateSlider(this)">
+                <span class="slider-val" id="maxAttempts-val">3</span>
+            </div>
+
+            <div class="slider-row">
+                <label>Timeout (seconds)</label>
+                <input type="range" id="timeout" min="10" max="120" step="5" value="30" oninput="updateSlider(this)">
+                <span class="slider-val" id="timeout-val">30</span>
+            </div>
+
+            <div class="slider-row">
+                <label>Similarity threshold</label>
+                <input type="range" id="threshold" min="0.1" max="0.9" step="0.05" value="0.4" oninput="updateSlider(this)">
+                <span class="slider-val" id="threshold-val">0.40</span>
+            </div>
+
+            <div class="slider-row">
+                <label>Pool size</label>
+                <input type="range" id="poolSize" min="5" max="100" step="5" value="20" oninput="updateSlider(this)">
+                <span class="slider-val" id="poolSize-val">20</span>
+            </div>
+        </div>
+
+        <!-- Step 4: Features -->
+        <div class="wizard-step">
+            <h3>🧩 Features</h3>
+            <p class="desc">Enable additional protection layers.</p>
+
+            <div class="toggle-row">
+                <div class="toggle-info">
+                    <div class="toggle-label">Rate Limiting</div>
+                    <div class="toggle-desc">Throttle repeated attempts from the same IP</div>
+                </div>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="feat-ratelimit" checked onchange="generateConfig()">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+
+            <div class="toggle-row">
+                <div class="toggle-info">
+                    <div class="toggle-label">Proof of Work</div>
+                    <div class="toggle-desc">Require a computational puzzle before challenge</div>
+                </div>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="feat-pow" onchange="generateConfig()">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+
+            <div class="toggle-row">
+                <div class="toggle-info">
+                    <div class="toggle-label">Honeypot Fields</div>
+                    <div class="toggle-desc">Inject invisible form fields to catch bots</div>
+                </div>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="feat-honeypot" checked onchange="generateConfig()">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+
+            <div class="toggle-row">
+                <div class="toggle-info">
+                    <div class="toggle-label">Behavioral Biometrics</div>
+                    <div class="toggle-desc">Analyze mouse/keyboard patterns for bot detection</div>
+                </div>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="feat-biometrics" onchange="generateConfig()">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+
+            <div class="toggle-row">
+                <div class="toggle-info">
+                    <div class="toggle-label">Trust Score Engine</div>
+                    <div class="toggle-desc">Maintain per-user trust scores to reduce friction for known humans</div>
+                </div>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="feat-trust" onchange="generateConfig()">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+
+            <div class="toggle-row">
+                <div class="toggle-info">
+                    <div class="toggle-label">Geo-Risk Scoring</div>
+                    <div class="toggle-desc">Adjust difficulty based on geographic risk signals</div>
+                </div>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="feat-georisk" onchange="generateConfig()">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+
+            <div class="toggle-row">
+                <div class="toggle-info">
+                    <div class="toggle-label">Webhook Notifications</div>
+                    <div class="toggle-desc">Send events to your backend on solve/fail/suspicious activity</div>
+                </div>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="feat-webhook" onchange="generateConfig()">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+
+            <div class="toggle-row">
+                <div class="toggle-info">
+                    <div class="toggle-label">Audit Logging</div>
+                    <div class="toggle-desc">Record all CAPTCHA events for compliance and debugging</div>
+                </div>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="feat-audit" onchange="generateConfig()">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+        </div>
+
+        <!-- Score Summary -->
+        <div class="score-bar" id="score-bar">
+            <div class="score-chip">
+                <div class="score-val" id="score-security">—</div>
+                <div class="score-label">Security</div>
+            </div>
+            <div class="score-chip">
+                <div class="score-val" id="score-ux">—</div>
+                <div class="score-label">User Experience</div>
+            </div>
+            <div class="score-chip">
+                <div class="score-val" id="score-perf">—</div>
+                <div class="score-label">Performance</div>
+            </div>
+            <div class="score-chip">
+                <div class="score-val" id="score-grade">—</div>
+                <div class="score-label">Overall Grade</div>
+            </div>
+        </div>
+
+        <!-- Generated Config -->
+        <div class="output-section">
+            <h3>📋 Generated Configuration</h3>
+            <div style="position:relative;">
+                <pre class="code-block" id="config-output">// Select options above to generate config...</pre>
+                <button class="copy-btn" id="copy-btn" onclick="copyConfig()">Copy</button>
+            </div>
+        </div>
+
+        <!-- Integration snippet -->
+        <div class="output-section" style="margin-top:1rem;">
+            <h3>🔌 Quick Integration</h3>
+            <div style="position:relative;">
+                <pre class="code-block" id="integration-output">// Integration code will appear here...</pre>
+                <button class="copy-btn" id="copy-btn-2" onclick="copyIntegration()">Copy</button>
+            </div>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <p>GIF CAPTCHA Configuration Wizard · <a href="https://github.com/sauravbhattacharya001/gif-captcha">GitHub</a></p>
+    </footer>
+
+    <script>
+    // ── State ──────────────────────────────────────────────────────
+
+    var state = {
+        security: "medium",
+        traffic: "medium",
+        maxAttempts: 3,
+        timeout: 30,
+        threshold: 0.4,
+        poolSize: 20,
+        features: {
+            ratelimit: true,
+            pow: false,
+            honeypot: true,
+            biometrics: false,
+            trust: false,
+            georisk: false,
+            webhook: false,
+            audit: false,
+        },
+    };
+
+    // ── Preset Maps ────────────────────────────────────────────────
+
+    var SECURITY_PRESETS = {
+        low:    { maxAttempts: 5, timeout: 60, threshold: 0.3, poolSize: 10 },
+        medium: { maxAttempts: 3, timeout: 30, threshold: 0.4, poolSize: 20 },
+        high:   { maxAttempts: 2, timeout: 20, threshold: 0.55, poolSize: 50 },
+    };
+
+    var TRAFFIC_PRESETS = {
+        low:    { poolSize: 10, rateLimitWindow: 300, rateLimitMax: 20 },
+        medium: { poolSize: 20, rateLimitWindow: 60,  rateLimitMax: 10 },
+        high:   { poolSize: 50, rateLimitWindow: 30,  rateLimitMax: 5 },
+    };
+
+    // ── UI Handlers ────────────────────────────────────────────────
+
+    function selectOption(card) {
+        var group = card.parentElement.dataset.group;
+        var siblings = card.parentElement.querySelectorAll(".option-card");
+        for (var i = 0; i < siblings.length; i++) {
+            siblings[i].classList.remove("selected");
+        }
+        card.classList.add("selected");
+
+        var value = card.dataset.value;
+        state[group] = value;
+
+        // Apply presets when security level changes
+        if (group === "security") {
+            var preset = SECURITY_PRESETS[value];
+            state.maxAttempts = preset.maxAttempts;
+            state.timeout = preset.timeout;
+            state.threshold = preset.threshold;
+            state.poolSize = preset.poolSize;
+
+            // Auto-enable features for high security
+            if (value === "high") {
+                state.features.pow = true;
+                state.features.biometrics = true;
+                state.features.trust = true;
+                state.features.audit = true;
+            }
+            syncSliders();
+            syncToggles();
+        }
+
+        generateConfig();
+    }
+
+    function updateSlider(el) {
+        var id = el.id;
+        var val = parseFloat(el.value);
+        state[id] = val;
+        var display = id === "threshold" ? val.toFixed(2) : String(val);
+        document.getElementById(id + "-val").textContent = display;
+        generateConfig();
+    }
+
+    function syncSliders() {
+        var sliders = ["maxAttempts", "timeout", "threshold", "poolSize"];
+        for (var i = 0; i < sliders.length; i++) {
+            var id = sliders[i];
+            var el = document.getElementById(id);
+            if (el) {
+                el.value = state[id];
+                var display = id === "threshold" ? state[id].toFixed(2) : String(state[id]);
+                document.getElementById(id + "-val").textContent = display;
+            }
+        }
+    }
+
+    function syncToggles() {
+        var feats = Object.keys(state.features);
+        for (var i = 0; i < feats.length; i++) {
+            var el = document.getElementById("feat-" + feats[i]);
+            if (el) el.checked = state.features[feats[i]];
+        }
+    }
+
+    // ── Config Generation ──────────────────────────────────────────
+
+    function generateConfig() {
+        // Sync feature toggles
+        var feats = Object.keys(state.features);
+        for (var i = 0; i < feats.length; i++) {
+            var el = document.getElementById("feat-" + feats[i]);
+            if (el) state.features[feats[i]] = el.checked;
+        }
+
+        var trafficPreset = TRAFFIC_PRESETS[state.traffic];
+
+        // Build config object
+        var lines = [];
+        lines.push('const gifCaptcha = require("gif-captcha");');
+        lines.push("");
+        lines.push("// ── Challenge Configuration ──");
+        lines.push("const challenge = gifCaptcha.createChallenge({");
+        lines.push("  maxAttempts: " + state.maxAttempts + ",");
+        lines.push("  timeoutMs: " + (state.timeout * 1000) + ",");
+        lines.push("  similarityThreshold: " + state.threshold.toFixed(2) + ",");
+        lines.push("});");
+        lines.push("");
+
+        // Pool manager
+        lines.push("// ── Challenge Pool ──");
+        lines.push("const pool = gifCaptcha.createChallengePoolManager({");
+        lines.push("  maxSize: " + state.poolSize + ",");
+        lines.push("  rotationIntervalMs: " + (state.security === "high" ? 3600000 : 7200000) + ",");
+        lines.push("});");
+
+        // Rate limiter
+        if (state.features.ratelimit) {
+            lines.push("");
+            lines.push("// ── Rate Limiting ──");
+            lines.push("const limiter = gifCaptcha.createRateLimiter({");
+            lines.push("  windowMs: " + (trafficPreset.rateLimitWindow * 1000) + ",");
+            lines.push("  maxAttempts: " + trafficPreset.rateLimitMax + ",");
+            lines.push("});");
+        }
+
+        // Proof of Work
+        if (state.features.pow) {
+            lines.push("");
+            lines.push("// ── Proof of Work ──");
+            lines.push("const pow = gifCaptcha.createProofOfWork({");
+            lines.push("  difficulty: " + (state.security === "high" ? 20 : 16) + ",");
+            lines.push("  algorithm: \"sha256\",");
+            lines.push("});");
+        }
+
+        // Honeypot
+        if (state.features.honeypot) {
+            lines.push("");
+            lines.push("// ── Honeypot ──");
+            lines.push("const honeypot = gifCaptcha.createHoneypotInjector({");
+            lines.push("  fieldCount: " + (state.security === "high" ? 3 : 2) + ",");
+            lines.push("  realisticNames: true,");
+            lines.push("});");
+        }
+
+        // Biometrics
+        if (state.features.biometrics) {
+            lines.push("");
+            lines.push("// ── Behavioral Biometrics ──");
+            lines.push("// Note: requires browser-side data collection");
+            lines.push("// See docs for client-side integration");
+        }
+
+        // Trust Score
+        if (state.features.trust) {
+            lines.push("");
+            lines.push("// ── Trust Score Engine ──");
+            lines.push("const trust = gifCaptcha.createTrustScoreEngine({");
+            lines.push("  initialScore: 50,");
+            lines.push("  decayRatePerDay: " + (state.security === "high" ? 5 : 2) + ",");
+            lines.push("  solveBonus: 10,");
+            lines.push("  failPenalty: " + (state.security === "high" ? 20 : 15) + ",");
+            lines.push("});");
+        }
+
+        // Geo-Risk
+        if (state.features.georisk) {
+            lines.push("");
+            lines.push("// ── Geo-Risk Scoring ──");
+            lines.push("const geoRisk = gifCaptcha.createGeoRiskScorer({");
+            lines.push("  highRiskCountries: [\"XX\"],  // configure for your use case");
+            lines.push("  vpnPenalty: 15,");
+            lines.push("  torPenalty: 30,");
+            lines.push("});");
+        }
+
+        // Webhook
+        if (state.features.webhook) {
+            lines.push("");
+            lines.push("// ── Webhook Notifications ──");
+            lines.push("// const webhooks = gifCaptcha.createWebhookDispatcher({");
+            lines.push("//   url: \"https://your-api.com/captcha-events\",");
+            lines.push("//   events: [\"solve\", \"fail\", \"suspicious\"],");
+            lines.push("//   secret: process.env.WEBHOOK_SECRET,");
+            lines.push("// });");
+        }
+
+        // Audit
+        if (state.features.audit) {
+            lines.push("");
+            lines.push("// ── Audit Logging ──");
+            lines.push("const audit = gifCaptcha.createAuditTrail({");
+            lines.push("  retentionDays: " + (state.security === "high" ? 90 : 30) + ",");
+            lines.push("  logLevel: \"" + (state.security === "high" ? "verbose" : "standard") + "\",");
+            lines.push("});");
+        }
+
+        document.getElementById("config-output").textContent = lines.join("\n");
+
+        // Generate integration snippet
+        var intLines = [];
+        intLines.push("<!-- Add to your HTML -->");
+        intLines.push('<script src="node_modules/gif-captcha/src/index.js"></' + 'script>');
+        intLines.push("");
+        intLines.push("<!-- Or install via npm -->");
+        intLines.push("<!-- npm install gif-captcha -->");
+        intLines.push("");
+        intLines.push('<div id="captcha-container"></div>');
+        intLines.push("");
+        intLines.push("<script>");
+        intLines.push("  // Initialize with your generated config above");
+        intLines.push("  var captcha = gifCaptcha.createChallenge({");
+        intLines.push("    maxAttempts: " + state.maxAttempts + ",");
+        intLines.push("    timeoutMs: " + (state.timeout * 1000) + ",");
+        intLines.push("    similarityThreshold: " + state.threshold.toFixed(2) + ",");
+        intLines.push("  });");
+        intLines.push("");
+        intLines.push("  // Verify on form submit");
+        intLines.push("  document.querySelector('form').addEventListener('submit', function(e) {");
+        intLines.push("    if (!captcha.isVerified()) {");
+        intLines.push("      e.preventDefault();");
+        intLines.push("      alert('Please complete the CAPTCHA');");
+        intLines.push("    }");
+        intLines.push("  });");
+        intLines.push("</" + "script>");
+
+        document.getElementById("integration-output").textContent = intLines.join("\n");
+
+        // Update scores
+        updateScores();
+    }
+
+    // ── Scoring ────────────────────────────────────────────────────
+
+    function updateScores() {
+        var securityScore = 0;
+        var uxScore = 0;
+        var perfScore = 0;
+
+        // Security scoring
+        var secBase = { low: 30, medium: 55, high: 80 };
+        securityScore = secBase[state.security];
+        if (state.features.ratelimit) securityScore += 5;
+        if (state.features.pow)       securityScore += 8;
+        if (state.features.honeypot)  securityScore += 3;
+        if (state.features.biometrics) securityScore += 7;
+        if (state.features.trust)     securityScore += 5;
+        if (state.features.georisk)   securityScore += 4;
+        if (state.features.audit)     securityScore += 2;
+        if (state.threshold >= 0.5)   securityScore += 3;
+        securityScore = Math.min(100, securityScore);
+
+        // UX scoring (inverse of security mostly)
+        uxScore = 85;
+        if (state.security === "high") uxScore -= 15;
+        if (state.security === "low")  uxScore += 5;
+        if (state.features.pow)        uxScore -= 10;
+        if (state.timeout < 20)        uxScore -= 8;
+        if (state.maxAttempts <= 2)     uxScore -= 5;
+        if (state.maxAttempts >= 5)     uxScore += 3;
+        if (state.threshold >= 0.6)    uxScore -= 5;
+        if (state.features.trust)      uxScore += 5; // reduces friction for known users
+        uxScore = Math.max(20, Math.min(100, uxScore));
+
+        // Performance scoring
+        perfScore = 90;
+        if (state.features.pow)        perfScore -= 15;
+        if (state.features.biometrics) perfScore -= 8;
+        if (state.poolSize > 40)       perfScore -= 5;
+        if (state.traffic === "high")  perfScore -= 10;
+        if (state.features.audit)      perfScore -= 5;
+        if (state.features.georisk)    perfScore -= 3;
+        perfScore = Math.max(20, Math.min(100, perfScore));
+
+        // Overall grade
+        var avg = Math.round((securityScore + uxScore + perfScore) / 3);
+        var grade;
+        if (avg >= 85) grade = "A";
+        else if (avg >= 75) grade = "B+";
+        else if (avg >= 65) grade = "B";
+        else if (avg >= 55) grade = "C+";
+        else grade = "C";
+
+        // Color coding
+        function scoreColor(val) {
+            if (val >= 80) return "var(--green)";
+            if (val >= 60) return "var(--yellow)";
+            return "var(--red)";
+        }
+
+        document.getElementById("score-security").textContent = securityScore;
+        document.getElementById("score-security").style.color = scoreColor(securityScore);
+        document.getElementById("score-ux").textContent = uxScore;
+        document.getElementById("score-ux").style.color = scoreColor(uxScore);
+        document.getElementById("score-perf").textContent = perfScore;
+        document.getElementById("score-perf").style.color = scoreColor(perfScore);
+        document.getElementById("score-grade").textContent = grade;
+        document.getElementById("score-grade").style.color = scoreColor(avg);
+    }
+
+    // ── Copy ───────────────────────────────────────────────────────
+
+    function copyConfig() {
+        var text = document.getElementById("config-output").textContent;
+        copyText(text, "copy-btn");
+    }
+
+    function copyIntegration() {
+        var text = document.getElementById("integration-output").textContent;
+        copyText(text, "copy-btn-2");
+    }
+
+    function copyText(text, btnId) {
+        if (navigator.clipboard) {
+            navigator.clipboard.writeText(text).then(function () {
+                flashCopied(btnId);
+            });
+        } else {
+            // Fallback
+            var ta = document.createElement("textarea");
+            ta.value = text;
+            ta.style.position = "fixed";
+            ta.style.left = "-9999px";
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand("copy");
+            document.body.removeChild(ta);
+            flashCopied(btnId);
+        }
+    }
+
+    function flashCopied(btnId) {
+        var btn = document.getElementById(btnId);
+        btn.textContent = "Copied!";
+        btn.classList.add("copied");
+        setTimeout(function () {
+            btn.textContent = "Copy";
+            btn.classList.remove("copied");
+        }, 2000);
+    }
+
+    // ── Init ───────────────────────────────────────────────────────
+
+    generateConfig();
+    </script>
+</body>
+</html>

@@ -257,7 +257,7 @@ function createTrustScoreEngine(options) {
     }
 
     manualSignals = manualSignals || {};
-    var signals = {};
+    var signals = Object.create(null);
     var breakdown = [];
 
     // Collect signals from providers

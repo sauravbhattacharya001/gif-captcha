@@ -143,7 +143,7 @@ function createIncidentManager(opts) {
   var onEscalate = opts.onEscalate || null;
   var onStateChange = opts.onStateChange || null;
 
-  var runbooks = {};
+  var runbooks = Object.create(null);
   // Merge defaults + custom
   Object.keys(DEFAULT_RUNBOOKS).forEach(function (k) {
     runbooks[k] = DEFAULT_RUNBOOKS[k];
@@ -154,8 +154,8 @@ function createIncidentManager(opts) {
     });
   }
 
-  var incidents = {};      // id → incident
-  var escalationTimers = {}; // id → timer handle
+  var incidents = Object.create(null);      // id → incident
+  var escalationTimers = Object.create(null); // id → timer handle
 
   // ── Incident creation ───────────────────────────────────────────
 
@@ -407,8 +407,8 @@ function createIncidentManager(opts) {
 
   function stats() {
     var all = Object.keys(incidents).map(function (k) { return incidents[k]; });
-    var bySeverity = {};
-    var byState = {};
+    var bySeverity = Object.create(null);
+    var byState = Object.create(null);
     var ttaValues = [];
     var ttrValues = [];
 
@@ -530,9 +530,26 @@ function createIncidentManager(opts) {
     var data = typeof json === 'string' ? JSON.parse(json) : json;
     if (!Array.isArray(data)) throw new Error('Expected array of incidents');
     data.forEach(function (inc) {
-      if (inc.id) incidents[inc.id] = inc;
+      if (inc.id && typeof inc.id === 'string' &&
+          inc.id !== '__proto__' && inc.id !== 'constructor' && inc.id !== 'prototype') {
+        incidents[inc.id] = inc;
+      }
     });
     return data.length;
+  }
+
+  // CSV formula injection guard (CWE-1236): prefix dangerous leading
+  // characters with a single-quote so spreadsheet apps don't execute them.
+  function _csvSafe(val) {
+    var s = String(val == null ? '' : val);
+    var escaped = s.replace(/"/g, '""');
+    if (escaped.length > 0 && '=+-@\t\r'.indexOf(escaped[0]) >= 0) {
+      return '"' + "'" + escaped + '"';
+    }
+    if (s.indexOf(',') >= 0 || s.indexOf('"') >= 0 || s.indexOf('\n') >= 0) {
+      return '"' + escaped + '"';
+    }
+    return s;
   }
 
   function exportCSV() {
@@ -541,18 +558,18 @@ function createIncidentManager(opts) {
     Object.keys(incidents).forEach(function (k) {
       var inc = incidents[k];
       rows.push([
-        inc.id,
-        '"' + (inc.title || '').replace(/"/g, '""') + '"',
-        inc.severity,
-        inc.state,
-        inc.source,
-        inc.responder || '',
+        _csvSafe(inc.id),
+        _csvSafe(inc.title),
+        _csvSafe(inc.severity),
+        _csvSafe(inc.state),
+        _csvSafe(inc.source),
+        _csvSafe(inc.responder || ''),
         inc.createdAt,
         inc.acknowledgedAt || '',
         inc.resolvedAt || '',
         inc.ttaMs != null ? inc.ttaMs : '',
         inc.ttrMs != null ? inc.ttrMs : '',
-        '"' + (inc.resolution || '').replace(/"/g, '""') + '"'
+        _csvSafe(inc.resolution || '')
       ].join(','));
     });
     return rows.join('\n');
@@ -577,8 +594,8 @@ function createIncidentManager(opts) {
     Object.keys(escalationTimers).forEach(function (k) {
       clearTimeout(escalationTimers[k]);
     });
-    escalationTimers = {};
-    incidents = {};
+    escalationTimers = Object.create(null);
+    incidents = Object.create(null);
   }
 
   // ── Runbook access ──────────────────────────────────────────────

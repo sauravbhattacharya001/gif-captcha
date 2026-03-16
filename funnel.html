@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Solve Funnel — gif-captcha</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+.funnel-container { max-width: 700px; margin: 0 auto 2rem; }
+.funnel-bar {
+  position: relative;
+  margin: 0.5rem auto;
+  height: 56px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--text);
+  transition: width 0.6s ease;
+  cursor: default;
+}
+.funnel-bar .label { position: relative; z-index: 1; text-shadow: 0 1px 3px rgba(0,0,0,0.5); }
+.funnel-bar .drop-badge {
+  position: absolute;
+  right: -90px;
+  background: var(--red-bg);
+  color: var(--red);
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+.metric-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.2rem;
+  text-align: center;
+}
+.metric-card .value { font-size: 2rem; font-weight: 700; color: var(--accent); }
+.metric-card .label { color: var(--muted); font-size: 0.85rem; margin-top: 0.3rem; }
+.controls {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-bottom: 2rem;
+}
+.controls button, .controls select {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+.controls button:hover { background: var(--surface-hover); }
+.controls button.active { border-color: var(--accent); color: var(--accent); }
+.cohort-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+.cohort-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.2rem;
+}
+.cohort-card h3 { color: var(--accent); margin-bottom: 0.8rem; }
+.cohort-card table { width: 100%; font-size: 0.85rem; }
+.cohort-card th { text-align: left; color: var(--muted); padding: 4px 0; }
+.cohort-card td { padding: 4px 0; }
+.trend-chart { width: 100%; height: 200px; margin-bottom: 2rem; }
+.export-bar { display: flex; gap: 0.5rem; justify-content: center; margin-bottom: 2rem; }
+.export-bar button {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--accent);
+  padding: 0.4rem 0.9rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+.export-bar button:hover { background: var(--surface-hover); }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>🔍 Solve Funnel Analyzer</h1>
+  <p>Visualize user drop-off through CAPTCHA challenge stages</p>
+</div>
+
+<div style="max-width:900px; margin:2rem auto; padding:0 1.5rem;">
+
+  <div class="controls">
+    <button id="btnGenerate" class="active">Generate Sample Data</button>
+    <select id="presetSelect">
+      <option value="balanced">Balanced (70% solve)</option>
+      <option value="hard">Hard CAPTCHA (30% solve)</option>
+      <option value="easy">Easy CAPTCHA (90% solve)</option>
+      <option value="mobile-vs-desktop">Mobile vs Desktop</option>
+    </select>
+    <button id="btnGenGo">Apply Preset</button>
+    <button id="btnReset">Reset</button>
+  </div>
+
+  <div class="metrics-grid" id="metricsGrid"></div>
+
+  <h2 style="text-align:center; margin-bottom:1rem;">Conversion Funnel</h2>
+  <div class="funnel-container" id="funnelViz"></div>
+
+  <h2 style="text-align:center; margin-bottom:1rem;">Cohort Comparison</h2>
+  <div class="cohort-grid" id="cohortGrid"></div>
+
+  <h2 style="text-align:center; margin-bottom:1rem;">Conversion Trend</h2>
+  <canvas class="trend-chart" id="trendCanvas"></canvas>
+
+  <div class="export-bar">
+    <button id="btnCSV">📄 Export CSV</button>
+    <button id="btnJSON">📦 Export JSON</button>
+  </div>
+</div>
+
+<script src="shared.js"></script>
+<script>
+(function() {
+  const STAGES = ["presented", "attempted", "completed", "solved"];
+  const COLORS = ["#58a6ff", "#3fb950", "#d29922", "#bc8cff"];
+
+  // Mini funnel engine (browser-side clone)
+  function createFunnel() {
+    const sessions = new Map();
+    const records = [];
+
+    return {
+      record(e) {
+        if (!sessions.has(e.sessionId))
+          sessions.set(e.sessionId, { cohort: e.cohort || "default", stages: {} });
+        const s = sessions.get(e.sessionId);
+        if (e.cohort) s.cohort = e.cohort;
+        s.stages[e.stage] = { timestamp: e.timestamp || Date.now(), timeMs: e.timeMs || null };
+        records.push({ ...e, cohort: s.cohort, timestamp: e.timestamp || Date.now() });
+      },
+      report() {
+        const counts = {};
+        STAGES.forEach(s => counts[s] = 0);
+        sessions.forEach(sess => STAGES.forEach(s => { if (sess.stages[s]) counts[s]++; }));
+        const funnel = STAGES.map((s, i) => {
+          const prev = i === 0 ? counts[s] : counts[STAGES[i-1]];
+          const rate = prev > 0 ? counts[s] / prev : 0;
+          return { stage: s, count: counts[s], conversionRate: rate, dropOffRate: 1 - rate,
+            overallRate: counts[STAGES[0]] > 0 ? counts[s] / counts[STAGES[0]] : 0 };
+        });
+        const avgTimes = {};
+        STAGES.forEach(s => { let sum = 0, n = 0;
+          sessions.forEach(sess => { if (sess.stages[s] && sess.stages[s].timeMs != null) { sum += sess.stages[s].timeMs; n++; } });
+          avgTimes[s] = n > 0 ? Math.round(sum / n) : null;
+        });
+        return { totalSessions: sessions.size, funnel, averageTimeMs: avgTimes,
+          overallConversion: counts[STAGES[0]] > 0 ? counts[STAGES[3]] / counts[STAGES[0]] : 0 };
+      },
+      compareCohorts() {
+        const cohorts = new Set();
+        sessions.forEach(s => cohorts.add(s.cohort));
+        const result = {};
+        cohorts.forEach(c => {
+          const counts = {};
+          STAGES.forEach(s => counts[s] = 0);
+          let n = 0;
+          sessions.forEach(sess => {
+            if (sess.cohort !== c) return;
+            n++;
+            STAGES.forEach(s => { if (sess.stages[s]) counts[s]++; });
+          });
+          result[c] = { totalSessions: n, counts,
+            overallConversion: counts[STAGES[0]] > 0 ? counts[STAGES[3]] / counts[STAGES[0]] : 0 };
+        });
+        return result;
+      },
+      trends(bucketMs) {
+        if (!records.length) return [];
+        const min = records[0].timestamp;
+        const buckets = {};
+        records.forEach(r => {
+          const bk = Math.floor((r.timestamp - min) / bucketMs);
+          if (!buckets[bk]) { buckets[bk] = { start: min + bk * bucketMs }; STAGES.forEach(s => buckets[bk][s] = 0); }
+          buckets[bk][r.stage]++;
+        });
+        return Object.keys(buckets).map(Number).sort((a,b) => a-b).map(k => {
+          const b = buckets[k];
+          return { ...b, conversion: b.presented > 0 ? b.solved / b.presented : 0 };
+        });
+      },
+      exportCSV() {
+        return "sessionId,cohort,stage,timestamp,timeMs\n" +
+          records.map(r => [r.sessionId, r.cohort, r.stage, new Date(r.timestamp).toISOString(), r.timeMs||""].join(",")).join("\n");
+      },
+      exportJSON() {
+        return JSON.stringify({ report: this.report(), cohorts: this.compareCohorts() }, null, 2);
+      },
+      reset() { sessions.clear(); records.length = 0; },
+      get size() { return sessions.size; }
+    };
+  }
+
+  const funnel = createFunnel();
+
+  function genData(preset) {
+    funnel.reset();
+    const n = 200;
+    const now = Date.now();
+    const rates = {
+      balanced: { a: 0.85, c: 0.82, s: 0.95 },
+      hard: { a: 0.60, c: 0.65, s: 0.75 },
+      easy: { a: 0.95, c: 0.95, s: 0.98 },
+      "mobile-vs-desktop": null
+    };
+
+    if (preset === "mobile-vs-desktop") {
+      [{cohort:"desktop", n:100, a:0.88, c:0.85, s:0.95},
+       {cohort:"mobile", n:100, a:0.70, c:0.72, s:0.80}].forEach(cfg => {
+        for (let i = 0; i < cfg.n; i++) {
+          const id = cfg.cohort[0] + i;
+          const ts = now - (cfg.n - i) * 60000;
+          funnel.record({ stage: "presented", sessionId: id, cohort: cfg.cohort, timestamp: ts });
+          if (Math.random() < cfg.a) {
+            funnel.record({ stage: "attempted", sessionId: id, cohort: cfg.cohort, timestamp: ts + 1000, timeMs: 800 + Math.random() * 2000 });
+            if (Math.random() < cfg.c) {
+              funnel.record({ stage: "completed", sessionId: id, cohort: cfg.cohort, timestamp: ts + 3000, timeMs: 2000 + Math.random() * 3000 });
+              if (Math.random() < cfg.s) {
+                funnel.record({ stage: "solved", sessionId: id, cohort: cfg.cohort, timestamp: ts + 5000, timeMs: 2000 + Math.random() * 3000 });
+              }
+            }
+          }
+        }
+      });
+    } else {
+      const r = rates[preset] || rates.balanced;
+      for (let i = 0; i < n; i++) {
+        const id = "s" + i;
+        const ts = now - (n - i) * 60000;
+        funnel.record({ stage: "presented", sessionId: id, timestamp: ts });
+        if (Math.random() < r.a) {
+          funnel.record({ stage: "attempted", sessionId: id, timestamp: ts + 1000, timeMs: 800 + Math.random() * 2000 });
+          if (Math.random() < r.c) {
+            funnel.record({ stage: "completed", sessionId: id, timestamp: ts + 3000, timeMs: 2000 + Math.random() * 3000 });
+            if (Math.random() < r.s) {
+              funnel.record({ stage: "solved", sessionId: id, timestamp: ts + 5000, timeMs: 2000 + Math.random() * 3000 });
+            }
+          }
+        }
+      }
+    }
+    render();
+  }
+
+  function render() {
+    const r = funnel.report();
+    // Metrics
+    const mg = document.getElementById("metricsGrid");
+    mg.innerHTML = [
+      { v: r.totalSessions, l: "Total Sessions" },
+      { v: (r.overallConversion * 100).toFixed(1) + "%", l: "Overall Conversion" },
+      { v: r.averageTimeMs.attempted != null ? (r.averageTimeMs.attempted / 1000).toFixed(1) + "s" : "—", l: "Avg Time to Attempt" },
+      { v: r.averageTimeMs.solved != null ? (r.averageTimeMs.solved / 1000).toFixed(1) + "s" : "—", l: "Avg Solve Time" },
+    ].map(m => `<div class="metric-card"><div class="value">${m.v}</div><div class="label">${m.l}</div></div>`).join("");
+
+    // Funnel bars
+    const fv = document.getElementById("funnelViz");
+    const maxCount = r.funnel[0].count || 1;
+    fv.innerHTML = r.funnel.map((step, i) => {
+      const w = Math.max(20, (step.count / maxCount) * 100);
+      const dropText = i > 0 && step.dropOffRate > 0 ? `<span class="drop-badge">↓ ${(step.dropOffRate*100).toFixed(1)}%</span>` : "";
+      return `<div class="funnel-bar" style="width:${w}%; background:${COLORS[i]}; margin-left:${(100-w)/2}%">
+        <span class="label">${step.stage.charAt(0).toUpperCase()+step.stage.slice(1)}: ${step.count} (${(step.overallRate*100).toFixed(1)}%)</span>
+        ${dropText}
+      </div>`;
+    }).join("");
+
+    // Cohorts
+    const cg = document.getElementById("cohortGrid");
+    const cohorts = funnel.compareCohorts();
+    const cohortKeys = Object.keys(cohorts);
+    if (cohortKeys.length <= 1 && cohortKeys[0] === "default") {
+      cg.innerHTML = '<p style="text-align:center;color:var(--muted)">Use "Mobile vs Desktop" preset for cohort comparison</p>';
+    } else {
+      cg.innerHTML = cohortKeys.map(k => {
+        const c = cohorts[k];
+        return `<div class="cohort-card"><h3>${k} (${c.totalSessions} sessions)</h3>
+          <table><tr><th>Stage</th><th>Count</th><th>Rate</th></tr>
+          ${STAGES.map(s => `<tr><td>${s}</td><td>${c.counts[s]}</td><td>${(c.counts[s]/(c.counts.presented||1)*100).toFixed(1)}%</td></tr>`).join("")}
+          </table><p style="margin-top:0.5rem;color:var(--green)">Conversion: ${(c.overallConversion*100).toFixed(1)}%</p></div>`;
+      }).join("");
+    }
+
+    // Trend chart
+    drawTrend();
+  }
+
+  function drawTrend() {
+    const canvas = document.getElementById("trendCanvas");
+    const ctx = canvas.getContext("2d");
+    canvas.width = canvas.offsetWidth * 2;
+    canvas.height = canvas.offsetHeight * 2;
+    ctx.scale(2, 2);
+    const w = canvas.offsetWidth, h = canvas.offsetHeight;
+    ctx.clearRect(0, 0, w, h);
+
+    const data = funnel.trends(600000); // 10-min buckets
+    if (data.length < 2) {
+      ctx.fillStyle = "#8b949e";
+      ctx.font = "14px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("Not enough data for trend chart", w/2, h/2);
+      return;
+    }
+
+    const pad = { l: 40, r: 20, t: 20, b: 30 };
+    const pw = w - pad.l - pad.r, ph = h - pad.t - pad.b;
+
+    // Grid
+    ctx.strokeStyle = "#30363d";
+    ctx.lineWidth = 0.5;
+    for (let i = 0; i <= 4; i++) {
+      const y = pad.t + (ph / 4) * i;
+      ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(w - pad.r, y); ctx.stroke();
+      ctx.fillStyle = "#8b949e"; ctx.font = "11px sans-serif"; ctx.textAlign = "right";
+      ctx.fillText(((4-i)*25) + "%", pad.l - 5, y + 4);
+    }
+
+    // Line
+    ctx.strokeStyle = "#58a6ff";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    data.forEach((d, i) => {
+      const x = pad.l + (i / (data.length - 1)) * pw;
+      const y = pad.t + (1 - d.conversion) * ph;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+
+    // Dots
+    ctx.fillStyle = "#58a6ff";
+    data.forEach((d, i) => {
+      const x = pad.l + (i / (data.length - 1)) * pw;
+      const y = pad.t + (1 - d.conversion) * ph;
+      ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill();
+    });
+
+    // Label
+    ctx.fillStyle = "#8b949e"; ctx.font = "11px sans-serif"; ctx.textAlign = "center";
+    ctx.fillText("Time →", w/2, h - 5);
+  }
+
+  function download(text, filename) {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
+    a.download = filename;
+    a.click();
+  }
+
+  document.getElementById("btnGenerate").onclick = () => genData(document.getElementById("presetSelect").value);
+  document.getElementById("btnGenGo").onclick = () => genData(document.getElementById("presetSelect").value);
+  document.getElementById("btnReset").onclick = () => { funnel.reset(); render(); };
+  document.getElementById("btnCSV").onclick = () => download(funnel.exportCSV(), "funnel-data.csv");
+  document.getElementById("btnJSON").onclick = () => download(funnel.exportJSON(), "funnel-report.json");
+
+  // Init
+  genData("balanced");
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; img-src https: data:; script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'self'; form-action 'none';">
+    <meta name="referrer" content="no-referrer">
+    <title>GIF CAPTCHA — Bypass Resistance Tester</title>
+    <link rel="stylesheet" href="shared.css">
+    <style>
+        .container { max-width: 960px; }
+
+        /* Config panel */
+        .config-panel {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .config-panel h3 { font-size: 1.1rem; margin-bottom: 1rem; }
+        .config-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+        .config-group label {
+            display: block;
+            font-size: 0.82rem;
+            color: var(--muted);
+            margin-bottom: 0.3rem;
+        }
+        .config-group select,
+        .config-group input[type="range"] {
+            width: 100%;
+            padding: 0.5rem;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text);
+            font-size: 0.9rem;
+            font-family: inherit;
+        }
+        .config-group input[type="range"] {
+            padding: 0;
+            height: 6px;
+            -webkit-appearance: none;
+            appearance: none;
+            background: var(--border);
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        .config-group input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px; height: 16px;
+            border-radius: 50%;
+            background: var(--accent);
+            cursor: pointer;
+        }
+        .range-value {
+            font-size: 0.8rem;
+            color: var(--accent);
+            margin-top: 0.2rem;
+        }
+
+        /* Preset bar */
+        .preset-bar {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+        }
+        .preset-btn {
+            padding: 0.35rem 0.8rem;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            color: var(--muted);
+            font-size: 0.78rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .preset-btn:hover, .preset-btn.active {
+            background: var(--accent);
+            color: #fff;
+            border-color: var(--accent);
+        }
+
+        /* Attack cards */
+        .attacks-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        .attack-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.25rem;
+            position: relative;
+            overflow: hidden;
+        }
+        .attack-card .attack-icon {
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+        .attack-card h4 {
+            font-size: 0.95rem;
+            margin-bottom: 0.3rem;
+        }
+        .attack-card .attack-desc {
+            font-size: 0.8rem;
+            color: var(--muted);
+            margin-bottom: 0.8rem;
+        }
+        .attack-card .resistance-bar-bg {
+            height: 8px;
+            background: var(--border);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 0.4rem;
+        }
+        .attack-card .resistance-bar-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.8s ease, background 0.5s ease;
+        }
+        .attack-card .resistance-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.78rem;
+        }
+        .attack-card .resistance-label .score { font-weight: 700; }
+
+        /* Simulation log */
+        .sim-log {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: 'SFMono-Regular', Consolas, monospace;
+            font-size: 0.78rem;
+            color: var(--muted);
+            margin-bottom: 1.5rem;
+        }
+        .sim-log .log-entry { margin-bottom: 0.2rem; }
+        .sim-log .log-pass { color: var(--green); }
+        .sim-log .log-warn { color: var(--yellow); }
+        .sim-log .log-fail { color: var(--red); }
+
+        /* Overall score ring */
+        .score-section {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        .score-ring-container {
+            position: relative;
+            width: 160px;
+            height: 160px;
+            margin: 0 auto 1rem;
+        }
+        .score-ring-container canvas {
+            width: 160px;
+            height: 160px;
+        }
+        .score-ring-label {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+        }
+        .score-ring-label .big-score {
+            font-size: 2.2rem;
+            font-weight: 800;
+            line-height: 1;
+        }
+        .score-ring-label .score-unit {
+            font-size: 0.75rem;
+            color: var(--muted);
+        }
+        .grade-badge {
+            display: inline-block;
+            padding: 0.3rem 1.2rem;
+            border-radius: 20px;
+            font-weight: 700;
+            font-size: 1rem;
+        }
+
+        /* Recommendations */
+        .recommendations {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .recommendations h3 { font-size: 1rem; margin-bottom: 0.8rem; }
+        .rec-item {
+            display: flex;
+            gap: 0.8rem;
+            align-items: flex-start;
+            padding: 0.6rem 0;
+            border-bottom: 1px solid var(--border);
+        }
+        .rec-item:last-child { border-bottom: none; }
+        .rec-item .rec-icon { font-size: 1.1rem; flex-shrink: 0; }
+        .rec-item .rec-text { font-size: 0.85rem; color: var(--muted); }
+        .rec-item .rec-text strong { color: var(--text); }
+
+        /* Export */
+        .export-bar {
+            display: flex;
+            gap: 0.5rem;
+            justify-content: center;
+            margin-bottom: 2rem;
+        }
+
+        /* Responsive */
+        @media (max-width: 700px) {
+            .config-grid { grid-template-columns: 1fr; }
+            .attacks-grid { grid-template-columns: 1fr; }
+        }
+
+        /* Animation */
+        .fade-in {
+            animation: fadeIn 0.4s ease both;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🛡️ Bypass Resistance Tester</h1>
+        <p class="subtitle">Simulate bot attack strategies against your CAPTCHA configuration and measure resilience</p>
+        <div class="nav-links">
+            <a href="index.html">Home</a>
+            <a href="demo.html">Demo</a>
+            <a href="analysis.html">Analysis</a>
+            <a href="benchmark.html">Benchmark</a>
+            <a href="simulator.html">Simulator</a>
+            <a href="designer.html">Designer</a>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- Presets -->
+        <div class="preset-bar" id="presetBar">
+            <span style="font-size:0.82rem;color:var(--muted);line-height:2;">Presets:</span>
+            <button class="preset-btn" data-preset="minimal">Minimal</button>
+            <button class="preset-btn active" data-preset="standard">Standard</button>
+            <button class="preset-btn" data-preset="hardened">Hardened</button>
+            <button class="preset-btn" data-preset="fortress">Fortress</button>
+            <button class="preset-btn" data-preset="custom">Custom</button>
+        </div>
+
+        <!-- Configuration -->
+        <div class="config-panel">
+            <h3>⚙️ CAPTCHA Configuration</h3>
+            <div class="config-grid">
+                <div class="config-group">
+                    <label>Challenge Type</label>
+                    <select id="cfgType">
+                        <option value="narrative">Narrative (story-based)</option>
+                        <option value="visual">Visual (object ID)</option>
+                        <option value="temporal">Temporal (sequence)</option>
+                        <option value="social">Social (emotion/context)</option>
+                        <option value="physical">Physical (physics sim)</option>
+                    </select>
+                </div>
+                <div class="config-group">
+                    <label>GIF Frame Count</label>
+                    <input type="range" id="cfgFrames" min="4" max="60" value="24">
+                    <div class="range-value" id="cfgFramesVal">24 frames</div>
+                </div>
+                <div class="config-group">
+                    <label>Answer Options</label>
+                    <select id="cfgOptions">
+                        <option value="2">2 choices</option>
+                        <option value="3">3 choices</option>
+                        <option value="4" selected>4 choices</option>
+                        <option value="5">5 choices</option>
+                        <option value="6">6 choices</option>
+                    </select>
+                </div>
+                <div class="config-group">
+                    <label>Time Limit</label>
+                    <input type="range" id="cfgTime" min="3" max="60" value="15">
+                    <div class="range-value" id="cfgTimeVal">15 seconds</div>
+                </div>
+                <div class="config-group">
+                    <label>Rate Limiting</label>
+                    <select id="cfgRate">
+                        <option value="none">None</option>
+                        <option value="basic" selected>Basic (IP)</option>
+                        <option value="advanced">Advanced (fingerprint)</option>
+                        <option value="aggressive">Aggressive (proof-of-work)</option>
+                    </select>
+                </div>
+                <div class="config-group">
+                    <label>Distractor Similarity</label>
+                    <input type="range" id="cfgDistractor" min="1" max="10" value="5">
+                    <div class="range-value" id="cfgDistractorVal">5 / 10</div>
+                </div>
+                <div class="config-group">
+                    <label>Challenge Rotation</label>
+                    <select id="cfgRotation">
+                        <option value="static">Static pool</option>
+                        <option value="daily">Daily rotation</option>
+                        <option value="per-session" selected>Per-session</option>
+                        <option value="per-attempt">Per-attempt</option>
+                    </select>
+                </div>
+                <div class="config-group">
+                    <label>Behavioral Analysis</label>
+                    <select id="cfgBehavior">
+                        <option value="none">Disabled</option>
+                        <option value="basic" selected>Basic (timing)</option>
+                        <option value="full">Full (mouse + timing)</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Run button -->
+        <div style="text-align:center;margin-bottom:2rem;">
+            <button class="btn btn-primary" id="runBtn" onclick="runSimulation()">🚀 Run Bypass Simulation</button>
+        </div>
+
+        <!-- Results (hidden until run) -->
+        <div id="results" class="hidden">
+            <!-- Simulation Log -->
+            <h3 style="font-size:1rem;margin-bottom:0.5rem;">📋 Simulation Log</h3>
+            <div class="sim-log" id="simLog"></div>
+
+            <!-- Overall Score -->
+            <div class="score-section fade-in">
+                <div class="score-ring-container">
+                    <canvas id="scoreCanvas" width="320" height="320"></canvas>
+                    <div class="score-ring-label">
+                        <div class="big-score" id="overallScore">0</div>
+                        <div class="score-unit">/ 100</div>
+                    </div>
+                </div>
+                <div id="gradeBadge" class="grade-badge">—</div>
+                <p style="color:var(--muted);font-size:0.82rem;margin-top:0.5rem;" id="gradeDesc"></p>
+            </div>
+
+            <!-- Attack Cards -->
+            <h3 style="font-size:1rem;margin-bottom:0.8rem;">🎯 Attack Vector Breakdown</h3>
+            <div class="attacks-grid" id="attacksGrid"></div>
+
+            <!-- Recommendations -->
+            <div class="recommendations" id="recommendations">
+                <h3>💡 Recommendations</h3>
+                <div id="recList"></div>
+            </div>
+
+            <!-- Export -->
+            <div class="export-bar">
+                <button class="btn btn-secondary btn-small" onclick="exportJSON()">📥 Export JSON</button>
+                <button class="btn btn-secondary btn-small" onclick="exportCSV()">📊 Export CSV</button>
+                <button class="btn btn-secondary btn-small" onclick="copyReport()">📋 Copy Report</button>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <p>GIF CAPTCHA Research Study — <a href="index.html">Home</a> · <a href="https://github.com/sauravbhattacharya001/gif-captcha">GitHub</a></p>
+    </footer>
+
+    <script src="shared.js"></script>
+    <script>
+    /* ===== Attack Vectors ===== */
+    var ATTACKS = [
+        {
+            id: 'ocr',
+            icon: '👁️',
+            name: 'OCR Frame Extraction',
+            desc: 'Extract individual frames and run OCR/image classification to identify objects or text.',
+            factors: function(cfg) {
+                var score = 40;
+                // More frames = harder to analyze all
+                score += Math.min(20, (cfg.frames - 4) * 0.4);
+                // Narrative/social harder for OCR
+                if (cfg.type === 'narrative' || cfg.type === 'social') score += 15;
+                if (cfg.type === 'temporal') score += 10;
+                // High distractor similarity
+                score += cfg.distractor * 1.5;
+                // Per-attempt rotation prevents caching
+                if (cfg.rotation === 'per-attempt') score += 10;
+                else if (cfg.rotation === 'per-session') score += 5;
+                return Math.min(100, Math.round(score));
+            }
+        },
+        {
+            id: 'ml',
+            icon: '🤖',
+            name: 'ML Model Attack',
+            desc: 'Train a neural network on CAPTCHA images to classify answers automatically.',
+            factors: function(cfg) {
+                var score = 25;
+                // More options = harder to classify
+                score += (cfg.options - 2) * 5;
+                // Narrative requires comprehension
+                if (cfg.type === 'narrative') score += 25;
+                if (cfg.type === 'social') score += 20;
+                if (cfg.type === 'physical') score += 15;
+                // Rotation prevents training on static pool
+                if (cfg.rotation === 'per-attempt') score += 15;
+                else if (cfg.rotation === 'per-session') score += 10;
+                else if (cfg.rotation === 'daily') score += 5;
+                // High distractor similarity
+                score += cfg.distractor * 1.2;
+                return Math.min(100, Math.round(score));
+            }
+        },
+        {
+            id: 'timing',
+            icon: '⏱️',
+            name: 'Timing Side-Channel',
+            desc: 'Exploit response timing patterns or solve faster than humanly possible.',
+            factors: function(cfg) {
+                var score = 30;
+                // Behavioral analysis is key defense
+                if (cfg.behavior === 'full') score += 35;
+                else if (cfg.behavior === 'basic') score += 15;
+                // Short time limits don't help much (bots are fast)
+                if (cfg.timeLimit <= 8) score += 5;
+                // Rate limiting helps
+                if (cfg.rateLimit === 'aggressive') score += 15;
+                else if (cfg.rateLimit === 'advanced') score += 10;
+                else if (cfg.rateLimit === 'basic') score += 5;
+                return Math.min(100, Math.round(score));
+            }
+        },
+        {
+            id: 'brute',
+            icon: '🔨',
+            name: 'Brute Force / Replay',
+            desc: 'Guess randomly or replay previously observed correct answers.',
+            factors: function(cfg) {
+                // Base resistance from randomness: 1 - 1/options
+                var guessResist = (1 - 1/cfg.options) * 50;
+                var score = guessResist;
+                // Rotation is critical against replay
+                if (cfg.rotation === 'per-attempt') score += 30;
+                else if (cfg.rotation === 'per-session') score += 20;
+                else if (cfg.rotation === 'daily') score += 10;
+                // Rate limiting
+                if (cfg.rateLimit === 'aggressive') score += 20;
+                else if (cfg.rateLimit === 'advanced') score += 12;
+                else if (cfg.rateLimit === 'basic') score += 6;
+                return Math.min(100, Math.round(score));
+            }
+        },
+        {
+            id: 'farm',
+            icon: '👥',
+            name: 'Human CAPTCHA Farm',
+            desc: 'Forward challenges to low-cost human solvers via CAPTCHA-solving services.',
+            factors: function(cfg) {
+                var score = 15; // Hard to stop humans
+                // Short time limits pressure farms
+                if (cfg.timeLimit <= 8) score += 20;
+                else if (cfg.timeLimit <= 15) score += 10;
+                // Behavioral analysis catches proxy patterns
+                if (cfg.behavior === 'full') score += 25;
+                else if (cfg.behavior === 'basic') score += 10;
+                // More frames = longer to load/forward
+                score += Math.min(10, (cfg.frames - 4) * 0.2);
+                // Advanced rate limiting
+                if (cfg.rateLimit === 'aggressive') score += 15;
+                else if (cfg.rateLimit === 'advanced') score += 8;
+                return Math.min(100, Math.round(score));
+            }
+        },
+        {
+            id: 'api',
+            icon: '🔗',
+            name: 'API / Protocol Exploit',
+            desc: 'Bypass the UI entirely by directly calling validation endpoints or manipulating tokens.',
+            factors: function(cfg) {
+                var score = 50; // Assume decent server-side validation baseline
+                // Rate limiting is key
+                if (cfg.rateLimit === 'aggressive') score += 25;
+                else if (cfg.rateLimit === 'advanced') score += 15;
+                else if (cfg.rateLimit === 'basic') score += 8;
+                else score -= 15;
+                // Behavioral analysis catches missing mouse data
+                if (cfg.behavior === 'full') score += 15;
+                else if (cfg.behavior === 'basic') score += 5;
+                return Math.min(100, Math.round(score));
+            }
+        }
+    ];
+
+    /* ===== Presets ===== */
+    var PRESETS = {
+        minimal: { type:'visual', frames:8, options:'2', timeLimit:30, rateLimit:'none', distractor:2, rotation:'static', behavior:'none' },
+        standard: { type:'narrative', frames:24, options:'4', timeLimit:15, rateLimit:'basic', distractor:5, rotation:'per-session', behavior:'basic' },
+        hardened: { type:'narrative', frames:36, options:'5', timeLimit:10, rateLimit:'advanced', distractor:8, rotation:'per-attempt', behavior:'full' },
+        fortress: { type:'social', frames:48, options:'6', timeLimit:8, rateLimit:'aggressive', distractor:10, rotation:'per-attempt', behavior:'full' }
+    };
+
+    /* ===== Init ===== */
+    var lastResults = null;
+
+    // Slider displays
+    document.getElementById('cfgFrames').addEventListener('input', function() {
+        document.getElementById('cfgFramesVal').textContent = this.value + ' frames';
+    });
+    document.getElementById('cfgTime').addEventListener('input', function() {
+        document.getElementById('cfgTimeVal').textContent = this.value + ' seconds';
+    });
+    document.getElementById('cfgDistractor').addEventListener('input', function() {
+        document.getElementById('cfgDistractorVal').textContent = this.value + ' / 10';
+    });
+
+    // Presets
+    document.getElementById('presetBar').addEventListener('click', function(e) {
+        if (!e.target.classList.contains('preset-btn')) return;
+        var preset = e.target.dataset.preset;
+        document.querySelectorAll('.preset-btn').forEach(function(b) { b.classList.remove('active'); });
+        e.target.classList.add('active');
+        if (preset === 'custom') return;
+        var p = PRESETS[preset];
+        if (!p) return;
+        document.getElementById('cfgType').value = p.type;
+        document.getElementById('cfgFrames').value = p.frames;
+        document.getElementById('cfgFramesVal').textContent = p.frames + ' frames';
+        document.getElementById('cfgOptions').value = p.options;
+        document.getElementById('cfgTime').value = p.timeLimit;
+        document.getElementById('cfgTimeVal').textContent = p.timeLimit + ' seconds';
+        document.getElementById('cfgRate').value = p.rateLimit;
+        document.getElementById('cfgDistractor').value = p.distractor;
+        document.getElementById('cfgDistractorVal').textContent = p.distractor + ' / 10';
+        document.getElementById('cfgRotation').value = p.rotation;
+        document.getElementById('cfgBehavior').value = p.behavior;
+    });
+
+    // Auto-switch to custom when user changes config
+    ['cfgType','cfgFrames','cfgOptions','cfgTime','cfgRate','cfgDistractor','cfgRotation','cfgBehavior'].forEach(function(id) {
+        document.getElementById(id).addEventListener('change', function() {
+            document.querySelectorAll('.preset-btn').forEach(function(b) { b.classList.remove('active'); });
+            document.querySelector('[data-preset="custom"]').classList.add('active');
+        });
+    });
+
+    function getConfig() {
+        return {
+            type: document.getElementById('cfgType').value,
+            frames: parseInt(document.getElementById('cfgFrames').value),
+            options: parseInt(document.getElementById('cfgOptions').value),
+            timeLimit: parseInt(document.getElementById('cfgTime').value),
+            rateLimit: document.getElementById('cfgRate').value,
+            distractor: parseInt(document.getElementById('cfgDistractor').value),
+            rotation: document.getElementById('cfgRotation').value,
+            behavior: document.getElementById('cfgBehavior').value
+        };
+    }
+
+    /* ===== Simulation ===== */
+    function runSimulation() {
+        var cfg = getConfig();
+        var results = [];
+        var logEntries = [];
+        var btn = document.getElementById('runBtn');
+        btn.disabled = true;
+        btn.textContent = '⏳ Simulating...';
+
+        // Simulate each attack
+        ATTACKS.forEach(function(attack) {
+            var resistance = attack.factors(cfg);
+            // Add some controlled randomness (±5)
+            var jitter = Math.round((Math.random() - 0.5) * 10);
+            resistance = Math.max(0, Math.min(100, resistance + jitter));
+
+            var status = resistance >= 70 ? 'pass' : resistance >= 40 ? 'warn' : 'fail';
+            var statusText = resistance >= 70 ? 'RESISTANT' : resistance >= 40 ? 'PARTIAL' : 'VULNERABLE';
+
+            results.push({
+                id: attack.id,
+                icon: attack.icon,
+                name: attack.name,
+                desc: attack.desc,
+                resistance: resistance,
+                status: status,
+                statusText: statusText
+            });
+
+            logEntries.push({
+                cls: 'log-' + status,
+                text: '[' + statusText.padEnd(10) + '] ' + attack.name + ' — resistance ' + resistance + '%'
+            });
+        });
+
+        // Overall score (weighted average — farm and ML get higher weight)
+        var weights = { ocr: 1, ml: 1.3, timing: 0.8, brute: 1, farm: 1.2, api: 0.9 };
+        var totalW = 0, weightedSum = 0;
+        results.forEach(function(r) {
+            var w = weights[r.id] || 1;
+            weightedSum += r.resistance * w;
+            totalW += w;
+        });
+        var overall = Math.round(weightedSum / totalW);
+
+        var grade, gradeColor, gradeDesc;
+        if (overall >= 85) { grade = 'A'; gradeColor = var_green(); gradeDesc = 'Excellent resistance — hardened against most attack vectors.'; }
+        else if (overall >= 70) { grade = 'B'; gradeColor = '#58a6ff'; gradeDesc = 'Good resistance — some vectors may need attention.'; }
+        else if (overall >= 50) { grade = 'C'; gradeColor = var_yellow(); gradeDesc = 'Moderate resistance — several vulnerabilities present.'; }
+        else if (overall >= 30) { grade = 'D'; gradeColor = var_orange(); gradeDesc = 'Weak resistance — significant improvements needed.'; }
+        else { grade = 'F'; gradeColor = var_red(); gradeDesc = 'Critical — this configuration is easily bypassed.'; }
+
+        lastResults = { cfg: cfg, attacks: results, overall: overall, grade: grade, timestamp: new Date().toISOString() };
+
+        // Render
+        renderLog(logEntries);
+        renderScore(overall, gradeColor);
+        renderGrade(grade, gradeColor, gradeDesc);
+        renderAttacks(results);
+        renderRecommendations(results, cfg);
+
+        document.getElementById('results').classList.remove('hidden');
+        btn.disabled = false;
+        btn.textContent = '🚀 Re-run Simulation';
+    }
+
+    function var_green() { return '#3fb950'; }
+    function var_yellow() { return '#d29922'; }
+    function var_orange() { return '#f0883e'; }
+    function var_red() { return '#f85149'; }
+
+    function renderLog(entries) {
+        var html = '';
+        entries.forEach(function(e) {
+            html += '<div class="log-entry ' + e.cls + '">' + sanitize(e.text) + '</div>';
+        });
+        document.getElementById('simLog').innerHTML = html;
+    }
+
+    function renderScore(score, color) {
+        var canvas = document.getElementById('scoreCanvas');
+        var ctx = canvas.getContext('2d');
+        var cx = 160, cy = 160, r = 130;
+        ctx.clearRect(0, 0, 320, 320);
+
+        // Background ring
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.strokeStyle = '#30363d';
+        ctx.lineWidth = 14;
+        ctx.stroke();
+
+        // Score arc
+        var angle = (score / 100) * Math.PI * 2;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + angle);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 14;
+        ctx.lineCap = 'round';
+        ctx.stroke();
+
+        document.getElementById('overallScore').textContent = score;
+        document.getElementById('overallScore').style.color = color;
+    }
+
+    function renderGrade(grade, color, desc) {
+        var badge = document.getElementById('gradeBadge');
+        badge.textContent = 'Grade: ' + grade;
+        badge.style.background = color + '22';
+        badge.style.color = color;
+        document.getElementById('gradeDesc').textContent = desc;
+    }
+
+    function renderAttacks(results) {
+        var html = '';
+        results.forEach(function(r) {
+            var barColor = r.resistance >= 70 ? var_green() : r.resistance >= 40 ? var_yellow() : var_red();
+            html += '<div class="attack-card fade-in">' +
+                '<div class="attack-icon">' + r.icon + '</div>' +
+                '<h4>' + sanitize(r.name) + '</h4>' +
+                '<div class="attack-desc">' + sanitize(r.desc) + '</div>' +
+                '<div class="resistance-bar-bg"><div class="resistance-bar-fill" style="width:' + r.resistance + '%;background:' + barColor + ';"></div></div>' +
+                '<div class="resistance-label"><span class="' + (r.status === 'pass' ? '' : r.status === 'warn' ? '' : '') + '" style="color:' + barColor + ';">' + r.statusText + '</span><span class="score" style="color:' + barColor + ';">' + r.resistance + '%</span></div>' +
+                '</div>';
+        });
+        document.getElementById('attacksGrid').innerHTML = html;
+    }
+
+    function renderRecommendations(results, cfg) {
+        var recs = [];
+        results.forEach(function(r) {
+            if (r.status === 'fail') {
+                recs.push.apply(recs, getRecsForAttack(r.id, cfg, 'critical'));
+            } else if (r.status === 'warn') {
+                recs.push.apply(recs, getRecsForAttack(r.id, cfg, 'improvement'));
+            }
+        });
+        if (recs.length === 0) {
+            recs.push({ icon: '✅', text: '<strong>No critical weaknesses detected.</strong> Your configuration resists all tested attack vectors well.' });
+        }
+        var html = '';
+        recs.forEach(function(r) {
+            html += '<div class="rec-item"><span class="rec-icon">' + r.icon + '</span><div class="rec-text">' + r.text + '</div></div>';
+        });
+        document.getElementById('recList').innerHTML = html;
+    }
+
+    function getRecsForAttack(id, cfg, severity) {
+        var icon = severity === 'critical' ? '🔴' : '🟡';
+        var recs = [];
+        switch(id) {
+            case 'ocr':
+                if (cfg.frames < 20) recs.push({ icon: icon, text: '<strong>Increase frame count</strong> to at least 20. More frames make per-frame OCR analysis harder and more expensive.' });
+                if (cfg.type === 'visual') recs.push({ icon: icon, text: '<strong>Switch to narrative or social challenges.</strong> Visual object identification is more susceptible to image classifiers.' });
+                if (cfg.distractor < 6) recs.push({ icon: icon, text: '<strong>Increase distractor similarity</strong> to make wrong answers harder to eliminate via visual matching.' });
+                break;
+            case 'ml':
+                if (cfg.rotation === 'static' || cfg.rotation === 'daily') recs.push({ icon: icon, text: '<strong>Use per-session or per-attempt rotation</strong> to prevent ML models from training on a fixed challenge pool.' });
+                if (cfg.options < 4) recs.push({ icon: icon, text: '<strong>Add more answer options</strong> (at least 4) to reduce classification accuracy.' });
+                if (cfg.type === 'visual') recs.push({ icon: icon, text: '<strong>Use narrative/social challenge types</strong> that require semantic understanding beyond image classification.' });
+                break;
+            case 'timing':
+                if (cfg.behavior === 'none') recs.push({ icon: icon, text: '<strong>Enable behavioral analysis.</strong> Without it, bots can submit answers with inhuman speed undetected.' });
+                if (cfg.rateLimit === 'none') recs.push({ icon: icon, text: '<strong>Add rate limiting</strong> to throttle automated submissions.' });
+                break;
+            case 'brute':
+                if (cfg.options < 4) recs.push({ icon: icon, text: '<strong>Use 4+ answer options</strong> to reduce random-guess success rate below 25%.' });
+                if (cfg.rotation === 'static') recs.push({ icon: icon, text: '<strong>Enable challenge rotation</strong> to prevent replay attacks with memorized answers.' });
+                if (cfg.rateLimit === 'none' || cfg.rateLimit === 'basic') recs.push({ icon: icon, text: '<strong>Upgrade rate limiting</strong> to advanced or aggressive to block brute-force attempts.' });
+                break;
+            case 'farm':
+                if (cfg.timeLimit > 15) recs.push({ icon: icon, text: '<strong>Reduce time limit</strong> to 10-15 seconds. Tight deadlines make it harder to forward challenges to human farms.' });
+                if (cfg.behavior !== 'full') recs.push({ icon: icon, text: '<strong>Enable full behavioral analysis</strong> (mouse + timing) to detect proxy interaction patterns.' });
+                break;
+            case 'api':
+                if (cfg.rateLimit === 'none') recs.push({ icon: icon, text: '<strong>Add rate limiting immediately.</strong> Without it, APIs are trivially abusable.' });
+                if (cfg.behavior === 'none') recs.push({ icon: icon, text: '<strong>Require behavioral telemetry</strong> in validation requests to detect headless/API-only submissions.' });
+                break;
+        }
+        return recs;
+    }
+
+    /* ===== Export ===== */
+    function exportJSON() {
+        if (!lastResults) return;
+        var blob = new Blob([JSON.stringify(lastResults, null, 2)], { type: 'application/json' });
+        downloadBlob(blob, 'captcha-resistance-report.json');
+    }
+
+    function exportCSV() {
+        if (!lastResults) return;
+        var rows = ['Attack Vector,Resistance %,Status'];
+        lastResults.attacks.forEach(function(a) {
+            rows.push(a.name + ',' + a.resistance + ',' + a.statusText);
+        });
+        rows.push('');
+        rows.push('Overall Score,' + lastResults.overall + ',' + lastResults.grade);
+        var blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+        downloadBlob(blob, 'captcha-resistance-report.csv');
+    }
+
+    function copyReport() {
+        if (!lastResults) return;
+        var lines = ['GIF CAPTCHA Bypass Resistance Report', '=' .repeat(40), ''];
+        lines.push('Overall Score: ' + lastResults.overall + '/100 (Grade ' + lastResults.grade + ')');
+        lines.push('');
+        lastResults.attacks.forEach(function(a) {
+            lines.push(a.icon + ' ' + a.name + ': ' + a.resistance + '% (' + a.statusText + ')');
+        });
+        lines.push('');
+        lines.push('Config: ' + lastResults.cfg.type + ', ' + lastResults.cfg.frames + ' frames, ' + lastResults.cfg.options + ' options, ' + lastResults.cfg.timeLimit + 's limit');
+        lines.push('Generated: ' + lastResults.timestamp);
+        navigator.clipboard.writeText(lines.join('\n')).then(function() {
+            var btn = document.querySelector('.export-bar .btn-small:last-child');
+            btn.textContent = '✅ Copied!';
+            setTimeout(function() { btn.textContent = '📋 Copy Report'; }, 2000);
+        });
+    }
+
+    function downloadBlob(blob, filename) {
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url; a.download = filename;
+        document.body.appendChild(a); a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+    </script>
+</body>
+</html>

@@ -241,6 +241,28 @@ function createGeoRiskScorer(options) {
 
   // ── Main Scoring ─────────────────────────────────────────────────
 
+  /**
+   * Score a CAPTCHA attempt based on geographic risk signals.
+   *
+   * Evaluates country risk tier, proxy/VPN/Tor detection, impossible-travel
+   * velocity between requests from the same IP, geo-hopping across countries
+   * within a session, and regional solve-rate anomalies. Returns a composite
+   * score (0–1) with a risk level, contributing factors, and recommended action.
+   *
+   * @param {Object} meta - Request metadata
+   * @param {string} [meta.ip] - Client IP address (used for velocity and blocklist checks)
+   * @param {string} [meta.country] - ISO 3166-1 alpha-2 country code
+   * @param {number} [meta.lat] - Latitude for velocity/travel analysis
+   * @param {number} [meta.lon] - Longitude for velocity/travel analysis
+   * @param {boolean} [meta.isProxy] - Whether the IP is a known proxy
+   * @param {boolean} [meta.isDatacenter] - Whether the IP belongs to a datacenter
+   * @param {boolean} [meta.isTor] - Whether the IP is a Tor exit node
+   * @param {boolean} [meta.isVpn] - Whether the IP is a known VPN endpoint
+   * @param {string} [meta.sessionId] - Session identifier for geo-hopping detection
+   * @param {number} [meta.timestamp] - Request timestamp (ms); defaults to Date.now()
+   * @returns {{ score: number, level: string, factors: Array<{name:string,score:number,detail:string}>, action: string }}
+   * @throws {Error} If meta is falsy
+   */
   function score(meta) {
     if (!meta) throw new Error("GeoRiskScorer: meta object required");
     var ts = meta.timestamp || Date.now();
@@ -306,6 +328,12 @@ function createGeoRiskScorer(options) {
 
   // ── Region Stats ─────────────────────────────────────────────────
 
+  /**
+   * Record a CAPTCHA attempt outcome for a given country to build regional baselines.
+   *
+   * @param {string} country - ISO 3166-1 alpha-2 country code
+   * @param {boolean} solved - Whether the attempt was solved successfully
+   */
   function recordAttempt(country, solved) {
     if (!country) return;
     var cc = country.toUpperCase();
@@ -314,6 +342,12 @@ function createGeoRiskScorer(options) {
     if (solved) _regionStats[cc].solves++;
   }
 
+  /**
+   * Get solve-rate statistics for a specific country or all tracked countries.
+   *
+   * @param {string} [country] - ISO country code; omit for all countries (sorted by attempts desc)
+   * @returns {?Object|Array<Object>} Stats object or sorted array; null if country has no data
+   */
   function getRegionStats(country) {
     if (country) {
       var cc = country.toUpperCase();
@@ -352,6 +386,12 @@ function createGeoRiskScorer(options) {
 
   // ── Batch Scoring ────────────────────────────────────────────────
 
+  /**
+   * Score an array of request metadata objects in batch.
+   *
+   * @param {Array<Object>} metas - Array of meta objects (same shape as {@link score} param)
+   * @returns {Array<Object>} Corresponding array of score results
+   */
   function scoreBatch(metas) {
     var results = [];
     for (var i = 0; i < metas.length; i++) {
@@ -362,6 +402,11 @@ function createGeoRiskScorer(options) {
 
   // ── Risk Summary ─────────────────────────────────────────────────
 
+  /**
+   * Get a summary of scoring activity — totals, rates, and tracked entity counts.
+   *
+   * @returns {{ totalScored: number, totalBlocked: number, totalChallenged: number, blockRate: number, challengeRate: number, trackedIPs: number, trackedSessions: number, regionCount: number, blockedIPs: number, allowedIPs: number }}
+   */
   function summary() {
     return {
       totalScored: _totalScored,

@@ -2,7 +2,26 @@
 
 /**
  * Response Time Profiler for CAPTCHA systems.
- * Builds timing profiles, detects anomalies, classifies solver behavior.
+ *
+ * Builds per-challenge-type timing profiles, detects anomalies in individual
+ * sessions (too-fast solves, mechanical consistency, burst patterns), and
+ * classifies solvers as human/bot/solver_farm/suspicious. Supports histograms,
+ * difficulty-correlation analysis, inter-solve gap analysis, and full
+ * import/export of profiling data.
+ *
+ * @param {Object} [options]
+ * @param {number} [options.minSamples=10] - Minimum samples before generating profiles
+ * @param {number} [options.maxSamples=1000] - Maximum samples to retain per challenge type
+ * @param {number} [options.botThresholdMs=500] - Solves faster than this are flagged as bot-like
+ * @param {number} [options.humanMinMs=800] - Lower bound of expected human response time
+ * @param {number} [options.humanMaxMs=30000] - Upper bound of expected human response time
+ * @param {number} [options.consistencyThreshold=0.1] - CV below this flags mechanical consistency
+ * @param {number} [options.burstWindowMs=5000] - Time window for burst detection
+ * @param {number} [options.burstThreshold=3] - Solves within burst window to flag
+ * @param {number} [options.histogramBins=20] - Number of histogram bins
+ * @param {number} [options.maxSessions=500] - Maximum tracked sessions (LRU eviction)
+ * @param {Function} [options.now] - Clock function; defaults to Date.now
+ * @returns {Object} Profiler instance
  */
 function createResponseTimeProfiler(options) {
   options = options || {};
@@ -28,6 +47,17 @@ function createResponseTimeProfiler(options) {
   function _pct(a,p) { if (!a.length) return 0; var s=a.slice().sort(function(x,y){return x-y}); var i=(p/100)*(s.length-1); var l=Math.floor(i),u=Math.ceil(i); return l===u?s[l]:s[l]+(i-l)*(s[u]-s[l]); }
   function _r(v,d) { var f=Math.pow(10,d||2); return Math.round(v*f)/f; }
 
+  /**
+   * Record a CAPTCHA solve attempt with timing data.
+   *
+   * @param {Object} entry
+   * @param {string} entry.sessionId - Unique session identifier
+   * @param {number} entry.responseTimeMs - Time taken to solve (ms, non-negative)
+   * @param {boolean} entry.solved - Whether the attempt was solved correctly
+   * @param {string} [entry.type='default'] - Challenge type for per-type profiling
+   * @param {number} [entry.difficulty] - Difficulty level for correlation analysis
+   * @throws {Error} If required fields are missing or invalid
+   */
   function record(entry) {
     if (!entry||typeof entry.responseTimeMs!=='number'||entry.responseTimeMs<0) throw new Error('responseTimeMs must be a non-negative number');
     if (!entry.sessionId) throw new Error('sessionId is required');
@@ -54,6 +84,12 @@ function createResponseTimeProfiler(options) {
     sessions[entry.sessionId].classification=null;
   }
 
+  /**
+   * Get statistical profile for a challenge type (mean, median, stddev, percentiles, solve rate).
+   *
+   * @param {string} [type='default'] - Challenge type
+   * @returns {?Object} Profile object or null if insufficient samples
+   */
   function getTypeProfile(type) {
     type=type||'default'; var p=typeProfiles[type]; if (!p||p.times.length<minSamples) return null;
     var t=p.times,avg=_mean(t),sd=_stddev(t,avg),med=_median(t),sc=p.solved.filter(function(s){return s;}).length;
@@ -64,6 +100,13 @@ function createResponseTimeProfiler(options) {
 
   function getAllTypeProfiles() { var r=[],ks=Object.keys(typeProfiles); for(var i=0;i<ks.length;i++){var p=getTypeProfile(ks[i]);if(p)r.push(p);} return r; }
 
+  /**
+   * Detect timing anomalies in a session (too-fast, too-consistent, burst, out-of-range).
+   *
+   * @param {string} sessionId - Session to analyze
+   * @returns {{ anomalies: Array, riskScore: number, classification: string }}
+   * @throws {Error} If session is unknown
+   */
   function detectAnomalies(sessionId) {
     if (!sessions[sessionId]) throw new Error('Unknown session: '+sessionId);
     var solves=sessions[sessionId].solves; if (solves.length<2) return {anomalies:[],riskScore:0,classification:'insufficient_data'};
@@ -86,6 +129,13 @@ function createResponseTimeProfiler(options) {
     if(hf&&hc)return 'bot';if(hc&&!hf)return 'solver_farm';if(hf&&!hc)return 'bot';if(hb)return 'suspicious';if(!anomalies.length)return 'human';return 'uncertain';
   }
 
+  /**
+   * Classify a session as human, bot, solver_farm, suspicious, or uncertain.
+   *
+   * @param {string} sessionId - Session to classify
+   * @returns {{ classification: string, confidence: number, humanLikelihood: string, evidence: Array<string>, stats: Object, anomalies: Array }}
+   * @throws {Error} If session is unknown
+   */
   function classifySession(sessionId) {
     if(!sessions[sessionId])throw new Error('Unknown session: '+sessionId);
     var solves=sessions[sessionId].solves;if(solves.length<2)return{classification:'insufficient_data',confidence:0,evidence:[]};
@@ -103,6 +153,12 @@ function createResponseTimeProfiler(options) {
       evidence:ev,stats:{mean:_r(avg),median:_r(med),stddev:_r(sd),cv:_r(cv,3),solveRate:_r(sr,3),sampleSize:times.length},anomalies:ar.anomalies};
   }
 
+  /**
+   * Generate a response-time histogram for a challenge type.
+   *
+   * @param {string} [type='default'] - Challenge type
+   * @returns {?Object} Histogram with bins, bin width, and range; null if < 2 samples
+   */
   function getHistogram(type) {
     type=type||'default';var p=typeProfiles[type];if(!p||p.times.length<2)return null;
     var t=p.times,mn=Math.min.apply(null,t),mx=Math.max.apply(null,t);if(mn===mx)mx=mn+1;
@@ -112,6 +168,12 @@ function createResponseTimeProfiler(options) {
     return{type:type,bins:bins,binWidth:_r(bw),totalSamples:t.length,range:{min:_r(mn),max:_r(mx)}};
   }
 
+  /**
+   * Compute Pearson correlation between difficulty level and response time.
+   *
+   * @param {string} [type='default'] - Challenge type
+   * @returns {?Object} Correlation coefficient, strength, direction, and per-difficulty breakdown; null if insufficient data
+   */
   function getDifficultyCorrelation(type) {
     type=type||'default';var p=typeProfiles[type];if(!p||p.difficulties.length<minSamples)return null;
     var n=Math.min(p.times.length,p.difficulties.length),xs=p.difficulties.slice(0,n),ys=p.times.slice(0,n);
@@ -125,6 +187,13 @@ function createResponseTimeProfiler(options) {
       interpretation:r>0.2?'Higher difficulty increases response time (expected)':r<-0.2?'Higher difficulty decreases response time (unusual — may indicate bots targeting hard challenges)':'No significant relationship between difficulty and response time'};
   }
 
+  /**
+   * Analyze inter-solve time gaps for a session to detect mechanical regularity.
+   *
+   * @param {string} sessionId - Session to analyze
+   * @returns {?Object} Gap statistics with regularity classification; null if < 3 solves
+   * @throws {Error} If session is unknown
+   */
   function getInterSolveGaps(sessionId) {
     if(!sessions[sessionId])throw new Error('Unknown session: '+sessionId);
     var solves=sessions[sessionId].solves;if(solves.length<3)return null;

@@ -17,6 +17,8 @@
 
 const crypto = require("crypto");
 
+const url_module = require("url");
+
 // ── Default Config ──────────────────────────────────────────────────
 
 const DEFAULTS = {
@@ -27,6 +29,51 @@ const DEFAULTS = {
   rateLimitPerMinute: 60,
   payloadMaxBytes: 65536,
 };
+
+// ── SSRF Protection ─────────────────────────────────────────────────
+
+/**
+ * Blocked hostname patterns for SSRF prevention.
+ * Rejects URLs targeting internal/cloud-metadata/link-local addresses.
+ */
+const BLOCKED_HOSTS = [
+  /^localhost$/i,
+  /^127\./,
+  /^10\./,
+  /^172\.(1[6-9]|2\d|3[01])\./,
+  /^192\.168\./,
+  /^169\.254\./,               // AWS/cloud metadata, link-local
+  /^0\./,                       // 0.0.0.0/8
+  /^\[::1?\]$/,                 // IPv6 loopback
+  /^\[fe80:/i,                  // IPv6 link-local
+  /^\[fc/i,                     // IPv6 unique local
+  /^\[fd/i,                     // IPv6 unique local
+  /^metadata\.google\.internal$/i,
+  /^metadata\.internal$/i,
+];
+
+/**
+ * Check whether a webhook URL targets a private/internal address.
+ * Returns true if the URL is safe (public), false if it should be blocked.
+ *
+ * @param {string} webhookUrl
+ * @returns {boolean} true if safe
+ */
+function _isSafeUrl(webhookUrl) {
+  var parsed;
+  try {
+    parsed = new url_module.URL(webhookUrl);
+  } catch (e) {
+    return false;
+  }
+  var hostname = parsed.hostname;
+  if (!hostname) return false;
+
+  for (var i = 0; i < BLOCKED_HOSTS.length; i++) {
+    if (BLOCKED_HOSTS[i].test(hostname)) return false;
+  }
+  return true;
+}
 
 // ── Event Types ─────────────────────────────────────────────────────
 
@@ -100,6 +147,11 @@ WebhookDispatcher.prototype.register = function (config) {
   }
   if (typeof config.url !== "string" || !/^https?:\/\//i.test(config.url)) {
     throw new Error("Invalid webhook URL: must start with http:// or https://");
+  }
+  if (!_isSafeUrl(config.url)) {
+    throw new Error(
+      "Webhook URL rejected: targets a private, internal, or cloud-metadata address (SSRF protection)"
+    );
   }
   if (this._webhooks.size >= this._maxWebhooks) {
     throw new Error("Maximum webhook limit reached (" + this._maxWebhooks + ")");

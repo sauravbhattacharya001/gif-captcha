@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Feedback Collector — GIF CAPTCHA</title>
+    <link rel="stylesheet" href="shared.css">
+    <style>
+        .collector { max-width:800px; margin:0 auto; padding:1.5rem; }
+        .tabs { display:flex; gap:0; border-bottom:1px solid var(--border); margin-bottom:1.5rem; }
+        .tab { padding:0.6rem 1.2rem; cursor:pointer; color:var(--muted); border-bottom:2px solid transparent; font-size:0.9rem; }
+        .tab.active { color:var(--accent); border-bottom-color:var(--accent); }
+        .tab-content { display:none; }
+        .tab-content.active { display:block; }
+
+        /* Survey Form */
+        .survey-card { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:1.5rem; margin-bottom:1rem; }
+        .survey-card h3 { margin-bottom:0.75rem; font-size:1rem; }
+        .star-row { display:flex; gap:0.3rem; margin:0.5rem 0; }
+        .star { font-size:1.5rem; cursor:pointer; color:var(--border); transition:color 0.15s; }
+        .star.filled { color:var(--yellow); }
+        .star:hover, .star:hover ~ .star { color:var(--yellow); }
+        .emoji-row { display:flex; gap:0.5rem; margin:0.5rem 0; }
+        .emoji-btn { font-size:1.5rem; cursor:pointer; padding:0.3rem 0.5rem; border-radius:6px; border:2px solid transparent; background:none; transition:all 0.15s; }
+        .emoji-btn.selected { border-color:var(--accent); background:var(--surface-hover); }
+        .emoji-btn:hover { background:var(--surface-hover); }
+        textarea { width:100%; background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:6px; padding:0.6rem; font-family:inherit; resize:vertical; min-height:80px; }
+        .checkbox-group { display:flex; flex-wrap:wrap; gap:0.5rem; margin:0.5rem 0; }
+        .checkbox-group label { display:flex; align-items:center; gap:0.3rem; background:var(--surface-hover); border:1px solid var(--border); border-radius:20px; padding:0.3rem 0.8rem; font-size:0.85rem; cursor:pointer; }
+        .checkbox-group label:has(input:checked) { border-color:var(--accent); background:var(--purple-bg); }
+        .checkbox-group input { accent-color:var(--accent); }
+
+        /* Results */
+        .results-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:1rem; margin-bottom:1.5rem; }
+        .stat-card { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:1rem; text-align:center; }
+        .stat-val { font-size:2rem; font-weight:700; color:var(--accent); }
+        .stat-label { font-size:0.8rem; color:var(--muted); }
+        .bar-chart { margin:1rem 0; }
+        .bar-row { display:flex; align-items:center; gap:0.5rem; margin-bottom:0.4rem; }
+        .bar-label { width:120px; text-align:right; font-size:0.8rem; color:var(--muted); }
+        .bar-track { flex:1; height:20px; background:var(--bg); border-radius:4px; overflow:hidden; }
+        .bar-fill { height:100%; border-radius:4px; transition:width 0.3s; display:flex; align-items:center; padding-left:6px; font-size:0.75rem; }
+        .bar-count { font-size:0.8rem; color:var(--muted); min-width:30px; }
+
+        .feedback-list { list-style:none; }
+        .feedback-item { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:1rem; margin-bottom:0.75rem; }
+        .feedback-meta { font-size:0.75rem; color:var(--muted); margin-bottom:0.3rem; }
+        .feedback-text { font-size:0.9rem; }
+        .sentiment-tag { display:inline-block; padding:0.15rem 0.5rem; border-radius:10px; font-size:0.7rem; font-weight:600; }
+        .sentiment-positive { background:var(--green-bg); color:var(--green); }
+        .sentiment-neutral { background:var(--yellow-bg); color:var(--yellow); }
+        .sentiment-negative { background:var(--red-bg); color:var(--red); }
+
+        /* Embed */
+        .embed-preview { background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:1rem; margin:1rem 0; }
+        .code-block { background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:1rem; overflow-x:auto; font-family:monospace; font-size:0.8rem; white-space:pre; color:var(--text); position:relative; }
+        .copy-btn { position:absolute; top:0.5rem; right:0.5rem; background:var(--surface-hover); border:1px solid var(--border); color:var(--accent); border-radius:4px; padding:0.2rem 0.5rem; cursor:pointer; font-size:0.75rem; }
+        .config-row { display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:0.75rem; align-items:center; }
+        .config-row label { color:var(--muted); font-size:0.85rem; }
+        .config-row select, .config-row input { background:var(--surface); border:1px solid var(--border); color:var(--text); padding:0.3rem 0.6rem; border-radius:4px; font-size:0.85rem; }
+        .config-row input[type=color] { width:40px; height:30px; padding:2px; cursor:pointer; }
+
+        .export-bar { display:flex; gap:0.5rem; margin-top:1rem; }
+    </style>
+</head>
+<body>
+<div class="header">
+    <h1>📝 User Feedback Collector</h1>
+    <p>Gather and analyze user experience feedback on your CAPTCHA implementation</p>
+    <a href="index.html">← Back to Case Study</a>
+</div>
+
+<main class="collector">
+    <div class="tabs">
+        <div class="tab active" data-tab="survey">📋 Survey</div>
+        <div class="tab" data-tab="results">📊 Results</div>
+        <div class="tab" data-tab="embed">🔗 Embed Code</div>
+    </div>
+
+    <!-- Survey Tab -->
+    <div class="tab-content active" id="tab-survey">
+        <div class="survey-card">
+            <h3>How easy was the CAPTCHA to complete?</h3>
+            <div class="star-row" id="easeStars" data-question="ease"></div>
+        </div>
+
+        <div class="survey-card">
+            <h3>How did the CAPTCHA make you feel?</h3>
+            <div class="emoji-row" id="sentimentEmojis">
+                <button class="emoji-btn" data-value="frustrated" title="Frustrated">😤</button>
+                <button class="emoji-btn" data-value="confused" title="Confused">😕</button>
+                <button class="emoji-btn" data-value="neutral" title="Neutral">😐</button>
+                <button class="emoji-btn" data-value="fine" title="Fine">🙂</button>
+                <button class="emoji-btn" data-value="delighted" title="Delighted">😄</button>
+            </div>
+        </div>
+
+        <div class="survey-card">
+            <h3>How quickly did you solve it?</h3>
+            <div class="emoji-row" id="speedEmojis">
+                <button class="emoji-btn" data-value="instant" title="Instant">⚡</button>
+                <button class="emoji-btn" data-value="quick" title="Quick">🏃</button>
+                <button class="emoji-btn" data-value="moderate" title="Moderate">🚶</button>
+                <button class="emoji-btn" data-value="slow" title="Slow">🐢</button>
+                <button class="emoji-btn" data-value="gave-up" title="Almost gave up">💀</button>
+            </div>
+        </div>
+
+        <div class="survey-card">
+            <h3>What issues did you encounter? <span style="color:var(--muted);font-weight:normal;font-size:0.85rem;">(select all)</span></h3>
+            <div class="checkbox-group" id="issuesGroup">
+                <label><input type="checkbox" value="hard-to-read"> Hard to read</label>
+                <label><input type="checkbox" value="too-many-attempts"> Too many attempts</label>
+                <label><input type="checkbox" value="slow-loading"> Slow loading</label>
+                <label><input type="checkbox" value="mobile-issues"> Mobile issues</label>
+                <label><input type="checkbox" value="accessibility"> Accessibility barriers</label>
+                <label><input type="checkbox" value="confusing-instructions"> Confusing instructions</label>
+                <label><input type="checkbox" value="no-issues"> No issues ✓</label>
+            </div>
+        </div>
+
+        <div class="survey-card">
+            <h3>Anything else you'd like to share?</h3>
+            <textarea id="freeText" placeholder="Optional feedback…"></textarea>
+        </div>
+
+        <button class="btn" id="submitBtn" style="width:100%;margin-top:0.5rem;">Submit Feedback</button>
+        <p id="submitMsg" style="text-align:center;margin-top:0.5rem;font-size:0.9rem;display:none;"></p>
+    </div>
+
+    <!-- Results Tab -->
+    <div class="tab-content" id="tab-results">
+        <div class="results-grid" id="statsGrid"></div>
+
+        <div class="survey-card">
+            <h3>Ease Rating Distribution</h3>
+            <div class="bar-chart" id="easeChart"></div>
+        </div>
+
+        <div class="survey-card">
+            <h3>Sentiment Breakdown</h3>
+            <div class="bar-chart" id="sentimentChart"></div>
+        </div>
+
+        <div class="survey-card">
+            <h3>Speed Perception</h3>
+            <div class="bar-chart" id="speedChart"></div>
+        </div>
+
+        <div class="survey-card">
+            <h3>Common Issues</h3>
+            <div class="bar-chart" id="issuesChart"></div>
+        </div>
+
+        <div class="survey-card">
+            <h3>Recent Comments</h3>
+            <ul class="feedback-list" id="commentsList"></ul>
+        </div>
+
+        <div class="export-bar">
+            <button class="btn btn-sm" id="exportCsv">Export CSV</button>
+            <button class="btn btn-sm" id="exportJson">Export JSON</button>
+            <button class="btn btn-sm" id="clearData">Clear All Data</button>
+        </div>
+    </div>
+
+    <!-- Embed Tab -->
+    <div class="tab-content" id="tab-embed">
+        <div class="survey-card">
+            <h3>Embed Configuration</h3>
+            <div class="config-row">
+                <label>Theme: <select id="embedTheme"><option value="dark">Dark</option><option value="light">Light</option></select></label>
+                <label>Accent: <input type="color" id="embedAccent" value="#58a6ff"></label>
+                <label>Compact: <input type="checkbox" id="embedCompact"></label>
+            </div>
+            <div class="config-row">
+                <label>Questions:
+                    <select id="embedQuestions" multiple style="min-height:80px;">
+                        <option value="ease" selected>Ease Rating</option>
+                        <option value="sentiment" selected>Sentiment</option>
+                        <option value="speed" selected>Speed</option>
+                        <option value="issues" selected>Issues</option>
+                        <option value="freetext" selected>Free Text</option>
+                    </select>
+                </label>
+            </div>
+        </div>
+
+        <div class="survey-card">
+            <h3>Generated Code</h3>
+            <p style="color:var(--muted);font-size:0.85rem;margin-bottom:0.75rem;">Copy this snippet into your page after the CAPTCHA verification step:</p>
+            <div class="code-block" id="embedCode"><button class="copy-btn" id="copyEmbed">Copy</button></div>
+        </div>
+
+        <div class="survey-card">
+            <h3>API Endpoint (Webhook)</h3>
+            <p style="color:var(--muted);font-size:0.85rem;margin-bottom:0.75rem;">Configure a POST endpoint to receive feedback submissions:</p>
+            <div class="config-row">
+                <label>Endpoint URL: <input type="text" id="webhookUrl" placeholder="https://your-api.com/feedback" style="width:300px;"></label>
+            </div>
+            <div class="code-block" id="webhookCode"><button class="copy-btn" id="copyWebhook">Copy</button></div>
+        </div>
+    </div>
+</main>
+
+<footer class="footer">
+    <p>Part of the <a href="index.html">GIF CAPTCHA</a> research study</p>
+</footer>
+
+<script src="shared.js"></script>
+<script>
+/* ===== Storage ===== */
+var STORAGE_KEY = 'gifcaptcha_feedback';
+
+function loadFeedback() {
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; }
+    catch(e) { return []; }
+}
+
+function saveFeedback(data) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+}
+
+/* ===== Tabs ===== */
+document.querySelectorAll('.tab').forEach(function(tab) {
+    tab.addEventListener('click', function() {
+        document.querySelectorAll('.tab').forEach(function(t){ t.classList.remove('active'); });
+        document.querySelectorAll('.tab-content').forEach(function(c){ c.classList.remove('active'); });
+        tab.classList.add('active');
+        document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+        if (tab.dataset.tab === 'results') renderResults();
+        if (tab.dataset.tab === 'embed') updateEmbedCode();
+    });
+});
+
+/* ===== Stars ===== */
+var easeRating = 0;
+var easeStars = document.getElementById('easeStars');
+for (var i = 1; i <= 5; i++) {
+    var s = document.createElement('span');
+    s.className = 'star';
+    s.textContent = '★';
+    s.dataset.value = i;
+    easeStars.appendChild(s);
+}
+easeStars.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('star')) return;
+    easeRating = parseInt(e.target.dataset.value);
+    easeStars.querySelectorAll('.star').forEach(function(s) {
+        s.classList.toggle('filled', parseInt(s.dataset.value) <= easeRating);
+    });
+});
+easeStars.addEventListener('mouseover', function(e) {
+    if (!e.target.classList.contains('star')) return;
+    var hv = parseInt(e.target.dataset.value);
+    easeStars.querySelectorAll('.star').forEach(function(s) {
+        s.classList.toggle('filled', parseInt(s.dataset.value) <= hv);
+    });
+});
+easeStars.addEventListener('mouseout', function() {
+    easeStars.querySelectorAll('.star').forEach(function(s) {
+        s.classList.toggle('filled', parseInt(s.dataset.value) <= easeRating);
+    });
+});
+
+/* ===== Emoji Selectors ===== */
+var selectedSentiment = '';
+var selectedSpeed = '';
+
+document.getElementById('sentimentEmojis').addEventListener('click', function(e) {
+    var btn = e.target.closest('.emoji-btn');
+    if (!btn) return;
+    selectedSentiment = btn.dataset.value;
+    this.querySelectorAll('.emoji-btn').forEach(function(b){ b.classList.remove('selected'); });
+    btn.classList.add('selected');
+});
+
+document.getElementById('speedEmojis').addEventListener('click', function(e) {
+    var btn = e.target.closest('.emoji-btn');
+    if (!btn) return;
+    selectedSpeed = btn.dataset.value;
+    this.querySelectorAll('.emoji-btn').forEach(function(b){ b.classList.remove('selected'); });
+    btn.classList.add('selected');
+});
+
+/* ===== Submit ===== */
+document.getElementById('submitBtn').addEventListener('click', function() {
+    if (!easeRating && !selectedSentiment && !selectedSpeed) {
+        showMsg('Please answer at least one question.', 'var(--red)');
+        return;
+    }
+
+    var issues = [];
+    document.querySelectorAll('#issuesGroup input:checked').forEach(function(cb) {
+        issues.push(cb.value);
+    });
+
+    var entry = {
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2,6),
+        timestamp: new Date().toISOString(),
+        ease: easeRating,
+        sentiment: selectedSentiment,
+        speed: selectedSpeed,
+        issues: issues,
+        comment: document.getElementById('freeText').value.trim()
+    };
+
+    var data = loadFeedback();
+    data.unshift(entry);
+    saveFeedback(data);
+
+    // Reset
+    easeRating = 0;
+    selectedSentiment = '';
+    selectedSpeed = '';
+    easeStars.querySelectorAll('.star').forEach(function(s){ s.classList.remove('filled'); });
+    document.querySelectorAll('.emoji-btn').forEach(function(b){ b.classList.remove('selected'); });
+    document.querySelectorAll('#issuesGroup input').forEach(function(cb){ cb.checked = false; });
+    document.getElementById('freeText').value = '';
+
+    showMsg('Thank you for your feedback! 🎉', 'var(--green)');
+});
+
+function showMsg(text, color) {
+    var el = document.getElementById('submitMsg');
+    el.textContent = text;
+    el.style.color = color;
+    el.style.display = 'block';
+    setTimeout(function(){ el.style.display = 'none'; }, 3000);
+}
+
+/* ===== Results ===== */
+function renderResults() {
+    var data = loadFeedback();
+
+    // Stats
+    var grid = document.getElementById('statsGrid');
+    var avgEase = 0, easeCount = 0;
+    data.forEach(function(d){ if(d.ease){ avgEase += d.ease; easeCount++; } });
+    avgEase = easeCount ? (avgEase / easeCount) : 0;
+
+    var sentimentCounts = {frustrated:0,confused:0,neutral:0,fine:0,delighted:0};
+    data.forEach(function(d){ if(d.sentiment && sentimentCounts[d.sentiment] !== undefined) sentimentCounts[d.sentiment]++; });
+    var positive = sentimentCounts.fine + sentimentCounts.delighted;
+    var negative = sentimentCounts.frustrated + sentimentCounts.confused;
+    var nps = data.length ? Math.round(((positive - negative) / data.length) * 100) : 0;
+
+    grid.innerHTML = [
+        statCard(data.length, 'Total Responses'),
+        statCard(avgEase ? avgEase.toFixed(1) + ' ★' : '—', 'Avg Ease Rating'),
+        statCard(nps >= 0 ? '+' + nps : nps, 'Net Sentiment Score'),
+        statCard(data.length ? timeSince(data[0].timestamp) : '—', 'Last Response')
+    ].join('');
+
+    // Ease chart
+    renderBarChart('easeChart', [
+        {label:'5 ★ Excellent', count:data.filter(function(d){return d.ease===5;}).length, color:'var(--green)'},
+        {label:'4 ★ Good', count:data.filter(function(d){return d.ease===4;}).length, color:'var(--accent)'},
+        {label:'3 ★ OK', count:data.filter(function(d){return d.ease===3;}).length, color:'var(--yellow)'},
+        {label:'2 ★ Poor', count:data.filter(function(d){return d.ease===2;}).length, color:'var(--orange)'},
+        {label:'1 ★ Terrible', count:data.filter(function(d){return d.ease===1;}).length, color:'var(--red)'}
+    ], data.length);
+
+    // Sentiment chart
+    renderBarChart('sentimentChart', [
+        {label:'😄 Delighted', count:sentimentCounts.delighted, color:'var(--green)'},
+        {label:'🙂 Fine', count:sentimentCounts.fine, color:'var(--accent)'},
+        {label:'😐 Neutral', count:sentimentCounts.neutral, color:'var(--yellow)'},
+        {label:'😕 Confused', count:sentimentCounts.confused, color:'var(--orange)'},
+        {label:'😤 Frustrated', count:sentimentCounts.frustrated, color:'var(--red)'}
+    ], data.length);
+
+    // Speed chart
+    var speedCounts = {instant:0,quick:0,moderate:0,slow:0,'gave-up':0};
+    data.forEach(function(d){ if(d.speed && speedCounts[d.speed] !== undefined) speedCounts[d.speed]++; });
+    renderBarChart('speedChart', [
+        {label:'⚡ Instant', count:speedCounts.instant, color:'var(--green)'},
+        {label:'🏃 Quick', count:speedCounts.quick, color:'var(--accent)'},
+        {label:'🚶 Moderate', count:speedCounts.moderate, color:'var(--yellow)'},
+        {label:'🐢 Slow', count:speedCounts.slow, color:'var(--orange)'},
+        {label:'💀 Gave Up', count:speedCounts['gave-up'], color:'var(--red)'}
+    ], data.length);
+
+    // Issues chart
+    var issueCounts = {};
+    var issueLabels = {'hard-to-read':'Hard to read','too-many-attempts':'Too many attempts','slow-loading':'Slow loading','mobile-issues':'Mobile issues','accessibility':'Accessibility','confusing-instructions':'Confusing instructions','no-issues':'No issues'};
+    Object.keys(issueLabels).forEach(function(k){ issueCounts[k] = 0; });
+    data.forEach(function(d){ (d.issues||[]).forEach(function(i){ if(issueCounts[i] !== undefined) issueCounts[i]++; }); });
+    var issueBars = Object.keys(issueLabels).map(function(k) {
+        return {label:issueLabels[k], count:issueCounts[k], color: k==='no-issues' ? 'var(--green)' : 'var(--red)'};
+    }).sort(function(a,b){ return b.count - a.count; });
+    renderBarChart('issuesChart', issueBars, data.length);
+
+    // Comments
+    var list = document.getElementById('commentsList');
+    var comments = data.filter(function(d){ return d.comment; }).slice(0, 20);
+    if (!comments.length) {
+        list.innerHTML = '<li style="color:var(--muted);font-size:0.9rem;">No comments yet.</li>';
+    } else {
+        list.innerHTML = comments.map(function(d) {
+            var sentClass = '';
+            if (d.sentiment === 'delighted' || d.sentiment === 'fine') sentClass = 'sentiment-positive';
+            else if (d.sentiment === 'neutral') sentClass = 'sentiment-neutral';
+            else sentClass = 'sentiment-negative';
+            var sentLabel = d.sentiment ? d.sentiment.charAt(0).toUpperCase() + d.sentiment.slice(1) : '';
+            return '<li class="feedback-item"><div class="feedback-meta">' +
+                new Date(d.timestamp).toLocaleString() +
+                (sentLabel ? ' · <span class="sentiment-tag '+sentClass+'">'+sentLabel+'</span>' : '') +
+                (d.ease ? ' · '+d.ease+'★' : '') +
+                '</div><div class="feedback-text">'+sanitize(d.comment)+'</div></li>';
+        }).join('');
+    }
+}
+
+function statCard(val, label) {
+    return '<div class="stat-card"><div class="stat-val">'+val+'</div><div class="stat-label">'+label+'</div></div>';
+}
+
+function renderBarChart(containerId, bars, total) {
+    var el = document.getElementById(containerId);
+    var max = Math.max.apply(null, bars.map(function(b){return b.count;})) || 1;
+    el.innerHTML = bars.map(function(b) {
+        var pct = total ? Math.round(b.count / total * 100) : 0;
+        var w = Math.max(b.count / max * 100, 0);
+        return '<div class="bar-row"><span class="bar-label">'+b.label+'</span><div class="bar-track"><div class="bar-fill" style="width:'+w+'%;background:'+b.color+';">'+( w > 15 ? pct+'%' : '')+'</div></div><span class="bar-count">'+b.count+'</span></div>';
+    }).join('');
+}
+
+function timeSince(ts) {
+    var diff = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
+    if (diff < 60) return diff + 's ago';
+    if (diff < 3600) return Math.floor(diff/60) + 'm ago';
+    if (diff < 86400) return Math.floor(diff/3600) + 'h ago';
+    return Math.floor(diff/86400) + 'd ago';
+}
+
+/* ===== Export ===== */
+document.getElementById('exportCsv').addEventListener('click', function() {
+    var data = loadFeedback();
+    var header = 'id,timestamp,ease,sentiment,speed,issues,comment';
+    var rows = [header].concat(data.map(function(d) {
+        return [d.id, d.timestamp, d.ease||'', d.sentiment||'', d.speed||'', (d.issues||[]).join(';'), '"'+(d.comment||'').replace(/"/g,'""')+'"'].join(',');
+    }));
+    downloadFile('captcha-feedback.csv', rows.join('\n'), 'text/csv');
+});
+
+document.getElementById('exportJson').addEventListener('click', function() {
+    downloadFile('captcha-feedback.json', JSON.stringify(loadFeedback(), null, 2), 'application/json');
+});
+
+document.getElementById('clearData').addEventListener('click', function() {
+    if (confirm('Delete all feedback data? This cannot be undone.')) {
+        localStorage.removeItem(STORAGE_KEY);
+        renderResults();
+    }
+});
+
+function downloadFile(name, content, type) {
+    var blob = new Blob([content], {type:type});
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    a.click();
+    URL.revokeObjectURL(a.href);
+}
+
+/* ===== Embed Code Generator ===== */
+function updateEmbedCode() {
+    var theme = document.getElementById('embedTheme').value;
+    var accent = document.getElementById('embedAccent').value;
+    var compact = document.getElementById('embedCompact').checked;
+    var sel = document.getElementById('embedQuestions');
+    var questions = Array.from(sel.selectedOptions).map(function(o){ return o.value; });
+
+    var code = '<!-- GIF CAPTCHA Feedback Widget -->\n' +
+        '<div id="captcha-feedback"\n' +
+        '     data-theme="'+theme+'"\n' +
+        '     data-accent="'+accent+'"\n' +
+        '     data-compact="'+compact+'"\n' +
+        '     data-questions="'+questions.join(',')+'">\n' +
+        '</div>\n' +
+        '<script src="https://sauravbhattacharya001.github.io/gif-captcha/feedback-widget.js"><\/script>';
+
+    document.getElementById('embedCode').innerHTML = '<button class="copy-btn" id="copyEmbed">Copy</button>' + sanitize(code);
+
+    var webhookUrl = document.getElementById('webhookUrl').value || 'https://your-api.com/feedback';
+    var webhookCode = 'POST ' + webhookUrl + '\nContent-Type: application/json\n\n{\n  "ease": 4,\n  "sentiment": "fine",\n  "speed": "quick",\n  "issues": ["no-issues"],\n  "comment": "Great CAPTCHA!",\n  "timestamp": "2026-03-16T12:00:00Z"\n}';
+    document.getElementById('webhookCode').innerHTML = '<button class="copy-btn" id="copyWebhook">Copy</button>' + sanitize(webhookCode);
+}
+
+document.querySelectorAll('#embedTheme,#embedAccent,#embedCompact,#embedQuestions,#webhookUrl').forEach(function(el) {
+    el.addEventListener('change', updateEmbedCode);
+    el.addEventListener('input', updateEmbedCode);
+});
+
+/* ===== Copy Buttons ===== */
+document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('copy-btn')) return;
+    var block = e.target.parentElement;
+    var text = block.textContent.replace('Copy', '').trim();
+    navigator.clipboard.writeText(text).then(function() {
+        e.target.textContent = 'Copied!';
+        setTimeout(function(){ e.target.textContent = 'Copy'; }, 1500);
+    });
+});
+
+/* ===== Seed demo data (if empty, add sample responses for demo) ===== */
+if (!loadFeedback().length) {
+    var sampleSentiments = ['delighted','fine','fine','neutral','confused','delighted','fine','frustrated','fine','delighted'];
+    var sampleSpeeds = ['instant','quick','quick','moderate','slow','instant','quick','moderate','quick','instant'];
+    var sampleComments = [
+        'Love the GIF approach — way more fun than clicking traffic lights!',
+        'Worked great on my phone.',
+        '',
+        'Had to watch the GIF twice to catch the twist.',
+        'Not sure what I was supposed to see.',
+        'Best CAPTCHA experience I\'ve had.',
+        '',
+        'Took forever to load on slow connection.',
+        'Simple and quick.',
+        'Really creative approach to CAPTCHAs!'
+    ];
+    var seed = [];
+    for (var si = 0; si < 10; si++) {
+        seed.push({
+            id: 'demo' + si,
+            timestamp: new Date(Date.now() - (si * 3600000 * (si+1))).toISOString(),
+            ease: [5,4,4,3,2,5,4,1,4,5][si],
+            sentiment: sampleSentiments[si],
+            speed: sampleSpeeds[si],
+            issues: si === 4 ? ['confusing-instructions'] : si === 7 ? ['slow-loading'] : ['no-issues'],
+            comment: sampleComments[si]
+        });
+    }
+    saveFeedback(seed);
+}
+
+updateEmbedCode();
+</script>
+</body>
+</html>

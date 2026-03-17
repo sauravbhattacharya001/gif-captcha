@@ -38,6 +38,41 @@ describe("WebhookDispatcher", () => {
       assert.throws(() => d.register({ url: "https://c.com" }), /Maximum webhook limit/);
     });
 
+    // ── SSRF Protection ───────────────────────────────────────────
+
+    it("rejects localhost URLs (SSRF protection)", () => {
+      assert.throws(() => dispatcher.register({ url: "http://localhost/admin" }), /SSRF/);
+    });
+
+    it("rejects 127.x.x.x URLs (SSRF protection)", () => {
+      assert.throws(() => dispatcher.register({ url: "http://127.0.0.1:8080/hook" }), /SSRF/);
+    });
+
+    it("rejects 10.x.x.x private network URLs (SSRF protection)", () => {
+      assert.throws(() => dispatcher.register({ url: "http://10.0.0.1/internal" }), /SSRF/);
+    });
+
+    it("rejects 192.168.x.x private network URLs (SSRF protection)", () => {
+      assert.throws(() => dispatcher.register({ url: "http://192.168.1.1/api" }), /SSRF/);
+    });
+
+    it("rejects 172.16-31.x.x private network URLs (SSRF protection)", () => {
+      assert.throws(() => dispatcher.register({ url: "http://172.16.0.1/hook" }), /SSRF/);
+    });
+
+    it("rejects AWS metadata endpoint (SSRF protection)", () => {
+      assert.throws(() => dispatcher.register({ url: "http://169.254.169.254/latest/meta-data/" }), /SSRF/);
+    });
+
+    it("rejects GCP metadata endpoint (SSRF protection)", () => {
+      assert.throws(() => dispatcher.register({ url: "http://metadata.google.internal/computeMetadata/v1/" }), /SSRF/);
+    });
+
+    it("allows legitimate public URLs", () => {
+      const result = dispatcher.register({ url: "https://hooks.example.com/captcha" });
+      assert.match(result.id, /^wh_/);
+    });
+
     it("registers with custom events filter", () => {
       const { id } = dispatcher.register({ url: "https://x.com", events: ["captcha.solved"] });
       const wh = dispatcher.list().find(w => w.id === id);

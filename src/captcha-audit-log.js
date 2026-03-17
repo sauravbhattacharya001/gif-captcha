@@ -107,8 +107,15 @@ function createEntry(event, data, opts) {
  */
 function csvEscape(val) {
   if (val == null) return '';
-  const s = String(val);
-  if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+  let s = String(val);
+  // CWE-1236: Prevent CSV injection — spreadsheet applications interpret
+  // leading =, +, -, @, \t, \r as formulas.  Prefix with a single quote
+  // (the standard Excel "text" escape) and wrap in quotes so the quote
+  // is preserved literally when the CSV is parsed.
+  if (/^[=+\-@\t\r]/.test(s)) {
+    s = "'" + s;
+  }
+  if (s.includes(',') || s.includes('"') || s.includes('\n') || s.includes("'")) {
     return '"' + s.replace(/"/g, '""') + '"';
   }
   return s;
@@ -335,15 +342,24 @@ function createAuditLog(options = {}) {
     if (!Array.isArray(imported)) throw new Error('Expected JSON array');
     let count = 0;
     for (const item of imported) {
-      if (!item.event || !item.timestamp) continue;
+      if (!item.event || typeof item.event !== 'string' || !item.event.trim()) continue;
+      if (!item.timestamp || typeof item.timestamp !== 'number') continue;
+      // Respect strictEvents setting — reject unknown event types on import
+      // just as record() does.  Without this check an attacker could inject
+      // arbitrary event types via a crafted JSON file, bypassing validation.
+      if (strictEvents && !VALID_EVENTS.includes(item.event)) continue;
+      // Validate severity if present
+      const sev = item.severity && Object.values(SEVERITY).includes(item.severity)
+        ? item.severity : SEVERITY.INFO;
       const entry = Object.freeze({
         id: _nextId++,
         timestamp: item.timestamp,
         event: item.event,
-        severity: item.severity || SEVERITY.INFO,
-        data: item.data ? Object.freeze({ ...item.data }) : Object.freeze({}),
-        actor: item.actor || null,
-        correlationId: item.correlationId || null,
+        severity: sev,
+        data: item.data && typeof item.data === 'object' && !Array.isArray(item.data)
+          ? Object.freeze({ ...item.data }) : Object.freeze({}),
+        actor: typeof item.actor === 'string' ? item.actor : null,
+        correlationId: typeof item.correlationId === 'string' ? item.correlationId : null,
       });
       entries.push(entry);
       count++;

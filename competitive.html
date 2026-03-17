@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Competitive Analysis — gif-captcha</title>
+    <link rel="stylesheet" href="shared.css">
+    <style>
+        .analysis-container { max-width: 1200px; margin: 0 auto; padding: 0 1.5rem 3rem; }
+
+        /* Radar Chart */
+        .radar-section { display: flex; gap: 2rem; flex-wrap: wrap; margin-bottom: 2rem; }
+        .radar-canvas-wrap { flex: 1; min-width: 400px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; }
+        .radar-canvas-wrap canvas { width: 100%; max-height: 450px; }
+        .radar-controls { flex: 0 0 280px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; }
+        .radar-controls h3 { margin-bottom: 1rem; color: var(--accent); }
+
+        .provider-toggle { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem; border-radius: 8px; cursor: pointer; margin-bottom: 0.5rem; transition: background 0.2s; }
+        .provider-toggle:hover { background: var(--surface-hover); }
+        .provider-toggle input { accent-color: var(--accent); }
+        .provider-dot { width: 12px; height: 12px; border-radius: 50%; }
+        .provider-name { flex: 1; }
+
+        /* Feature Matrix */
+        .matrix-section { margin-bottom: 2rem; }
+        .matrix-table { width: 100%; border-collapse: collapse; background: var(--surface); border-radius: 12px; overflow: hidden; }
+        .matrix-table th, .matrix-table td { padding: 0.75rem 1rem; text-align: center; border-bottom: 1px solid var(--border); }
+        .matrix-table th { background: var(--surface-hover); color: var(--accent); font-weight: 600; position: sticky; top: 0; z-index: 1; }
+        .matrix-table th:first-child, .matrix-table td:first-child { text-align: left; font-weight: 500; }
+        .matrix-table tr:hover { background: var(--surface-hover); }
+        .feature-yes { color: var(--green); }
+        .feature-no { color: var(--red); }
+        .feature-partial { color: var(--yellow); }
+
+        /* Score Cards */
+        .score-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+        .score-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem; text-align: center; transition: transform 0.2s; }
+        .score-card:hover { transform: translateY(-2px); }
+        .score-card h4 { color: var(--muted); font-size: 0.85rem; text-transform: uppercase; margin-bottom: 0.5rem; }
+        .score-card .score { font-size: 2rem; font-weight: 700; }
+        .score-card .sub { color: var(--muted); font-size: 0.8rem; margin-top: 0.25rem; }
+        .highlight-card { border-color: var(--accent); }
+
+        /* Cost Comparison */
+        .cost-section { margin-bottom: 2rem; }
+        .cost-bars { display: flex; flex-direction: column; gap: 0.75rem; }
+        .cost-row { display: flex; align-items: center; gap: 1rem; }
+        .cost-label { flex: 0 0 160px; font-weight: 500; }
+        .cost-bar-wrap { flex: 1; background: var(--surface); border-radius: 8px; height: 32px; overflow: hidden; position: relative; }
+        .cost-bar { height: 100%; border-radius: 8px; transition: width 0.8s ease-out; display: flex; align-items: center; padding: 0 0.75rem; font-size: 0.85rem; font-weight: 600; }
+        .cost-value { position: absolute; right: 0.75rem; top: 50%; transform: translateY(-50%); font-size: 0.85rem; color: var(--muted); }
+
+        /* Pros/Cons */
+        .proscons-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+        .proscons-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem; }
+        .proscons-card h3 { margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.5rem; }
+        .proscons-card ul { list-style: none; }
+        .proscons-card li { padding: 0.35rem 0; padding-left: 1.5rem; position: relative; }
+        .proscons-card li::before { position: absolute; left: 0; }
+        .pro-list li::before { content: '✅'; }
+        .con-list li::before { content: '⚠️'; }
+
+        /* Export */
+        .export-bar { display: flex; gap: 0.75rem; justify-content: flex-end; margin-bottom: 1.5rem; }
+
+        @media (max-width: 768px) {
+            .radar-section { flex-direction: column; }
+            .radar-controls { flex: 1; }
+            .radar-canvas-wrap { min-width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📊 Competitive Analysis</h1>
+        <p>Compare gif-captcha against popular CAPTCHA solutions across security, usability, privacy, and cost</p>
+    </div>
+
+    <div class="analysis-container">
+        <div class="export-bar">
+            <button class="btn btn-secondary" onclick="exportJSON()">📥 Export JSON</button>
+            <button class="btn btn-secondary" onclick="exportCSV()">📥 Export CSV</button>
+            <button class="btn btn-primary" onclick="exportPNG()">📸 Save Chart</button>
+        </div>
+
+        <!-- Score Cards -->
+        <div class="score-cards" id="scoreCards"></div>
+
+        <!-- Radar Chart + Controls -->
+        <div class="radar-section">
+            <div class="radar-canvas-wrap">
+                <canvas id="radarCanvas" width="500" height="450"></canvas>
+            </div>
+            <div class="radar-controls">
+                <h3>Providers</h3>
+                <div id="providerToggles"></div>
+                <hr style="border-color:var(--border);margin:1rem 0">
+                <h3>Dimensions</h3>
+                <select id="dimensionPreset" style="width:100%;padding:0.5rem;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px">
+                    <option value="all">All Dimensions</option>
+                    <option value="security">Security Focus</option>
+                    <option value="usability">Usability Focus</option>
+                    <option value="privacy">Privacy Focus</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Feature Matrix -->
+        <div class="matrix-section">
+            <h2 style="margin-bottom:1rem">Feature Comparison Matrix</h2>
+            <div style="overflow-x:auto">
+                <table class="matrix-table" id="featureMatrix"></table>
+            </div>
+        </div>
+
+        <!-- Cost Comparison -->
+        <div class="cost-section">
+            <h2 style="margin-bottom:1rem">Monthly Cost at Scale (100K verifications)</h2>
+            <div class="cost-bars" id="costBars"></div>
+        </div>
+
+        <!-- Pros/Cons -->
+        <h2 style="margin-bottom:1rem">Strengths & Considerations</h2>
+        <div class="proscons-grid" id="prosConsGrid"></div>
+    </div>
+
+    <div class="footer">
+        <p>gif-captcha Competitive Analysis • Data based on public documentation as of 2026</p>
+    </div>
+
+    <script src="shared.js"></script>
+    <script>
+    /* ===== Data ===== */
+    var PROVIDERS = [
+        { id: 'gif-captcha', name: 'gif-captcha', color: '#58a6ff', enabled: true },
+        { id: 'recaptcha-v3', name: 'reCAPTCHA v3', color: '#3fb950', enabled: true },
+        { id: 'hcaptcha', name: 'hCaptcha', color: '#d29922', enabled: true },
+        { id: 'turnstile', name: 'CF Turnstile', color: '#f0883e', enabled: true },
+        { id: 'friendly-captcha', name: 'Friendly Captcha', color: '#bc8cff', enabled: false },
+        { id: 'mtcaptcha', name: 'MTCaptcha', color: '#39d2c0', enabled: false }
+    ];
+
+    var DIMENSIONS = [
+        { id: 'botResistance', label: 'Bot Resistance', group: 'security' },
+        { id: 'aiResistance', label: 'AI Solve Resistance', group: 'security' },
+        { id: 'replayProtection', label: 'Replay Protection', group: 'security' },
+        { id: 'accessibility', label: 'Accessibility', group: 'usability' },
+        { id: 'solveSpeed', label: 'Solve Speed', group: 'usability' },
+        { id: 'userFriction', label: 'Low User Friction', group: 'usability' },
+        { id: 'noTracking', label: 'No Tracking', group: 'privacy' },
+        { id: 'gdprCompliance', label: 'GDPR Compliance', group: 'privacy' },
+        { id: 'selfHostable', label: 'Self-Hostable', group: 'privacy' },
+        { id: 'customization', label: 'Customization', group: 'usability' },
+        { id: 'documentation', label: 'Documentation', group: 'usability' },
+        { id: 'openSource', label: 'Open Source', group: 'privacy' }
+    ];
+
+    // Scores 0-10 for each provider on each dimension
+    var SCORES = {
+        'gif-captcha':      { botResistance: 7, aiResistance: 8, replayProtection: 7, accessibility: 8, solveSpeed: 7, userFriction: 7, noTracking: 10, gdprCompliance: 10, selfHostable: 10, customization: 9, documentation: 7, openSource: 10 },
+        'recaptcha-v3':     { botResistance: 9, aiResistance: 8, replayProtection: 9, accessibility: 6, solveSpeed: 9, userFriction: 9, noTracking: 2, gdprCompliance: 5, selfHostable: 0, customization: 3, documentation: 9, openSource: 0 },
+        'hcaptcha':         { botResistance: 8, aiResistance: 7, replayProtection: 8, accessibility: 7, solveSpeed: 6, userFriction: 6, noTracking: 6, gdprCompliance: 7, selfHostable: 0, customization: 5, documentation: 8, openSource: 0 },
+        'turnstile':        { botResistance: 8, aiResistance: 7, replayProtection: 9, accessibility: 8, solveSpeed: 10, userFriction: 10, noTracking: 5, gdprCompliance: 7, selfHostable: 0, customization: 4, documentation: 8, openSource: 0 },
+        'friendly-captcha': { botResistance: 6, aiResistance: 5, replayProtection: 7, accessibility: 9, solveSpeed: 8, userFriction: 9, noTracking: 8, gdprCompliance: 9, selfHostable: 0, customization: 5, documentation: 7, openSource: 3 },
+        'mtcaptcha':        { botResistance: 7, aiResistance: 6, replayProtection: 7, accessibility: 7, solveSpeed: 7, userFriction: 7, noTracking: 7, gdprCompliance: 8, selfHostable: 0, customization: 6, documentation: 6, openSource: 0 }
+    };
+
+    var FEATURES = [
+        { name: 'Invisible Mode', values: { 'gif-captcha': 'no', 'recaptcha-v3': 'yes', 'hcaptcha': 'partial', 'turnstile': 'yes', 'friendly-captcha': 'yes', 'mtcaptcha': 'partial' }},
+        { name: 'Visual Challenge', values: { 'gif-captcha': 'yes', 'recaptcha-v3': 'no', 'hcaptcha': 'yes', 'turnstile': 'no', 'friendly-captcha': 'no', 'mtcaptcha': 'yes' }},
+        { name: 'Proof-of-Work', values: { 'gif-captcha': 'no', 'recaptcha-v3': 'no', 'hcaptcha': 'partial', 'turnstile': 'yes', 'friendly-captcha': 'yes', 'mtcaptcha': 'no' }},
+        { name: 'Self-Hosted', values: { 'gif-captcha': 'yes', 'recaptcha-v3': 'no', 'hcaptcha': 'no', 'turnstile': 'no', 'friendly-captcha': 'no', 'mtcaptcha': 'no' }},
+        { name: 'No Third-Party JS', values: { 'gif-captcha': 'yes', 'recaptcha-v3': 'no', 'hcaptcha': 'no', 'turnstile': 'no', 'friendly-captcha': 'no', 'mtcaptcha': 'no' }},
+        { name: 'GDPR-Safe by Default', values: { 'gif-captcha': 'yes', 'recaptcha-v3': 'no', 'hcaptcha': 'partial', 'turnstile': 'partial', 'friendly-captcha': 'yes', 'mtcaptcha': 'partial' }},
+        { name: 'Custom Challenges', values: { 'gif-captcha': 'yes', 'recaptcha-v3': 'no', 'hcaptcha': 'no', 'turnstile': 'no', 'friendly-captcha': 'no', 'mtcaptcha': 'partial' }},
+        { name: 'Audio Fallback', values: { 'gif-captcha': 'partial', 'recaptcha-v3': 'yes', 'hcaptcha': 'yes', 'turnstile': 'no', 'friendly-captcha': 'no', 'mtcaptcha': 'yes' }},
+        { name: 'Analytics Dashboard', values: { 'gif-captcha': 'yes', 'recaptcha-v3': 'yes', 'hcaptcha': 'yes', 'turnstile': 'yes', 'friendly-captcha': 'partial', 'mtcaptcha': 'yes' }},
+        { name: 'Open Source', values: { 'gif-captcha': 'yes', 'recaptcha-v3': 'no', 'hcaptcha': 'no', 'turnstile': 'no', 'friendly-captcha': 'partial', 'mtcaptcha': 'no' }},
+        { name: 'Rate Limiting Built-in', values: { 'gif-captcha': 'yes', 'recaptcha-v3': 'no', 'hcaptcha': 'no', 'turnstile': 'partial', 'friendly-captcha': 'no', 'mtcaptcha': 'no' }},
+        { name: 'Enterprise Support', values: { 'gif-captcha': 'no', 'recaptcha-v3': 'yes', 'hcaptcha': 'yes', 'turnstile': 'yes', 'friendly-captcha': 'yes', 'mtcaptcha': 'yes' }}
+    ];
+
+    var COSTS = {
+        'gif-captcha': { monthly: 0, label: 'Free (self-hosted)' },
+        'recaptcha-v3': { monthly: 0, label: 'Free up to 1M/mo' },
+        'hcaptcha': { monthly: 0, label: 'Free tier available' },
+        'turnstile': { monthly: 0, label: 'Free (all tiers)' },
+        'friendly-captcha': { monthly: 39, label: '€39/mo (Starter)' },
+        'mtcaptcha': { monthly: 15, label: '$15/mo (Basic)' }
+    };
+
+    var PROSCONS = {
+        'gif-captcha': {
+            pros: ['Fully self-hosted — zero third-party dependencies', 'Complete privacy — no user data leaves your server', 'Highly customizable challenges', 'Open source with active development', 'Built-in analytics and monitoring'],
+            cons: ['Requires server-side GIF generation', 'No invisible/frictionless mode yet', 'Smaller community than incumbents', 'No enterprise support plan']
+        },
+        'recaptcha-v3': {
+            pros: ['Invisible — zero user friction', 'Massive training data from Google', 'Excellent documentation', 'Free for most use cases'],
+            cons: ['Heavy user tracking and profiling', 'GDPR compliance concerns in EU', 'Vendor lock-in to Google', 'No self-hosting option']
+        },
+        'hcaptcha': {
+            pros: ['Privacy-focused alternative to reCAPTCHA', 'Revenue sharing with publishers', 'Good bot detection rates', 'GDPR-friendlier than reCAPTCHA'],
+            cons: ['Image challenges can be frustrating', 'Slower solve times than invisible solutions', 'Still requires third-party JS', 'No self-hosting']
+        },
+        'turnstile': {
+            pros: ['Truly invisible — best UX', 'Free for all usage levels', 'Fast verification', 'Backed by Cloudflare infrastructure'],
+            cons: ['Tied to Cloudflare ecosystem', 'Limited customization', 'Relatively new — smaller track record', 'No self-hosting']
+        },
+        'friendly-captcha': {
+            pros: ['GDPR-compliant by design', 'Proof-of-work — no user interaction needed', 'Excellent accessibility', 'EU-hosted infrastructure'],
+            cons: ['Paid plans required for production', 'Weaker bot resistance vs visual challenges', 'Limited market adoption', 'No self-hosting']
+        },
+        'mtcaptcha': {
+            pros: ['Good balance of security and usability', 'GDPR compliance options', 'Adaptive difficulty', 'Multiple challenge types'],
+            cons: ['Less well-known', 'Documentation could be better', 'No self-hosting', 'Limited free tier']
+        }
+    };
+
+    /* ===== Rendering ===== */
+    var activeDims = DIMENSIONS.map(function(d) { return d.id; });
+
+    function getEnabledProviders() {
+        return PROVIDERS.filter(function(p) { return p.enabled; });
+    }
+
+    function renderScoreCards() {
+        var el = document.getElementById('scoreCards');
+        var enabled = getEnabledProviders();
+        el.innerHTML = enabled.map(function(p) {
+            var scores = SCORES[p.id];
+            var total = 0, count = 0;
+            activeDims.forEach(function(d) { total += (scores[d] || 0); count++; });
+            var avg = count ? (total / count) : 0;
+            var isGif = p.id === 'gif-captcha';
+            return '<div class="score-card' + (isGif ? ' highlight-card' : '') + '">' +
+                '<h4>' + sanitize(p.name) + '</h4>' +
+                '<div class="score" style="color:' + p.color + '">' + avg.toFixed(1) + '<span style="font-size:1rem;color:var(--muted)">/10</span></div>' +
+                '<div class="sub">' + activeDims.length + ' dimensions</div>' +
+                '</div>';
+        }).join('');
+    }
+
+    function renderProviderToggles() {
+        var el = document.getElementById('providerToggles');
+        el.innerHTML = PROVIDERS.map(function(p) {
+            return '<label class="provider-toggle">' +
+                '<input type="checkbox" ' + (p.enabled ? 'checked' : '') + ' data-id="' + p.id + '">' +
+                '<span class="provider-dot" style="background:' + p.color + '"></span>' +
+                '<span class="provider-name">' + sanitize(p.name) + '</span>' +
+                '</label>';
+        }).join('');
+        el.querySelectorAll('input').forEach(function(cb) {
+            cb.addEventListener('change', function() {
+                var id = this.getAttribute('data-id');
+                PROVIDERS.forEach(function(p) { if (p.id === id) p.enabled = !p.enabled; });
+                renderAll();
+            });
+        });
+    }
+
+    function drawRadar() {
+        var canvas = document.getElementById('radarCanvas');
+        var ctx = canvas.getContext('2d');
+        var W = canvas.width, H = canvas.height;
+        var cx = W / 2, cy = H / 2 + 10;
+        var R = Math.min(W, H) / 2 - 60;
+        var dims = DIMENSIONS.filter(function(d) { return activeDims.indexOf(d.id) >= 0; });
+        var n = dims.length;
+        if (n < 3) return;
+
+        ctx.clearRect(0, 0, W, H);
+        var angleStep = (2 * Math.PI) / n;
+        var startAngle = -Math.PI / 2;
+
+        // Grid
+        [0.2, 0.4, 0.6, 0.8, 1.0].forEach(function(frac) {
+            ctx.beginPath();
+            for (var i = 0; i <= n; i++) {
+                var angle = startAngle + i * angleStep;
+                var x = cx + R * frac * Math.cos(angle);
+                var y = cy + R * frac * Math.sin(angle);
+                i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+            }
+            ctx.strokeStyle = 'rgba(48,54,61,0.8)';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+        });
+
+        // Axes + labels
+        ctx.font = '11px -apple-system, sans-serif';
+        ctx.fillStyle = '#8b949e';
+        ctx.textAlign = 'center';
+        dims.forEach(function(d, i) {
+            var angle = startAngle + i * angleStep;
+            var x = cx + R * Math.cos(angle);
+            var y = cy + R * Math.sin(angle);
+            ctx.beginPath();
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(x, y);
+            ctx.strokeStyle = 'rgba(48,54,61,0.5)';
+            ctx.stroke();
+            var lx = cx + (R + 30) * Math.cos(angle);
+            var ly = cy + (R + 30) * Math.sin(angle);
+            ctx.textBaseline = 'middle';
+            ctx.fillText(d.label, lx, ly);
+        });
+
+        // Data polygons
+        getEnabledProviders().forEach(function(p) {
+            var scores = SCORES[p.id];
+            ctx.beginPath();
+            dims.forEach(function(d, i) {
+                var angle = startAngle + i * angleStep;
+                var val = (scores[d.id] || 0) / 10;
+                var x = cx + R * val * Math.cos(angle);
+                var y = cy + R * val * Math.sin(angle);
+                i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+            });
+            ctx.closePath();
+            ctx.fillStyle = p.color + '22';
+            ctx.fill();
+            ctx.strokeStyle = p.color;
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Dots
+            dims.forEach(function(d, i) {
+                var angle = startAngle + i * angleStep;
+                var val = (scores[d.id] || 0) / 10;
+                var x = cx + R * val * Math.cos(angle);
+                var y = cy + R * val * Math.sin(angle);
+                ctx.beginPath();
+                ctx.arc(x, y, 4, 0, 2 * Math.PI);
+                ctx.fillStyle = p.color;
+                ctx.fill();
+            });
+        });
+    }
+
+    function renderFeatureMatrix() {
+        var table = document.getElementById('featureMatrix');
+        var enabled = getEnabledProviders();
+        var html = '<thead><tr><th>Feature</th>';
+        enabled.forEach(function(p) { html += '<th>' + sanitize(p.name) + '</th>'; });
+        html += '</tr></thead><tbody>';
+        FEATURES.forEach(function(f) {
+            html += '<tr><td>' + sanitize(f.name) + '</td>';
+            enabled.forEach(function(p) {
+                var v = f.values[p.id] || 'no';
+                var cls = v === 'yes' ? 'feature-yes' : v === 'partial' ? 'feature-partial' : 'feature-no';
+                var icon = v === 'yes' ? '✓' : v === 'partial' ? '◐' : '✗';
+                html += '<td class="' + cls + '">' + icon + '</td>';
+            });
+            html += '</tr>';
+        });
+        html += '</tbody>';
+        table.innerHTML = html;
+    }
+
+    function renderCostBars() {
+        var el = document.getElementById('costBars');
+        var enabled = getEnabledProviders();
+        var maxCost = 1;
+        enabled.forEach(function(p) { var c = COSTS[p.id]; if (c && c.monthly > maxCost) maxCost = c.monthly; });
+        el.innerHTML = enabled.map(function(p) {
+            var c = COSTS[p.id] || { monthly: 0, label: 'Unknown' };
+            var pct = maxCost > 0 ? Math.max((c.monthly / maxCost) * 100, c.monthly === 0 ? 8 : 0) : 0;
+            if (c.monthly === 0) pct = 8;
+            return '<div class="cost-row">' +
+                '<span class="cost-label">' + sanitize(p.name) + '</span>' +
+                '<div class="cost-bar-wrap">' +
+                '<div class="cost-bar" style="width:' + pct + '%;background:' + p.color + '44;border:1px solid ' + p.color + '">' + sanitize(c.label) + '</div>' +
+                '</div></div>';
+        }).join('');
+    }
+
+    function renderProsCons() {
+        var el = document.getElementById('prosConsGrid');
+        var enabled = getEnabledProviders();
+        el.innerHTML = enabled.map(function(p) {
+            var pc = PROSCONS[p.id] || { pros: [], cons: [] };
+            return '<div class="proscons-card">' +
+                '<h3><span class="provider-dot" style="background:' + p.color + ';display:inline-block"></span> ' + sanitize(p.name) + '</h3>' +
+                '<ul class="pro-list">' + pc.pros.map(function(s) { return '<li>' + sanitize(s) + '</li>'; }).join('') + '</ul>' +
+                '<ul class="con-list" style="margin-top:0.5rem">' + pc.cons.map(function(s) { return '<li>' + sanitize(s) + '</li>'; }).join('') + '</ul>' +
+                '</div>';
+        }).join('');
+    }
+
+    function renderAll() {
+        renderScoreCards();
+        drawRadar();
+        renderFeatureMatrix();
+        renderCostBars();
+        renderProsCons();
+    }
+
+    /* ===== Dimension filter ===== */
+    document.getElementById('dimensionPreset').addEventListener('change', function() {
+        var v = this.value;
+        if (v === 'all') {
+            activeDims = DIMENSIONS.map(function(d) { return d.id; });
+        } else {
+            activeDims = DIMENSIONS.filter(function(d) { return d.group === v; }).map(function(d) { return d.id; });
+        }
+        renderAll();
+    });
+
+    /* ===== Export ===== */
+    function exportJSON() {
+        var data = { providers: PROVIDERS, dimensions: DIMENSIONS, scores: SCORES, features: FEATURES, costs: COSTS, proscons: PROSCONS };
+        var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'captcha-competitive-analysis.json'; a.click();
+    }
+
+    function exportCSV() {
+        var enabled = getEnabledProviders();
+        var rows = [['Dimension'].concat(enabled.map(function(p) { return p.name; }))];
+        DIMENSIONS.forEach(function(d) {
+            rows.push([d.label].concat(enabled.map(function(p) { return String(SCORES[p.id][d.id] || 0); })));
+        });
+        rows.push([]);
+        rows.push(['Feature'].concat(enabled.map(function(p) { return p.name; })));
+        FEATURES.forEach(function(f) {
+            rows.push([f.name].concat(enabled.map(function(p) { return f.values[p.id] || 'no'; })));
+        });
+        var csv = rows.map(function(r) { return r.map(function(c) { return '"' + c.replace(/"/g, '""') + '"'; }).join(','); }).join('\n');
+        var blob = new Blob([csv], { type: 'text/csv' });
+        var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'captcha-competitive-analysis.csv'; a.click();
+    }
+
+    function exportPNG() {
+        var canvas = document.getElementById('radarCanvas');
+        var a = document.createElement('a'); a.href = canvas.toDataURL('image/png'); a.download = 'captcha-radar-chart.png'; a.click();
+    }
+
+    /* ===== Init ===== */
+    renderProviderToggles();
+    renderAll();
+    </script>
+</body>
+</html>

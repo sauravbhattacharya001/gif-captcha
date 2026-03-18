@@ -43,6 +43,60 @@ const EVENT_TYPES = [
   "rate.exceeded",
 ];
 
+// ── SSRF Protection ─────────────────────────────────────────────────
+
+/**
+ * Private/reserved IPv4 and IPv6 ranges that must be blocked to prevent
+ * Server-Side Request Forgery (SSRF) attacks via webhook registration.
+ *
+ * Covers RFC 1918, loopback, link-local, multicast, and cloud metadata
+ * endpoints (169.254.169.254).
+ */
+const BLOCKED_HOST_PATTERNS = [
+  /^localhost$/i,
+  /^127\./,                           // IPv4 loopback
+  /^10\./,                            // RFC 1918 Class A
+  /^172\.(1[6-9]|2\d|3[01])\./,      // RFC 1918 Class B
+  /^192\.168\./,                      // RFC 1918 Class C
+  /^169\.254\./,                      // Link-local / cloud metadata
+  /^0\./,                             // "This" network
+  /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./, // RFC 6598 (CGNAT)
+  /^198\.1[89]\./,                    // RFC 2544 benchmarking
+  /^192\.0\.0\./,                     // IETF protocol assignments
+  /^192\.0\.2\./,                     // TEST-NET-1
+  /^198\.51\.100\./,                  // TEST-NET-2
+  /^203\.0\.113\./,                   // TEST-NET-3
+  /^\[?::1\]?$/,                      // IPv6 loopback
+  /^\[?fe80:/i,                       // IPv6 link-local
+  /^\[?fc00:/i,                       // IPv6 unique local (ULA)
+  /^\[?fd/i,                          // IPv6 ULA
+];
+
+/**
+ * Check whether a URL targets a private/internal host.
+ * Returns true if the URL should be blocked (SSRF risk).
+ *
+ * @param {string} urlStr - The webhook URL to validate
+ * @returns {boolean}
+ */
+function _isBlockedUrl(urlStr) {
+  var parsed;
+  try {
+    parsed = new URL(urlStr);
+  } catch (e) {
+    return true; // Unparseable → block
+  }
+  var hostname = parsed.hostname;
+  // Strip IPv6 brackets for pattern matching
+  if (hostname.startsWith("[") && hostname.endsWith("]")) {
+    hostname = hostname.slice(1, -1);
+  }
+  for (var i = 0; i < BLOCKED_HOST_PATTERNS.length; i++) {
+    if (BLOCKED_HOST_PATTERNS[i].test(hostname)) return true;
+  }
+  return false;
+}
+
 // ── Webhook Dispatcher ─────────────────────────────────────────────
 
 function WebhookDispatcher(options) {
@@ -100,6 +154,12 @@ WebhookDispatcher.prototype.register = function (config) {
   }
   if (typeof config.url !== "string" || !/^https?:\/\//i.test(config.url)) {
     throw new Error("Invalid webhook URL: must start with http:// or https://");
+  }
+  if (_isBlockedUrl(config.url)) {
+    throw new Error(
+      "Webhook URL targets a private/reserved network address (SSRF protection). " +
+      "Only public internet endpoints are allowed."
+    );
   }
   if (this._webhooks.size >= this._maxWebhooks) {
     throw new Error("Maximum webhook limit reached (" + this._maxWebhooks + ")");

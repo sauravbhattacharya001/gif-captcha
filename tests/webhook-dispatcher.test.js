@@ -38,6 +38,41 @@ describe("WebhookDispatcher", () => {
       assert.throws(() => d.register({ url: "https://c.com" }), /Maximum webhook limit/);
     });
 
+    // ── SSRF Protection ───────────────────────────────────────────
+
+    it("blocks localhost URLs (SSRF)", () => {
+      assert.throws(() => dispatcher.register({ url: "http://localhost/hook" }), /SSRF protection/);
+      assert.throws(() => dispatcher.register({ url: "https://localhost:8080/hook" }), /SSRF protection/);
+    });
+
+    it("blocks 127.x.x.x loopback (SSRF)", () => {
+      assert.throws(() => dispatcher.register({ url: "http://127.0.0.1/hook" }), /SSRF protection/);
+      assert.throws(() => dispatcher.register({ url: "http://127.0.0.255:3000/" }), /SSRF protection/);
+    });
+
+    it("blocks RFC 1918 private ranges (SSRF)", () => {
+      assert.throws(() => dispatcher.register({ url: "http://10.0.0.1/hook" }), /SSRF protection/);
+      assert.throws(() => dispatcher.register({ url: "http://172.16.0.1/hook" }), /SSRF protection/);
+      assert.throws(() => dispatcher.register({ url: "http://172.31.255.255/hook" }), /SSRF protection/);
+      assert.throws(() => dispatcher.register({ url: "http://192.168.1.1/hook" }), /SSRF protection/);
+    });
+
+    it("blocks cloud metadata endpoint 169.254.169.254 (SSRF)", () => {
+      assert.throws(() => dispatcher.register({ url: "http://169.254.169.254/latest/meta-data/" }), /SSRF protection/);
+    });
+
+    it("blocks IPv6 loopback and private ranges (SSRF)", () => {
+      assert.throws(() => dispatcher.register({ url: "http://[::1]/hook" }), /SSRF protection/);
+      assert.throws(() => dispatcher.register({ url: "http://[fe80::1]/hook" }), /SSRF protection/);
+      assert.throws(() => dispatcher.register({ url: "http://[fc00::1]/hook" }), /SSRF protection/);
+      assert.throws(() => dispatcher.register({ url: "http://[fd12:3456::1]/hook" }), /SSRF protection/);
+    });
+
+    it("allows public internet URLs", () => {
+      assert.doesNotThrow(() => dispatcher.register({ url: "https://hooks.slack.com/services/T00/B00/xxx" }));
+      assert.doesNotThrow(() => dispatcher.register({ url: "https://8.8.8.8/hook" }));
+    });
+
     it("registers with custom events filter", () => {
       const { id } = dispatcher.register({ url: "https://x.com", events: ["captcha.solved"] });
       const wh = dispatcher.list().find(w => w.id === id);

@@ -2611,20 +2611,31 @@ function createPoolManager(options) {
     var picked = [];
     var usedIndices = Object.create(null);
     for (var n = 0; n < count; n++) {
+      if (totalWeight <= 0) break; // safety: no remaining weight
       var rand = (secureRandomInt(1000000) / 1000000) * totalWeight;
       var cumulative = 0;
+      var selectedIdx = -1;
       for (var j = 0; j < weights.length; j++) {
         if (usedIndices[j]) continue;
         cumulative += weights[j];
         if (rand <= cumulative) {
-          var id = activeIds[j];
-          registry[id].serves++;
-          picked.push(registry[id].challenge);
-          totalWeight -= weights[j];
-          usedIndices[j] = true;
+          selectedIdx = j;
           break;
         }
       }
+      // Floating-point guard: if cumulative never reached rand due to
+      // precision loss, fall back to the last available index.
+      if (selectedIdx === -1) {
+        for (var k = weights.length - 1; k >= 0; k--) {
+          if (!usedIndices[k]) { selectedIdx = k; break; }
+        }
+      }
+      if (selectedIdx === -1) break; // no candidates left
+      var id = activeIds[selectedIdx];
+      registry[id].serves++;
+      picked.push(registry[id].challenge);
+      totalWeight -= weights[selectedIdx];
+      usedIndices[selectedIdx] = true;
     }
 
     return picked;

@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src data:; frame-ancestors 'none'; base-uri 'self'; form-action 'none';">
+<meta name="referrer" content="no-referrer">
+<title>Difficulty Curve Planner — gif-captcha</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+.container{max-width:1100px}
+.planner-grid{display:grid;grid-template-columns:320px 1fr;gap:1.5rem;margin-top:1.5rem}
+@media(max-width:768px){.planner-grid{grid-template-columns:1fr}}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1.2rem}
+.panel h3{font-size:.95rem;color:var(--accent);margin-bottom:.8rem}
+.field{margin-bottom:.8rem}
+.field label{display:block;font-size:.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:.3rem}
+.field select,.field input[type=number],.field input[type=text]{width:100%;padding:.45rem .6rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:.85rem}
+.field select:focus,.field input:focus{outline:none;border-color:var(--accent)}
+.field input[type=range]{width:100%;accent-color:var(--accent)}
+.range-row{display:flex;align-items:center;gap:.6rem}
+.range-row input[type=range]{flex:1}
+.range-row .val{font-size:.8rem;color:var(--accent);min-width:36px;text-align:right;font-variant-numeric:tabular-nums}
+canvas#curve{width:100%;height:320px;border-radius:8px;background:var(--bg);border:1px solid var(--border)}
+.preset-btns{display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:1rem}
+.preset-btns button{padding:.3rem .7rem;font-size:.75rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer;transition:.15s}
+.preset-btns button:hover,.preset-btns button.active{border-color:var(--accent);color:var(--accent);background:rgba(88,166,255,.08)}
+.stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:.6rem;margin-top:1rem}
+.stat{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:.6rem;text-align:center}
+.stat .num{font-size:1.1rem;font-weight:700;color:var(--accent)}
+.stat .lbl{font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;margin-top:.1rem}
+.btn-row{display:flex;gap:.5rem;margin-top:1rem;flex-wrap:wrap}
+.btn{padding:.45rem 1rem;border:none;border-radius:6px;cursor:pointer;font-size:.8rem;font-weight:600;transition:.15s}
+.btn-primary{background:var(--accent);color:#fff}.btn-primary:hover{background:var(--accent-hover)}
+.btn-outline{background:transparent;border:1px solid var(--border);color:var(--text)}.btn-outline:hover{border-color:var(--accent);color:var(--accent)}
+.btn-success{background:var(--green);color:#fff}.btn-success:hover{opacity:.85}
+.table-wrap{margin-top:1rem;max-height:260px;overflow-y:auto;border:1px solid var(--border);border-radius:8px}
+table{width:100%;border-collapse:collapse;font-size:.8rem}
+th,td{padding:.4rem .6rem;text-align:center;border-bottom:1px solid var(--border)}
+th{background:var(--surface);color:var(--muted);font-weight:600;position:sticky;top:0}
+td{color:var(--text)}
+.cp-row{display:flex;gap:.5rem;align-items:center;margin-bottom:.4rem;padding:.3rem .5rem;background:var(--bg);border-radius:6px;border:1px solid var(--border)}
+.cp-row .cp-n{font-size:.75rem;color:var(--muted);min-width:18px}
+.cp-row input{flex:1;padding:.25rem .4rem;font-size:.8rem}
+.cp-row button{padding:.2rem .5rem;font-size:.7rem}
+.toast{position:fixed;bottom:1.5rem;right:1.5rem;background:var(--green);color:#fff;padding:.6rem 1.2rem;border-radius:8px;font-size:.85rem;font-weight:600;opacity:0;transition:opacity .3s;pointer-events:none;z-index:999}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1>📈 Difficulty Curve Planner</h1>
+    <p class="header-sub" style="color:var(--muted);font-size:.9rem;margin-top:.3rem">Design how CAPTCHA difficulty ramps across sessions — visualize curves, compare presets, export configs</p>
+  </div>
+
+  <div class="planner-grid">
+    <!-- Left: Controls -->
+    <div>
+      <div class="panel">
+        <h3>🎯 Presets</h3>
+        <div class="preset-btns" id="presetBtns"></div>
+      </div>
+
+      <div class="panel" style="margin-top:1rem">
+        <h3>⚙️ Parameters</h3>
+        <div class="field">
+          <label>Easing Function</label>
+          <select id="easing">
+            <option value="linear">Linear</option>
+            <option value="easeIn">Ease In (quadratic)</option>
+            <option value="easeOut">Ease Out (quadratic)</option>
+            <option value="easeInOut" selected>Ease In-Out (cubic)</option>
+            <option value="step">Step (staircase)</option>
+            <option value="exponential">Exponential</option>
+            <option value="logarithmic">Logarithmic</option>
+            <option value="sigmoid">Sigmoid (S-curve)</option>
+            <option value="custom">Custom Control Points</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Total Sessions</label>
+          <div class="range-row">
+            <input type="range" id="totalSessions" min="5" max="100" value="20">
+            <span class="val" id="totalSessionsVal">20</span>
+          </div>
+        </div>
+        <div class="field">
+          <label>Min Difficulty (0–1)</label>
+          <div class="range-row">
+            <input type="range" id="minDiff" min="0" max="100" value="10">
+            <span class="val" id="minDiffVal">0.10</span>
+          </div>
+        </div>
+        <div class="field">
+          <label>Max Difficulty (0–1)</label>
+          <div class="range-row">
+            <input type="range" id="maxDiff" min="0" max="100" value="90">
+            <span class="val" id="maxDiffVal">0.90</span>
+          </div>
+        </div>
+        <div class="field">
+          <label>Steps (for staircase)</label>
+          <div class="range-row">
+            <input type="range" id="steps" min="2" max="10" value="4">
+            <span class="val" id="stepsVal">4</span>
+          </div>
+        </div>
+        <div class="field">
+          <label>Steepness (exponential/sigmoid)</label>
+          <div class="range-row">
+            <input type="range" id="steepness" min="10" max="100" value="50">
+            <span class="val" id="steepnessVal">5.0</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" id="customPanel" style="margin-top:1rem;display:none">
+        <h3>🎨 Custom Control Points</h3>
+        <p style="font-size:.75rem;color:var(--muted);margin-bottom:.6rem">Define (session%, difficulty) pairs. Curve interpolates between them.</p>
+        <div id="controlPoints"></div>
+        <div class="btn-row">
+          <button class="btn btn-outline" onclick="addControlPoint()">+ Add Point</button>
+        </div>
+      </div>
+
+      <div class="btn-row" style="margin-top:1rem">
+        <button class="btn btn-primary" onclick="exportJSON()">📋 Export JSON</button>
+        <button class="btn btn-success" onclick="exportCSV()">📊 Export CSV</button>
+        <button class="btn btn-outline" onclick="copyConfig()">📎 Copy Config</button>
+      </div>
+    </div>
+
+    <!-- Right: Visualization -->
+    <div>
+      <div class="panel">
+        <h3>📊 Difficulty Curve</h3>
+        <canvas id="curve"></canvas>
+        <div class="stats-row" id="stats"></div>
+      </div>
+
+      <div class="panel" style="margin-top:1rem">
+        <h3>📋 Session Table</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Session</th><th>Difficulty</th><th>Level</th><th>Bar</th></tr></thead>
+            <tbody id="tableBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:1rem">
+        <h3>🔀 Compare Mode</h3>
+        <p style="font-size:.75rem;color:var(--muted);margin-bottom:.6rem">Overlay multiple curves to compare easing functions side by side.</p>
+        <div class="btn-row">
+          <button class="btn btn-outline" onclick="addComparison()">+ Snapshot Current Curve</button>
+          <button class="btn btn-outline" onclick="clearComparisons()">Clear All</button>
+        </div>
+        <div id="compareList" style="margin-top:.6rem;font-size:.8rem;color:var(--muted)"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ===== State =====
+var comparisons = [];
+var customPoints = [{x:0,y:0.1},{x:50,y:0.5},{x:100,y:0.9}];
+var COLORS = ['#58a6ff','#3fb950','#f0883e','#bc8cff','#f85149','#39d2c0','#d29922'];
+
+var PRESETS = {
+  'Gentle Ramp': {easing:'easeOut',totalSessions:30,minDiff:5,maxDiff:65,steps:4,steepness:50},
+  'Aggressive': {easing:'exponential',totalSessions:15,minDiff:10,maxDiff:95,steps:4,steepness:70},
+  'S-Curve': {easing:'sigmoid',totalSessions:25,minDiff:5,maxDiff:90,steps:4,steepness:60},
+  'Staircase': {easing:'step',totalSessions:20,minDiff:10,maxDiff:85,steps:5,steepness:50},
+  'Logarithmic': {easing:'logarithmic',totalSessions:25,minDiff:15,maxDiff:80,steps:4,steepness:50},
+  'Flat Easy': {easing:'linear',totalSessions:20,minDiff:10,maxDiff:30,steps:4,steepness:50},
+  'Flat Hard': {easing:'linear',totalSessions:20,minDiff:70,maxDiff:95,steps:4,steepness:50}
+};
+
+// ===== Easing Functions =====
+function easingFn(name, t, opts) {
+  switch(name) {
+    case 'linear': return t;
+    case 'easeIn': return t * t;
+    case 'easeOut': return t * (2 - t);
+    case 'easeInOut': return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2,3)/2;
+    case 'step': {
+      var s = opts.steps || 4;
+      return Math.floor(t * s) / (s - 1);
+    }
+    case 'exponential': {
+      var k = (opts.steepness || 5) / 5;
+      return (Math.pow(k+1, t) - 1) / (Math.pow(k+1, 1) - 1);
+    }
+    case 'logarithmic': return Math.log(1 + t * 9) / Math.log(10);
+    case 'sigmoid': {
+      var s2 = (opts.steepness || 5);
+      return 1 / (1 + Math.exp(-s2 * (t - 0.5)));
+    }
+    case 'custom': return customInterp(t);
+    default: return t;
+  }
+}
+
+function customInterp(t) {
+  var pts = customPoints.slice().sort(function(a,b){return a.x - b.x});
+  if (pts.length === 0) return t;
+  var pct = t * 100;
+  if (pct <= pts[0].x) return pts[0].y;
+  if (pct >= pts[pts.length-1].x) return pts[pts.length-1].y;
+  for (var i = 0; i < pts.length - 1; i++) {
+    if (pct >= pts[i].x && pct <= pts[i+1].x) {
+      var frac = (pct - pts[i].x) / (pts[i+1].x - pts[i].x);
+      return pts[i].y + frac * (pts[i+1].y - pts[i].y);
+    }
+  }
+  return t;
+}
+
+// ===== Compute Curve =====
+function getParams() {
+  return {
+    easing: document.getElementById('easing').value,
+    total: parseInt(document.getElementById('totalSessions').value),
+    min: parseInt(document.getElementById('minDiff').value) / 100,
+    max: parseInt(document.getElementById('maxDiff').value) / 100,
+    steps: parseInt(document.getElementById('steps').value),
+    steepness: parseInt(document.getElementById('steepness').value) / 10
+  };
+}
+
+function computeCurve(p) {
+  var pts = [];
+  for (var i = 0; i < p.total; i++) {
+    var t = p.total === 1 ? 0 : i / (p.total - 1);
+    var e = easingFn(p.easing, t, {steps: p.steps, steepness: p.steepness});
+    var d = p.min + e * (p.max - p.min);
+    d = Math.max(0, Math.min(1, d));
+    pts.push(d);
+  }
+  return pts;
+}
+
+function diffLabel(d) {
+  if (d < 0.25) return 'Easy';
+  if (d < 0.5) return 'Medium';
+  if (d < 0.75) return 'Hard';
+  return 'Extreme';
+}
+
+function diffColor(d) {
+  if (d < 0.25) return 'var(--green)';
+  if (d < 0.5) return 'var(--yellow)';
+  if (d < 0.75) return 'var(--orange)';
+  return 'var(--red)';
+}
+
+// ===== Draw =====
+function draw() {
+  var canvas = document.getElementById('curve');
+  var dpr = window.devicePixelRatio || 1;
+  var rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  var ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  var W = rect.width, H = rect.height;
+  var pad = {top:20, right:20, bottom:35, left:45};
+  var gw = W - pad.left - pad.right, gh = H - pad.top - pad.bottom;
+
+  ctx.clearRect(0,0,W,H);
+
+  // Grid
+  ctx.strokeStyle = 'rgba(48,54,61,.6)';
+  ctx.lineWidth = 1;
+  for (var i = 0; i <= 4; i++) {
+    var y = pad.top + gh * (1 - i/4);
+    ctx.beginPath(); ctx.moveTo(pad.left,y); ctx.lineTo(pad.left+gw,y); ctx.stroke();
+    ctx.fillStyle = '#8b949e'; ctx.font = '11px sans-serif'; ctx.textAlign = 'right';
+    ctx.fillText((i*25)+'%', pad.left-6, y+4);
+  }
+
+  var p = getParams();
+  var pts = computeCurve(p);
+
+  // Axis labels
+  ctx.fillStyle = '#8b949e'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('Session #', pad.left + gw/2, H - 4);
+  ctx.save(); ctx.translate(12, pad.top+gh/2); ctx.rotate(-Math.PI/2);
+  ctx.fillText('Difficulty', 0, 0); ctx.restore();
+
+  // Session ticks
+  var tickCount = Math.min(pts.length, 10);
+  var tickStep = Math.max(1, Math.floor(pts.length / tickCount));
+  for (var i = 0; i < pts.length; i += tickStep) {
+    var x = pad.left + (i/(pts.length-1||1)) * gw;
+    ctx.fillStyle = '#8b949e'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(i+1, x, H - pad.bottom + 16);
+  }
+
+  // Comparisons
+  for (var c = 0; c < comparisons.length; c++) {
+    var cp = comparisons[c];
+    ctx.strokeStyle = COLORS[(c+1) % COLORS.length];
+    ctx.lineWidth = 1.5;
+    ctx.globalAlpha = 0.5;
+    ctx.setLineDash([4,4]);
+    ctx.beginPath();
+    for (var j = 0; j < cp.pts.length; j++) {
+      var x = pad.left + (j/(cp.pts.length-1||1)) * gw;
+      var y = pad.top + gh * (1 - cp.pts[j]);
+      j === 0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+  }
+
+  // Main curve
+  ctx.strokeStyle = COLORS[0];
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  for (var i = 0; i < pts.length; i++) {
+    var x = pad.left + (i/(pts.length-1||1)) * gw;
+    var y = pad.top + gh * (1 - pts[i]);
+    i === 0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // Dots
+  for (var i = 0; i < pts.length; i++) {
+    var x = pad.left + (i/(pts.length-1||1)) * gw;
+    var y = pad.top + gh * (1 - pts[i]);
+    ctx.beginPath(); ctx.arc(x,y,3,0,Math.PI*2);
+    ctx.fillStyle = COLORS[0]; ctx.fill();
+  }
+
+  // Fill area under curve
+  ctx.globalAlpha = 0.08;
+  ctx.fillStyle = COLORS[0];
+  ctx.beginPath();
+  ctx.moveTo(pad.left, pad.top + gh);
+  for (var i = 0; i < pts.length; i++) {
+    var x = pad.left + (i/(pts.length-1||1)) * gw;
+    var y = pad.top + gh * (1 - pts[i]);
+    ctx.lineTo(x,y);
+  }
+  ctx.lineTo(pad.left + gw, pad.top + gh);
+  ctx.closePath(); ctx.fill();
+  ctx.globalAlpha = 1;
+
+  // Stats
+  var avg = pts.reduce(function(a,b){return a+b},0) / pts.length;
+  var mid = pts[Math.floor(pts.length/2)];
+  var maxJump = 0;
+  for (var i = 1; i < pts.length; i++) { maxJump = Math.max(maxJump, Math.abs(pts[i]-pts[i-1])); }
+  document.getElementById('stats').innerHTML =
+    '<div class="stat"><div class="num">'+(avg*100).toFixed(1)+'%</div><div class="lbl">Avg Difficulty</div></div>'+
+    '<div class="stat"><div class="num">'+(mid*100).toFixed(1)+'%</div><div class="lbl">Midpoint</div></div>'+
+    '<div class="stat"><div class="num">'+(maxJump*100).toFixed(1)+'%</div><div class="lbl">Max Jump</div></div>'+
+    '<div class="stat"><div class="num">'+pts.length+'</div><div class="lbl">Sessions</div></div>';
+
+  // Table
+  var html = '';
+  for (var i = 0; i < pts.length; i++) {
+    var d = pts[i];
+    var barW = Math.round(d * 100);
+    html += '<tr><td>'+(i+1)+'</td><td>'+(d*100).toFixed(1)+'%</td><td style="color:'+diffColor(d)+'">'+diffLabel(d)+'</td>'+
+      '<td><div style="width:'+barW+'%;height:8px;background:'+diffColor(d)+';border-radius:4px;min-width:2px"></div></td></tr>';
+  }
+  document.getElementById('tableBody').innerHTML = html;
+}
+
+// ===== Presets =====
+function renderPresets() {
+  var html = '';
+  Object.keys(PRESETS).forEach(function(name) {
+    html += '<button onclick="applyPreset(\''+name+'\')">'+name+'</button>';
+  });
+  document.getElementById('presetBtns').innerHTML = html;
+}
+
+function applyPreset(name) {
+  var p = PRESETS[name];
+  if (!p) return;
+  document.getElementById('easing').value = p.easing;
+  document.getElementById('totalSessions').value = p.totalSessions;
+  document.getElementById('minDiff').value = p.minDiff;
+  document.getElementById('maxDiff').value = p.maxDiff;
+  document.getElementById('steps').value = p.steps;
+  document.getElementById('steepness').value = p.steepness;
+  syncLabels();
+  toggleCustomPanel();
+  draw();
+  toast('Preset: '+name);
+}
+
+// ===== Custom Control Points =====
+function renderControlPoints() {
+  var html = '';
+  customPoints.forEach(function(pt, i) {
+    html += '<div class="cp-row"><span class="cp-n">#'+(i+1)+'</span>'+
+      '<input type="number" min="0" max="100" value="'+pt.x+'" onchange="updateCP('+i+',\'x\',this.value)" placeholder="Session %">'+
+      '<input type="number" min="0" max="100" value="'+Math.round(pt.y*100)+'" onchange="updateCP('+i+',\'y\',this.value)" placeholder="Difficulty %">'+
+      '<button class="btn btn-outline" style="padding:.15rem .4rem;font-size:.7rem" onclick="removeCP('+i+')">✕</button></div>';
+  });
+  document.getElementById('controlPoints').innerHTML = html;
+}
+
+function addControlPoint() {
+  customPoints.push({x:50, y:0.5});
+  renderControlPoints();
+  draw();
+}
+
+function removeCP(i) {
+  if (customPoints.length <= 2) return;
+  customPoints.splice(i, 1);
+  renderControlPoints();
+  draw();
+}
+
+function updateCP(i, axis, val) {
+  val = parseFloat(val) || 0;
+  if (axis === 'x') { customPoints[i].x = Math.max(0, Math.min(100, val)); }
+  else { customPoints[i].y = Math.max(0, Math.min(1, val / 100)); }
+  draw();
+}
+
+function toggleCustomPanel() {
+  var isCustom = document.getElementById('easing').value === 'custom';
+  document.getElementById('customPanel').style.display = isCustom ? 'block' : 'none';
+}
+
+// ===== Compare Mode =====
+function addComparison() {
+  if (comparisons.length >= 6) { toast('Max 6 comparisons'); return; }
+  var p = getParams();
+  comparisons.push({name: p.easing + ' ('+comparisons.length+')', pts: computeCurve(p), easing: p.easing});
+  renderCompareList();
+  draw();
+  toast('Curve snapshot added');
+}
+
+function clearComparisons() {
+  comparisons = [];
+  renderCompareList();
+  draw();
+}
+
+function renderCompareList() {
+  if (comparisons.length === 0) {
+    document.getElementById('compareList').innerHTML = '<em>No snapshots yet</em>';
+    return;
+  }
+  var html = '';
+  comparisons.forEach(function(c, i) {
+    html += '<span style="color:'+COLORS[(i+1)%COLORS.length]+';margin-right:.8rem">● '+c.name+'</span>';
+  });
+  document.getElementById('compareList').innerHTML = html;
+}
+
+// ===== Export =====
+function exportJSON() {
+  var p = getParams();
+  var pts = computeCurve(p);
+  var config = {
+    easing: p.easing,
+    totalSessions: p.total,
+    minDifficulty: p.min,
+    maxDifficulty: p.max,
+    steps: p.steps,
+    steepness: p.steepness,
+    curve: pts.map(function(d,i){ return {session:i+1, difficulty: Math.round(d*1000)/1000}; })
+  };
+  if (p.easing === 'custom') config.controlPoints = customPoints.slice();
+  var blob = new Blob([JSON.stringify(config, null, 2)], {type:'application/json'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'difficulty-curve.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast('JSON exported');
+}
+
+function exportCSV() {
+  var p = getParams();
+  var pts = computeCurve(p);
+  var csv = 'session,difficulty,level\n';
+  pts.forEach(function(d,i){
+    csv += (i+1)+','+(d*100).toFixed(1)+','+diffLabel(d)+'\n';
+  });
+  var blob = new Blob([csv], {type:'text/csv'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'difficulty-curve.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast('CSV exported');
+}
+
+function copyConfig() {
+  var p = getParams();
+  var pts = computeCurve(p);
+  var config = {easing:p.easing, sessions:p.total, min:p.min, max:p.max, curve:pts.map(function(d){return Math.round(d*1000)/1000;})};
+  var text = JSON.stringify(config);
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(text).then(function(){ toast('Config copied!'); });
+  } else {
+    toast('Clipboard not available');
+  }
+}
+
+// ===== Toast =====
+function toast(msg) {
+  var el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(function(){ el.classList.remove('show'); }, 2000);
+}
+
+// ===== Sync =====
+function syncLabels() {
+  document.getElementById('totalSessionsVal').textContent = document.getElementById('totalSessions').value;
+  document.getElementById('minDiffVal').textContent = (parseInt(document.getElementById('minDiff').value)/100).toFixed(2);
+  document.getElementById('maxDiffVal').textContent = (parseInt(document.getElementById('maxDiff').value)/100).toFixed(2);
+  document.getElementById('stepsVal').textContent = document.getElementById('steps').value;
+  document.getElementById('steepnessVal').textContent = (parseInt(document.getElementById('steepness').value)/10).toFixed(1);
+}
+
+// ===== Init =====
+document.querySelectorAll('input[type=range],select').forEach(function(el){
+  el.addEventListener('input', function(){ syncLabels(); toggleCustomPanel(); draw(); });
+});
+document.getElementById('easing').addEventListener('change', function(){ toggleCustomPanel(); draw(); });
+
+renderPresets();
+renderControlPoints();
+renderCompareList();
+syncLabels();
+toggleCustomPanel();
+draw();
+window.addEventListener('resize', draw);
+</script>
+</body>
+</html>

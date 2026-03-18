@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="GIF CAPTCHA Architecture Guide — internal modules, data flow, and design patterns">
+    <title>GIF CAPTCHA — Architecture Guide</title>
+    <link rel="stylesheet" href="../shared.css">
+    <style>
+        body { padding: 2rem; max-width: 960px; margin: 0 auto; }
+        h1 { font-size: 2rem; margin-bottom: 0.3rem; }
+        h2 { font-size: 1.5rem; margin: 2.5rem 0 1rem; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 0.3rem; }
+        h3 { font-size: 1.15rem; margin: 1.8rem 0 0.5rem; }
+        p, li { color: var(--muted); line-height: 1.65; }
+        .subtitle { color: var(--muted); font-size: 1rem; margin-bottom: 1.5rem; }
+        code { background: var(--surface); padding: 0.15rem 0.4rem; border-radius: 3px; font-size: 0.88em; color: var(--accent); }
+        pre { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 1rem; overflow-x: auto; margin: 1rem 0; }
+        pre code { background: none; padding: 0; color: var(--text); }
+        .nav { display: flex; gap: 1.5rem; margin-bottom: 2rem; flex-wrap: wrap; }
+        .nav a { color: var(--accent); text-decoration: none; font-size: 0.9rem; }
+        .nav a:hover { text-decoration: underline; }
+        .module-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.2rem; margin: 1rem 0; }
+        .module-card h3 { margin-top: 0; color: var(--accent); }
+        .layer-label { display: inline-block; padding: 0.15rem 0.6rem; border-radius: 3px; font-size: 0.75rem; font-weight: 600; margin-left: 0.5rem; }
+        .layer-core { background: #1a2a3a; color: #60a5fa; }
+        .layer-security { background: #3a1a2a; color: #f472b6; }
+        .layer-analytics { background: #1a3a2a; color: #4ade80; }
+        .layer-ops { background: #3a2a1a; color: #fbbf24; }
+        .diagram { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.5rem; margin: 1.5rem 0; font-family: 'Courier New', monospace; font-size: 0.85rem; line-height: 1.6; white-space: pre; overflow-x: auto; color: var(--text); }
+        .toc { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.5rem; margin: 1.5rem 0; }
+        .toc h3 { margin-top: 0; font-size: 1rem; }
+        .toc ul { margin: 0; padding-left: 1.2rem; }
+        .toc li { margin: 0.3rem 0; }
+        .toc a { color: var(--accent); text-decoration: none; font-size: 0.9rem; }
+        .toc a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="nav">
+        <a href="../index.html">← Case Study</a>
+        <a href="../demo.html">Demo</a>
+        <a href="getting-started.html">Getting Started</a>
+        <a href="index.html">API Reference</a>
+        <a href="architecture.html"><strong>Architecture</strong></a>
+    </div>
+
+    <h1>🏗️ Architecture Guide</h1>
+    <p class="subtitle">How gif-captcha is structured internally — modules, layers, and data flow</p>
+
+    <div class="toc">
+        <h3>Contents</h3>
+        <ul>
+            <li><a href="#overview">System Overview</a></li>
+            <li><a href="#layers">Module Layers</a></li>
+            <li><a href="#core">Core Layer — Challenge Engine</a></li>
+            <li><a href="#security">Security Layer — Threat Detection &amp; Rate Limiting</a></li>
+            <li><a href="#analytics">Analytics Layer — Monitoring &amp; Insights</a></li>
+            <li><a href="#operations">Operations Layer — Compliance, Incidents &amp; Capacity</a></li>
+            <li><a href="#dataflow">Request Lifecycle</a></li>
+            <li><a href="#patterns">Design Patterns</a></li>
+            <li><a href="#extending">Extending the System</a></li>
+        </ul>
+    </div>
+
+    <h2 id="overview">System Overview</h2>
+    <p>
+        gif-captcha is a modular CAPTCHA platform built around <strong>visual comprehension challenges</strong>.
+        Rather than distorted text or image grids, it presents animated GIFs and asks users to describe
+        what happens — a task that requires temporal reasoning humans excel at but current AI models struggle with.
+    </p>
+    <p>
+        The codebase is organized into ~30 specialized modules in <code>src/</code>, each handling a
+        distinct concern. Modules are pure JavaScript with zero external runtime dependencies, communicating
+        through well-defined factory functions and event callbacks.
+    </p>
+
+    <h2 id="layers">Module Layers</h2>
+    <p>Modules fall into four conceptual layers, each building on the ones below:</p>
+
+    <div class="diagram">┌─────────────────────────────────────────────────────────┐
+│  <strong>Operations</strong>  — compliance, incidents, capacity planning    │
+├─────────────────────────────────────────────────────────┤
+│  <strong>Analytics</strong>   — stats, traffic analysis, A/B experiments    │
+├─────────────────────────────────────────────────────────┤
+│  <strong>Security</strong>    — rate limiting, trust scoring, fraud detect  │
+├─────────────────────────────────────────────────────────┤
+│  <strong>Core</strong>        — challenge creation, validation, difficulty  │
+└─────────────────────────────────────────────────────────┘</div>
+
+    <h2 id="core">Core Layer — Challenge Engine</h2>
+    <p>The foundation that creates, serves, and validates CAPTCHA challenges.</p>
+
+    <div class="module-card">
+        <h3>index.js <span class="layer-label layer-core">Core</span></h3>
+        <p>
+            The main entry point (~420KB). Exports the public API: <code>createChallenge()</code>,
+            <code>validateAnswer()</code>, <code>pickChallenges()</code>, <code>sanitize()</code>, and the
+            built-in challenge pool. Handles both browser (DOM rendering, GIF loading with retry) and
+            Node.js (sanitization, validation) environments.
+        </p>
+    </div>
+
+    <div class="module-card">
+        <h3>adaptive-difficulty-tuner.js <span class="layer-label layer-core">Core</span></h3>
+        <p>
+            Automatically adjusts CAPTCHA difficulty based on real-time solve rates. Monitors solve/fail
+            events in sliding time windows and recommends adjustments across four dimensions:
+            <strong>speed</strong>, <strong>complexity</strong>, <strong>distortion</strong>, and
+            <strong>frame count</strong>. Keeps solve rates within a configurable target band (default 55–75%).
+        </p>
+    </div>
+
+    <div class="module-card">
+        <h3>challenge-pool-manager.js <span class="layer-label layer-core">Core</span></h3>
+        <p>
+            Manages the available challenge pool — adding, retiring, and selecting challenges. Ensures
+            challenges are distributed evenly and tracks per-challenge usage statistics.
+        </p>
+    </div>
+
+    <div class="module-card">
+        <h3>challenge-template-engine.js <span class="layer-label layer-core">Core</span></h3>
+        <p>
+            Generates challenge variants from templates. Supports parameterized challenges where the
+            same GIF can produce different questions/expected answers, increasing the effective pool size.
+        </p>
+    </div>
+
+    <div class="module-card">
+        <h3>challenge-rotation-scheduler.js <span class="layer-label layer-core">Core</span></h3>
+        <p>
+            Schedules when challenges are rotated in and out of the active pool. Prevents staleness
+            by ensuring users don't see the same challenges repeatedly.
+        </p>
+    </div>
+
+    <div class="module-card">
+        <h3>challenge-decay-manager.js <span class="layer-label layer-core">Core</span></h3>
+        <p>
+            Tracks challenge effectiveness over time. As a challenge becomes "known" (high solve rates
+            or detected in bot training data), it decays toward retirement, keeping the pool fresh.
+        </p>
+    </div>
+
+    <h2 id="security">Security Layer — Threat Detection &amp; Rate Limiting</h2>
+    <p>Protects the CAPTCHA system from automated attacks and abuse.</p>
+
+    <div class="module-card">
+        <h3>trust-score-engine.js <span class="layer-label layer-security">Security</span></h3>
+        <p>
+            Computes per-session trust scores using an LRU-cached scoring system. Combines multiple
+            signals (solve accuracy, timing patterns, behavioral biometrics) into a single 0–100 score.
+            High-trust sessions can receive easier challenges; low-trust sessions get harder ones or
+            are blocked entirely.
+        </p>
+    </div>
+
+    <div class="module-card">
+        <h3>captcha-rate-limiter.js <span class="layer-label layer-security">Security</span></h3>
+        <p>
+            Multi-algorithm rate limiting with three strategies: <strong>sliding window</strong> (count
+            requests in a rolling window), <strong>token bucket</strong> (allow bursts up to capacity),
+            and <strong>leaky bucket</strong> (smooth request flow). Includes automatic key cleanup,
+            ban escalation after repeated violations, and per-key statistics.
+        </p>
+    </div>
+
+    <div class="module-card">
+        <h3>behavioral-biometrics.js <span class="layer-label layer-security">Security</span></h3>
+        <p>
+            Analyzes mouse movements, typing patterns, and interaction timing to build behavioral
+            fingerprints. Distinguishes human interaction patterns from automated scripts that mimic
+            human behavior.
+        </p>
+    </div>
+
+    <div class="module-card">
+        <h3>bot-signature-database.js <span class="layer-label layer-security">Security</span></h3>
+        <p>
+            Maintains signatures of known bot behaviors — response patterns, timing profiles, and
+            user-agent fingerprints. Used by the trust score engine to immediately flag known automated clients.
+        </p>
+    </div>
+
+    <div class="module-card">
+        <h3>fraud-ring-detector.js <span class="layer-label layer-security">Security</span></h3>
+        <p>
+            Detects coordinated attack patterns across multiple sessions. Identifies fraud rings
+            by correlating timing, geographic, and behavioral signals across seemingly independent requests.
+        </p>
+    </div>
+
+    <div class="module-card">
+        <h3>geo-risk-scorer.js <span class="layer-label layer-security">Security</span></h3>
+        <p>
+            Assigns risk scores based on geographic signals — IP geolocation, VPN/proxy detection,
+            and regional attack pattern history. Feeds into the trust score engine.
+        </p>
+    </div>
+
+    <div class="module-card">
+        <h3>honeypot-injector.js <span class="layer-label layer-security">Security</span></h3>
+        <p>
+            Injects invisible honeypot fields into CAPTCHA forms. Bots that fill hidden fields are
+            immediately flagged without requiring the user to solve anything.
+        </p>
+    </div>
+
+    <div class="module-card">
+        <h3>session-risk-aggregator.js <span class="layer-label layer-security">Security</span></h3>
+        <p>
+            Aggregates risk signals from all security modules into a unified session risk profile.
+            Provides the final allow/challenge/block decision based on composite risk.
+        </p>
+    </div>
+
+    <h2 id="analytics">Analytics Layer — Monitoring &amp; Insights</h2>
+    <p>Collects metrics, detects anomalies, and provides operational visibility.</p>
+
+    <div class="module-card">
+        <h3>captcha-stats-collector.js <span class="layer-label layer-analytics">Analytics</span></h3>
+        <p>
+            Central metrics collection — solve rates, response times, error rates, and throughput.
+            Aggregates data for dashboards and alerting.
+        </p>
+    </div>
+
+    <div class="module-card">
+        <h3>captcha-traffic-analyzer.js <span class="layer-label layer-analytics">Analytics</span></h3>
+        <p>
+            Analyzes traffic patterns to detect surges, DDoS attempts, and unusual distribution
+            changes. Provides time-series analysis of CAPTCHA request volumes.
+        </p>
+    </div>
+
+    <div class="module-card">
+        <h3>captcha-anomaly-detector.js <span class="layer-label layer-analytics">Analytics</span></h3>
+        <p>
+            Statistical anomaly detection for CAPTCHA metrics. Flags unusual solve rate changes,
+            timing distribution shifts, and other statistical outliers that may indicate attacks.
+        </p>
+    </div>
+
+    <div class="module-card">
+        <h3>ab-experiment-runner.js <span class="layer-label layer-analytics">Analytics</span></h3>
+        <p>
+            A/B testing framework for CAPTCHA configurations. Run experiments comparing different
+            difficulty settings, UI layouts, or validation thresholds with statistical significance testing.
+        </p>
+    </div>
+
+    <div class="module-card">
+        <h3>solve-funnel-analyzer.js <span class="layer-label layer-analytics">Analytics</span></h3>
+        <p>
+            Tracks the solve funnel: challenge presented → attempted → solved → verified. Identifies
+            drop-off points and UX friction.
+        </p>
+    </div>
+
+    <div class="module-card">
+        <h3>solve-pattern-fingerprinter.js <span class="layer-label layer-analytics">Analytics</span></h3>
+        <p>
+            Creates behavioral fingerprints from solve patterns — answer content, timing, error types.
+            Used for cross-session tracking of suspicious actors.
+        </p>
+    </div>
+
+    <div class="module-card">
+        <h3>response-time-profiler.js <span class="layer-label layer-analytics">Analytics</span></h3>
+        <p>
+            Profiles CAPTCHA response time distributions. Builds statistical models of expected human
+            response times to flag suspiciously fast (bot) or slow (farm) responses.
+        </p>
+    </div>
+
+    <div class="module-card">
+        <h3>captcha-fatigue-detector.js <span class="layer-label layer-analytics">Analytics</span></h3>
+        <p>
+            Detects user fatigue patterns — declining solve accuracy, increasing response times, and
+            abandonment signals. Recommends reducing challenge frequency for fatigued legitimate users.
+        </p>
+    </div>
+
+    <div class="module-card">
+        <h3>captcha-session-replay.js <span class="layer-label layer-analytics">Analytics</span></h3>
+        <p>
+            Records and replays CAPTCHA sessions for debugging and analysis. Captures the full
+            interaction sequence to understand solve failures and improve challenge design.
+        </p>
+    </div>
+
+    <h2 id="operations">Operations Layer — Compliance, Incidents &amp; Capacity</h2>
+    <p>Production operational concerns — from regulatory compliance to capacity planning.</p>
+
+    <div class="module-card">
+        <h3>compliance-reporter.js <span class="layer-label layer-ops">Operations</span></h3>
+        <p>
+            Generates compliance reports for accessibility (WCAG), privacy (GDPR/CCPA), and security
+            standards. Tracks data retention policies and produces audit-ready documentation.
+        </p>
+    </div>
+
+    <div class="module-card">
+        <h3>captcha-incident-manager.js <span class="layer-label layer-ops">Operations</span></h3>
+        <p>
+            Incident lifecycle management — detection, escalation, mitigation, and post-mortem.
+            Integrates with the anomaly detector and health monitor to automatically create and
+            manage incidents.
+        </p>
+    </div>
+
+    <div class="module-card">
+        <h3>captcha-health-monitor.js <span class="layer-label layer-ops">Operations</span></h3>
+        <p>
+            Comprehensive health checking — module status, dependency health, performance budgets,
+            and availability SLOs. Provides readiness and liveness probes for orchestration systems.
+        </p>
+    </div>
+
+    <div class="module-card">
+        <h3>captcha-capacity-planner.js <span class="layer-label layer-ops">Operations</span></h3>
+        <p>
+            Forecasts resource needs based on traffic trends. Provides scaling recommendations and
+            alerts before capacity limits are reached.
+        </p>
+    </div>
+
+    <div class="module-card">
+        <h3>captcha-load-tester.js <span class="layer-label layer-ops">Operations</span></h3>
+        <p>
+            Built-in load testing for the CAPTCHA pipeline. Simulates realistic traffic patterns
+            to validate performance under expected and peak loads.
+        </p>
+    </div>
+
+    <div class="module-card">
+        <h3>captcha-audit-log.js <span class="layer-label layer-ops">Operations</span></h3>
+        <p>
+            Tamper-evident audit logging for all CAPTCHA operations. Records challenge generation,
+            validation decisions, and administrative actions for forensic analysis.
+        </p>
+    </div>
+
+    <div class="module-card">
+        <h3>captcha-localization-manager.js <span class="layer-label layer-ops">Operations</span></h3>
+        <p>
+            Internationalization support — manages translated challenge text, error messages, and UI
+            strings. Supports right-to-left languages and locale-specific formatting.
+        </p>
+    </div>
+
+    <div class="module-card">
+        <h3>captcha-export-formatter.js <span class="layer-label layer-ops">Operations</span></h3>
+        <p>
+            Exports CAPTCHA data in multiple formats (JSON, CSV, XML) for integration with external
+            analytics platforms, SIEMs, and reporting tools.
+        </p>
+    </div>
+
+    <div class="module-card">
+        <h3>webhook-dispatcher.js <span class="layer-label layer-ops">Operations</span></h3>
+        <p>
+            Delivers real-time event notifications via webhooks. Supports configurable event filters,
+            retry with exponential backoff, and dead-letter handling for failed deliveries.
+        </p>
+    </div>
+
+    <div class="module-card">
+        <h3>captcha-accessibility-analyzer.js <span class="layer-label layer-ops">Operations</span></h3>
+        <p>
+            Audits CAPTCHA challenges for accessibility compliance. Checks contrast ratios, screen reader
+            compatibility, keyboard navigation, and provides WCAG conformance reports.
+        </p>
+    </div>
+
+    <h2 id="dataflow">Request Lifecycle</h2>
+    <p>When a CAPTCHA request arrives, it flows through the system in this order:</p>
+
+    <div class="diagram">
+ 1. Incoming request
+       │
+ 2. Rate Limiter → ❌ reject if over limit
+       │ ✅
+ 3. Session Risk Aggregator
+       ├─ Geo Risk Scorer
+       ├─ Bot Signature Database
+       ├─ Behavioral Biometrics
+       └─ Trust Score Engine
+       │
+ 4. Difficulty Decision
+       ├─ High trust    → easy challenge
+       ├─ Medium trust  → standard challenge
+       └─ Low trust     → hard challenge / block
+       │
+ 5. Challenge Selection
+       ├─ Challenge Pool Manager (pick from active pool)
+       ├─ Challenge Template Engine (generate variant)
+       ├─ Challenge Rotation Scheduler (freshness check)
+       └─ Honeypot Injector (add hidden fields)
+       │
+ 6. Serve challenge to client
+       │
+ 7. User submits answer
+       │
+ 8. Validation
+       ├─ validateAnswer() — fuzzy text matching
+       ├─ Response Time Profiler — timing check
+       ├─ Honeypot check — hidden field detection
+       └─ Solve Pattern Fingerprinter — behavioral check
+       │
+ 9. Update State
+       ├─ Trust Score Engine (adjust score)
+       ├─ Adaptive Difficulty Tuner (update solve rates)
+       ├─ Stats Collector (record metrics)
+       ├─ Challenge Decay Manager (track effectiveness)
+       └─ Audit Log (record decision)
+       │
+10. Return result (pass / fail / block)
+    </div>
+
+    <h2 id="patterns">Design Patterns</h2>
+
+    <h3>Zero Dependencies</h3>
+    <p>
+        Every module is pure JavaScript with no external runtime dependencies. This makes gif-captcha
+        embeddable anywhere — browsers, Node.js, edge workers, serverless functions — without dependency
+        conflicts or supply chain risk.
+    </p>
+
+    <h3>Factory Functions</h3>
+    <p>
+        Modules export factory functions (e.g., <code>createCaptchaRateLimiter(opts)</code>) rather than
+        classes. This provides clean instantiation, avoids <code>new</code> keyword confusion, and makes
+        testing straightforward — just call the factory with test configuration.
+    </p>
+
+    <h3>LRU Eviction</h3>
+    <p>
+        Stateful modules (rate limiter, trust score engine, session tracker) use LRU eviction to bound
+        memory usage. The <code>LruTracker</code> is a custom doubly-linked list implementation inlined
+        in each module for independence — no shared mutable state between modules.
+    </p>
+
+    <h3>Sliding Windows</h3>
+    <p>
+        Time-based metrics use sliding window algorithms (binary search on sorted timestamp arrays)
+        rather than fixed buckets. This provides smooth, accurate rates without the boundary artifacts
+        of fixed-window counters.
+    </p>
+
+    <h3>Event-Driven Composition</h3>
+    <p>
+        Modules communicate through callback hooks and event records rather than direct coupling.
+        The stats collector, audit log, and webhook dispatcher can all observe the same events
+        independently, making the system easy to extend.
+    </p>
+
+    <h2 id="extending">Extending the System</h2>
+    <p>To add a new module:</p>
+    <ol>
+        <li>Create a new file in <code>src/</code> following the factory function pattern</li>
+        <li>Include JSDoc documentation with <code>@module</code> and <code>@example</code> tags</li>
+        <li>Add corresponding tests in <code>tests/</code></li>
+        <li>Wire it into the request lifecycle by passing it as a callback or dependency to existing modules</li>
+    </ol>
+    <p>
+        The module independence design means you can use any subset of modules — the rate limiter works
+        without the trust score engine, the stats collector works without the anomaly detector, etc.
+    </p>
+
+    <hr style="margin: 3rem 0 1.5rem; border-color: var(--border);">
+    <p style="text-align: center; font-size: 0.85rem;">
+        <a href="https://github.com/sauravbhattacharya001/gif-captcha" style="color: var(--accent);">GitHub</a> ·
+        <a href="https://www.npmjs.com/package/gif-captcha" style="color: var(--accent);">npm</a> ·
+        <a href="../index.html" style="color: var(--accent);">Case Study</a> ·
+        MIT License
+    </p>
+</body>
+</html>

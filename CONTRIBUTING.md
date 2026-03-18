@@ -203,6 +203,10 @@ When proposing new GIFs for the test suite:
 
 ---
 
+## Security Vulnerabilities
+
+**Do NOT open public issues for security vulnerabilities.** See [SECURITY.md](SECURITY.md) for responsible disclosure instructions, scope, and response timelines.
+
 ## Code of Conduct
 
 Be kind, constructive, and respectful. We're all here to advance understanding of AI capabilities and CAPTCHA design.

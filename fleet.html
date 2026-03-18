@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fleet Monitor — gif-captcha</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+.fleet-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:1.2rem;margin:1.5rem 0}
+.site-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:1.2rem;transition:.2s}
+.site-card:hover{border-color:var(--accent);transform:translateY(-2px)}
+.site-card .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:.8rem}
+.site-card .name{font-weight:700;font-size:1.05rem}
+.status-dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:6px}
+.status-dot.green{background:var(--green);box-shadow:0 0 6px var(--green)}
+.status-dot.yellow{background:var(--yellow);box-shadow:0 0 6px var(--yellow)}
+.status-dot.red{background:var(--red);box-shadow:0 0 6px var(--red)}
+.site-card .stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:.6rem;margin:.8rem 0}
+.stat{text-align:center;padding:.5rem;background:var(--bg);border-radius:8px}
+.stat .val{font-size:1.3rem;font-weight:700;color:var(--accent)}
+.stat .lbl{font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+.bar-track{width:100%;height:6px;background:var(--bg);border-radius:3px;overflow:hidden;margin:.4rem 0}
+.bar-fill{height:100%;border-radius:3px;transition:width .5s}
+.bar-fill.good{background:var(--green)}.bar-fill.warn{background:var(--yellow)}.bar-fill.bad{background:var(--red)}
+.controls{display:flex;gap:.8rem;align-items:center;flex-wrap:wrap;margin:1rem 0}
+.controls input,.controls select{background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.5rem .8rem;border-radius:8px;font-size:.85rem}
+.controls input{flex:1;min-width:180px;max-width:300px}
+.controls select{min-width:120px}
+.btn{padding:.5rem 1rem;border:none;border-radius:8px;cursor:pointer;font-weight:600;font-size:.85rem;transition:.15s}
+.btn-primary{background:var(--accent);color:#fff}.btn-primary:hover{background:var(--accent-hover)}
+.btn-outline{background:transparent;border:1px solid var(--border);color:var(--text)}.btn-outline:hover{border-color:var(--accent);color:var(--accent)}
+.summary-bar{display:flex;gap:1.5rem;padding:1rem 1.2rem;background:var(--surface);border-radius:12px;margin:1rem 0;flex-wrap:wrap}
+.summary-item{text-align:center;min-width:100px}
+.summary-item .big{font-size:1.6rem;font-weight:800}
+.summary-item .label{font-size:.7rem;color:var(--muted);text-transform:uppercase}
+.alert-list{max-height:240px;overflow-y:auto;margin:1rem 0}
+.alert-row{display:flex;align-items:center;gap:.8rem;padding:.6rem .8rem;border-radius:8px;margin-bottom:.4rem;font-size:.85rem}
+.alert-row.critical{background:var(--red-bg);border-left:3px solid var(--red)}
+.alert-row.warning{background:var(--yellow-bg);border-left:3px solid var(--yellow)}
+.alert-row.info{background:var(--purple-bg);border-left:3px solid var(--purple)}
+.alert-row .time{color:var(--muted);font-size:.75rem;margin-left:auto;white-space:nowrap}
+.uptime-row{display:flex;gap:2px;height:20px;margin:.3rem 0}
+.uptime-cell{flex:1;border-radius:2px;cursor:pointer;position:relative}
+.uptime-cell.up{background:var(--green)}.uptime-cell.degraded{background:var(--yellow)}.uptime-cell.down{background:var(--red)}.uptime-cell.none{background:var(--border)}
+.uptime-cell:hover::after{content:attr(data-tip);position:absolute;bottom:110%;left:50%;transform:translateX(-50%);background:#000;color:#fff;padding:2px 8px;border-radius:4px;font-size:.7rem;white-space:nowrap;z-index:10}
+.sparkline{display:flex;align-items:flex-end;gap:1px;height:30px}
+.sparkline .bar{flex:1;background:var(--accent);border-radius:1px 1px 0 0;min-width:2px;transition:height .3s}
+.tab-row{display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:1rem}
+.tab-btn{padding:.6rem 1.2rem;background:none;border:none;color:var(--muted);cursor:pointer;font-size:.85rem;font-weight:600;border-bottom:2px solid transparent;transition:.15s}
+.tab-btn.active{color:var(--accent);border-bottom-color:var(--accent)}
+.tab-panel{display:none}.tab-panel.active{display:block}
+.export-bar{display:flex;gap:.5rem;justify-content:flex-end;margin:1rem 0}
+@media(max-width:700px){.fleet-grid{grid-template-columns:1fr}.summary-bar{flex-direction:column;align-items:stretch}}
+</style>
+</head>
+<body>
+<div class="header">
+<h1>📡 Fleet Monitor</h1>
+<p class="subtitle">Real-time monitoring across all CAPTCHA deployments</p>
+</div>
+<div class="container" style="max-width:1200px;margin:0 auto;padding:1.5rem">
+
+<div class="summary-bar" id="summary"></div>
+
+<div class="controls">
+  <input type="text" id="searchInput" placeholder="Search sites…">
+  <select id="statusFilter"><option value="all">All Statuses</option><option value="healthy">Healthy</option><option value="degraded">Degraded</option><option value="down">Down</option></select>
+  <select id="sortBy"><option value="name">Sort: Name</option><option value="solveRate">Sort: Solve Rate</option><option value="challenges">Sort: Challenges</option><option value="uptime">Sort: Uptime</option></select>
+  <button class="btn btn-primary" onclick="addSite()">+ Add Site</button>
+  <button class="btn btn-outline" onclick="exportFleet()">Export JSON</button>
+</div>
+
+<div class="tab-row">
+  <button class="tab-btn active" data-tab="grid">Grid View</button>
+  <button class="tab-btn" data-tab="alerts">Alerts <span id="alertBadge" style="background:var(--red);color:#fff;padding:0 6px;border-radius:10px;font-size:.7rem;margin-left:4px"></span></button>
+  <button class="tab-btn" data-tab="uptime">Uptime</button>
+</div>
+
+<div class="tab-panel active" id="tab-grid">
+  <div class="fleet-grid" id="fleetGrid"></div>
+</div>
+
+<div class="tab-panel" id="tab-alerts">
+  <div class="alert-list" id="alertList"></div>
+</div>
+
+<div class="tab-panel" id="tab-uptime">
+  <div id="uptimeView"></div>
+</div>
+
+</div>
+<script src="shared.js"></script>
+<script>
+// Fleet data (demo with simulated sites)
+const DEMO_SITES=[
+  {id:'s1',name:'app.example.com',url:'https://app.example.com',status:'healthy',solveRate:94.2,challenges24h:12840,avgTime:3.2,botBlock:98.1,uptime:99.97,p95Latency:180},
+  {id:'s2',name:'checkout.store.io',url:'https://checkout.store.io',status:'healthy',solveRate:91.8,challenges24h:8320,avgTime:3.8,botBlock:96.5,uptime:99.91,p95Latency:210},
+  {id:'s3',name:'login.saas.dev',url:'https://login.saas.dev',status:'degraded',solveRate:78.4,challenges24h:5610,avgTime:5.1,botBlock:89.2,uptime:98.4,p95Latency:420},
+  {id:'s4',name:'signup.platform.co',url:'https://signup.platform.co',status:'healthy',solveRate:96.1,challenges24h:3200,avgTime:2.9,botBlock:99.0,uptime:99.99,p95Latency:150},
+  {id:'s5',name:'api.service.net',url:'https://api.service.net',status:'down',solveRate:0,challenges24h:0,avgTime:0,botBlock:0,uptime:94.2,p95Latency:0},
+  {id:'s6',name:'portal.enterprise.com',url:'https://portal.enterprise.com',status:'healthy',solveRate:92.7,challenges24h:18400,avgTime:3.4,botBlock:97.8,uptime:99.95,p95Latency:195},
+];
+
+let sites=JSON.parse(localStorage.getItem('fleet-sites')||'null')||DEMO_SITES;
+let alerts=JSON.parse(localStorage.getItem('fleet-alerts')||'null')||generateAlerts();
+
+function save(){localStorage.setItem('fleet-sites',JSON.stringify(sites));localStorage.setItem('fleet-alerts',JSON.stringify(alerts))}
+
+function generateAlerts(){
+  const now=Date.now();
+  return[
+    {level:'critical',msg:'api.service.net is DOWN — no response for 12 min',ts:now-720000},
+    {level:'warning',msg:'login.saas.dev solve rate dropped below 80%',ts:now-1800000},
+    {level:'warning',msg:'login.saas.dev p95 latency spike: 420ms',ts:now-2400000},
+    {level:'info',msg:'checkout.store.io crossed 8k challenges today',ts:now-3600000},
+    {level:'info',msg:'signup.platform.co uptime hit 99.99% this month',ts:now-7200000},
+    {level:'critical',msg:'api.service.net SSL cert expires in 3 days',ts:now-10800000},
+    {level:'warning',msg:'login.saas.dev bot block rate below 90%',ts:now-14400000},
+  ];
+}
+
+function statusColor(s){return s==='healthy'?'green':s==='degraded'?'yellow':'red'}
+function barClass(v,good,warn){return v>=good?'good':v>=warn?'warn':'bad'}
+
+function renderSummary(){
+  const h=sites.filter(s=>s.status==='healthy').length;
+  const d=sites.filter(s=>s.status==='degraded').length;
+  const dn=sites.filter(s=>s.status==='down').length;
+  const totalC=sites.reduce((a,s)=>a+s.challenges24h,0);
+  const avgSR=sites.filter(s=>s.status!=='down').reduce((a,s)=>a+s.solveRate,0)/(sites.length-dn||1);
+  document.getElementById('summary').innerHTML=`
+    <div class="summary-item"><div class="big">${sites.length}</div><div class="label">Total Sites</div></div>
+    <div class="summary-item"><div class="big" style="color:var(--green)">${h}</div><div class="label">Healthy</div></div>
+    <div class="summary-item"><div class="big" style="color:var(--yellow)">${d}</div><div class="label">Degraded</div></div>
+    <div class="summary-item"><div class="big" style="color:var(--red)">${dn}</div><div class="label">Down</div></div>
+    <div class="summary-item"><div class="big">${(totalC/1000).toFixed(1)}k</div><div class="label">Challenges 24h</div></div>
+    <div class="summary-item"><div class="big">${avgSR.toFixed(1)}%</div><div class="label">Avg Solve Rate</div></div>`;
+}
+
+function sparklineHTML(){
+  const pts=Array.from({length:20},()=>30+Math.random()*70);
+  return `<div class="sparkline">${pts.map(p=>`<div class="bar" style="height:${p}%"></div>`).join('')}</div>`;
+}
+
+function uptimeCells(uptime){
+  const days=30;
+  const cells=[];
+  for(let i=0;i<days;i++){
+    const r=Math.random();
+    const cls=uptime>99.5?(r<0.97?'up':r<0.99?'degraded':'down'):uptime>97?(r<0.85?'up':r<0.95?'degraded':'down'):(r<0.6?'up':r<0.8?'degraded':'down');
+    const d=new Date(Date.now()-((days-1-i)*86400000));
+    cells.push(`<div class="uptime-cell ${cls}" data-tip="${d.toLocaleDateString()} — ${cls}"></div>`);
+  }
+  return cells.join('');
+}
+
+function renderGrid(){
+  let filtered=[...sites];
+  const q=document.getElementById('searchInput').value.toLowerCase();
+  const sf=document.getElementById('statusFilter').value;
+  const sort=document.getElementById('sortBy').value;
+  if(q)filtered=filtered.filter(s=>s.name.toLowerCase().includes(q));
+  if(sf!=='all')filtered=filtered.filter(s=>s.status===sf);
+  filtered.sort((a,b)=>{
+    if(sort==='name')return a.name.localeCompare(b.name);
+    if(sort==='solveRate')return b.solveRate-a.solveRate;
+    if(sort==='challenges')return b.challenges24h-a.challenges24h;
+    if(sort==='uptime')return b.uptime-a.uptime;
+    return 0;
+  });
+  document.getElementById('fleetGrid').innerHTML=filtered.map(s=>`
+    <div class="site-card">
+      <div class="top">
+        <div><span class="status-dot ${statusColor(s.status)}"></span><span class="name">${sanitize(s.name)}</span></div>
+        <button class="btn btn-outline" style="padding:2px 8px;font-size:.75rem" onclick="removeSite('${s.id}')">✕</button>
+      </div>
+      <div class="stats">
+        <div class="stat"><div class="val">${s.solveRate}%</div><div class="lbl">Solve Rate</div></div>
+        <div class="stat"><div class="val">${s.challenges24h>999?(s.challenges24h/1000).toFixed(1)+'k':s.challenges24h}</div><div class="lbl">24h Challenges</div></div>
+        <div class="stat"><div class="val">${s.avgTime}s</div><div class="lbl">Avg Time</div></div>
+      </div>
+      <div style="display:flex;gap:1rem">
+        <div style="flex:1"><div style="font-size:.7rem;color:var(--muted)">Bot Block</div><div class="bar-track"><div class="bar-fill ${barClass(s.botBlock,95,85)}" style="width:${s.botBlock}%"></div></div></div>
+        <div style="flex:1"><div style="font-size:.7rem;color:var(--muted)">Uptime</div><div class="bar-track"><div class="bar-fill ${barClass(s.uptime,99.5,98)}" style="width:${Math.min(s.uptime,100)}%"></div></div></div>
+      </div>
+      <div style="margin-top:.8rem;font-size:.7rem;color:var(--muted)">p95 Latency: ${s.p95Latency}ms</div>
+      ${sparklineHTML()}
+    </div>`).join('');
+}
+
+function renderAlerts(){
+  const badge=document.getElementById('alertBadge');
+  const critCount=alerts.filter(a=>a.level==='critical').length;
+  badge.textContent=critCount||'';
+  document.getElementById('alertList').innerHTML=alerts.map(a=>`
+    <div class="alert-row ${a.level}">
+      <span>${a.level==='critical'?'🔴':a.level==='warning'?'🟡':'🔵'} ${sanitize(a.msg)}</span>
+      <span class="time">${timeAgo(a.ts)}</span>
+    </div>`).join('');
+}
+
+function timeAgo(ts){
+  const d=Math.floor((Date.now()-ts)/1000);
+  if(d<60)return d+'s ago';if(d<3600)return Math.floor(d/60)+'m ago';
+  if(d<86400)return Math.floor(d/3600)+'h ago';return Math.floor(d/86400)+'d ago';
+}
+
+function renderUptime(){
+  document.getElementById('uptimeView').innerHTML=sites.map(s=>`
+    <div style="margin-bottom:1.2rem">
+      <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.3rem">
+        <span class="status-dot ${statusColor(s.status)}"></span>
+        <strong>${sanitize(s.name)}</strong>
+        <span style="color:var(--muted);font-size:.8rem;margin-left:auto">${s.uptime}% uptime (30d)</span>
+      </div>
+      <div class="uptime-row">${uptimeCells(s.uptime)}</div>
+    </div>`).join('');
+}
+
+function addSite(){
+  const name=prompt('Site hostname (e.g. login.myapp.com):');
+  if(!name)return;
+  sites.push({id:'s'+Date.now(),name,url:'https://'+name,status:'healthy',solveRate:90+Math.random()*8,challenges24h:Math.floor(Math.random()*10000),avgTime:+(2.5+Math.random()*2).toFixed(1),botBlock:+(93+Math.random()*6).toFixed(1),uptime:+(99+Math.random()).toFixed(2),p95Latency:Math.floor(140+Math.random()*100)});
+  save();renderAll();
+}
+
+function removeSite(id){
+  if(!confirm('Remove this site from fleet?'))return;
+  sites=sites.filter(s=>s.id!==id);save();renderAll();
+}
+
+function exportFleet(){
+  const blob=new Blob([JSON.stringify({sites,alerts,exportedAt:new Date().toISOString()},null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='fleet-monitor-export.json';a.click();
+}
+
+// Simulate live updates
+function simulateTick(){
+  sites.forEach(s=>{
+    if(s.status==='down')return;
+    s.challenges24h+=Math.floor(Math.random()*20);
+    s.solveRate=Math.min(100,Math.max(50,s.solveRate+(Math.random()-.5)*.4));
+    s.solveRate=+s.solveRate.toFixed(1);
+    s.avgTime=Math.max(1,+(s.avgTime+(Math.random()-.5)*.1).toFixed(1));
+    s.p95Latency=Math.max(50,s.p95Latency+Math.floor((Math.random()-.5)*10));
+    if(s.solveRate<80&&s.status==='healthy'){s.status='degraded';alerts.unshift({level:'warning',msg:`${s.name} solve rate dropped to ${s.solveRate}%`,ts:Date.now()})}
+    if(s.solveRate>=85&&s.status==='degraded')s.status='healthy';
+  });
+  save();renderAll();
+}
+
+function renderAll(){renderSummary();renderGrid();renderAlerts();renderUptime()}
+
+// Tabs
+document.querySelectorAll('.tab-btn').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-'+btn.dataset.tab).classList.add('active');
+  });
+});
+
+// Filter/sort listeners
+document.getElementById('searchInput').addEventListener('input',renderGrid);
+document.getElementById('statusFilter').addEventListener('change',renderGrid);
+document.getElementById('sortBy').addEventListener('change',renderGrid);
+
+renderAll();
+setInterval(simulateTick,5000);
+</script>
+</body>
+</html>

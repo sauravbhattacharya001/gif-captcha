@@ -28,21 +28,7 @@
 // ── Cryptographic randomness (CWE-330 mitigation) ──────────────────
 // Challenge generation must be unpredictable — if an attacker can predict
 // which template/parameters will be generated, they can pre-compute answers.
-var _crypto;
-try { _crypto = require('crypto'); } catch (e) { _crypto = null; }
-
-function _secureRandom() {
-  if (_crypto && typeof _crypto.randomBytes === 'function') {
-    return _crypto.randomBytes(4).readUInt32BE(0) / 4294967296;
-  }
-  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
-    var arr = new Uint32Array(1);
-    crypto.getRandomValues(arr);
-    return arr[0] / 4294967296;
-  }
-  // Last resort — should never happen in Node.js
-  return Math.random();
-}
+var _secureRandom = require('./crypto-utils').secureRandom;
 
 // ── Deterministic PRNG (xorshift32) for reproducible generation ─────
 

@@ -32,33 +32,9 @@
 "use strict";
 
 // -- Cryptographic randomness (CWE-330 mitigation) --
-var _crypto;
-try { _crypto = require("crypto"); } catch (e) { _crypto = null; }
-
-/** Crypto-safe random float in [0, 1). */
-function _secureRandom() {
-  if (_crypto && typeof _crypto.randomBytes === "function") {
-    return _crypto.randomBytes(4).readUInt32BE(0) / 4294967296;
-  }
-  if (typeof crypto !== "undefined" && crypto.getRandomValues) {
-    var arr = new Uint32Array(1);
-    crypto.getRandomValues(arr);
-    return arr[0] / 4294967296;
-  }
-  return Math.random();
-}
-
-/** Crypto-safe random hex string of given length. */
-function _secureRandomHex(len) {
-  if (_crypto && typeof _crypto.randomBytes === "function") {
-    return _crypto.randomBytes(Math.ceil(len / 2)).toString("hex").slice(0, len);
-  }
-  var s = "";
-  for (var i = 0; i < len; i++) {
-    s += Math.floor(_secureRandom() * 16).toString(16);
-  }
-  return s;
-}
+var _cryptoUtils = require("./crypto-utils");
+var _secureRandom = _cryptoUtils.secureRandom;
+var _secureRandomHex = _cryptoUtils.secureRandomHex;
 
 // ── Defaults ────────────────────────────────────────────────────────
 

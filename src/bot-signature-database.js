@@ -1,40 +1,7 @@
 'use strict';
 
 // -- Cryptographic randomness (CWE-330) --
-var _crypto;
-try { _crypto = require("crypto"); } catch (e) { _crypto = null; }
-
-function _secureRandomHex(len) {
-  if (_crypto && typeof _crypto.randomBytes === "function") {
-    return _crypto.randomBytes(Math.ceil(len / 2)).toString("hex").slice(0, len);
-  }
-  // Browser fallback — use Web Crypto API (available in all modern browsers)
-  if (typeof crypto !== "undefined" && crypto.getRandomValues) {
-    var bytes = new Uint8Array(Math.ceil(len / 2));
-    crypto.getRandomValues(bytes);
-    var s = "";
-    for (var i = 0; i < bytes.length; i++) {
-      s += bytes[i].toString(16).padStart(2, "0");
-    }
-    return s.slice(0, len);
-  }
-  // Last resort — should not happen in Node.js or modern browsers.
-  // Log a warning so operators know their environment lacks crypto.
-  if (!_secureRandomHex._warned) {
-    _secureRandomHex._warned = true;
-    if (typeof console !== "undefined" && console.warn) {
-      console.warn(
-        "bot-signature-database: no crypto source available, falling back to " +
-        "Math.random(). Signature IDs will be predictable (CWE-330)."
-      );
-    }
-  }
-  var s = "";
-  for (var i = 0; i < len; i++) {
-    s += Math.floor(Math.random() * 16).toString(16);
-  }
-  return s;
-}
+var _secureRandomHex = require("./crypto-utils").secureRandomHex;
 
 /**
  * createBotSignatureDatabase — manages a database of known bot behavioral

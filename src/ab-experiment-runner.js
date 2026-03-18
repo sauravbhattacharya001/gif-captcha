@@ -93,12 +93,7 @@ LruTracker.prototype.fromArray = function (arr) {
   }
 };
 
-// ── Crypto-secure Randomness ────────────────────────────────────────
-
-var _crypto = null;
-try {
-  if (typeof require !== 'undefined') _crypto = require('crypto');
-} catch (e) { /* not available */ }
+// ── Helpers ─────────────────────────────────────────────────────────
 
 /**
  * Generate a cryptographically secure random integer in [0, max).

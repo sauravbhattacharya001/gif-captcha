@@ -64,20 +64,7 @@ var DEFAULT_OPTIONS = {
 // ── Cryptographic randomness (CWE-330 mitigation) ──────────────────
 // Challenge rotation must be unpredictable — if an attacker can predict
 // when/what type rotates to, they can pre-load the right solver.
-var _crypto;
-try { _crypto = require("crypto"); } catch (e) { _crypto = null; }
-
-function _secureRandom() {
-  if (_crypto && typeof _crypto.randomBytes === "function") {
-    return _crypto.randomBytes(4).readUInt32BE(0) / 4294967296;
-  }
-  if (typeof crypto !== "undefined" && crypto.getRandomValues) {
-    var arr = new Uint32Array(1);
-    crypto.getRandomValues(arr);
-    return arr[0] / 4294967296;
-  }
-  return Math.random();
-}
+var _secureRandom = require("./crypto-utils").secureRandom;
 
 // ── Lightweight PRNG ────────────────────────────────────────────────
 

@@ -3,34 +3,7 @@
 // Use cryptographic randomness for honeypot IDs and strategy selection.
 // Math.random() is predictable (CWE-330) — an attacker who can predict
 // which fields are honeypots can avoid them entirely, defeating the purpose.
-var _crypto;
-try { _crypto = require('crypto'); } catch (e) { _crypto = null; }
-
-/**
- * Cryptographically secure random integer in [0, exclusiveMax).
- * Falls back to Math.random() only if no crypto module is available
- * (browser without Web Crypto, very old Node.js).
- * @private
- */
-function _secureRandomInt(exclusiveMax) {
-  if (exclusiveMax <= 0) return 0;
-  if (_crypto && typeof _crypto.randomInt === 'function') {
-    return _crypto.randomInt(exclusiveMax);
-  }
-  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
-    var arr = new Uint32Array(1);
-    crypto.getRandomValues(arr);
-    return arr[0] % exclusiveMax;
-  }
-  // Last resort — log a warning on first use
-  if (!_secureRandomInt._warned) {
-    _secureRandomInt._warned = true;
-    if (typeof console !== 'undefined' && console.warn) {
-      console.warn('honeypot-injector: no crypto source available, falling back to Math.random()');
-    }
-  }
-  return Math.floor(Math.random() * exclusiveMax);
-}
+var _secureRandomInt = require('./crypto-utils').secureRandomInt;
 
 
 /**

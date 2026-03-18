@@ -47,12 +47,16 @@ function printUsage() {
     "    info",
     "        Show library version and available modules",
     "",
+    "    doctor [--verbose]",
+    "        Run diagnostic checks on the CAPTCHA system (modules, perf, config health)",
+    "",
     "  Examples:",
     "    gif-captcha generate --count 5",
     "    gif-captcha validate --answer \"dog plays\" --expected \"dog playing tic tac toe\"",
     "    gif-captcha benchmark --rounds 1000",
     "    gif-captcha trust --ip 203.0.113.42",
     "    gif-captcha stats --challenges 20",
+    "    gif-captcha doctor --verbose",
     "",
   ].join("\n"));
 }
@@ -270,6 +274,250 @@ function cmdInfo() {
   console.log("");
 }
 
+function cmdDoctor() {
+  var verbose = hasFlag("verbose");
+  var pkg;
+  try { pkg = require("../package.json"); } catch (e) { pkg = {}; }
+
+  var checks = [];
+  var warnings = [];
+  var errors = [];
+
+  console.log("\n  🩺 gif-captcha Doctor v" + (pkg.version || "unknown"));
+  console.log("  ════════════════════════════════\n");
+
+  // 1. Module availability
+  console.log("  📦 Module Availability");
+  console.log("  ──────────────────────");
+  var expectedModules = [
+    "createChallenge", "validateAnswer", "textSimilarity",
+    "createSessionManager", "createPoolManager", "createTrustScoreEngine",
+    "createSetAnalyzer", "createRateLimiter", "createStrengthScorer",
+    "createAuditLog", "createStatsCollector", "createHealthMonitor",
+    "createIncidentManager", "createExportFormatter", "createLoadTester",
+    "createAnomalyDetector", "createTrafficAnalyzer", "createCapacityPlanner",
+    "createLocalizationManager", "createFatigueDetector", "createComplianceReporter",
+    "createSessionReplay", "createWebhookDispatcher", "createBotSignatureDatabase",
+    "createAdaptiveDifficultyTuner", "createBehavioralBiometrics",
+    "createGeoRiskScorer", "createHoneypotInjector", "createFraudRingDetector",
+    "createSolveFunnelAnalyzer", "createSolvePatternFingerprinter",
+    "createChallengeDecayManager", "createChallengeRotationScheduler",
+    "createChallengeTemplateEngine", "createResponseTimeProfiler",
+    "createSessionRiskAggregator", "createABExperimentRunner",
+    "createAccessibilityAnalyzer"
+  ];
+
+  var present = 0;
+  var missing = 0;
+  expectedModules.forEach(function (mod) {
+    var exists = typeof gifCaptcha[mod] === "function";
+    if (exists) {
+      present++;
+      if (verbose) console.log("    ✅ " + mod);
+    } else {
+      missing++;
+      warnings.push("Missing module: " + mod);
+      console.log("    ⚠️  " + mod + " — not found");
+    }
+  });
+
+  // Also count any extra exported functions
+  var allFns = Object.keys(gifCaptcha).filter(function (k) {
+    return typeof gifCaptcha[k] === "function";
+  });
+  var extras = allFns.length - present;
+  console.log("\n    Found: " + present + "/" + expectedModules.length + " expected modules");
+  if (extras > 0) console.log("    Extra exports: " + extras);
+  checks.push({ name: "Modules", status: missing === 0 ? "pass" : "warn", detail: present + "/" + expectedModules.length });
+  console.log("");
+
+  // 2. Core functionality test
+  console.log("  🔧 Core Functionality");
+  console.log("  ─────────────────────");
+
+  // createChallenge
+  try {
+    var ch = gifCaptcha.createChallenge({ id: "doc-1", gifUrl: "https://example.com/test.gif", humanAnswer: "test" });
+    if (ch && ch.id) {
+      console.log("    ✅ createChallenge works");
+      checks.push({ name: "createChallenge", status: "pass" });
+    } else {
+      throw new Error("No challenge returned");
+    }
+  } catch (e) {
+    console.log("    ❌ createChallenge failed: " + e.message);
+    errors.push("createChallenge: " + e.message);
+    checks.push({ name: "createChallenge", status: "fail" });
+  }
+
+  // validateAnswer
+  try {
+    var res = gifCaptcha.validateAnswer("dog plays", "dog playing tic tac toe");
+    if (res && typeof res.passed === "boolean") {
+      console.log("    ✅ validateAnswer works (score: " + (res.score != null ? res.score.toFixed(3) : "N/A") + ")");
+      checks.push({ name: "validateAnswer", status: "pass" });
+    } else {
+      throw new Error("Invalid result shape");
+    }
+  } catch (e) {
+    console.log("    ❌ validateAnswer failed: " + e.message);
+    errors.push("validateAnswer: " + e.message);
+    checks.push({ name: "validateAnswer", status: "fail" });
+  }
+
+  // textSimilarity
+  try {
+    var sim = gifCaptcha.textSimilarity("hello world", "hello earth");
+    if (typeof sim === "number") {
+      console.log("    ✅ textSimilarity works (similarity: " + sim.toFixed(3) + ")");
+      checks.push({ name: "textSimilarity", status: "pass" });
+    } else {
+      throw new Error("Non-numeric result");
+    }
+  } catch (e) {
+    console.log("    ❌ textSimilarity failed: " + e.message);
+    errors.push("textSimilarity: " + e.message);
+    checks.push({ name: "textSimilarity", status: "fail" });
+  }
+
+  // sessionManager
+  try {
+    var sm = gifCaptcha.createSessionManager({ maxSessions: 10 });
+    if (sm) {
+      console.log("    ✅ createSessionManager works");
+      checks.push({ name: "createSessionManager", status: "pass" });
+    }
+  } catch (e) {
+    console.log("    ❌ createSessionManager failed: " + e.message);
+    errors.push("createSessionManager: " + e.message);
+    checks.push({ name: "createSessionManager", status: "fail" });
+  }
+
+  // poolManager
+  try {
+    var pm = gifCaptcha.createPoolManager({ maxSize: 5 });
+    if (pm) {
+      console.log("    ✅ createPoolManager works");
+      checks.push({ name: "createPoolManager", status: "pass" });
+    }
+  } catch (e) {
+    console.log("    ❌ createPoolManager failed: " + e.message);
+    errors.push("createPoolManager: " + e.message);
+    checks.push({ name: "createPoolManager", status: "fail" });
+  }
+  console.log("");
+
+  // 3. Performance quick-check
+  console.log("  ⚡ Performance Quick-Check");
+  console.log("  ──────────────────────────");
+  var perfRounds = 500;
+
+  var t0 = Date.now();
+  for (var i = 0; i < perfRounds; i++) {
+    gifCaptcha.createChallenge({ id: "perf-" + i, gifUrl: "https://example.com/p.gif", humanAnswer: "test" });
+  }
+  var createMs = Date.now() - t0;
+  var createPer = (createMs / perfRounds).toFixed(3);
+
+  var t1 = Date.now();
+  for (var j = 0; j < perfRounds; j++) {
+    gifCaptcha.validateAnswer("dog plays tic tac toe", "dog playing tic tac toe");
+  }
+  var valMs = Date.now() - t1;
+  var valPer = (valMs / perfRounds).toFixed(3);
+
+  var t2 = Date.now();
+  for (var k = 0; k < perfRounds; k++) {
+    gifCaptcha.textSimilarity("skateboarder flies through air", "someone skateboarding and appearing to fly");
+  }
+  var simMs = Date.now() - t2;
+  var simPer = (simMs / perfRounds).toFixed(3);
+
+  console.log("    createChallenge:  " + createPer + " ms/op (" + perfRounds + " rounds)");
+  console.log("    validateAnswer:   " + valPer + " ms/op (" + perfRounds + " rounds)");
+  console.log("    textSimilarity:   " + simPer + " ms/op (" + perfRounds + " rounds)");
+
+  var perfOk = parseFloat(valPer) < 1.0 && parseFloat(createPer) < 1.0;
+  if (perfOk) {
+    console.log("    ✅ Performance looks good");
+    checks.push({ name: "Performance", status: "pass" });
+  } else {
+    console.log("    ⚠️  Some operations are slow (>1ms/op)");
+    warnings.push("Slow operations detected");
+    checks.push({ name: "Performance", status: "warn" });
+  }
+  console.log("");
+
+  // 4. Validation edge cases
+  console.log("  🧪 Validation Edge Cases");
+  console.log("  ────────────────────────");
+  var edgeCases = [
+    { answer: "", expected: "test", desc: "empty answer" },
+    { answer: "test", expected: "", desc: "empty expected" },
+    { answer: "DOG PLAYS", expected: "dog plays", desc: "case insensitivity" },
+    { answer: "  spaced  out  ", expected: "spaced out", desc: "extra whitespace" },
+    { answer: "exact match", expected: "exact match", desc: "exact match" },
+  ];
+  var edgePass = 0;
+  edgeCases.forEach(function (ec) {
+    try {
+      var r = gifCaptcha.validateAnswer(ec.answer, ec.expected);
+      if (r && typeof r.passed === "boolean") {
+        edgePass++;
+        if (verbose) console.log("    ✅ " + ec.desc + " → passed=" + r.passed + " score=" + (r.score != null ? r.score.toFixed(3) : "N/A"));
+      }
+    } catch (e) {
+      console.log("    ❌ " + ec.desc + " threw: " + e.message);
+      errors.push("Edge case '" + ec.desc + "': " + e.message);
+    }
+  });
+  console.log("    " + edgePass + "/" + edgeCases.length + " edge cases handled gracefully");
+  checks.push({ name: "Edge Cases", status: edgePass === edgeCases.length ? "pass" : "warn", detail: edgePass + "/" + edgeCases.length });
+  console.log("");
+
+  // 5. Node.js environment
+  console.log("  🖥️  Environment");
+  console.log("  ───────────────");
+  console.log("    Node.js: " + process.version);
+  console.log("    Platform: " + process.platform + " " + process.arch);
+  console.log("    Memory: " + Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + " MB used / " + Math.round(process.memoryUsage().heapTotal / 1024 / 1024) + " MB total");
+  checks.push({ name: "Environment", status: "pass" });
+  console.log("");
+
+  // Summary
+  var passCount = checks.filter(function (c) { return c.status === "pass"; }).length;
+  var warnCount = checks.filter(function (c) { return c.status === "warn"; }).length;
+  var failCount = checks.filter(function (c) { return c.status === "fail"; }).length;
+
+  console.log("  ══════════════════════════════════");
+  console.log("  📊 Summary");
+  console.log("  ──────────");
+  console.log("    ✅ Passed:   " + passCount);
+  if (warnCount > 0) console.log("    ⚠️  Warnings: " + warnCount);
+  if (failCount > 0) console.log("    ❌ Failed:   " + failCount);
+  console.log("");
+
+  if (warnings.length > 0) {
+    console.log("  ⚠️  Warnings:");
+    warnings.forEach(function (w) { console.log("    • " + w); });
+    console.log("");
+  }
+  if (errors.length > 0) {
+    console.log("  ❌ Errors:");
+    errors.forEach(function (e) { console.log("    • " + e); });
+    console.log("");
+  }
+
+  if (failCount === 0 && warnCount === 0) {
+    console.log("  🎉 Everything looks healthy! Your CAPTCHA system is ready.\n");
+  } else if (failCount === 0) {
+    console.log("  👍 System is functional with minor warnings.\n");
+  } else {
+    console.log("  🔴 Critical issues found. Please review the errors above.\n");
+    process.exit(1);
+  }
+}
+
 // ── Dispatch ──
 
 switch (command) {
@@ -280,6 +528,7 @@ switch (command) {
   case "trust":     cmdTrust();     break;
   case "stats":     cmdStats();     break;
   case "info":      cmdInfo();      break;
+  case "doctor":    cmdDoctor();    break;
   case "--help": case "-h": case "help": case undefined:
     printUsage();
     break;

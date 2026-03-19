@@ -79,9 +79,78 @@ function createGeoRiskScorer(options) {
   var _totalScored = 0;
   var _totalBlocked = 0;
   var _totalChallenged = 0;
-  var _ipAccessOrder = [];    // LRU tracking: array of IPs in access order
-  var _sessionAccessOrder = []; // LRU tracking: array of session IDs
   var _lastCleanup = 0;       // timestamp of last periodic sweep
+
+  // ── O(1) LRU Tracker ─────────────────────────────────────────────
+  // Replaces the previous array-based _touchLRU which had O(n) linear
+  // scanning for duplicate detection during eviction — a significant
+  // bottleneck at scale (maxTrackedIPs=50000). This doubly-linked-list
+  // implementation provides O(1) touch, O(1) evict, matching the
+  // LruTracker already used in trust-score-engine.js and index.js.
+
+  function _LruMap() {
+    this._map = Object.create(null); // key → {key, prev, next}
+    this._head = null; // oldest
+    this._tail = null; // newest
+    this.length = 0;
+  }
+
+  _LruMap.prototype.touch = function (key) {
+    var node = this._map[key];
+    if (node) {
+      // Move existing node to tail (most recent)
+      if (node === this._tail) return;
+      // Unlink
+      if (node.prev) node.prev.next = node.next;
+      else this._head = node.next;
+      if (node.next) node.next.prev = node.prev;
+      // Append to tail
+      node.prev = this._tail;
+      node.next = null;
+      if (this._tail) this._tail.next = node;
+      this._tail = node;
+    } else {
+      // Insert new node at tail
+      node = { key: key, prev: this._tail, next: null };
+      if (this._tail) this._tail.next = node;
+      else this._head = node;
+      this._tail = node;
+      this._map[key] = node;
+      this.length++;
+    }
+  };
+
+  _LruMap.prototype.evictOldest = function () {
+    if (!this._head) return undefined;
+    var node = this._head;
+    this._head = node.next;
+    if (this._head) this._head.prev = null;
+    else this._tail = null;
+    delete this._map[node.key];
+    this.length--;
+    return node.key;
+  };
+
+  _LruMap.prototype.remove = function (key) {
+    var node = this._map[key];
+    if (!node) return;
+    if (node.prev) node.prev.next = node.next;
+    else this._head = node.next;
+    if (node.next) node.next.prev = node.prev;
+    else this._tail = node.prev;
+    delete this._map[node.key];
+    this.length--;
+  };
+
+  _LruMap.prototype.clear = function () {
+    this._map = Object.create(null);
+    this._head = null;
+    this._tail = null;
+    this.length = 0;
+  };
+
+  var _ipLru = new _LruMap();
+  var _sessionLru = new _LruMap();
 
   // ── Helpers ──────────────────────────────────────────────────────
 
@@ -90,7 +159,6 @@ function createGeoRiskScorer(options) {
   function _pushCapped(arr, item, cap) {
     arr.push(item);
     if (arr.length > cap) {
-      // Splice from front in one call instead of repeated shift() — O(n) once vs O(k*n)
       arr.splice(0, arr.length - cap);
     }
   }
@@ -109,36 +177,15 @@ function createGeoRiskScorer(options) {
     return "low";
   }
 
-  // ── LRU eviction for bounded maps ────────────────────────────────
-
-  function _touchLRU(orderList, map, key, maxSize) {
-    // Append to end (most recent). We don't remove duplicates on every
-    // touch — instead we skip stale entries during eviction.
-    orderList.push(key);
-    // Evict oldest entries when over capacity
-    while (Object.keys(map).length > maxSize && orderList.length > 0) {
-      var oldest = orderList.shift();
-      // Skip if this key was re-accessed (will appear later in the list)
-      if (map[oldest] !== undefined) {
-        // Check if this key appears again later (still active)
-        var dominated = false;
-        for (var k = 0; k < orderList.length; k++) {
-          if (orderList[k] === oldest) { dominated = true; break; }
-        }
-        if (!dominated) {
-          delete map[oldest];
-        }
-      }
-    }
-    // Compact order list periodically to avoid unbounded growth of the
-    // tracking array itself (remove entries whose keys no longer exist)
-    if (orderList.length > maxSize * 3) {
-      var compacted = [];
-      for (var j = 0; j < orderList.length; j++) {
-        if (map[orderList[j]] !== undefined) compacted.push(orderList[j]);
-      }
-      orderList.length = 0;
-      for (var m = 0; m < compacted.length; m++) orderList.push(compacted[m]);
+  /**
+   * O(1) LRU touch + eviction for bounded maps.
+   * Replaces the old O(n) array-scan implementation.
+   */
+  function _touchLRU(lru, map, key, maxSize) {
+    lru.touch(key);
+    while (lru.length > maxSize) {
+      var evicted = lru.evictOldest();
+      if (evicted !== undefined) delete map[evicted];
     }
   }
 
@@ -311,12 +358,12 @@ function createGeoRiskScorer(options) {
     if (meta.ip && meta.lat != null && meta.lon != null) {
       if (!_ipHistory[meta.ip]) _ipHistory[meta.ip] = [];
       _pushCapped(_ipHistory[meta.ip], { lat: meta.lat, lon: meta.lon, ts: ts, country: (meta.country || "").toUpperCase() }, maxHistory);
-      _touchLRU(_ipAccessOrder, _ipHistory, meta.ip, maxTrackedIPs);
+      _touchLRU(_ipLru, _ipHistory, meta.ip, maxTrackedIPs);
     }
     if (meta.sessionId && meta.country) {
       if (!_sessionGeo[meta.sessionId]) _sessionGeo[meta.sessionId] = [];
       _pushCapped(_sessionGeo[meta.sessionId], { country: meta.country.toUpperCase(), ts: ts }, maxHistory);
-      _touchLRU(_sessionAccessOrder, _sessionGeo, meta.sessionId, maxTrackedSessions);
+      _touchLRU(_sessionLru, _sessionGeo, meta.sessionId, maxTrackedSessions);
     }
 
     _totalScored++;
@@ -433,8 +480,8 @@ function createGeoRiskScorer(options) {
     _totalScored = 0;
     _totalBlocked = 0;
     _totalChallenged = 0;
-    _ipAccessOrder.length = 0;
-    _sessionAccessOrder.length = 0;
+    _ipLru.clear();
+    _sessionLru.clear();
     _lastCleanup = 0;
   }
 

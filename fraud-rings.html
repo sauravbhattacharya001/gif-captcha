@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fraud Ring Visualizer — gif-captcha</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+  .viz-container {
+    position: relative;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin: 1.5rem auto;
+    max-width: 1100px;
+  }
+  .viz-container svg { display: block; width: 100%; height: 520px; }
+  .viz-controls {
+    display: flex; flex-wrap: wrap; gap: .75rem;
+    justify-content: center; padding: 1rem 1.5rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .viz-controls label { color: var(--muted); font-size: .85rem; display: flex; align-items: center; gap: .4rem; }
+  .viz-controls input[type=range] { width: 100px; accent-color: var(--accent); }
+  .viz-controls select, .viz-controls button {
+    background: var(--surface-hover); border: 1px solid var(--border);
+    color: var(--text); padding: .35rem .75rem; border-radius: 6px; font-size: .85rem; cursor: pointer;
+  }
+  .viz-controls button:hover { border-color: var(--accent); }
+
+  .ring-panel {
+    max-width: 1100px; margin: 1rem auto;
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem;
+  }
+  .ring-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 1rem 1.25rem; transition: border-color .2s;
+  }
+  .ring-card:hover { border-color: var(--accent); }
+  .ring-card h3 { font-size: 1rem; margin-bottom: .5rem; display: flex; align-items: center; gap: .5rem; }
+  .ring-card .confidence-bar {
+    height: 6px; border-radius: 3px; background: var(--border); margin: .5rem 0;
+  }
+  .ring-card .confidence-fill { height: 100%; border-radius: 3px; transition: width .4s; }
+  .ring-card .meta { font-size: .8rem; color: var(--muted); }
+  .ring-card .evidence-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .25rem .75rem; margin-top: .5rem; font-size: .8rem; }
+  .ring-card .evidence-grid dt { color: var(--muted); }
+  .ring-card .evidence-grid dd { color: var(--text); text-align: right; }
+
+  .stats-bar {
+    display: flex; flex-wrap: wrap; gap: 1rem; justify-content: center;
+    max-width: 1100px; margin: 1.5rem auto 1rem;
+  }
+  .stat-chip {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: .5rem 1rem; text-align: center; min-width: 120px;
+  }
+  .stat-chip .num { font-size: 1.5rem; font-weight: 700; color: var(--accent); }
+  .stat-chip .lbl { font-size: .75rem; color: var(--muted); }
+
+  .tooltip-box {
+    position: absolute; pointer-events: none; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 8px; padding: .6rem .8rem;
+    font-size: .8rem; color: var(--text); box-shadow: 0 4px 16px rgba(0,0,0,.4);
+    z-index: 10; display: none; max-width: 240px;
+  }
+
+  .legend { display: flex; gap: 1rem; justify-content: center; margin: .75rem 0; font-size: .8rem; }
+  .legend span { display: flex; align-items: center; gap: .3rem; color: var(--muted); }
+  .legend .dot { width: 10px; height: 10px; border-radius: 50%; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>🕸️ Fraud Ring Visualizer</h1>
+  <p class="subtitle">Interactive network graph of detected CAPTCHA-solving rings</p>
+</div>
+
+<div class="stats-bar" id="stats-bar"></div>
+
+<div class="legend" id="legend"></div>
+
+<div class="viz-container">
+  <div class="viz-controls">
+    <label>Sessions <input type="range" id="ctrl-sessions" min="20" max="200" value="80"> <span id="val-sessions">80</span></label>
+    <label>Rings <input type="range" id="ctrl-rings" min="2" max="10" value="4"> <span id="val-rings">4</span></label>
+    <label>Threshold <input type="range" id="ctrl-threshold" min="50" max="95" value="70" step="5"> <span id="val-threshold">0.70</span></label>
+    <select id="ctrl-layout">
+      <option value="force">Force Layout</option>
+      <option value="radial">Radial Layout</option>
+    </select>
+    <button id="btn-generate">Generate Data</button>
+    <button id="btn-export">Export JSON</button>
+  </div>
+  <svg id="graph"></svg>
+  <div class="tooltip-box" id="tooltip"></div>
+</div>
+
+<div class="ring-panel" id="ring-panel"></div>
+
+<div class="footer">
+  <p>Part of <a href="index.html">gif-captcha</a> research suite &middot; Fraud Ring Visualizer</p>
+</div>
+
+<script src="shared.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  // ── Color palette for rings ──
+  var RING_COLORS = [
+    '#58a6ff', '#3fb950', '#f0883e', '#bc8cff', '#f85149',
+    '#39d2c0', '#d29922', '#da3633', '#8b949e', '#79b8ff'
+  ];
+  var UNASSIGNED_COLOR = '#30363d';
+
+  // ── DOM refs ──
+  var svg = document.getElementById('graph');
+  var tooltip = document.getElementById('tooltip');
+  var statsBar = document.getElementById('stats-bar');
+  var ringPanel = document.getElementById('ring-panel');
+  var legendEl = document.getElementById('legend');
+
+  var ctrlSessions = document.getElementById('ctrl-sessions');
+  var ctrlRings = document.getElementById('ctrl-rings');
+  var ctrlThreshold = document.getElementById('ctrl-threshold');
+  var ctrlLayout = document.getElementById('ctrl-layout');
+
+  // ── State ──
+  var nodes = []; // { id, ip, ringIndex, x, y, vx, vy, successRate, solveCount }
+  var edges = []; // { source, target, similarity }
+  var rings = []; // { id, members, confidence, evidence, color }
+  var simulation = null;
+  var dragging = null;
+  var hoveredNode = null;
+  var width = 1100, height = 520;
+
+  // ── Slider labels ──
+  ctrlSessions.oninput = function () { document.getElementById('val-sessions').textContent = this.value; };
+  ctrlRings.oninput = function () { document.getElementById('val-rings').textContent = this.value; };
+  ctrlThreshold.oninput = function () { document.getElementById('val-threshold').textContent = (this.value / 100).toFixed(2); };
+
+  // ── Generate synthetic data ──
+  function generateData() {
+    var numSessions = parseInt(ctrlSessions.value);
+    var numRings = parseInt(ctrlRings.value);
+    var threshold = parseInt(ctrlThreshold.value) / 100;
+
+    nodes = [];
+    edges = [];
+    rings = [];
+
+    // Create ring templates
+    var ringTemplates = [];
+    for (var r = 0; r < numRings; r++) {
+      var size = 3 + Math.floor(Math.random() * Math.max(1, Math.floor(numSessions / numRings) - 2));
+      ringTemplates.push({
+        peakHour: Math.floor(Math.random() * 24),
+        avgResponseTime: 1500 + Math.random() * 4000,
+        successRate: 0.6 + Math.random() * 0.35,
+        size: size
+      });
+    }
+
+    // Create sessions
+    var sessionIndex = 0;
+    for (var ri = 0; ri < ringTemplates.length; ri++) {
+      var tmpl = ringTemplates[ri];
+      for (var m = 0; m < tmpl.size && sessionIndex < numSessions; m++) {
+        nodes.push({
+          id: 'sess_' + sessionIndex,
+          ip: '10.' + ri + '.' + Math.floor(Math.random() * 5) + '.' + (10 + m),
+          ringIndex: ri,
+          successRate: Math.max(0, Math.min(1, tmpl.successRate + (Math.random() - 0.5) * 0.1)),
+          solveCount: 5 + Math.floor(Math.random() * 50),
+          peakHour: tmpl.peakHour + Math.floor(Math.random() * 3) - 1,
+          avgResponseTime: tmpl.avgResponseTime + (Math.random() - 0.5) * 800,
+          x: 0, y: 0, vx: 0, vy: 0
+        });
+        sessionIndex++;
+      }
+    }
+    // Fill remaining as unassigned
+    while (sessionIndex < numSessions) {
+      nodes.push({
+        id: 'sess_' + sessionIndex,
+        ip: '192.168.' + Math.floor(Math.random() * 255) + '.' + Math.floor(Math.random() * 255),
+        ringIndex: -1,
+        successRate: Math.random(),
+        solveCount: 1 + Math.floor(Math.random() * 20),
+        peakHour: Math.floor(Math.random() * 24),
+        avgResponseTime: 1000 + Math.random() * 8000,
+        x: 0, y: 0, vx: 0, vy: 0
+      });
+      sessionIndex++;
+    }
+
+    // Compute edges within rings (high similarity) and some cross-ring noise
+    for (var i = 0; i < nodes.length; i++) {
+      for (var j = i + 1; j < nodes.length; j++) {
+        var a = nodes[i], b = nodes[j];
+        var sim;
+        if (a.ringIndex >= 0 && a.ringIndex === b.ringIndex) {
+          sim = threshold + Math.random() * (1 - threshold);
+        } else {
+          sim = Math.random() * threshold * 0.6;
+        }
+        if (sim >= threshold) {
+          edges.push({ source: i, target: j, similarity: Math.round(sim * 1000) / 1000 });
+        }
+      }
+    }
+
+    // Build ring summaries
+    var ringMembers = {};
+    for (var ni = 0; ni < nodes.length; ni++) {
+      var rx = nodes[ni].ringIndex;
+      if (rx >= 0) {
+        if (!ringMembers[rx]) ringMembers[rx] = [];
+        ringMembers[rx].push(nodes[ni].id);
+      }
+    }
+    var rkeys = Object.keys(ringMembers);
+    for (var rk = 0; rk < rkeys.length; rk++) {
+      var idx = parseInt(rkeys[rk]);
+      var members = ringMembers[idx];
+      var conf = 0.65 + Math.random() * 0.35;
+      rings.push({
+        id: 'ring_' + (idx + 1),
+        members: members,
+        size: members.length,
+        confidence: Math.round(conf * 1000) / 1000,
+        color: RING_COLORS[idx % RING_COLORS.length],
+        evidence: {
+          timing: Math.round((0.5 + Math.random() * 0.5) * 100) / 100,
+          responseTime: Math.round((0.5 + Math.random() * 0.5) * 100) / 100,
+          successRate: Math.round((0.7 + Math.random() * 0.3) * 100) / 100,
+          activityOverlap: Math.round((0.4 + Math.random() * 0.5) * 100) / 100
+        },
+        ipDiversity: 1 + Math.floor(Math.random() * Math.min(5, members.length))
+      });
+    }
+
+    renderAll();
+  }
+
+  // ── Render everything ──
+  function renderAll() {
+    renderStats();
+    renderLegend();
+    renderGraph();
+    renderRingCards();
+  }
+
+  function renderStats() {
+    var unassigned = nodes.filter(function (n) { return n.ringIndex < 0; }).length;
+    var highConf = rings.filter(function (r) { return r.confidence >= 0.85; }).length;
+    var html = [
+      chip(nodes.length, 'Sessions'),
+      chip(rings.length, 'Rings Detected'),
+      chip(edges.length, 'Connections'),
+      chip(highConf, 'High Confidence'),
+      chip(unassigned, 'Unassigned')
+    ].join('');
+    statsBar.innerHTML = html;
+  }
+  function chip(num, lbl) {
+    return '<div class="stat-chip"><div class="num">' + num + '</div><div class="lbl">' + sanitize(lbl) + '</div></div>';
+  }
+
+  function renderLegend() {
+    var html = '';
+    for (var i = 0; i < rings.length; i++) {
+      html += '<span><span class="dot" style="background:' + rings[i].color + '"></span>' + sanitize(rings[i].id) + '</span>';
+    }
+    html += '<span><span class="dot" style="background:' + UNASSIGNED_COLOR + '"></span>Unassigned</span>';
+    legendEl.innerHTML = html;
+  }
+
+  // ── Force simulation ──
+  function renderGraph() {
+    var rect = svg.getBoundingClientRect();
+    width = rect.width || 1100;
+    height = 520;
+
+    svg.setAttribute('viewBox', '0 0 ' + width + ' ' + height);
+    svg.innerHTML = '';
+
+    if (nodes.length === 0) return;
+
+    // Init positions
+    var isRadial = ctrlLayout.value === 'radial';
+    var cx = width / 2, cy = height / 2;
+    for (var i = 0; i < nodes.length; i++) {
+      var n = nodes[i];
+      if (isRadial && n.ringIndex >= 0) {
+        var angle = (n.ringIndex / (rings.length || 1)) * Math.PI * 2 + Math.random() * 0.5;
+        var radius = 120 + Math.random() * 80;
+        n.x = cx + Math.cos(angle) * radius;
+        n.y = cy + Math.sin(angle) * radius;
+      } else {
+        n.x = cx + (Math.random() - 0.5) * width * 0.7;
+        n.y = cy + (Math.random() - 0.5) * height * 0.7;
+      }
+      n.vx = 0; n.vy = 0;
+    }
+
+    // SVG groups
+    var edgeGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    var nodeGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    svg.appendChild(edgeGroup);
+    svg.appendChild(nodeGroup);
+
+    // Draw edges
+    var edgeEls = [];
+    for (var e = 0; e < edges.length; e++) {
+      var line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('stroke', UNASSIGNED_COLOR);
+      line.setAttribute('stroke-width', '0.5');
+      line.setAttribute('stroke-opacity', '0.3');
+      edgeGroup.appendChild(line);
+      edgeEls.push(line);
+    }
+
+    // Draw nodes
+    var nodeEls = [];
+    for (var ni = 0; ni < nodes.length; ni++) {
+      var circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      var nd = nodes[ni];
+      var color = nd.ringIndex >= 0 && rings[nd.ringIndex] ? rings[nd.ringIndex].color : UNASSIGNED_COLOR;
+      var r = Math.max(3, Math.min(10, 3 + nd.solveCount / 10));
+      circle.setAttribute('r', r);
+      circle.setAttribute('fill', color);
+      circle.setAttribute('stroke', '#0d1117');
+      circle.setAttribute('stroke-width', '1.5');
+      circle.setAttribute('cursor', 'pointer');
+      circle.dataset.idx = ni;
+      nodeGroup.appendChild(circle);
+      nodeEls.push(circle);
+    }
+
+    // ── Simple force simulation ──
+    var alpha = 1;
+    var alphaDecay = 0.02;
+
+    function tick() {
+      if (alpha < 0.001) return;
+      alpha *= (1 - alphaDecay);
+
+      // Repulsion (Barnes-Hut simplified: just pairwise for small N)
+      for (var i = 0; i < nodes.length; i++) {
+        for (var j = i + 1; j < nodes.length; j++) {
+          var dx = nodes[j].x - nodes[i].x;
+          var dy = nodes[j].y - nodes[i].y;
+          var dist = Math.sqrt(dx * dx + dy * dy) || 1;
+          var force = -300 * alpha / (dist * dist);
+          var fx = dx / dist * force;
+          var fy = dy / dist * force;
+          nodes[i].vx -= fx; nodes[i].vy -= fy;
+          nodes[j].vx += fx; nodes[j].vy += fy;
+        }
+      }
+
+      // Attraction along edges
+      for (var e = 0; e < edges.length; e++) {
+        var s = nodes[edges[e].source], t = nodes[edges[e].target];
+        var edx = t.x - s.x, edy = t.y - s.y;
+        var eDist = Math.sqrt(edx * edx + edy * edy) || 1;
+        var strength = 0.05 * alpha * edges[e].similarity;
+        var target_dist = 60;
+        var efx = (eDist - target_dist) * strength * edx / eDist;
+        var efy = (eDist - target_dist) * strength * edy / eDist;
+        s.vx += efx; s.vy += efy;
+        t.vx -= efx; t.vy -= efy;
+      }
+
+      // Center gravity
+      for (var ci = 0; ci < nodes.length; ci++) {
+        nodes[ci].vx += (cx - nodes[ci].x) * 0.01 * alpha;
+        nodes[ci].vy += (cy - nodes[ci].y) * 0.01 * alpha;
+      }
+
+      // Velocity decay + position update
+      for (var u = 0; u < nodes.length; u++) {
+        if (nodes[u] === dragging) { nodes[u].vx = 0; nodes[u].vy = 0; continue; }
+        nodes[u].vx *= 0.6; nodes[u].vy *= 0.6;
+        nodes[u].x += nodes[u].vx;
+        nodes[u].y += nodes[u].vy;
+        nodes[u].x = Math.max(15, Math.min(width - 15, nodes[u].x));
+        nodes[u].y = Math.max(15, Math.min(height - 15, nodes[u].y));
+      }
+
+      // Update SVG
+      for (var ei = 0; ei < edges.length; ei++) {
+        var se = nodes[edges[ei].source], te = nodes[edges[ei].target];
+        edgeEls[ei].setAttribute('x1', se.x);
+        edgeEls[ei].setAttribute('y1', se.y);
+        edgeEls[ei].setAttribute('x2', te.x);
+        edgeEls[ei].setAttribute('y2', te.y);
+      }
+      for (var nj = 0; nj < nodes.length; nj++) {
+        nodeEls[nj].setAttribute('cx', nodes[nj].x);
+        nodeEls[nj].setAttribute('cy', nodes[nj].y);
+      }
+
+      requestAnimationFrame(tick);
+    }
+
+    tick();
+
+    // ── Interactivity ──
+    svg.onmousedown = function (ev) {
+      var idx = ev.target.dataset && ev.target.dataset.idx;
+      if (idx != null) {
+        dragging = nodes[parseInt(idx)];
+        alpha = Math.max(alpha, 0.3);
+      }
+    };
+    svg.onmousemove = function (ev) {
+      if (dragging) {
+        var r2 = svg.getBoundingClientRect();
+        dragging.x = (ev.clientX - r2.left) * (width / r2.width);
+        dragging.y = (ev.clientY - r2.top) * (height / r2.height);
+        alpha = Math.max(alpha, 0.1);
+      }
+      // Tooltip
+      var idx2 = ev.target.dataset && ev.target.dataset.idx;
+      if (idx2 != null) {
+        var nd2 = nodes[parseInt(idx2)];
+        var ringLabel = nd2.ringIndex >= 0 && rings[nd2.ringIndex] ? rings[nd2.ringIndex].id : 'Unassigned';
+        tooltip.style.display = 'block';
+        tooltip.style.left = (ev.offsetX + 12) + 'px';
+        tooltip.style.top = (ev.offsetY - 10) + 'px';
+        tooltip.innerHTML = '<strong>' + sanitize(nd2.id) + '</strong><br>'
+          + 'IP: ' + sanitize(nd2.ip) + '<br>'
+          + 'Ring: ' + sanitize(ringLabel) + '<br>'
+          + 'Success: ' + (nd2.successRate * 100).toFixed(1) + '%<br>'
+          + 'Solves: ' + nd2.solveCount + '<br>'
+          + 'Avg RT: ' + Math.round(nd2.avgResponseTime) + 'ms';
+        // Highlight connected edges
+        for (var he = 0; he < edges.length; he++) {
+          if (edges[he].source === parseInt(idx2) || edges[he].target === parseInt(idx2)) {
+            edgeEls[he].setAttribute('stroke', '#58a6ff');
+            edgeEls[he].setAttribute('stroke-opacity', '0.7');
+            edgeEls[he].setAttribute('stroke-width', '1.5');
+          }
+        }
+        hoveredNode = parseInt(idx2);
+      } else if (hoveredNode != null) {
+        tooltip.style.display = 'none';
+        for (var re = 0; re < edgeEls.length; re++) {
+          edgeEls[re].setAttribute('stroke', UNASSIGNED_COLOR);
+          edgeEls[re].setAttribute('stroke-opacity', '0.3');
+          edgeEls[re].setAttribute('stroke-width', '0.5');
+        }
+        hoveredNode = null;
+      }
+    };
+    svg.onmouseup = function () { dragging = null; };
+    svg.onmouseleave = function () { dragging = null; tooltip.style.display = 'none'; };
+  }
+
+  // ── Ring cards ──
+  function renderRingCards() {
+    var html = '';
+    for (var i = 0; i < rings.length; i++) {
+      var r = rings[i];
+      var confPct = (r.confidence * 100).toFixed(1);
+      var barColor = r.confidence >= 0.85 ? 'var(--red)' : r.confidence >= 0.7 ? 'var(--yellow)' : 'var(--green)';
+      html += '<div class="ring-card">'
+        + '<h3><span class="dot" style="background:' + r.color + ';width:12px;height:12px;border-radius:50%;display:inline-block"></span> '
+        + sanitize(r.id) + ' <span style="font-weight:400;color:var(--muted);font-size:.85rem">(' + r.size + ' members)</span></h3>'
+        + '<div class="meta">Confidence: ' + confPct + '% &middot; ' + r.ipDiversity + ' unique IPs</div>'
+        + '<div class="confidence-bar"><div class="confidence-fill" style="width:' + confPct + '%;background:' + barColor + '"></div></div>'
+        + '<dl class="evidence-grid">'
+        + '<dt>Timing</dt><dd>' + r.evidence.timing.toFixed(2) + '</dd>'
+        + '<dt>Response Time</dt><dd>' + r.evidence.responseTime.toFixed(2) + '</dd>'
+        + '<dt>Success Rate</dt><dd>' + r.evidence.successRate.toFixed(2) + '</dd>'
+        + '<dt>Activity Overlap</dt><dd>' + r.evidence.activityOverlap.toFixed(2) + '</dd>'
+        + '</dl></div>';
+    }
+    ringPanel.innerHTML = html;
+  }
+
+  // ── Export ──
+  document.getElementById('btn-export').onclick = function () {
+    var data = { nodes: nodes.map(function (n) { return { id: n.id, ip: n.ip, ringIndex: n.ringIndex, successRate: n.successRate, solveCount: n.solveCount }; }), rings: rings, edges: edges };
+    var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'fraud-rings-export.json';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  // ── Event bindings ──
+  document.getElementById('btn-generate').onclick = generateData;
+  ctrlLayout.onchange = function () { if (nodes.length > 0) renderGraph(); };
+
+  // Initial generation
+  generateData();
+})();
+</script>
+</body>
+</html>

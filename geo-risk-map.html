@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Geo Risk Map — gif-captcha</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+/* ===== Layout ===== */
+.map-container { position: relative; width: 100%; max-width: 1100px; margin: 0 auto 1.5rem; }
+.map-container svg { width: 100%; height: auto; display: block; }
+.map-container svg path { stroke: var(--border); stroke-width: 0.5; cursor: pointer; transition: opacity 0.2s; }
+.map-container svg path:hover { opacity: 0.8; stroke: var(--accent); stroke-width: 1.2; }
+
+/* Tooltip */
+.tooltip { position: fixed; display: none; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; font-size: 0.85rem; z-index: 100; pointer-events: none; max-width: 280px; box-shadow: 0 4px 16px rgba(0,0,0,0.4); }
+.tooltip .tt-country { font-weight: 600; font-size: 1rem; margin-bottom: 4px; }
+.tooltip .tt-row { display: flex; justify-content: space-between; gap: 1rem; }
+.tooltip .tt-label { color: var(--muted); }
+.tooltip .tt-val { font-weight: 600; }
+
+/* Controls */
+.controls { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1.5rem; align-items: center; }
+.controls label { color: var(--muted); font-size: 0.85rem; }
+.controls select, .controls input[type=number] { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; font-size: 0.85rem; }
+.controls button { background: var(--accent); color: #fff; border: none; border-radius: 6px; padding: 8px 16px; cursor: pointer; font-size: 0.85rem; font-weight: 600; transition: background 0.2s; }
+.controls button:hover { background: var(--accent-hover); }
+.controls button.danger { background: var(--red); }
+.controls button.danger:hover { background: #e5443d; }
+
+/* Legend */
+.legend { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem; font-size: 0.8rem; color: var(--muted); }
+.legend-bar { width: 200px; height: 14px; border-radius: 4px; background: linear-gradient(to right, var(--green), var(--yellow), var(--orange), var(--red)); }
+
+/* Stats grid */
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+.stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; text-align: center; }
+.stat-card .val { font-size: 1.6rem; font-weight: 700; }
+.stat-card .lbl { color: var(--muted); font-size: 0.8rem; margin-top: 2px; }
+
+/* Table */
+.risk-table { width: 100%; border-collapse: collapse; margin-top: 1rem; font-size: 0.85rem; }
+.risk-table th { text-align: left; padding: 8px 12px; border-bottom: 2px solid var(--border); color: var(--muted); font-weight: 600; cursor: pointer; user-select: none; }
+.risk-table th:hover { color: var(--accent); }
+.risk-table td { padding: 8px 12px; border-bottom: 1px solid var(--border); }
+.risk-table tr:hover td { background: var(--surface-hover); }
+
+.badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 600; }
+.badge-critical { background: var(--red-bg); color: var(--red); }
+.badge-high { background: var(--orange-bg); color: var(--orange); }
+.badge-medium { background: var(--yellow-bg); color: var(--yellow); }
+.badge-low { background: var(--green-bg); color: var(--green); }
+
+/* Sim log */
+.sim-log { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; max-height: 200px; overflow-y: auto; font-family: monospace; font-size: 0.8rem; margin-top: 1rem; }
+.sim-log .entry { padding: 2px 0; border-bottom: 1px solid rgba(48,54,61,0.4); }
+.sim-log .entry:last-child { border-bottom: none; }
+</style>
+</head>
+<body>
+<header>
+    <h1>🗺️ Geo Risk Map</h1>
+    <p>Interactive geographic risk visualization for CAPTCHA traffic analysis</p>
+</header>
+<main>
+    <!-- Stats -->
+    <div class="stats-grid">
+        <div class="stat-card"><div class="val" id="statTotal">0</div><div class="lbl">Total Attempts</div></div>
+        <div class="stat-card"><div class="val" id="statCountries">0</div><div class="lbl">Countries Seen</div></div>
+        <div class="stat-card"><div class="val" id="statBlocked">0</div><div class="lbl">Blocked</div></div>
+        <div class="stat-card"><div class="val" id="statAvgRisk">0.00</div><div class="lbl">Avg Risk Score</div></div>
+    </div>
+
+    <!-- Controls -->
+    <div class="controls">
+        <label>Simulate:
+            <select id="simPreset">
+                <option value="normal">Normal Traffic</option>
+                <option value="botwave">Bot Wave Attack</option>
+                <option value="geodist">Geo-Distributed</option>
+                <option value="proxy">Proxy Farm</option>
+                <option value="targeted">Targeted Region</option>
+            </select>
+        </label>
+        <label>Count:
+            <input type="number" id="simCount" value="200" min="10" max="5000" step="10">
+        </label>
+        <button onclick="runSimulation()">▶ Run Simulation</button>
+        <button class="danger" onclick="resetAll()">⟳ Reset</button>
+        <label>Color by:
+            <select id="colorMode" onchange="repaint()">
+                <option value="risk">Risk Score</option>
+                <option value="volume">Attempt Volume</option>
+                <option value="solverate">Solve Rate</option>
+            </select>
+        </label>
+    </div>
+
+    <!-- Legend -->
+    <div class="legend">
+        <span id="legendLow">Low</span>
+        <div class="legend-bar"></div>
+        <span id="legendHigh">High</span>
+    </div>
+
+    <!-- Map -->
+    <div class="map-container" id="mapContainer">
+        <div id="mapSvg"></div>
+    </div>
+
+    <!-- Tooltip -->
+    <div class="tooltip" id="tooltip">
+        <div class="tt-country" id="ttCountry"></div>
+        <div class="tt-row"><span class="tt-label">Risk Score</span><span class="tt-val" id="ttRisk"></span></div>
+        <div class="tt-row"><span class="tt-label">Attempts</span><span class="tt-val" id="ttAttempts"></span></div>
+        <div class="tt-row"><span class="tt-label">Blocked</span><span class="tt-val" id="ttBlocked"></span></div>
+        <div class="tt-row"><span class="tt-label">Solve Rate</span><span class="tt-val" id="ttSolve"></span></div>
+        <div class="tt-row"><span class="tt-label">Level</span><span class="tt-val" id="ttLevel"></span></div>
+    </div>
+
+    <!-- Risk Table -->
+    <h2 style="margin-top:1.5rem">Country Risk Table</h2>
+    <table class="risk-table" id="riskTable">
+        <thead>
+            <tr>
+                <th data-col="country" onclick="sortTable('country')">Country ▾</th>
+                <th data-col="attempts" onclick="sortTable('attempts')">Attempts</th>
+                <th data-col="blocked" onclick="sortTable('blocked')">Blocked</th>
+                <th data-col="solveRate" onclick="sortTable('solveRate')">Solve Rate</th>
+                <th data-col="avgRisk" onclick="sortTable('avgRisk')">Avg Risk</th>
+                <th data-col="level" onclick="sortTable('level')">Level</th>
+            </tr>
+        </thead>
+        <tbody id="riskTableBody"></tbody>
+    </table>
+
+    <!-- Simulation Log -->
+    <h2 style="margin-top:1.5rem">Simulation Log</h2>
+    <div class="sim-log" id="simLog"><div class="entry" style="color:var(--muted)">Run a simulation to see results...</div></div>
+</main>
+<footer>
+    <p>Part of the <a href="index.html">gif-captcha</a> research suite — geographic risk analysis visualization</p>
+</footer>
+<script src="shared.js"></script>
+<script>
+"use strict";
+
+// ── Country Data (simplified world map via SVG paths) ───────────────
+// We use a lightweight equirectangular projection with ~50 major countries.
+// Each entry: [ISO2, name, path-d, centroidX, centroidY]
+
+var COUNTRIES = [
+    ["US","United States","M 55 145 L 130 145 L 135 160 L 125 175 L 55 175 Z M 15 145 L 45 145 L 42 175 L 10 170 Z",85,160],
+    ["CA","Canada","M 55 95 L 140 95 L 145 140 L 55 140 Z",95,118],
+    ["MX","Mexico","M 55 175 L 95 175 L 100 205 L 70 210 L 55 195 Z",78,192],
+    ["BR","Brazil","M 175 220 L 220 200 L 240 230 L 230 280 L 190 285 L 170 260 Z",205,245],
+    ["AR","Argentina","M 180 285 L 210 280 L 215 340 L 190 350 L 175 320 Z",195,315],
+    ["CO","Colombia","M 150 195 L 175 190 L 180 215 L 160 220 Z",165,205],
+    ["GB","Great Britain","M 370 115 L 378 110 L 382 125 L 374 130 Z",376,120],
+    ["FR","France","M 375 130 L 395 125 L 400 145 L 380 150 Z",388,138],
+    ["DE","Germany","M 395 115 L 410 112 L 415 135 L 398 135 Z",405,124],
+    ["ES","Spain","M 365 140 L 385 138 L 388 158 L 368 160 Z",377,150],
+    ["IT","Italy","M 400 135 L 412 130 L 418 160 L 405 165 Z",409,148],
+    ["PT","Portugal","M 358 142 L 365 140 L 368 160 L 360 162 Z",363,152],
+    ["NL","Netherlands","M 388 112 L 395 110 L 396 118 L 389 120 Z",392,115],
+    ["SE","Sweden","M 405 72 L 415 68 L 420 105 L 410 108 Z",413,88],
+    ["NO","Norway","M 390 65 L 405 60 L 408 100 L 395 105 Z",400,82],
+    ["FI","Finland","M 420 65 L 435 62 L 438 100 L 425 102 Z",430,82],
+    ["PL","Poland","M 410 112 L 428 110 L 430 130 L 412 132 Z",420,121],
+    ["UA","Ukraine","M 430 112 L 460 108 L 462 130 L 432 132 Z",447,120],
+    ["RO","Romania","M 428 130 L 448 128 L 450 142 L 430 144 Z",440,136],
+    ["RU","Russia","M 440 55 L 620 50 L 625 120 L 460 105 Z",540,82],
+    ["CN","China","M 560 130 L 625 125 L 635 180 L 575 185 Z",600,155],
+    ["JP","Japan","M 645 135 L 655 130 L 660 165 L 650 170 Z",652,150],
+    ["KR","South Korea","M 635 145 L 643 142 L 645 160 L 637 162 Z",640,152],
+    ["IN","India","M 530 170 L 565 165 L 575 220 L 545 230 L 525 200 Z",550,195],
+    ["PK","Pakistan","M 518 155 L 540 150 L 545 180 L 525 185 Z",532,168],
+    ["BD","Bangladesh","M 565 178 L 575 175 L 578 190 L 568 192 Z",572,184],
+    ["ID","Indonesia","M 580 225 L 640 220 L 645 240 L 585 245 Z",612,233],
+    ["TH","Thailand","M 575 185 L 588 182 L 592 210 L 578 212 Z",584,198],
+    ["VN","Vietnam","M 590 178 L 600 175 L 605 210 L 595 212 Z",598,194],
+    ["PH","Philippines","M 620 185 L 632 182 L 635 210 L 623 212 Z",628,198],
+    ["AU","Australia","M 590 280 L 660 275 L 668 330 L 595 335 Z",630,305],
+    ["NZ","New Zealand","M 672 320 L 682 318 L 685 345 L 675 348 Z",678,333],
+    ["ZA","South Africa","M 410 290 L 440 285 L 445 320 L 415 325 Z",428,305],
+    ["NG","Nigeria","M 385 210 L 405 208 L 408 230 L 388 232 Z",397,220],
+    ["EG","Egypt","M 420 160 L 445 157 L 448 185 L 423 187 Z",435,173],
+    ["KE","Kenya","M 440 225 L 455 222 L 458 248 L 443 250 Z",450,237],
+    ["MA","Morocco","M 358 155 L 378 152 L 380 172 L 360 174 Z",370,163],
+    ["SA","Saudi Arabia","M 455 165 L 490 160 L 495 195 L 460 200 Z",475,180],
+    ["AE","UAE","M 495 180 L 508 178 L 510 192 L 497 194 Z",503,186],
+    ["IL","Israel","M 442 160 L 448 158 L 450 172 L 444 174 Z",446,166],
+    ["TR","Turkey","M 425 140 L 460 136 L 462 155 L 428 158 Z",444,148],
+    ["IR","Iran","M 470 148 L 505 144 L 510 178 L 475 182 Z",490,163],
+    ["KP","North Korea","M 628 132 L 638 130 L 640 145 L 630 147 Z",634,138],
+    ["SG","Singapore","M 595 222 L 600 221 L 601 226 L 596 227 Z",598,224],
+    ["MY","Malaysia","M 585 215 L 605 212 L 608 225 L 588 228 Z",597,220],
+    ["CL","Chile","M 165 290 L 175 285 L 180 350 L 170 355 Z",173,320],
+    ["PE","Peru","M 140 220 L 165 215 L 170 260 L 145 265 Z",155,240],
+    ["SE2","Sweden","M 405 72 L 415 68 L 420 105 L 410 108 Z",413,88]
+];
+// Remove duplicate SE2
+COUNTRIES = COUNTRIES.filter(function(c){ return c[0] !== "SE2"; });
+
+var HIGH_RISK = ["CN","RU","KP","IR","NG","VN","PK","BD"];
+var MED_RISK = ["BR","IN","ID","PH","UA","RO","TH","EG"];
+var COUNTRY_NAMES = {};
+var COUNTRY_COORDS = {};
+COUNTRIES.forEach(function(c){ COUNTRY_NAMES[c[0]] = c[1]; COUNTRY_COORDS[c[0]] = { x: c[3], y: c[4] }; });
+
+// ── State ──────────────────────────────────────────────────────────
+var countryData = {}; // { CC: { attempts, blocked, solved, riskSum } }
+var simHistory = [];
+var sortCol = "avgRisk";
+var sortAsc = false;
+
+function ensureCountry(cc) {
+    if (!countryData[cc]) countryData[cc] = { attempts: 0, blocked: 0, solved: 0, riskSum: 0 };
+}
+
+// ── Build SVG Map ──────────────────────────────────────────────────
+function buildMap() {
+    var svg = '<svg viewBox="0 0 700 380" xmlns="http://www.w3.org/2000/svg">';
+    svg += '<rect width="700" height="380" fill="var(--bg)" rx="8"/>';
+    // Grid lines
+    for (var gx = 0; gx <= 700; gx += 70) svg += '<line x1="'+gx+'" y1="0" x2="'+gx+'" y2="380" stroke="var(--border)" stroke-width="0.3" opacity="0.3"/>';
+    for (var gy = 0; gy <= 380; gy += 38) svg += '<line x1="0" y1="'+gy+'" x2="700" y2="'+gy+'" stroke="var(--border)" stroke-width="0.3" opacity="0.3"/>';
+    COUNTRIES.forEach(function(c) {
+        svg += '<path id="map-'+c[0]+'" d="'+c[2]+'" fill="var(--surface)" data-cc="'+c[0]+'" data-name="'+c[1]+'"/>';
+    });
+    // Country labels
+    COUNTRIES.forEach(function(c) {
+        svg += '<text x="'+c[3]+'" y="'+(c[4]+3)+'" text-anchor="middle" font-size="7" fill="var(--muted)" pointer-events="none">'+c[0]+'</text>';
+    });
+    svg += '</svg>';
+    document.getElementById("mapSvg").innerHTML = svg;
+
+    // Attach events
+    var paths = document.querySelectorAll("#mapSvg path");
+    paths.forEach(function(p) {
+        p.addEventListener("mousemove", showTooltip);
+        p.addEventListener("mouseleave", hideTooltip);
+    });
+}
+
+// ── Color Logic ────────────────────────────────────────────────────
+function riskColor(score) {
+    // 0=green, 0.5=yellow, 1=red
+    if (score <= 0.5) {
+        var t = score / 0.5;
+        var r = Math.round(63 + t * (210-63));
+        var g = Math.round(185 + t * (153-185));
+        var b = Math.round(80 + t * (34-80));
+        return "rgb("+r+","+g+","+b+")";
+    } else {
+        var t2 = (score - 0.5) / 0.5;
+        var r2 = Math.round(210 + t2 * (248-210));
+        var g2 = Math.round(153 + t2 * (81-153));
+        var b2 = Math.round(34 + t2 * (73-34));
+        return "rgb("+r2+","+g2+","+b2+")";
+    }
+}
+
+function repaint() {
+    var mode = document.getElementById("colorMode").value;
+    var maxVol = 1;
+    if (mode === "volume") {
+        Object.keys(countryData).forEach(function(cc) { if (countryData[cc].attempts > maxVol) maxVol = countryData[cc].attempts; });
+    }
+    COUNTRIES.forEach(function(c) {
+        var el = document.getElementById("map-"+c[0]);
+        if (!el) return;
+        var d = countryData[c[0]];
+        if (!d || d.attempts === 0) { el.style.fill = "var(--surface)"; return; }
+        var val;
+        if (mode === "risk") val = d.riskSum / d.attempts;
+        else if (mode === "volume") val = d.attempts / maxVol;
+        else val = 1 - (d.solved / d.attempts); // invert so low solve = high color
+        el.style.fill = riskColor(Math.min(1, val));
+    });
+
+    // Update legend labels
+    var ll = document.getElementById("legendLow");
+    var lh = document.getElementById("legendHigh");
+    if (mode === "risk") { ll.textContent = "Low Risk"; lh.textContent = "High Risk"; }
+    else if (mode === "volume") { ll.textContent = "Few Attempts"; lh.textContent = "Many Attempts"; }
+    else { ll.textContent = "High Solve Rate"; lh.textContent = "Low Solve Rate"; }
+}
+
+// ── Tooltip ────────────────────────────────────────────────────────
+function showTooltip(e) {
+    var cc = e.target.getAttribute("data-cc");
+    if (!cc) return;
+    var d = countryData[cc];
+    var tt = document.getElementById("tooltip");
+    document.getElementById("ttCountry").textContent = (COUNTRY_NAMES[cc] || cc) + " (" + cc + ")";
+    if (d && d.attempts > 0) {
+        document.getElementById("ttRisk").textContent = (d.riskSum / d.attempts).toFixed(3);
+        document.getElementById("ttAttempts").textContent = d.attempts.toLocaleString();
+        document.getElementById("ttBlocked").textContent = d.blocked.toLocaleString();
+        document.getElementById("ttSolve").textContent = (d.solved / d.attempts * 100).toFixed(1) + "%";
+        var avg = d.riskSum / d.attempts;
+        document.getElementById("ttLevel").textContent = avg >= 0.8 ? "critical" : avg >= 0.5 ? "high" : avg >= 0.3 ? "medium" : "low";
+    } else {
+        document.getElementById("ttRisk").textContent = "—";
+        document.getElementById("ttAttempts").textContent = "0";
+        document.getElementById("ttBlocked").textContent = "0";
+        document.getElementById("ttSolve").textContent = "—";
+        document.getElementById("ttLevel").textContent = "—";
+    }
+    tt.style.display = "block";
+    tt.style.left = (e.clientX + 15) + "px";
+    tt.style.top = (e.clientY - 10) + "px";
+}
+function hideTooltip() { document.getElementById("tooltip").style.display = "none"; }
+
+// ── Simulation ─────────────────────────────────────────────────────
+function pickRandom(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+function randBetween(a, b) { return a + Math.random() * (b - a); }
+
+var SIM_PROFILES = {
+    normal: function() {
+        var pools = { low: ["US","CA","GB","FR","DE","AU","JP","KR","NZ","SE","NO","NL","IT","ES","PT","FI","PL","IL","SG","AE","CL"], med: MED_RISK, high: HIGH_RISK };
+        var r = Math.random();
+        var cc = r < 0.6 ? pickRandom(pools.low) : r < 0.85 ? pickRandom(pools.med) : pickRandom(pools.high);
+        var isProxy = Math.random() < 0.05;
+        var solved = Math.random() < (HIGH_RISK.indexOf(cc) !== -1 ? 0.4 : MED_RISK.indexOf(cc) !== -1 ? 0.65 : 0.9);
+        return { cc: cc, isProxy: isProxy, isDatacenter: Math.random() < 0.03, solved: solved };
+    },
+    botwave: function() {
+        var cc = pickRandom(HIGH_RISK);
+        return { cc: cc, isProxy: Math.random() < 0.7, isDatacenter: Math.random() < 0.5, solved: Math.random() < 0.15 };
+    },
+    geodist: function() {
+        var cc = pickRandom(COUNTRIES)[0];
+        return { cc: cc, isProxy: Math.random() < 0.1, isDatacenter: Math.random() < 0.05, solved: Math.random() < 0.6 };
+    },
+    proxy: function() {
+        var cc = pickRandom(["RU","CN","BR","IN","UA","RO","VN","ID"]);
+        return { cc: cc, isProxy: true, isDatacenter: Math.random() < 0.6, solved: Math.random() < 0.25 };
+    },
+    targeted: function() {
+        var target = pickRandom(["US","GB","DE"]);
+        var cc = Math.random() < 0.7 ? target : pickRandom(HIGH_RISK);
+        return { cc: cc, isProxy: cc !== target ? Math.random() < 0.5 : Math.random() < 0.05, isDatacenter: cc !== target ? Math.random() < 0.3 : false, solved: Math.random() < (cc === target ? 0.85 : 0.2) };
+    }
+};
+
+function computeRisk(entry) {
+    var score = 0;
+    if (HIGH_RISK.indexOf(entry.cc) !== -1) score += 0.4;
+    else if (MED_RISK.indexOf(entry.cc) !== -1) score += 0.2;
+    if (entry.isProxy) score += 0.35;
+    if (entry.isDatacenter) score += 0.3;
+    return Math.min(1, score);
+}
+
+function runSimulation() {
+    var preset = document.getElementById("simPreset").value;
+    var count = parseInt(document.getElementById("simCount").value) || 200;
+    var gen = SIM_PROFILES[preset];
+    var logEl = document.getElementById("simLog");
+    var entries = [];
+
+    for (var i = 0; i < count; i++) {
+        var entry = gen();
+        var risk = computeRisk(entry);
+        var action = risk >= 0.8 ? "block" : risk >= 0.5 ? "challenge" : risk >= 0.3 ? "warn" : "allow";
+        var blocked = action === "block";
+
+        ensureCountry(entry.cc);
+        countryData[entry.cc].attempts++;
+        countryData[entry.cc].riskSum += risk;
+        if (blocked) countryData[entry.cc].blocked++;
+        if (entry.solved) countryData[entry.cc].solved++;
+
+        entries.push({ cc: entry.cc, risk: risk, action: action, proxy: entry.isProxy });
+    }
+
+    // Log summary
+    var summary = {};
+    entries.forEach(function(e) {
+        if (!summary[e.action]) summary[e.action] = 0;
+        summary[e.action]++;
+    });
+    var logLine = '<div class="entry">[' + new Date().toLocaleTimeString() + '] <strong>' + preset + '</strong> ×' + count + ' → ';
+    logLine += Object.keys(summary).map(function(k){ return k + ': ' + summary[k]; }).join(', ');
+    logLine += '</div>';
+    if (simHistory.length === 0) logEl.innerHTML = '';
+    simHistory.push(logLine);
+    logEl.innerHTML = simHistory.join('');
+    logEl.scrollTop = logEl.scrollHeight;
+
+    repaint();
+    updateStats();
+    updateTable();
+}
+
+function resetAll() {
+    countryData = {};
+    simHistory = [];
+    document.getElementById("simLog").innerHTML = '<div class="entry" style="color:var(--muted)">Reset. Run a simulation...</div>';
+    repaint();
+    updateStats();
+    updateTable();
+}
+
+// ── Stats ──────────────────────────────────────────────────────────
+function updateStats() {
+    var total = 0, blocked = 0, riskSum = 0, countries = 0;
+    Object.keys(countryData).forEach(function(cc) {
+        var d = countryData[cc];
+        if (d.attempts > 0) {
+            countries++;
+            total += d.attempts;
+            blocked += d.blocked;
+            riskSum += d.riskSum;
+        }
+    });
+    document.getElementById("statTotal").textContent = total.toLocaleString();
+    document.getElementById("statCountries").textContent = countries;
+    document.getElementById("statBlocked").textContent = blocked.toLocaleString();
+    document.getElementById("statAvgRisk").textContent = total > 0 ? (riskSum / total).toFixed(3) : "0.000";
+}
+
+// ── Table ──────────────────────────────────────────────────────────
+function updateTable() {
+    var rows = [];
+    Object.keys(countryData).forEach(function(cc) {
+        var d = countryData[cc];
+        if (d.attempts === 0) return;
+        var avgRisk = d.riskSum / d.attempts;
+        rows.push({ country: cc, name: COUNTRY_NAMES[cc] || cc, attempts: d.attempts, blocked: d.blocked, solveRate: d.solved / d.attempts, avgRisk: avgRisk, level: avgRisk >= 0.8 ? "critical" : avgRisk >= 0.5 ? "high" : avgRisk >= 0.3 ? "medium" : "low" });
+    });
+
+    var levelOrder = { critical: 4, high: 3, medium: 2, low: 1 };
+    rows.sort(function(a, b) {
+        var va = sortCol === "level" ? levelOrder[a.level] : a[sortCol];
+        var vb = sortCol === "level" ? levelOrder[b.level] : b[sortCol];
+        if (typeof va === "string") { va = va.toLowerCase(); vb = vb.toLowerCase(); }
+        return sortAsc ? (va > vb ? 1 : -1) : (va < vb ? 1 : -1);
+    });
+
+    var tbody = document.getElementById("riskTableBody");
+    tbody.innerHTML = rows.map(function(r) {
+        return '<tr>' +
+            '<td><strong>' + sanitize(r.name) + '</strong> <span style="color:var(--muted)">(' + r.country + ')</span></td>' +
+            '<td>' + r.attempts.toLocaleString() + '</td>' +
+            '<td>' + r.blocked.toLocaleString() + '</td>' +
+            '<td>' + (r.solveRate * 100).toFixed(1) + '%</td>' +
+            '<td>' + r.avgRisk.toFixed(3) + '</td>' +
+            '<td><span class="badge badge-' + r.level + '">' + r.level + '</span></td>' +
+            '</tr>';
+    }).join('');
+}
+
+function sortTable(col) {
+    if (sortCol === col) sortAsc = !sortAsc;
+    else { sortCol = col; sortAsc = false; }
+    updateTable();
+}
+
+// ── Init ───────────────────────────────────────────────────────────
+buildMap();
+</script>
+</body>
+</html>

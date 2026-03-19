@@ -355,6 +355,7 @@ gif-captcha/
 ├── effectiveness.html    # Effectiveness Dashboard
 ├── embed.html            # Embed Widget Generator
 ├── frame-inspector.html  # GIF Frame Inspector
+├── geo-risk-map.html     # Geo Risk Map — interactive geographic risk visualization
 ├── heatmap.html          # Interaction Heatmap
 ├── leaderboard.html      # Performance Leaderboard
 ├── playground.html       # Challenge Playground

@@ -672,31 +672,66 @@ function createTrustScoreEngine(options) {
    * @param {Object} state
    */
   function importState(state) {
-    if (!state || !state.clients) return;
+    if (!state || typeof state !== "object" || !state.clients || typeof state.clients !== "object") return;
+
+    var VALID_ACTIONS = { block: true, challenge: true, softChallenge: true, pass: true };
+    var now = _now();
     var ids = Object.keys(state.clients);
+
     for (var i = 0; i < ids.length; i++) {
       var id = ids[i];
+      // Reject prototype-polluting keys
+      if (id === "__proto__" || id === "constructor" || id === "prototype") continue;
+      if (typeof id !== "string" || !id) continue;
+
       var s = state.clients[id];
+      if (!s || typeof s !== "object") continue;
+
+      // Validate and clamp score to [0, 1]
+      var score = typeof s.score === "number" ? _clamp(s.score, 0, 1) : 0;
+      // Validate action — reject unknown actions to prevent bypass
+      var action = (typeof s.action === "string" && VALID_ACTIONS[s.action]) ? s.action : _determineAction(score);
+      // Validate timestamp — reject future timestamps
+      var ts = typeof s.timestamp === "number" && s.timestamp > 0 ? Math.min(s.timestamp, now) : 0;
+
+      // Validate history entries
+      var history = [];
+      if (Array.isArray(s.history)) {
+        // Cap imported history to maxHistory to prevent memory exhaustion
+        var histSlice = s.history.length > maxHistory ? s.history.slice(s.history.length - maxHistory) : s.history;
+        for (var h = 0; h < histSlice.length; h++) {
+          var he = histSlice[h];
+          if (he && typeof he === "object" && typeof he.score === "number" && typeof he.timestamp === "number") {
+            history.push({
+              score: _clamp(he.score, 0, 1),
+              timestamp: Math.min(he.timestamp, now)
+            });
+          }
+        }
+      }
+
       clients[id] = {
-        score: s.score || 0,
-        action: s.action || "block",
+        score: score,
+        action: action,
         signals: {},
         breakdown: [],
-        timestamp: s.timestamp || 0,
-        history: s.history || [],
-        rawScore: s.score || 0
+        timestamp: ts,
+        history: history,
+        rawScore: score
       };
       clientOrder.push(id);
     }
     _evictIfNeeded();
-    if (state.stats) {
-      totalEvaluations = state.stats.totalEvaluations || 0;
-      if (state.stats.actionCounts) {
+
+    if (state.stats && typeof state.stats === "object") {
+      var te = state.stats.totalEvaluations;
+      if (typeof te === "number" && te >= 0) totalEvaluations = Math.floor(te);
+      if (state.stats.actionCounts && typeof state.stats.actionCounts === "object") {
         var ac = state.stats.actionCounts;
-        actionCounts.block = ac.block || 0;
-        actionCounts.challenge = ac.challenge || 0;
-        actionCounts.softChallenge = ac.softChallenge || 0;
-        actionCounts.pass = ac.pass || 0;
+        if (typeof ac.block === "number" && ac.block >= 0) actionCounts.block = Math.floor(ac.block);
+        if (typeof ac.challenge === "number" && ac.challenge >= 0) actionCounts.challenge = Math.floor(ac.challenge);
+        if (typeof ac.softChallenge === "number" && ac.softChallenge >= 0) actionCounts.softChallenge = Math.floor(ac.softChallenge);
+        if (typeof ac.pass === "number" && ac.pass >= 0) actionCounts.pass = Math.floor(ac.pass);
       }
     }
   }

@@ -742,30 +742,79 @@ function createCaptchaRateLimiter(options) {
       throw new Error("Algorithm mismatch: expected " + algorithm + ", got " + state.algorithm);
     }
 
+    var now = Date.now();
     var count = 0;
-    if (state.store) {
+
+    if (state.store && typeof state.store === "object") {
       var sKeys = Object.keys(state.store);
       for (var i = 0; i < sKeys.length; i++) {
-        store[sKeys[i]] = state.store[sKeys[i]];
+        var sKey = sKeys[i];
+        // Reject prototype-polluting keys
+        if (sKey === "__proto__" || sKey === "constructor" || sKey === "prototype") continue;
+        var entry = state.store[sKey];
+        if (!entry || typeof entry !== "object") continue;
+
+        // Validate entry structure per algorithm
+        if (algorithm === "sliding-window") {
+          if (!Array.isArray(entry.timestamps)) continue;
+          // Filter out non-numeric and future timestamps; reject impossibly large arrays
+          if (entry.timestamps.length > maxRequests * 10) continue;
+          var validTs = [];
+          for (var ti = 0; ti < entry.timestamps.length; ti++) {
+            var t = entry.timestamps[ti];
+            if (typeof t === "number" && t > 0 && t <= now + 60000) validTs.push(t);
+          }
+          store[sKey] = { timestamps: validTs, lastSeen: typeof entry.lastSeen === "number" ? Math.min(entry.lastSeen, now) : now };
+        } else if (algorithm === "token-bucket") {
+          var tokens = typeof entry.tokens === "number" ? entry.tokens : capacity;
+          if (tokens < 0) tokens = 0;
+          if (tokens > capacity) tokens = capacity;
+          store[sKey] = { tokens: tokens, lastRefill: typeof entry.lastRefill === "number" ? Math.min(entry.lastRefill, now) : now, lastSeen: typeof entry.lastSeen === "number" ? Math.min(entry.lastSeen, now) : now };
+        } else {
+          var water = typeof entry.water === "number" ? entry.water : 0;
+          if (water < 0) water = 0;
+          if (water > queueSize * 2) water = queueSize;
+          store[sKey] = { water: water, lastLeak: typeof entry.lastLeak === "number" ? Math.min(entry.lastLeak, now) : now, lastSeen: typeof entry.lastSeen === "number" ? Math.min(entry.lastSeen, now) : now };
+        }
         count++;
       }
     }
-    if (state.bans) {
+
+    if (state.bans && typeof state.bans === "object") {
       var bKeys = Object.keys(state.bans);
       for (var j = 0; j < bKeys.length; j++) {
-        bans[bKeys[j]] = state.bans[bKeys[j]];
+        var bKey = bKeys[j];
+        if (bKey === "__proto__" || bKey === "constructor" || bKey === "prototype") continue;
+        var ban = state.bans[bKey];
+        if (!ban || typeof ban !== "object") continue;
+        // Only import bans that haven't expired
+        if (typeof ban.expiresAt !== "number" || ban.expiresAt <= now) continue;
+        // Cap ban duration to prevent indefinite bans from crafted state
+        if (ban.expiresAt - now > banDurationMs * 2) ban.expiresAt = now + banDurationMs;
+        bans[bKey] = { expiresAt: ban.expiresAt, bannedAt: typeof ban.bannedAt === "number" ? ban.bannedAt : now };
       }
     }
-    if (state.strikes) {
+
+    if (state.strikes && typeof state.strikes === "object") {
       var kKeys = Object.keys(state.strikes);
       for (var k = 0; k < kKeys.length; k++) {
-        strikes[kKeys[k]] = state.strikes[kKeys[k]];
+        var kKey = kKeys[k];
+        if (kKey === "__proto__" || kKey === "constructor" || kKey === "prototype") continue;
+        var val = state.strikes[kKey];
+        // Only accept non-negative integers, cap at a reasonable maximum
+        if (typeof val === "number" && val >= 0 && val <= banThreshold * 3) {
+          strikes[kKey] = Math.floor(val);
+        }
       }
     }
-    if (state.stats) {
-      totalAllowed += state.stats.totalAllowed || 0;
-      totalRejected += state.stats.totalRejected || 0;
-      totalBanned += state.stats.totalBanned || 0;
+
+    if (state.stats && typeof state.stats === "object") {
+      var sa = state.stats.totalAllowed;
+      var sr = state.stats.totalRejected;
+      var sb = state.stats.totalBanned;
+      if (typeof sa === "number" && sa >= 0) totalAllowed += Math.floor(sa);
+      if (typeof sr === "number" && sr >= 0) totalRejected += Math.floor(sr);
+      if (typeof sb === "number" && sb >= 0) totalBanned += Math.floor(sb);
     }
     return count;
   }

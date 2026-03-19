@@ -26,6 +26,8 @@
 
 "use strict";
 
+var csvUtils = require("./csv-utils");
+
 const STAGES = ["presented", "attempted", "completed", "solved"];
 
 function stageIndex(stage) {
@@ -206,7 +208,7 @@ function createFunnelAnalyzer(opts) {
   function exportCSV() {
     var lines = ["sessionId,cohort,stage,timestamp,timeMs"];
     records.forEach(function (r) {
-      lines.push([r.sessionId, r.cohort, r.stage, new Date(r.timestamp).toISOString(), r.timeMs != null ? r.timeMs : ""].join(","));
+      lines.push(csvUtils.csvRow([r.sessionId, r.cohort, r.stage, new Date(r.timestamp).toISOString(), r.timeMs != null ? r.timeMs : ""]));
     });
     return lines.join("\n");
   }

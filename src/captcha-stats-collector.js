@@ -21,6 +21,8 @@
 
 "use strict";
 
+var csvUtils = require("./csv-utils");
+
 /**
  * Compute percentile from a sorted array of numbers.
  * @param {number[]} sorted
@@ -289,7 +291,7 @@ function createStatsCollector(options = {}) {
     const header = "window_start,window_end,total,solved,failed,solve_rate,p50_ms,p90_ms,p95_ms,p99_ms,mean_ms";
     const rows = windows.map(w => {
       const ts = _computeTimeStats(w.solveTimes);
-      return [
+      return csvUtils.csvRow([
         new Date(w.start).toISOString(),
         new Date(w.end).toISOString(),
         w.total,
@@ -301,7 +303,7 @@ function createStatsCollector(options = {}) {
         ts.percentiles.p95 ?? "",
         ts.percentiles.p99 ?? "",
         ts.mean ?? ""
-      ].join(",");
+      ]);
     });
     return [header, ...rows].join("\n");
   }

@@ -24,6 +24,8 @@
 
 "use strict";
 
+var csvUtils = require("./csv-utils");
+
 /**
  * Known event types for validation.
  */
@@ -101,25 +103,10 @@ function createEntry(event, data, opts) {
 }
 
 /**
- * Escape a CSV field value.
- * @param {*} val
- * @returns {string}
+ * CSV escaping delegated to shared csv-utils module.
+ * @see csv-utils.js
  */
-function csvEscape(val) {
-  if (val == null) return '';
-  let s = String(val);
-  // CWE-1236: Prevent CSV injection — spreadsheet applications interpret
-  // leading =, +, -, @, \t, \r as formulas.  Prefix with a single quote
-  // (the standard Excel "text" escape) and wrap in quotes so the quote
-  // is preserved literally when the CSV is parsed.
-  if (/^[=+\-@\t\r]/.test(s)) {
-    s = "'" + s;
-  }
-  if (s.includes(',') || s.includes('"') || s.includes('\n') || s.includes("'")) {
-    return '"' + s.replace(/"/g, '""') + '"';
-  }
-  return s;
-}
+var csvEscape = csvUtils.csvEscape;
 
 /**
  * Create a CAPTCHA audit log.

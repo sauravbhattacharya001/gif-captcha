@@ -1,0 +1,1058 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src https: data:; frame-ancestors 'none'; base-uri 'self'; form-action 'none';">
+    <meta name="referrer" content="no-referrer">
+    <title>GIF CAPTCHA — Bot Signature Database 🤖</title>
+    <link rel="stylesheet" href="shared.css">
+    <style>
+        .container { max-width: 1100px; }
+
+        /* Stats */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        .stat-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.2rem;
+            text-align: center;
+        }
+        .stat-label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--muted);
+            margin-bottom: 0.3rem;
+        }
+        .stat-value {
+            font-size: 1.6rem;
+            font-weight: 700;
+        }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+        }
+        .tab-btn {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            color: var(--muted);
+            padding: 0.5rem 1.2rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: all 0.2s;
+        }
+        .tab-btn:hover { border-color: var(--accent); color: var(--text); }
+        .tab-btn.active { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 600; }
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; }
+
+        /* Section card */
+        .section-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .section-card h3 {
+            font-size: 1rem;
+            margin-bottom: 1rem;
+            color: var(--accent);
+        }
+
+        /* Signature list */
+        .sig-list { display: flex; flex-direction: column; gap: 0.8rem; }
+        .sig-item {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1rem 1.2rem;
+            display: flex;
+            align-items: flex-start;
+            gap: 1rem;
+            transition: border-color 0.2s;
+            cursor: pointer;
+        }
+        .sig-item:hover { border-color: var(--accent); }
+        .sig-item.selected { border-color: var(--accent); background: rgba(88,166,255,0.06); }
+        .sig-icon {
+            width: 40px; height: 40px;
+            border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.3rem;
+            flex-shrink: 0;
+        }
+        .sig-body { flex: 1; min-width: 0; }
+        .sig-name { font-weight: 600; font-size: 0.95rem; margin-bottom: 0.2rem; }
+        .sig-desc { font-size: 0.8rem; color: var(--muted); margin-bottom: 0.4rem; }
+        .sig-meta { display: flex; gap: 0.8rem; flex-wrap: wrap; }
+        .sig-tag {
+            font-size: 0.7rem;
+            padding: 0.15rem 0.5rem;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+        .sig-tag.critical { background: var(--red-bg); color: var(--red); }
+        .sig-tag.high { background: var(--orange-bg); color: var(--orange); }
+        .sig-tag.medium { background: var(--yellow-bg); color: var(--yellow); }
+        .sig-tag.low { background: var(--green-bg); color: var(--green); }
+
+        /* Behavior canvas */
+        .behavior-canvas {
+            width: 100%;
+            height: 200px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            display: block;
+        }
+
+        /* Comparison */
+        .compare-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+        }
+        @media (max-width: 700px) { .compare-grid { grid-template-columns: 1fr; } }
+        .compare-col h4 {
+            font-size: 0.85rem;
+            margin-bottom: 0.8rem;
+            text-align: center;
+        }
+        .compare-col h4.human { color: var(--green); }
+        .compare-col h4.bot { color: var(--red); }
+
+        /* Trait bars */
+        .trait-row { margin-bottom: 0.8rem; }
+        .trait-label {
+            font-size: 0.75rem;
+            color: var(--muted);
+            margin-bottom: 0.2rem;
+            display: flex;
+            justify-content: space-between;
+        }
+        .trait-bar-bg {
+            height: 8px;
+            background: var(--bg);
+            border-radius: 4px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+        }
+        .trait-bar {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.5s ease;
+        }
+
+        /* Detail panel */
+        .detail-panel {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.2rem;
+        }
+        .detail-panel h4 { font-size: 0.95rem; margin-bottom: 0.8rem; }
+        .detail-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 0.8rem;
+            margin-bottom: 1rem;
+        }
+        .detail-field label { font-size: 0.7rem; text-transform: uppercase; color: var(--muted); display: block; margin-bottom: 0.2rem; }
+        .detail-field span { font-size: 0.9rem; font-weight: 600; }
+
+        /* Indicators */
+        .indicator-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 0.5rem;
+        }
+        .indicator {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.6rem 0.8rem;
+            text-align: center;
+        }
+        .indicator-val { font-size: 1.1rem; font-weight: 700; }
+        .indicator-lbl { font-size: 0.65rem; color: var(--muted); text-transform: uppercase; }
+
+        /* Form */
+        .form-row { display: flex; gap: 0.8rem; margin-bottom: 0.8rem; flex-wrap: wrap; }
+        .form-group { flex: 1; min-width: 180px; }
+        .form-group label { display: block; font-size: 0.75rem; color: var(--muted); margin-bottom: 0.3rem; }
+        .form-group input, .form-group select, .form-group textarea {
+            width: 100%;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text);
+            padding: 0.5rem 0.7rem;
+            font-size: 0.85rem;
+        }
+        .form-group textarea { resize: vertical; min-height: 60px; font-family: inherit; }
+
+        /* Filters */
+        .filter-bar {
+            display: flex;
+            gap: 0.8rem;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .search-input {
+            flex: 1;
+            min-width: 200px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text);
+            padding: 0.5rem 1rem;
+            font-size: 0.85rem;
+        }
+        .filter-select {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text);
+            padding: 0.5rem 0.8rem;
+            font-size: 0.85rem;
+        }
+
+        /* Pattern viz */
+        .pattern-row {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.4rem;
+            font-size: 0.8rem;
+            font-family: 'Consolas', 'Monaco', monospace;
+        }
+        .pattern-label { width: 100px; color: var(--muted); text-align: right; flex-shrink: 0; }
+        .pattern-blocks { display: flex; gap: 2px; flex: 1; }
+        .pattern-block {
+            height: 20px;
+            border-radius: 3px;
+            flex: 1;
+            max-width: 30px;
+            position: relative;
+        }
+        .pattern-block[title]:hover::after {
+            content: attr(title);
+            position: absolute;
+            bottom: 110%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--surface);
+            color: var(--text);
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            font-size: 0.65rem;
+            white-space: nowrap;
+            border: 1px solid var(--border);
+            z-index: 10;
+        }
+
+        /* Export buttons */
+        .export-bar {
+            display: flex;
+            gap: 0.5rem;
+            justify-content: flex-end;
+            margin-top: 1rem;
+        }
+
+        /* Match result */
+        .match-result {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1rem 1.2rem;
+            margin-top: 1rem;
+        }
+        .match-score {
+            font-size: 2rem;
+            font-weight: 700;
+            text-align: center;
+            margin-bottom: 0.5rem;
+        }
+        .match-details { font-size: 0.8rem; color: var(--muted); text-align: center; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🤖 Bot Signature Database</h1>
+        <p class="subtitle">Catalog, analyze, and match bot solving patterns against human behavior</p>
+        <div class="nav-links">
+            <a href="index.html">Home</a>
+            <a href="dashboard.html">Dashboard</a>
+            <a href="fraud-rings.html">Fraud Rings</a>
+            <a href="fleet.html">Fleet Monitor</a>
+            <a href="geo-risk-map.html">Geo Risk</a>
+        </div>
+    </div>
+
+    <div class="container" style="padding:2rem 1.5rem;">
+        <!-- Stats -->
+        <div class="stats-grid" id="statsGrid"></div>
+
+        <!-- Tabs -->
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="catalog">📋 Catalog</button>
+            <button class="tab-btn" data-tab="compare">⚖️ Compare</button>
+            <button class="tab-btn" data-tab="match">🔍 Match</button>
+            <button class="tab-btn" data-tab="create">➕ Create</button>
+        </div>
+
+        <!-- Catalog Tab -->
+        <div class="tab-panel active" id="tab-catalog">
+            <div class="filter-bar">
+                <input class="search-input" id="sigSearch" placeholder="Search signatures..." />
+                <select class="filter-select" id="severityFilter">
+                    <option value="">All Severities</option>
+                    <option value="critical">Critical</option>
+                    <option value="high">High</option>
+                    <option value="medium">Medium</option>
+                    <option value="low">Low</option>
+                </select>
+                <select class="filter-select" id="categoryFilter">
+                    <option value="">All Categories</option>
+                    <option value="timing">Timing</option>
+                    <option value="interaction">Interaction</option>
+                    <option value="network">Network</option>
+                    <option value="behavioral">Behavioral</option>
+                </select>
+            </div>
+            <div class="sig-list" id="sigList"></div>
+            <div class="section-card" id="sigDetail" style="margin-top:1.5rem; display:none;">
+                <h3 id="detailTitle">Signature Detail</h3>
+                <div class="detail-grid" id="detailGrid"></div>
+                <h4 style="font-size:0.85rem; margin-bottom:0.8rem;">Behavioral Pattern</h4>
+                <div id="patternViz"></div>
+                <h4 style="font-size:0.85rem; margin:1rem 0 0.8rem;">Detection Indicators</h4>
+                <div class="indicator-grid" id="indicatorGrid"></div>
+                <div class="export-bar">
+                    <button class="btn btn-sm" onclick="exportSignature('json')">📄 JSON</button>
+                    <button class="btn btn-sm" onclick="exportSignature('csv')">📊 CSV</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Compare Tab -->
+        <div class="tab-panel" id="tab-compare">
+            <div class="section-card">
+                <h3>Human vs Bot Behavior Comparison</h3>
+                <div style="margin-bottom:1rem;">
+                    <select class="filter-select" id="compareSig" style="min-width:250px;"></select>
+                </div>
+                <div class="compare-grid">
+                    <div class="compare-col">
+                        <h4 class="human">👤 Human Baseline</h4>
+                        <canvas class="behavior-canvas" id="humanCanvas"></canvas>
+                        <div id="humanTraits" style="margin-top:1rem;"></div>
+                    </div>
+                    <div class="compare-col">
+                        <h4 class="bot">🤖 Bot Pattern</h4>
+                        <canvas class="behavior-canvas" id="botCanvas"></canvas>
+                        <div id="botTraits" style="margin-top:1rem;"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="section-card">
+                <h3>Trait Comparison</h3>
+                <div id="traitComparison"></div>
+            </div>
+        </div>
+
+        <!-- Match Tab -->
+        <div class="tab-panel" id="tab-match">
+            <div class="section-card">
+                <h3>Pattern Matcher</h3>
+                <p style="font-size:0.85rem; color:var(--muted); margin-bottom:1rem;">
+                    Input observed behavior metrics to match against known bot signatures.
+                </p>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Avg Solve Time (ms)</label>
+                        <input type="number" id="matchTime" value="1200" min="0" />
+                    </div>
+                    <div class="form-group">
+                        <label>Time Variance (ms)</label>
+                        <input type="number" id="matchVariance" value="50" min="0" />
+                    </div>
+                    <div class="form-group">
+                        <label>Mouse Movements</label>
+                        <input type="number" id="matchMouse" value="3" min="0" />
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Click Precision (%)</label>
+                        <input type="number" id="matchPrecision" value="99" min="0" max="100" />
+                    </div>
+                    <div class="form-group">
+                        <label>Request Interval (ms)</label>
+                        <input type="number" id="matchInterval" value="100" min="0" />
+                    </div>
+                    <div class="form-group">
+                        <label>Failed Attempts (%)</label>
+                        <input type="number" id="matchFail" value="2" min="0" max="100" />
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Session Duration (s)</label>
+                        <input type="number" id="matchSession" value="5" min="0" />
+                    </div>
+                    <div class="form-group">
+                        <label>JS Execution (ms)</label>
+                        <input type="number" id="matchJS" value="0" min="0" />
+                    </div>
+                    <div class="form-group" style="display:flex; align-items:flex-end;">
+                        <button class="btn btn-primary" onclick="runMatch()" style="width:100%;">🔍 Match</button>
+                    </div>
+                </div>
+                <div id="matchResults"></div>
+            </div>
+        </div>
+
+        <!-- Create Tab -->
+        <div class="tab-panel" id="tab-create">
+            <div class="section-card">
+                <h3>Create New Signature</h3>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Signature Name *</label>
+                        <input type="text" id="newName" placeholder="e.g. Selenium Grid Bot" />
+                    </div>
+                    <div class="form-group">
+                        <label>Category</label>
+                        <select id="newCategory">
+                            <option value="timing">Timing</option>
+                            <option value="interaction">Interaction</option>
+                            <option value="network">Network</option>
+                            <option value="behavioral">Behavioral</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Severity</label>
+                        <select id="newSeverity">
+                            <option value="critical">Critical</option>
+                            <option value="high">High</option>
+                            <option value="medium">Medium</option>
+                            <option value="low">Low</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group" style="flex:2;">
+                        <label>Description</label>
+                        <textarea id="newDesc" placeholder="Describe the bot's behavioral pattern..."></textarea>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Avg Solve Time (ms)</label>
+                        <input type="number" id="newTime" value="500" min="0" />
+                    </div>
+                    <div class="form-group">
+                        <label>Time Variance (ms)</label>
+                        <input type="number" id="newVariance" value="10" min="0" />
+                    </div>
+                    <div class="form-group">
+                        <label>Mouse Movements</label>
+                        <input type="number" id="newMouse" value="0" min="0" />
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Click Precision (%)</label>
+                        <input type="number" id="newPrecision" value="100" min="0" max="100" />
+                    </div>
+                    <div class="form-group">
+                        <label>Request Interval (ms)</label>
+                        <input type="number" id="newInterval" value="50" min="0" />
+                    </div>
+                    <div class="form-group">
+                        <label>Evasion Techniques</label>
+                        <input type="text" id="newEvasion" placeholder="e.g. proxy rotation, header spoof" />
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Countermeasures</label>
+                        <textarea id="newCounter" placeholder="Recommended detection/blocking strategies..."></textarea>
+                    </div>
+                </div>
+                <div style="text-align:right; margin-top:0.5rem;">
+                    <button class="btn btn-primary" onclick="createSignature()">💾 Save Signature</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <p>GIF CAPTCHA — Bot Signature Database</p>
+        <p><a href="https://github.com/sauravbhattacharya001/gif-captcha">GitHub</a></p>
+    </footer>
+
+    <script src="shared.js"></script>
+    <script>
+    (function(){
+        // ===== Built-in Bot Signatures =====
+        var SIGNATURES = [
+            {
+                id: 'selenium-basic',
+                name: 'Selenium Basic',
+                icon: '🕷️',
+                category: 'interaction',
+                severity: 'high',
+                desc: 'Standard Selenium WebDriver with default settings. No mouse simulation, instant clicks, navigator.webdriver flag present.',
+                avgSolveTime: 400,
+                timeVariance: 15,
+                mouseMovements: 0,
+                clickPrecision: 100,
+                requestInterval: 50,
+                failRate: 5,
+                evasion: ['None'],
+                countermeasures: ['Check navigator.webdriver', 'Require mouse movement', 'Add honeypot elements'],
+                indicators: { jsExec: 0, canvasFingerprint: false, webGL: false, audioContext: false }
+            },
+            {
+                id: 'puppeteer-stealth',
+                name: 'Puppeteer Stealth',
+                icon: '🎭',
+                category: 'interaction',
+                severity: 'critical',
+                desc: 'Puppeteer with stealth plugin. Masks automation flags, simulates basic mouse paths, randomizes timing slightly.',
+                avgSolveTime: 800,
+                timeVariance: 120,
+                mouseMovements: 8,
+                clickPrecision: 95,
+                requestInterval: 200,
+                failRate: 8,
+                evasion: ['Stealth plugin', 'Randomized UA', 'Proxy rotation'],
+                countermeasures: ['Behavioral analysis', 'Mouse trajectory analysis', 'Challenge timing patterns'],
+                indicators: { jsExec: 12, canvasFingerprint: true, webGL: true, audioContext: false }
+            },
+            {
+                id: 'ocr-solver',
+                name: 'OCR Solver',
+                icon: '👁️',
+                category: 'timing',
+                severity: 'critical',
+                desc: 'Uses optical character recognition to read CAPTCHA frames. Consistent solve times with low variance. Often combined with headless browsers.',
+                avgSolveTime: 1500,
+                timeVariance: 200,
+                mouseMovements: 2,
+                clickPrecision: 98,
+                requestInterval: 300,
+                failRate: 15,
+                evasion: ['Headless mode', 'Frame extraction'],
+                countermeasures: ['Increase animation complexity', 'Add visual noise', 'Use temporal challenges'],
+                indicators: { jsExec: 5, canvasFingerprint: true, webGL: false, audioContext: false }
+            },
+            {
+                id: 'captcha-farm',
+                name: 'Human CAPTCHA Farm',
+                icon: '🏭',
+                category: 'behavioral',
+                severity: 'high',
+                desc: 'Real humans solving CAPTCHAs via farm services (2captcha, Anti-Captcha). Natural behavior but high volume from same IPs.',
+                avgSolveTime: 8000,
+                timeVariance: 4000,
+                mouseMovements: 25,
+                clickPrecision: 82,
+                requestInterval: 2000,
+                failRate: 12,
+                evasion: ['Real human behavior', 'Distributed IPs'],
+                countermeasures: ['Rate limiting per session', 'IP reputation scoring', 'Challenge freshness checks'],
+                indicators: { jsExec: 45, canvasFingerprint: true, webGL: true, audioContext: true }
+            },
+            {
+                id: 'api-replay',
+                name: 'API Replay Attack',
+                icon: '🔄',
+                category: 'network',
+                severity: 'critical',
+                desc: 'Captures and replays valid CAPTCHA tokens. Zero browser interaction, direct API calls with stolen tokens.',
+                avgSolveTime: 50,
+                timeVariance: 5,
+                mouseMovements: 0,
+                clickPrecision: 0,
+                requestInterval: 20,
+                failRate: 30,
+                evasion: ['Token harvesting', 'No browser fingerprint'],
+                countermeasures: ['Token binding to IP/session', 'Short token expiry', 'One-time-use tokens'],
+                indicators: { jsExec: 0, canvasFingerprint: false, webGL: false, audioContext: false }
+            },
+            {
+                id: 'playwright-bot',
+                name: 'Playwright Bot',
+                icon: '🎬',
+                category: 'interaction',
+                severity: 'high',
+                desc: 'Playwright automation with realistic viewport and input simulation. Better fingerprint evasion than Selenium.',
+                avgSolveTime: 900,
+                timeVariance: 250,
+                mouseMovements: 12,
+                clickPrecision: 90,
+                requestInterval: 350,
+                failRate: 7,
+                evasion: ['Context isolation', 'Viewport randomization', 'Realistic input events'],
+                countermeasures: ['CDP detection', 'Input event analysis', 'Behavioral scoring'],
+                indicators: { jsExec: 18, canvasFingerprint: true, webGL: true, audioContext: true }
+            },
+            {
+                id: 'ml-solver',
+                name: 'ML Image Classifier',
+                icon: '🧠',
+                category: 'timing',
+                severity: 'critical',
+                desc: 'Trained neural network for CAPTCHA image classification. Very consistent timing profile, high accuracy on static challenges.',
+                avgSolveTime: 600,
+                timeVariance: 50,
+                mouseMovements: 1,
+                clickPrecision: 97,
+                requestInterval: 100,
+                failRate: 3,
+                evasion: ['Model ensembles', 'Augmentation-resistant'],
+                countermeasures: ['Temporal/animated challenges', 'Adversarial perturbations', 'Frequent challenge rotation'],
+                indicators: { jsExec: 2, canvasFingerprint: false, webGL: false, audioContext: false }
+            },
+            {
+                id: 'curl-script',
+                name: 'cURL Script',
+                icon: '📜',
+                category: 'network',
+                severity: 'medium',
+                desc: 'Simple HTTP scripting with cURL/requests. No browser at all, missing all client-side signals.',
+                avgSolveTime: 100,
+                timeVariance: 20,
+                mouseMovements: 0,
+                clickPrecision: 0,
+                requestInterval: 30,
+                failRate: 60,
+                evasion: ['Header spoofing'],
+                countermeasures: ['Require JS execution proof', 'Browser fingerprinting', 'Cookie challenges'],
+                indicators: { jsExec: 0, canvasFingerprint: false, webGL: false, audioContext: false }
+            },
+            {
+                id: 'browser-extension',
+                name: 'Browser Extension Bot',
+                icon: '🧩',
+                category: 'behavioral',
+                severity: 'medium',
+                desc: 'Malicious browser extension auto-solving CAPTCHAs. Runs in real browser context with full fingerprint, but automated clicking patterns.',
+                avgSolveTime: 1200,
+                timeVariance: 300,
+                mouseMovements: 5,
+                clickPrecision: 96,
+                requestInterval: 500,
+                failRate: 10,
+                evasion: ['Full browser context', 'Real fingerprint', 'Extension isolation'],
+                countermeasures: ['Click pattern analysis', 'Extension detection heuristics', 'Timing entropy checks'],
+                indicators: { jsExec: 35, canvasFingerprint: true, webGL: true, audioContext: true }
+            },
+            {
+                id: 'headless-chrome',
+                name: 'Headless Chrome',
+                icon: '👻',
+                category: 'interaction',
+                severity: 'high',
+                desc: 'Chrome in headless mode via DevTools Protocol. Missing some rendering features, detectable via missing plugins/media.',
+                avgSolveTime: 700,
+                timeVariance: 100,
+                mouseMovements: 3,
+                clickPrecision: 99,
+                requestInterval: 150,
+                failRate: 8,
+                evasion: ['User agent masking', '--disable-blink-features'],
+                countermeasures: ['Plugin enumeration', 'Media codec detection', 'Chrome object checks'],
+                indicators: { jsExec: 8, canvasFingerprint: true, webGL: false, audioContext: false }
+            }
+        ];
+
+        // Human baseline
+        var HUMAN = {
+            avgSolveTime: 3500,
+            timeVariance: 1800,
+            mouseMovements: 35,
+            clickPrecision: 75,
+            requestInterval: 1500,
+            failRate: 18
+        };
+
+        var customSignatures = [];
+        try {
+            var stored = localStorage.getItem('gif-captcha-bot-sigs');
+            if (stored) customSignatures = JSON.parse(stored);
+        } catch(e) {}
+
+        var selectedSig = null;
+
+        function allSigs() { return SIGNATURES.concat(customSignatures); }
+
+        function saveCustom() {
+            try { localStorage.setItem('gif-captcha-bot-sigs', JSON.stringify(customSignatures)); } catch(e) {}
+        }
+
+        // ===== Stats =====
+        function renderStats() {
+            var sigs = allSigs();
+            var crit = sigs.filter(function(s){ return s.severity === 'critical'; }).length;
+            var cats = {};
+            sigs.forEach(function(s){ cats[s.category] = (cats[s.category]||0) + 1; });
+            var topCat = Object.keys(cats).sort(function(a,b){ return cats[b]-cats[a]; })[0] || '-';
+            var avgEvasion = sigs.reduce(function(a,s){ return a + s.evasion.length; }, 0) / (sigs.length||1);
+            var html = [
+                {label:'Total Signatures', value: sigs.length, color:'accent'},
+                {label:'Critical', value: crit, color:'red'},
+                {label:'Categories', value: Object.keys(cats).length, color:'purple'},
+                {label:'Top Category', value: topCat, color:'cyan', small:true},
+                {label:'Avg Evasion Techniques', value: avgEvasion.toFixed(1), color:'orange'}
+            ].map(function(s){
+                return '<div class="stat-card"><div class="stat-label">'+sanitize(s.label)+'</div><div class="stat-value" style="color:var(--'+s.color+');'+(s.small?'font-size:1.1rem;':'')+'">'+sanitize(String(s.value))+'</div></div>';
+            }).join('');
+            document.getElementById('statsGrid').innerHTML = html;
+        }
+
+        // ===== Catalog =====
+        function renderCatalog() {
+            var sigs = allSigs();
+            var q = document.getElementById('sigSearch').value.toLowerCase();
+            var sev = document.getElementById('severityFilter').value;
+            var cat = document.getElementById('categoryFilter').value;
+            var filtered = sigs.filter(function(s){
+                if (q && s.name.toLowerCase().indexOf(q) === -1 && s.desc.toLowerCase().indexOf(q) === -1) return false;
+                if (sev && s.severity !== sev) return false;
+                if (cat && s.category !== cat) return false;
+                return true;
+            });
+            var html = filtered.map(function(s){
+                var bgMap = {timing:'var(--yellow-bg)',interaction:'var(--purple-bg)',network:'var(--red-bg)',behavioral:'var(--cyan-bg)'};
+                var sel = selectedSig && selectedSig.id === s.id ? ' selected' : '';
+                return '<div class="sig-item'+sel+'" data-id="'+sanitize(s.id)+'">' +
+                    '<div class="sig-icon" style="background:'+bgMap[s.category]+'">'+s.icon+'</div>' +
+                    '<div class="sig-body">' +
+                    '<div class="sig-name">'+sanitize(s.name)+'</div>' +
+                    '<div class="sig-desc">'+sanitize(s.desc.substring(0,120))+(s.desc.length>120?'…':'')+'</div>' +
+                    '<div class="sig-meta">' +
+                    '<span class="sig-tag '+s.severity+'">'+s.severity.toUpperCase()+'</span>' +
+                    '<span class="sig-tag" style="background:var(--surface);color:var(--muted);">'+s.category+'</span>' +
+                    '<span class="sig-tag" style="background:var(--surface);color:var(--muted);">'+s.avgSolveTime+'ms</span>' +
+                    '</div></div></div>';
+            }).join('');
+            document.getElementById('sigList').innerHTML = html || '<div style="text-align:center;color:var(--muted);padding:2rem;">No signatures match filters</div>';
+            document.querySelectorAll('.sig-item').forEach(function(el){
+                el.addEventListener('click', function(){
+                    var id = el.getAttribute('data-id');
+                    selectedSig = allSigs().find(function(s){ return s.id === id; });
+                    renderCatalog();
+                    renderDetail();
+                });
+            });
+        }
+
+        function renderDetail() {
+            var panel = document.getElementById('sigDetail');
+            if (!selectedSig) { panel.style.display = 'none'; return; }
+            panel.style.display = 'block';
+            var s = selectedSig;
+            document.getElementById('detailTitle').textContent = s.icon + ' ' + s.name;
+            document.getElementById('detailGrid').innerHTML = [
+                {l:'Category', v:s.category}, {l:'Severity', v:s.severity.toUpperCase()},
+                {l:'Avg Solve Time', v:s.avgSolveTime+'ms'}, {l:'Time Variance', v:'±'+s.timeVariance+'ms'},
+                {l:'Mouse Movements', v:s.mouseMovements}, {l:'Click Precision', v:s.clickPrecision+'%'},
+                {l:'Request Interval', v:s.requestInterval+'ms'}, {l:'Fail Rate', v:s.failRate+'%'}
+            ].map(function(f){
+                return '<div class="detail-field"><label>'+f.l+'</label><span>'+sanitize(String(f.v))+'</span></div>';
+            }).join('');
+
+            // Pattern visualization
+            var traits = ['solveTime','variance','mouse','precision','interval','failRate'];
+            var traitLabels = ['Solve Time','Variance','Mouse Mvmt','Precision','Interval','Fail Rate'];
+            var botVals = [s.avgSolveTime, s.timeVariance, s.mouseMovements, s.clickPrecision, s.requestInterval, s.failRate];
+            var humanVals = [HUMAN.avgSolveTime, HUMAN.timeVariance, HUMAN.mouseMovements, HUMAN.clickPrecision, HUMAN.requestInterval, HUMAN.failRate];
+            var maxVals = [10000, 5000, 50, 100, 3000, 100];
+            var html = traits.map(function(t, i){
+                var bw = Math.min(100, (botVals[i]/maxVals[i])*100);
+                var hw = Math.min(100, (humanVals[i]/maxVals[i])*100);
+                return '<div class="pattern-row"><span class="pattern-label">'+traitLabels[i]+'</span>' +
+                    '<div class="pattern-blocks" style="flex-direction:column;gap:4px;">' +
+                    '<div style="display:flex;align-items:center;gap:6px;"><span style="width:30px;font-size:0.65rem;color:var(--red);">Bot</span><div style="height:8px;background:var(--red);border-radius:4px;width:'+bw+'%;min-width:2px;" title="'+botVals[i]+'"></div></div>' +
+                    '<div style="display:flex;align-items:center;gap:6px;"><span style="width:30px;font-size:0.65rem;color:var(--green);">Human</span><div style="height:8px;background:var(--green);border-radius:4px;width:'+hw+'%;min-width:2px;" title="'+humanVals[i]+'"></div></div>' +
+                    '</div></div>';
+            }).join('');
+            document.getElementById('patternViz').innerHTML = html;
+
+            // Indicators
+            var ind = s.indicators || {};
+            document.getElementById('indicatorGrid').innerHTML = [
+                {l:'JS Execution', v: ind.jsExec !== undefined ? ind.jsExec+'ms' : 'N/A', c: ind.jsExec > 0 ? 'var(--green)':'var(--red)'},
+                {l:'Canvas FP', v: ind.canvasFingerprint ? '✓':'✗', c: ind.canvasFingerprint ? 'var(--green)':'var(--red)'},
+                {l:'WebGL', v: ind.webGL ? '✓':'✗', c: ind.webGL ? 'var(--green)':'var(--red)'},
+                {l:'Audio Context', v: ind.audioContext ? '✓':'✗', c: ind.audioContext ? 'var(--green)':'var(--red)'}
+            ].map(function(i){
+                return '<div class="indicator"><div class="indicator-val" style="color:'+i.c+'">'+i.v+'</div><div class="indicator-lbl">'+i.l+'</div></div>';
+            }).join('');
+
+            // Countermeasures & Evasion
+            var extra = '<div style="margin-top:1rem;"><h4 style="font-size:0.85rem;margin-bottom:0.5rem;">Evasion Techniques</h4>' +
+                '<div style="display:flex;gap:0.4rem;flex-wrap:wrap;">'+s.evasion.map(function(e){ return '<span class="sig-tag" style="background:var(--red-bg);color:var(--red);">'+sanitize(e)+'</span>'; }).join('')+'</div></div>' +
+                '<div style="margin-top:1rem;"><h4 style="font-size:0.85rem;margin-bottom:0.5rem;">Countermeasures</h4>' +
+                '<div style="display:flex;gap:0.4rem;flex-wrap:wrap;">'+s.countermeasures.map(function(c){ return '<span class="sig-tag" style="background:var(--green-bg);color:var(--green);">'+sanitize(c)+'</span>'; }).join('')+'</div></div>';
+            document.getElementById('indicatorGrid').insertAdjacentHTML('afterend', extra);
+        }
+
+        // ===== Compare Tab =====
+        function renderCompare() {
+            var sel = document.getElementById('compareSig');
+            sel.innerHTML = allSigs().map(function(s){
+                return '<option value="'+s.id+'">'+s.icon+' '+sanitize(s.name)+'</option>';
+            }).join('');
+            updateCompare();
+        }
+
+        function updateCompare() {
+            var id = document.getElementById('compareSig').value;
+            var sig = allSigs().find(function(s){ return s.id === id; });
+            if (!sig) return;
+
+            drawBehaviorCanvas('humanCanvas', HUMAN, 'var(--green)');
+            drawBehaviorCanvas('botCanvas', sig, 'var(--red)');
+
+            var traits = [
+                {l:'Solve Time', h:HUMAN.avgSolveTime, b:sig.avgSolveTime, max:10000, unit:'ms'},
+                {l:'Time Variance', h:HUMAN.timeVariance, b:sig.timeVariance, max:5000, unit:'ms'},
+                {l:'Mouse Movements', h:HUMAN.mouseMovements, b:sig.mouseMovements, max:50, unit:''},
+                {l:'Click Precision', h:HUMAN.clickPrecision, b:sig.clickPrecision, max:100, unit:'%'},
+                {l:'Request Interval', h:HUMAN.requestInterval, b:sig.requestInterval, max:3000, unit:'ms'},
+                {l:'Fail Rate', h:HUMAN.failRate, b:sig.failRate, max:100, unit:'%'}
+            ];
+            document.getElementById('traitComparison').innerHTML = traits.map(function(t){
+                var hp = Math.min(100, (t.h/t.max)*100);
+                var bp = Math.min(100, (t.b/t.max)*100);
+                return '<div class="trait-row"><div class="trait-label"><span>'+t.l+'</span><span>👤 '+t.h+t.unit+' / 🤖 '+t.b+t.unit+'</span></div>' +
+                    '<div style="display:flex;gap:4px;">' +
+                    '<div class="trait-bar-bg" style="flex:1;"><div class="trait-bar" style="width:'+hp+'%;background:var(--green);"></div></div>' +
+                    '<div class="trait-bar-bg" style="flex:1;"><div class="trait-bar" style="width:'+bp+'%;background:var(--red);"></div></div>' +
+                    '</div></div>';
+            }).join('');
+        }
+
+        function drawBehaviorCanvas(canvasId, data, color) {
+            var c = document.getElementById(canvasId);
+            var ctx = c.getContext('2d');
+            c.width = c.offsetWidth * 2;
+            c.height = c.offsetHeight * 2;
+            ctx.scale(2, 2);
+            var w = c.offsetWidth, h = c.offsetHeight;
+            ctx.clearRect(0, 0, w, h);
+
+            // Simulate mouse movement pattern
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            var points = [];
+            var numPoints = Math.max(5, data.mouseMovements);
+            var rng = mulberry32(data.avgSolveTime);
+            for (var i = 0; i < numPoints; i++) {
+                var x = (i / (numPoints-1)) * (w - 40) + 20;
+                var jitter = data.timeVariance / 50;
+                var y = h/2 + (rng() - 0.5) * jitter * 30;
+                points.push({x:x, y:Math.max(10, Math.min(h-10, y))});
+            }
+            ctx.moveTo(points[0].x, points[0].y);
+            for (var i = 1; i < points.length; i++) {
+                ctx.lineTo(points[i].x, points[i].y);
+            }
+            ctx.stroke();
+
+            // Click points
+            ctx.fillStyle = color;
+            var clickCount = Math.max(1, Math.floor(data.mouseMovements / 5));
+            for (var i = 0; i < clickCount && i < points.length; i++) {
+                var idx = Math.floor(rng() * points.length);
+                ctx.beginPath();
+                ctx.arc(points[idx].x, points[idx].y, 4, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Timing bar at bottom
+            ctx.fillStyle = color.replace(')', ',0.3)').replace('var(--', 'rgba(88,166,255,');
+            if (color.indexOf('green') >= 0) ctx.fillStyle = 'rgba(63,185,80,0.3)';
+            if (color.indexOf('red') >= 0) ctx.fillStyle = 'rgba(248,81,73,0.3)';
+            var barW = Math.min(w-20, (data.avgSolveTime / 10000) * (w-20));
+            ctx.fillRect(10, h-16, barW, 8);
+
+            // Label
+            ctx.fillStyle = '#8b949e';
+            ctx.font = '10px sans-serif';
+            ctx.fillText(data.avgSolveTime + 'ms avg', 10, h - 20);
+        }
+
+        function mulberry32(a) {
+            return function() {
+                var t = a += 0x6D2B79F5;
+                t = Math.imul(t ^ t >>> 15, t | 1);
+                t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+                return ((t ^ t >>> 14) >>> 0) / 4294967296;
+            };
+        }
+
+        // ===== Match =====
+        function runMatch() {
+            var input = {
+                avgSolveTime: +document.getElementById('matchTime').value,
+                timeVariance: +document.getElementById('matchVariance').value,
+                mouseMovements: +document.getElementById('matchMouse').value,
+                clickPrecision: +document.getElementById('matchPrecision').value,
+                requestInterval: +document.getElementById('matchInterval').value,
+                failRate: +document.getElementById('matchFail').value,
+                jsExec: +document.getElementById('matchJS').value,
+                sessionDuration: +document.getElementById('matchSession').value
+            };
+
+            var results = allSigs().map(function(s){
+                var score = 0;
+                var maxScore = 6;
+                // Time similarity
+                score += 1 - Math.min(1, Math.abs(input.avgSolveTime - s.avgSolveTime) / 5000);
+                // Variance similarity
+                score += 1 - Math.min(1, Math.abs(input.timeVariance - s.timeVariance) / 2000);
+                // Mouse
+                score += 1 - Math.min(1, Math.abs(input.mouseMovements - s.mouseMovements) / 30);
+                // Precision
+                score += 1 - Math.min(1, Math.abs(input.clickPrecision - s.clickPrecision) / 50);
+                // Interval
+                score += 1 - Math.min(1, Math.abs(input.requestInterval - s.requestInterval) / 1500);
+                // Fail rate
+                score += 1 - Math.min(1, Math.abs(input.failRate - s.failRate) / 50);
+
+                return { sig: s, score: (score / maxScore) * 100 };
+            }).sort(function(a,b){ return b.score - a.score; });
+
+            // Also score against human
+            var humanScore = 0;
+            humanScore += 1 - Math.min(1, Math.abs(input.avgSolveTime - HUMAN.avgSolveTime) / 5000);
+            humanScore += 1 - Math.min(1, Math.abs(input.timeVariance - HUMAN.timeVariance) / 2000);
+            humanScore += 1 - Math.min(1, Math.abs(input.mouseMovements - HUMAN.mouseMovements) / 30);
+            humanScore += 1 - Math.min(1, Math.abs(input.clickPrecision - HUMAN.clickPrecision) / 50);
+            humanScore += 1 - Math.min(1, Math.abs(input.requestInterval - HUMAN.requestInterval) / 1500);
+            humanScore += 1 - Math.min(1, Math.abs(input.failRate - HUMAN.failRate) / 50);
+            humanScore = (humanScore / 6) * 100;
+
+            var topMatch = results[0];
+            var verdict = humanScore > topMatch.score ? 'human' : 'bot';
+            var verdictColor = verdict === 'human' ? 'var(--green)' : 'var(--red)';
+            var verdictIcon = verdict === 'human' ? '👤' : '🤖';
+
+            var html = '<div class="match-result">' +
+                '<div class="match-score" style="color:'+verdictColor+'">'+verdictIcon+' '+(verdict === 'human' ? 'Likely Human' : 'Likely Bot')+'</div>' +
+                '<div class="match-details">Human similarity: '+humanScore.toFixed(1)+'% | Top bot match: '+topMatch.sig.name+' ('+topMatch.score.toFixed(1)+'%)</div>' +
+                '</div>';
+
+            html += '<div style="margin-top:1rem;">';
+            results.slice(0,5).forEach(function(r){
+                var barColor = r.score > 80 ? 'var(--red)' : r.score > 50 ? 'var(--yellow)' : 'var(--green)';
+                html += '<div style="display:flex;align-items:center;gap:0.8rem;margin-bottom:0.5rem;">' +
+                    '<span style="width:160px;font-size:0.8rem;">'+r.sig.icon+' '+sanitize(r.sig.name)+'</span>' +
+                    '<div class="trait-bar-bg" style="flex:1;"><div class="trait-bar" style="width:'+r.score+'%;background:'+barColor+';"></div></div>' +
+                    '<span style="width:50px;font-size:0.8rem;text-align:right;font-weight:600;">'+r.score.toFixed(0)+'%</span></div>';
+            });
+            html += '</div>';
+
+            document.getElementById('matchResults').innerHTML = html;
+        }
+
+        // ===== Create =====
+        function createSignature() {
+            var name = document.getElementById('newName').value.trim();
+            if (!name) { alert('Name is required'); return; }
+            var sig = {
+                id: 'custom-' + Date.now(),
+                name: name,
+                icon: '🔧',
+                category: document.getElementById('newCategory').value,
+                severity: document.getElementById('newSeverity').value,
+                desc: document.getElementById('newDesc').value.trim() || 'Custom signature',
+                avgSolveTime: +document.getElementById('newTime').value,
+                timeVariance: +document.getElementById('newVariance').value,
+                mouseMovements: +document.getElementById('newMouse').value,
+                clickPrecision: +document.getElementById('newPrecision').value,
+                requestInterval: +document.getElementById('newInterval').value,
+                failRate: 10,
+                evasion: document.getElementById('newEvasion').value.split(',').map(function(s){ return s.trim(); }).filter(Boolean),
+                countermeasures: document.getElementById('newCounter').value.split(',').map(function(s){ return s.trim(); }).filter(Boolean),
+                indicators: { jsExec: 0, canvasFingerprint: false, webGL: false, audioContext: false }
+            };
+            if (sig.evasion.length === 0) sig.evasion = ['Unknown'];
+            if (sig.countermeasures.length === 0) sig.countermeasures = ['Analysis needed'];
+            customSignatures.push(sig);
+            saveCustom();
+            renderStats();
+            renderCatalog();
+            renderCompare();
+            // Clear form
+            document.getElementById('newName').value = '';
+            document.getElementById('newDesc').value = '';
+            document.getElementById('newEvasion').value = '';
+            document.getElementById('newCounter').value = '';
+            alert('Signature "'+name+'" saved!');
+        }
+
+        // ===== Export =====
+        window.exportSignature = function(fmt) {
+            if (!selectedSig) return;
+            var s = selectedSig;
+            var data;
+            if (fmt === 'json') {
+                data = JSON.stringify(s, null, 2);
+            } else {
+                var headers = 'name,category,severity,avgSolveTime,timeVariance,mouseMovements,clickPrecision,requestInterval,failRate,evasion,countermeasures';
+                data = headers + '\n' + [s.name,s.category,s.severity,s.avgSolveTime,s.timeVariance,s.mouseMovements,s.clickPrecision,s.requestInterval,s.failRate,'"'+s.evasion.join(';')+'"','"'+s.countermeasures.join(';')+'"'].join(',');
+            }
+            var blob = new Blob([data], {type: fmt==='json'?'application/json':'text/csv'});
+            var a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'bot-signature-'+s.id+'.'+fmt;
+            a.click();
+            URL.revokeObjectURL(a.href);
+        };
+
+        // ===== Tabs =====
+        document.querySelectorAll('.tab-btn').forEach(function(btn){
+            btn.addEventListener('click', function(){
+                document.querySelectorAll('.tab-btn').forEach(function(b){ b.classList.remove('active'); });
+                document.querySelectorAll('.tab-panel').forEach(function(p){ p.classList.remove('active'); });
+                btn.classList.add('active');
+                document.getElementById('tab-'+btn.getAttribute('data-tab')).classList.add('active');
+                if (btn.getAttribute('data-tab') === 'compare') updateCompare();
+            });
+        });
+
+        document.getElementById('sigSearch').addEventListener('input', renderCatalog);
+        document.getElementById('severityFilter').addEventListener('change', renderCatalog);
+        document.getElementById('categoryFilter').addEventListener('change', renderCatalog);
+        document.getElementById('compareSig').addEventListener('change', updateCompare);
+
+        // Init
+        renderStats();
+        renderCatalog();
+        renderCompare();
+    })();
+    </script>
+</body>
+</html>

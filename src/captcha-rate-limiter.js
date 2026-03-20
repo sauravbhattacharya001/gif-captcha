@@ -183,27 +183,46 @@ function createCaptchaRateLimiter(options) {
   }
 
   // ── Sliding Window ──────────────────────────────────────────────
+  // Uses a startIdx pointer to avoid allocating a new array on every
+  // check().  The timestamps array is only compacted when the dead
+  // prefix exceeds half the array length, amortising GC pressure to
+  // O(1) per check on average while keeping memory bounded.
+
+  var SW_COMPACT_RATIO = 0.5; // compact when startIdx > length * ratio
 
   function _checkSlidingWindow(key, now) {
     var entry = store[key];
     if (!entry) {
-      entry = { timestamps: [], lastSeen: now };
+      entry = { timestamps: [], startIdx: 0, lastSeen: now };
       store[key] = entry;
     }
 
-    // Trim expired timestamps using binary search
+    // Trim expired timestamps using binary search on the live portion
     var cutoff = now - windowMs;
-    var idx = _lowerBound(entry.timestamps, cutoff);
-    if (idx > 0) {
-      entry.timestamps = entry.timestamps.slice(idx);
+    var ts = entry.timestamps;
+    var base = entry.startIdx;
+    // Binary search within [base, ts.length)
+    var lo = base;
+    var hi = ts.length;
+    while (lo < hi) {
+      var mid = (lo + hi) >>> 1;
+      if (ts[mid] < cutoff) lo = mid + 1;
+      else hi = mid;
+    }
+    entry.startIdx = lo;
+
+    // Compact only when the dead prefix is large relative to the array
+    if (lo > 0 && lo > ts.length * SW_COMPACT_RATIO) {
+      entry.timestamps = ts.slice(lo);
+      entry.startIdx = 0;
     }
 
     entry.lastSeen = now;
-    var count = entry.timestamps.length;
+    var count = entry.timestamps.length - entry.startIdx;
 
     if (count >= maxRequests) {
       // Rejected — compute retry-after from oldest timestamp in window
-      var oldestInWindow = entry.timestamps[0];
+      var oldestInWindow = entry.timestamps[entry.startIdx];
       var retryAfterMs = oldestInWindow + windowMs - now;
       return {
         allowed: false,
@@ -386,6 +405,12 @@ function createCaptchaRateLimiter(options) {
   /**
    * Consume multiple tokens/requests at once (batch check).
    *
+   * For token-bucket and leaky-bucket algorithms this runs in O(1) by
+   * doing the arithmetic directly instead of looping N times through
+   * check().  Sliding-window still loops because each request needs its
+   * own timestamp recorded, but the per-iteration cost is lower thanks
+   * to the startIdx optimisation above.
+   *
    * @param {string} key - Identifier
    * @param {number} count - Number of requests to consume
    * @param {number} [now] - Current timestamp
@@ -397,7 +422,112 @@ function createCaptchaRateLimiter(options) {
     }
     now = now || Date.now();
 
-    // For simplicity, check one-by-one internally, but atomically
+    // Whitelist fast-path
+    if (whitelist[key]) {
+      return {
+        allowed: true, remaining: Infinity, retryAfterMs: 0,
+        whitelisted: true, algorithm: algorithm, key: key,
+        consumed: count, requested: count
+      };
+    }
+
+    _validateKey(key);
+    checkCount++;
+    if (checkCount % cleanupInterval === 0) _cleanup(now);
+
+    var banResult = _checkBanStatus(key, now);
+    if (banResult) {
+      totalRejected++;
+      return {
+        allowed: false, remaining: 0, retryAfterMs: banResult.retryAfterMs,
+        banned: true, banExpiresAt: banResult.expiresAt,
+        reason: "Temporarily banned after " + banThreshold + " consecutive rejections",
+        consumed: 0, requested: count, algorithm: algorithm, key: key
+      };
+    }
+
+    // ── O(1) path for token-bucket ──
+    if (algorithm === "token-bucket") {
+      var entry = store[key];
+      if (!entry) {
+        entry = { tokens: capacity, lastRefill: now, lastSeen: now };
+        store[key] = entry;
+      }
+      var elapsed = (now - entry.lastRefill) / 1000;
+      entry.tokens = Math.min(capacity, entry.tokens + elapsed * refillRate);
+      entry.lastRefill = now;
+      entry.lastSeen = now;
+
+      var canConsume = Math.min(count, Math.floor(entry.tokens));
+      if (canConsume < count) {
+        // Partial or zero consumption
+        if (canConsume > 0) entry.tokens -= canConsume;
+        var deficit = (count - canConsume) - (entry.tokens - (canConsume > 0 ? 0 : entry.tokens));
+        var retryMs = Math.ceil(((count - entry.tokens) / refillRate) * 1000);
+        totalRejected++;
+        if (enableBans) {
+          strikes[key] = (strikes[key] || 0) + 1;
+          if (strikes[key] >= banThreshold) {
+            bans[key] = { expiresAt: now + banDurationMs, bannedAt: now };
+            totalBanned++;
+          }
+        }
+        return {
+          allowed: false, remaining: Math.floor(entry.tokens), retryAfterMs: Math.max(0, retryMs),
+          tokens: Math.floor(entry.tokens), capacity: capacity, refillRate: refillRate,
+          consumed: 0, requested: count, algorithm: algorithm, key: key
+        };
+      }
+      entry.tokens -= count;
+      totalAllowed++;
+      if (enableBans) delete strikes[key];
+      return {
+        allowed: true, remaining: Math.floor(entry.tokens), retryAfterMs: 0,
+        tokens: Math.floor(entry.tokens), capacity: capacity, refillRate: refillRate,
+        consumed: count, requested: count, algorithm: algorithm, key: key
+      };
+    }
+
+    // ── O(1) path for leaky-bucket ──
+    if (algorithm === "leaky-bucket") {
+      var entryL = store[key];
+      if (!entryL) {
+        entryL = { water: 0, lastLeak: now, lastSeen: now };
+        store[key] = entryL;
+      }
+      var elapsedL = (now - entryL.lastLeak) / 1000;
+      entryL.water = Math.max(0, entryL.water - elapsedL * leakRate);
+      entryL.lastLeak = now;
+      entryL.lastSeen = now;
+
+      if (entryL.water + count > queueSize) {
+        totalRejected++;
+        if (enableBans) {
+          strikes[key] = (strikes[key] || 0) + 1;
+          if (strikes[key] >= banThreshold) {
+            bans[key] = { expiresAt: now + banDurationMs, bannedAt: now };
+            totalBanned++;
+          }
+        }
+        var excess = entryL.water + count - queueSize;
+        return {
+          allowed: false, remaining: 0,
+          retryAfterMs: Math.ceil((excess / leakRate) * 1000),
+          queueLevel: Math.floor(entryL.water), queueSize: queueSize, leakRate: leakRate,
+          consumed: 0, requested: count, algorithm: algorithm, key: key
+        };
+      }
+      entryL.water += count;
+      totalAllowed++;
+      if (enableBans) delete strikes[key];
+      return {
+        allowed: true, remaining: Math.floor(queueSize - entryL.water), retryAfterMs: 0,
+        queueLevel: Math.floor(entryL.water), queueSize: queueSize, leakRate: leakRate,
+        consumed: count, requested: count, algorithm: algorithm, key: key
+      };
+    }
+
+    // ── Sliding window: loop (each request needs its own timestamp) ──
     var lastResult;
     for (var i = 0; i < count; i++) {
       lastResult = check(key, now);
@@ -444,8 +574,15 @@ function createCaptchaRateLimiter(options) {
     // Simulate without mutating state
     if (algorithm === "sliding-window") {
       var cutoff = now - windowMs;
-      var idx = _lowerBound(entry.timestamps, cutoff);
-      var count = entry.timestamps.length - idx;
+      var base = entry.startIdx || 0;
+      var lo = base;
+      var hi = entry.timestamps.length;
+      while (lo < hi) {
+        var mid = (lo + hi) >>> 1;
+        if (entry.timestamps[mid] < cutoff) lo = mid + 1;
+        else hi = mid;
+      }
+      var count = entry.timestamps.length - lo;
       return {
         allowed: count < maxRequests,
         remaining: Math.max(0, maxRequests - count),

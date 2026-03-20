@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Compliance Dashboard — gif-captcha</title>
+    <link rel="stylesheet" href="shared.css">
+    <style>
+        .dash-container { max-width: 1200px; margin: 0 auto; padding: 1.5rem; }
+        .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem; }
+        .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.2rem; }
+        .panel h3 { margin-bottom: 0.8rem; font-size: 1rem; color: var(--accent); }
+        .field { margin-bottom: 0.8rem; }
+        .field label { display: block; font-size: 0.82rem; color: var(--muted); margin-bottom: 0.3rem; }
+        .field input, .field select { width: 100%; padding: 0.5rem; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 0.9rem; }
+        .field input[type=checkbox] { width: auto; margin-right: 0.5rem; }
+        .checkbox-row { display: flex; align-items: center; padding: 0.25rem 0; }
+        .checkbox-row label { font-size: 0.85rem; color: var(--text); cursor: pointer; }
+        .btn-row { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 1rem 0; }
+        .btn { padding: 0.5rem 1.2rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); cursor: pointer; font-size: 0.85rem; transition: background 0.15s; }
+        .btn:hover { background: var(--surface-hover); }
+        .btn-primary { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 600; }
+        .btn-primary:hover { background: var(--accent-hover); }
+
+        /* Score gauge */
+        .score-section { text-align: center; margin-bottom: 2rem; }
+        .gauge-wrap { display: inline-block; position: relative; width: 200px; height: 120px; }
+        .gauge-svg { width: 200px; height: 120px; }
+        .gauge-label { font-size: 2.5rem; font-weight: 700; position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); }
+        .gauge-sub { font-size: 0.85rem; color: var(--muted); margin-top: 0.3rem; }
+        .grade-badge { display: inline-block; padding: 0.25rem 0.75rem; border-radius: 12px; font-weight: 600; font-size: 0.9rem; margin-top: 0.5rem; }
+
+        /* Category cards */
+        .cat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+        .cat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; }
+        .cat-card h4 { font-size: 0.95rem; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem; }
+        .cat-icon { font-size: 1.2rem; }
+        .cat-bar { height: 8px; border-radius: 4px; background: var(--bg); overflow: hidden; margin: 0.5rem 0; }
+        .cat-bar-fill { height: 100%; border-radius: 4px; transition: width 0.5s ease; }
+        .cat-stats { font-size: 0.8rem; color: var(--muted); display: flex; gap: 1rem; }
+
+        /* Findings table */
+        .findings-section { margin-bottom: 1.5rem; }
+        .filter-bar { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
+        .filter-btn { padding: 0.3rem 0.8rem; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--muted); cursor: pointer; font-size: 0.8rem; transition: all 0.15s; }
+        .filter-btn.active { color: var(--text); border-color: var(--accent); background: rgba(88,166,255,0.1); }
+        .finding-row { display: grid; grid-template-columns: 70px 100px 1fr auto; gap: 0.75rem; padding: 0.6rem 0.8rem; border-bottom: 1px solid var(--border); align-items: center; font-size: 0.85rem; }
+        .finding-row:first-child { font-weight: 600; color: var(--muted); font-size: 0.78rem; text-transform: uppercase; }
+        .sev-badge { padding: 0.15rem 0.5rem; border-radius: 3px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; }
+        .sev-pass { background: var(--green-bg); color: var(--green); }
+        .sev-critical { background: var(--red-bg); color: var(--red); }
+        .sev-warning { background: var(--yellow-bg); color: var(--yellow); }
+        .sev-info { background: var(--purple-bg); color: var(--purple); }
+        .finding-rec { font-size: 0.78rem; color: var(--muted); font-style: italic; }
+
+        /* Remediation checklist */
+        .remediation-section { margin-bottom: 1.5rem; }
+        .rem-item { display: flex; align-items: flex-start; gap: 0.6rem; padding: 0.5rem 0; border-bottom: 1px solid var(--border); }
+        .rem-item input[type=checkbox] { margin-top: 0.2rem; }
+        .rem-priority { font-size: 0.75rem; font-weight: 600; padding: 0.1rem 0.4rem; border-radius: 3px; }
+        .rem-text { font-size: 0.85rem; }
+        .rem-done { text-decoration: line-through; color: var(--muted); }
+
+        /* Export */
+        .export-section { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; }
+
+        /* Presets */
+        .preset-bar { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
+
+        /* Timeline */
+        .timeline-section { margin-bottom: 1.5rem; }
+        .timeline-canvas { width: 100%; height: 200px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+
+        @media (max-width: 768px) {
+            .controls { grid-template-columns: 1fr; }
+            .finding-row { grid-template-columns: 60px 80px 1fr; }
+            .finding-row > :last-child { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <header class="site-header">
+        <div class="header-inner">
+            <a href="index.html" class="logo">🎬 gif-captcha</a>
+            <nav class="header-nav">
+                <a href="demo.html">Demo</a>
+                <a href="dashboard.html">Dashboard</a>
+                <a href="compliance.html" class="active">Compliance</a>
+                <a href="docs/index.html">Docs</a>
+            </nav>
+        </div>
+    </header>
+
+    <div class="dash-container">
+        <h1 style="margin-bottom:0.3rem;">📋 Compliance Dashboard</h1>
+        <p style="color:var(--muted);margin-bottom:1.5rem;">Evaluate your CAPTCHA configuration against WCAG, GDPR, OWASP, and operational standards</p>
+
+        <!-- Presets -->
+        <div class="preset-bar">
+            <button class="btn btn-primary" onclick="applyPreset('secure')">🔒 Secure Setup</button>
+            <button class="btn" onclick="applyPreset('minimal')">⚡ Minimal</button>
+            <button class="btn" onclick="applyPreset('broken')">💥 Broken</button>
+            <button class="btn" onclick="applyPreset('gdpr')">🇪🇺 GDPR-Focus</button>
+            <button class="btn" onclick="applyPreset('accessible')">♿ Accessible</button>
+        </div>
+
+        <!-- Config & Metrics panels -->
+        <div class="controls">
+            <div class="panel">
+                <h3>⚙️ Configuration</h3>
+                <div class="checkbox-row"><input type="checkbox" id="cfgAudio"><label for="cfgAudio">Audio alternative</label></div>
+                <div class="checkbox-row"><input type="checkbox" id="cfgKeyboard"><label for="cfgKeyboard">Keyboard navigable</label></div>
+                <div class="checkbox-row"><input type="checkbox" id="cfgAria"><label for="cfgAria">ARIA labels</label></div>
+                <div class="field"><label>Color contrast ratio</label><input type="number" id="cfgContrast" value="4.5" step="0.1" min="1" max="21"></div>
+                <div class="field"><label>Time limit (ms)</label><input type="number" id="cfgTimeLimit" value="60000" step="1000" min="5000"></div>
+                <div class="checkbox-row"><input type="checkbox" id="cfgExtendTime"><label for="cfgExtendTime">Can extend time</label></div>
+                <div class="field"><label>Supported languages (comma-sep)</label><input type="text" id="cfgLanguages" value="en,es,fr,de"></div>
+                <div class="field"><label>Data retention (days)</label><input type="number" id="cfgRetention" value="30" min="1" max="365"></div>
+                <div class="checkbox-row"><input type="checkbox" id="cfgConsent"><label for="cfgConsent">Consent required</label></div>
+                <div class="checkbox-row"><input type="checkbox" id="cfgAnonymize"><label for="cfgAnonymize">Data anonymization</label></div>
+                <div class="checkbox-row"><input type="checkbox" id="cfgDeletion"><label for="cfgDeletion">Deletion supported</label></div>
+                <div class="checkbox-row"><input type="checkbox" id="cfgRateLimit"><label for="cfgRateLimit">Rate limiting</label></div>
+                <div class="checkbox-row"><input type="checkbox" id="cfgTokenSigned"><label for="cfgTokenSigned">Token signing (HMAC)</label></div>
+                <div class="checkbox-row"><input type="checkbox" id="cfgHttps"><label for="cfgHttps">HTTPS only</label></div>
+                <div class="checkbox-row"><input type="checkbox" id="cfgSanitize"><label for="cfgSanitize">Input sanitized</label></div>
+                <div class="field"><label>Max attempts before lockout</label><input type="number" id="cfgMaxAttempts" value="5" min="0" max="50"></div>
+                <div class="checkbox-row"><input type="checkbox" id="cfgReplay"><label for="cfgReplay">Replay protection</label></div>
+            </div>
+            <div class="panel">
+                <h3>📊 Runtime Metrics</h3>
+                <div class="field"><label>Total challenges</label><input type="number" id="metTotal" value="10000" min="0"></div>
+                <div class="field"><label>Total solves</label><input type="number" id="metSolves" value="8200" min="0"></div>
+                <div class="field"><label>Total failures</label><input type="number" id="metFailures" value="1800" min="0"></div>
+                <div class="field"><label>Avg solve time (ms)</label><input type="number" id="metAvgSolve" value="12000" min="0"></div>
+                <div class="field"><label>P95 solve time (ms)</label><input type="number" id="metP95Solve" value="28000" min="0"></div>
+                <div class="field"><label>Bot attempts</label><input type="number" id="metBotAttempts" value="500" min="0"></div>
+                <div class="field"><label>Bot blocked</label><input type="number" id="metBotBlocked" value="485" min="0"></div>
+                <div class="field"><label>Uptime %</label><input type="number" id="metUptime" value="99.5" step="0.1" min="0" max="100"></div>
+                <div class="field"><label>Avg response time (ms)</label><input type="number" id="metResponseTime" value="150" min="0"></div>
+                <div class="field"><label>Error count</label><input type="number" id="metErrors" value="12" min="0"></div>
+            </div>
+        </div>
+
+        <div class="btn-row">
+            <button class="btn btn-primary" onclick="runAudit()">▶ Run Compliance Audit</button>
+            <button class="btn" onclick="addToTimeline()">📈 Add to Timeline</button>
+        </div>
+
+        <!-- Overall Score -->
+        <div class="score-section panel" id="scoreSection" style="display:none;">
+            <div class="gauge-wrap">
+                <svg class="gauge-svg" viewBox="0 0 200 120">
+                    <path d="M 20 110 A 80 80 0 0 1 180 110" fill="none" stroke="var(--border)" stroke-width="12" stroke-linecap="round"/>
+                    <path id="gaugeArc" d="M 20 110 A 80 80 0 0 1 180 110" fill="none" stroke="var(--green)" stroke-width="12" stroke-linecap="round" stroke-dasharray="0 251"/>
+                </svg>
+                <div class="gauge-label" id="gaugeLabel">0</div>
+            </div>
+            <div class="gauge-sub">Overall Compliance Score</div>
+            <div id="gradeBadge" class="grade-badge"></div>
+        </div>
+
+        <!-- Category Breakdown -->
+        <div class="cat-grid" id="catGrid"></div>
+
+        <!-- Findings -->
+        <div class="findings-section panel" id="findingsSection" style="display:none;">
+            <h3>🔍 Findings</h3>
+            <div class="filter-bar" id="filterBar">
+                <button class="filter-btn active" data-filter="all">All</button>
+                <button class="filter-btn" data-filter="critical">Critical</button>
+                <button class="filter-btn" data-filter="warning">Warning</button>
+                <button class="filter-btn" data-filter="info">Info</button>
+                <button class="filter-btn" data-filter="pass">Pass</button>
+            </div>
+            <div id="findingsList"></div>
+        </div>
+
+        <!-- Remediation Checklist -->
+        <div class="remediation-section panel" id="remSection" style="display:none;">
+            <h3>🔧 Remediation Checklist</h3>
+            <p style="font-size:0.8rem;color:var(--muted);margin-bottom:0.8rem;">Action items sorted by priority. Check off as you fix.</p>
+            <div id="remList"></div>
+            <div style="margin-top:0.8rem;font-size:0.85rem;" id="remProgress"></div>
+        </div>
+
+        <!-- Timeline -->
+        <div class="timeline-section panel" id="timelineSection" style="display:none;">
+            <h3>📈 Score Timeline</h3>
+            <canvas class="timeline-canvas" id="timelineCanvas"></canvas>
+        </div>
+
+        <!-- Export -->
+        <div class="export-section" id="exportSection" style="display:none;">
+            <button class="btn" onclick="exportJSON()">💾 Export JSON</button>
+            <button class="btn" onclick="exportCSV()">📄 Export CSV</button>
+            <button class="btn" onclick="exportHTML()">🌐 Export HTML Report</button>
+        </div>
+    </div>
+
+    <footer class="site-footer">
+        <div class="footer-inner">
+            <p>gif-captcha — Compliance Dashboard</p>
+        </div>
+    </footer>
+
+    <script src="shared.js"></script>
+    <script>
+    (function() {
+        "use strict";
+
+        // ── Lightweight compliance engine (mirrors src/compliance-reporter.js logic) ──
+        var SEV = { CRITICAL: "critical", WARNING: "warning", INFO: "info", PASS: "pass" };
+        var CAT = { ACCESSIBILITY: "accessibility", PRIVACY: "privacy", SECURITY: "security", OPERATIONAL: "operational" };
+        var CAT_ICONS = { accessibility: "♿", privacy: "🔏", security: "🛡️", operational: "⚙️" };
+        var CAT_WEIGHTS = { accessibility: 0.25, privacy: 0.25, security: 0.30, operational: 0.20 };
+
+        var lastReport = null;
+        var timeline = [];
+
+        function check(id, cat, title, desc, pass, rec) {
+            return { id: id, category: cat, title: title, description: desc, severity: pass ? SEV.PASS : (rec && rec.startsWith("!") ? SEV.CRITICAL : SEV.WARNING), recommendation: pass ? null : (rec && rec.startsWith("!") ? rec.slice(1) : rec) };
+        }
+
+        function generateReport(cfg, met) {
+            var f = [];
+            // Accessibility
+            f.push(check("ACC-001", CAT.ACCESSIBILITY, "Audio alternative", "WCAG 1.1.1", cfg.audioAlternative, "!Enable audio CAPTCHA alternative"));
+            f.push(check("ACC-002", CAT.ACCESSIBILITY, "Keyboard navigable", "WCAG 2.1.1", cfg.keyboardNavigable, "!Make CAPTCHA keyboard-accessible"));
+            f.push(check("ACC-003", CAT.ACCESSIBILITY, "ARIA labels", "WCAG 4.1.2", cfg.ariaLabel, "Add appropriate ARIA labels"));
+            f.push(check("ACC-004", CAT.ACCESSIBILITY, "Color contrast ≥4.5:1", "WCAG 1.4.3", cfg.colorContrast >= 4.5, "Increase color contrast to ≥4.5:1"));
+            f.push(check("ACC-005", CAT.ACCESSIBILITY, "Time limit adequate", "WCAG 2.2.1", cfg.timeLimitMs >= 30000, "Allow at least 30 seconds"));
+            f.push(check("ACC-006", CAT.ACCESSIBILITY, "Time extension available", "WCAG 2.2.1", cfg.canExtendTime, "Allow users to extend the time limit"));
+            f.push(check("ACC-007", CAT.ACCESSIBILITY, "Multi-language support", "WCAG 3.1.1", cfg.supportedLanguages && cfg.supportedLanguages.length >= 2, "Support at least 2 languages"));
+            // Privacy
+            f.push(check("PRV-001", CAT.PRIVACY, "Data retention ≤30 days", "GDPR Art.5(1)(e)", cfg.dataRetentionDays <= 30, "!Reduce data retention to ≤30 days"));
+            f.push(check("PRV-002", CAT.PRIVACY, "Consent collection", "GDPR Art.6", cfg.consentRequired, "!Implement consent before CAPTCHA"));
+            f.push(check("PRV-003", CAT.PRIVACY, "Data anonymization", "GDPR Art.25", cfg.anonymization, "Anonymize stored CAPTCHA data"));
+            f.push(check("PRV-004", CAT.PRIVACY, "Right to deletion", "GDPR Art.17", cfg.deletionSupported, "!Support user data deletion requests"));
+            // Security
+            f.push(check("SEC-001", CAT.SECURITY, "Rate limiting", "OWASP Bot Mitigation", cfg.rateLimitEnabled, "!Enable rate limiting"));
+            f.push(check("SEC-002", CAT.SECURITY, "Token signing", "OWASP Token Best Practices", cfg.tokenSigned, "!Sign tokens with HMAC"));
+            f.push(check("SEC-003", CAT.SECURITY, "HTTPS enforced", "Transport Security", cfg.httpsOnly, "!Enforce HTTPS for all CAPTCHA traffic"));
+            f.push(check("SEC-004", CAT.SECURITY, "Input sanitization", "OWASP Injection Prevention", cfg.inputSanitized, "!Sanitize all CAPTCHA inputs"));
+            f.push(check("SEC-005", CAT.SECURITY, "Attempt lockout", "Brute Force Prevention", cfg.maxAttempts > 0 && cfg.maxAttempts <= 10, "Set max attempts between 1-10"));
+            f.push(check("SEC-006", CAT.SECURITY, "Replay protection", "Token Replay Prevention", cfg.replayProtection, "!Implement replay protection"));
+            f.push(check("SEC-007", CAT.SECURITY, "Bot block rate ≥90%", "Bot Mitigation Effectiveness", met.botAttempts > 0 && (met.botBlocked / met.botAttempts * 100) >= 90, "Improve bot detection to block ≥90%"));
+            // Operational
+            var solveRate = met.totalChallenges > 0 ? (met.totalSolves / met.totalChallenges * 100) : 0;
+            var failRate = met.totalChallenges > 0 ? (met.totalFailures / met.totalChallenges * 100) : 0;
+            f.push(check("OPS-001", CAT.OPERATIONAL, "Solve rate ≥70%", "User Experience", solveRate >= 70, "!Solve rate too low — simplify challenges"));
+            f.push(check("OPS-002", CAT.OPERATIONAL, "Avg solve time ≤60s", "User Experience", met.avgSolveTimeMs <= 60000, "Reduce average solve time"));
+            f.push(check("OPS-003", CAT.OPERATIONAL, "P95 solve time healthy", "Performance", met.p95SolveTimeMs <= 45000, "P95 solve time too high — optimize difficulty"));
+            f.push(check("OPS-004", CAT.OPERATIONAL, "Failure rate ≤50%", "User Experience", failRate <= 50, "!Failure rate too high"));
+            f.push(check("OPS-005", CAT.OPERATIONAL, "Uptime ≥99%", "Availability", met.uptimePercent >= 99, "Improve system uptime"));
+            f.push(check("OPS-006", CAT.OPERATIONAL, "Response time ≤500ms", "Performance", met.avgResponseTimeMs <= 500, "Optimize server response time"));
+
+            // Compute scores
+            var catScores = {};
+            var cats = [CAT.ACCESSIBILITY, CAT.PRIVACY, CAT.SECURITY, CAT.OPERATIONAL];
+            cats.forEach(function(c) {
+                var items = f.filter(function(x) { return x.category === c; });
+                var scorable = items.filter(function(x) { return x.severity !== SEV.INFO; });
+                var passed = scorable.filter(function(x) { return x.severity === SEV.PASS; });
+                catScores[c] = {
+                    score: scorable.length > 0 ? Math.round(passed.length / scorable.length * 100) : 100,
+                    total: items.length,
+                    passed: passed.length,
+                    criticals: items.filter(function(x) { return x.severity === SEV.CRITICAL; }).length,
+                    warnings: items.filter(function(x) { return x.severity === SEV.WARNING; }).length
+                };
+            });
+
+            var totalW = 0, scoreW = 0;
+            cats.forEach(function(c) { totalW += CAT_WEIGHTS[c]; scoreW += catScores[c].score * CAT_WEIGHTS[c]; });
+            var overall = Math.round(scoreW / totalW);
+
+            return { score: overall, categoryScores: catScores, findings: f, timestamp: new Date().toISOString() };
+        }
+
+        function readConfig() {
+            var langs = document.getElementById("cfgLanguages").value.split(",").map(function(s) { return s.trim(); }).filter(Boolean);
+            return {
+                audioAlternative: document.getElementById("cfgAudio").checked,
+                keyboardNavigable: document.getElementById("cfgKeyboard").checked,
+                ariaLabel: document.getElementById("cfgAria").checked,
+                colorContrast: parseFloat(document.getElementById("cfgContrast").value) || 0,
+                timeLimitMs: parseInt(document.getElementById("cfgTimeLimit").value) || 0,
+                canExtendTime: document.getElementById("cfgExtendTime").checked,
+                supportedLanguages: langs,
+                dataRetentionDays: parseInt(document.getElementById("cfgRetention").value) || 365,
+                consentRequired: document.getElementById("cfgConsent").checked,
+                anonymization: document.getElementById("cfgAnonymize").checked,
+                deletionSupported: document.getElementById("cfgDeletion").checked,
+                rateLimitEnabled: document.getElementById("cfgRateLimit").checked,
+                tokenSigned: document.getElementById("cfgTokenSigned").checked,
+                httpsOnly: document.getElementById("cfgHttps").checked,
+                inputSanitized: document.getElementById("cfgSanitize").checked,
+                maxAttempts: parseInt(document.getElementById("cfgMaxAttempts").value) || 0,
+                replayProtection: document.getElementById("cfgReplay").checked
+            };
+        }
+
+        function readMetrics() {
+            return {
+                totalChallenges: parseInt(document.getElementById("metTotal").value) || 0,
+                totalSolves: parseInt(document.getElementById("metSolves").value) || 0,
+                totalFailures: parseInt(document.getElementById("metFailures").value) || 0,
+                avgSolveTimeMs: parseInt(document.getElementById("metAvgSolve").value) || 0,
+                p95SolveTimeMs: parseInt(document.getElementById("metP95Solve").value) || 0,
+                botAttempts: parseInt(document.getElementById("metBotAttempts").value) || 0,
+                botBlocked: parseInt(document.getElementById("metBotBlocked").value) || 0,
+                uptimePercent: parseFloat(document.getElementById("metUptime").value) || 0,
+                avgResponseTimeMs: parseInt(document.getElementById("metResponseTime").value) || 0,
+                errorCount: parseInt(document.getElementById("metErrors").value) || 0
+            };
+        }
+
+        function scoreColor(s) { return s >= 80 ? "var(--green)" : s >= 60 ? "var(--yellow)" : "var(--red)"; }
+        function grade(s) { return s >= 90 ? "A" : s >= 80 ? "B" : s >= 70 ? "C" : s >= 60 ? "D" : "F"; }
+
+        function renderGauge(score) {
+            var maxLen = 251; // approximate arc length
+            var len = score / 100 * maxLen;
+            var arc = document.getElementById("gaugeArc");
+            arc.setAttribute("stroke-dasharray", len + " " + maxLen);
+            arc.setAttribute("stroke", scoreColor(score));
+            document.getElementById("gaugeLabel").textContent = score;
+            document.getElementById("gaugeLabel").style.color = scoreColor(score);
+            var g = grade(score);
+            var badge = document.getElementById("gradeBadge");
+            badge.textContent = "Grade: " + g;
+            badge.style.background = scoreColor(score);
+            badge.style.color = "#000";
+        }
+
+        function renderCategories(catScores) {
+            var grid = document.getElementById("catGrid");
+            grid.innerHTML = "";
+            var cats = [CAT.ACCESSIBILITY, CAT.PRIVACY, CAT.SECURITY, CAT.OPERATIONAL];
+            cats.forEach(function(c) {
+                var s = catScores[c];
+                var card = document.createElement("div");
+                card.className = "cat-card";
+                card.innerHTML =
+                    '<h4><span class="cat-icon">' + CAT_ICONS[c] + '</span>' + c.charAt(0).toUpperCase() + c.slice(1) + ' <span style="margin-left:auto;color:' + scoreColor(s.score) + ';font-size:1.1rem;">' + s.score + '%</span></h4>' +
+                    '<div class="cat-bar"><div class="cat-bar-fill" style="width:' + s.score + '%;background:' + scoreColor(s.score) + '"></div></div>' +
+                    '<div class="cat-stats"><span>✅ ' + s.passed + ' passed</span>' +
+                    (s.criticals > 0 ? '<span style="color:var(--red)">🔴 ' + s.criticals + ' critical</span>' : '') +
+                    (s.warnings > 0 ? '<span style="color:var(--yellow)">🟡 ' + s.warnings + ' warning</span>' : '') +
+                    '</div>';
+                grid.appendChild(card);
+            });
+        }
+
+        function renderFindings(findings, filter) {
+            var list = document.getElementById("findingsList");
+            list.innerHTML = '<div class="finding-row"><span>ID</span><span>Severity</span><span>Finding</span><span>Action</span></div>';
+            findings.forEach(function(f) {
+                if (filter && filter !== "all" && f.severity !== filter) return;
+                var row = document.createElement("div");
+                row.className = "finding-row";
+                row.innerHTML =
+                    '<span style="font-family:monospace;font-size:0.8rem;">' + f.id + '</span>' +
+                    '<span><span class="sev-badge sev-' + f.severity + '">' + f.severity + '</span></span>' +
+                    '<span>' + f.title + '<br><span class="finding-rec">' + f.description + '</span></span>' +
+                    '<span>' + (f.recommendation ? '<span class="finding-rec">' + f.recommendation + '</span>' : '✅') + '</span>';
+                list.appendChild(row);
+            });
+        }
+
+        function renderRemediation(findings) {
+            var issues = findings.filter(function(f) { return f.severity === SEV.CRITICAL || f.severity === SEV.WARNING; });
+            issues.sort(function(a, b) { return a.severity === SEV.CRITICAL ? -1 : b.severity === SEV.CRITICAL ? 1 : 0; });
+            var sec = document.getElementById("remSection");
+            if (issues.length === 0) { sec.style.display = "none"; return; }
+            sec.style.display = "";
+            var list = document.getElementById("remList");
+            list.innerHTML = "";
+            issues.forEach(function(f, i) {
+                var item = document.createElement("div");
+                item.className = "rem-item";
+                var isCrit = f.severity === SEV.CRITICAL;
+                item.innerHTML =
+                    '<input type="checkbox" id="rem' + i + '" onchange="updateRemProgress()">' +
+                    '<span class="rem-priority" style="background:' + (isCrit ? "var(--red-bg);color:var(--red)" : "var(--yellow-bg);color:var(--yellow)") + '">' + (isCrit ? "P0" : "P1") + '</span>' +
+                    '<label for="rem' + i + '" class="rem-text">[' + f.id + '] ' + f.recommendation + '</label>';
+                list.appendChild(item);
+            });
+            updateRemProgress();
+        }
+
+        window.updateRemProgress = function() {
+            var boxes = document.querySelectorAll("#remList input[type=checkbox]");
+            var done = 0;
+            boxes.forEach(function(b) {
+                var label = b.parentElement.querySelector("label");
+                if (b.checked) { done++; label.classList.add("rem-done"); }
+                else { label.classList.remove("rem-done"); }
+            });
+            document.getElementById("remProgress").textContent = done + " / " + boxes.length + " resolved";
+        };
+
+        window.runAudit = function() {
+            var cfg = readConfig();
+            var met = readMetrics();
+            lastReport = generateReport(cfg, met);
+
+            document.getElementById("scoreSection").style.display = "";
+            document.getElementById("findingsSection").style.display = "";
+            document.getElementById("exportSection").style.display = "";
+            renderGauge(lastReport.score);
+            renderCategories(lastReport.categoryScores);
+            renderFindings(lastReport.findings, "all");
+            renderRemediation(lastReport.findings);
+
+            // Reset filter buttons
+            document.querySelectorAll(".filter-btn").forEach(function(b) { b.classList.remove("active"); });
+            document.querySelector('.filter-btn[data-filter="all"]').classList.add("active");
+        };
+
+        window.addToTimeline = function() {
+            if (!lastReport) { runAudit(); }
+            timeline.push({ score: lastReport.score, cats: JSON.parse(JSON.stringify(lastReport.categoryScores)), ts: new Date() });
+            renderTimeline();
+        };
+
+        function renderTimeline() {
+            if (timeline.length < 1) return;
+            var sec = document.getElementById("timelineSection");
+            sec.style.display = "";
+            var canvas = document.getElementById("timelineCanvas");
+            var ctx = canvas.getContext("2d");
+            canvas.width = canvas.clientWidth * (window.devicePixelRatio || 1);
+            canvas.height = canvas.clientHeight * (window.devicePixelRatio || 1);
+            ctx.scale(window.devicePixelRatio || 1, window.devicePixelRatio || 1);
+            var w = canvas.clientWidth, h = canvas.clientHeight;
+            var pad = { top: 20, right: 20, bottom: 30, left: 40 };
+            var plotW = w - pad.left - pad.right, plotH = h - pad.top - pad.bottom;
+
+            ctx.clearRect(0, 0, w, h);
+            // Grid
+            ctx.strokeStyle = "rgba(48,54,61,0.5)";
+            ctx.lineWidth = 1;
+            for (var y = 0; y <= 100; y += 25) {
+                var yy = pad.top + plotH - (y / 100 * plotH);
+                ctx.beginPath(); ctx.moveTo(pad.left, yy); ctx.lineTo(pad.left + plotW, yy); ctx.stroke();
+                ctx.fillStyle = "#8b949e"; ctx.font = "11px sans-serif"; ctx.textAlign = "right";
+                ctx.fillText(y + "%", pad.left - 5, yy + 4);
+            }
+
+            if (timeline.length === 1) {
+                // Single dot
+                var x0 = pad.left + plotW / 2;
+                var y0 = pad.top + plotH - (timeline[0].score / 100 * plotH);
+                ctx.beginPath(); ctx.arc(x0, y0, 5, 0, Math.PI * 2);
+                ctx.fillStyle = scoreColor(timeline[0].score); ctx.fill();
+                return;
+            }
+
+            // Line
+            ctx.strokeStyle = "#58a6ff"; ctx.lineWidth = 2;
+            ctx.beginPath();
+            timeline.forEach(function(p, i) {
+                var x = pad.left + (i / (timeline.length - 1)) * plotW;
+                var y = pad.top + plotH - (p.score / 100 * plotH);
+                if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+            });
+            ctx.stroke();
+
+            // Dots
+            timeline.forEach(function(p, i) {
+                var x = pad.left + (i / (timeline.length - 1)) * plotW;
+                var y = pad.top + plotH - (p.score / 100 * plotH);
+                ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2);
+                ctx.fillStyle = scoreColor(p.score); ctx.fill();
+            });
+        }
+
+        // Filter bar
+        document.getElementById("filterBar").addEventListener("click", function(e) {
+            var btn = e.target.closest(".filter-btn");
+            if (!btn || !lastReport) return;
+            document.querySelectorAll(".filter-btn").forEach(function(b) { b.classList.remove("active"); });
+            btn.classList.add("active");
+            renderFindings(lastReport.findings, btn.dataset.filter);
+        });
+
+        // Presets
+        window.applyPreset = function(name) {
+            var presets = {
+                secure: { audio: true, kb: true, aria: true, contrast: 7, time: 60000, extend: true, langs: "en,es,fr,de,zh,ja", ret: 14, consent: true, anon: true, del: true, rate: true, token: true, https: true, sanitize: true, attempts: 5, replay: true },
+                minimal: { audio: false, kb: false, aria: false, contrast: 3, time: 30000, extend: false, langs: "en", ret: 90, consent: false, anon: false, del: false, rate: false, token: false, https: false, sanitize: false, attempts: 0, replay: false },
+                broken: { audio: false, kb: false, aria: false, contrast: 2, time: 10000, extend: false, langs: "", ret: 365, consent: false, anon: false, del: false, rate: false, token: false, https: false, sanitize: false, attempts: 0, replay: false },
+                gdpr: { audio: false, kb: false, aria: false, contrast: 4.5, time: 60000, extend: false, langs: "en,de,fr", ret: 7, consent: true, anon: true, del: true, rate: true, token: true, https: true, sanitize: true, attempts: 5, replay: true },
+                accessible: { audio: true, kb: true, aria: true, contrast: 7, time: 90000, extend: true, langs: "en,es,fr,de,pt,it,zh,ja,ko,ar", ret: 30, consent: false, anon: false, del: false, rate: false, token: false, https: false, sanitize: false, attempts: 10, replay: false }
+            };
+            var p = presets[name]; if (!p) return;
+            document.getElementById("cfgAudio").checked = p.audio;
+            document.getElementById("cfgKeyboard").checked = p.kb;
+            document.getElementById("cfgAria").checked = p.aria;
+            document.getElementById("cfgContrast").value = p.contrast;
+            document.getElementById("cfgTimeLimit").value = p.time;
+            document.getElementById("cfgExtendTime").checked = p.extend;
+            document.getElementById("cfgLanguages").value = p.langs;
+            document.getElementById("cfgRetention").value = p.ret;
+            document.getElementById("cfgConsent").checked = p.consent;
+            document.getElementById("cfgAnonymize").checked = p.anon;
+            document.getElementById("cfgDeletion").checked = p.del;
+            document.getElementById("cfgRateLimit").checked = p.rate;
+            document.getElementById("cfgTokenSigned").checked = p.token;
+            document.getElementById("cfgHttps").checked = p.https;
+            document.getElementById("cfgSanitize").checked = p.sanitize;
+            document.getElementById("cfgMaxAttempts").value = p.attempts;
+            document.getElementById("cfgReplay").checked = p.replay;
+            runAudit();
+        };
+
+        // Export functions
+        window.exportJSON = function() {
+            if (!lastReport) return;
+            var blob = new Blob([JSON.stringify(lastReport, null, 2)], { type: "application/json" });
+            var a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+            a.download = "compliance-report-" + new Date().toISOString().slice(0, 10) + ".json"; a.click();
+        };
+
+        window.exportCSV = function() {
+            if (!lastReport) return;
+            var rows = ["ID,Category,Severity,Title,Description,Recommendation"];
+            lastReport.findings.forEach(function(f) {
+                rows.push([f.id, f.category, f.severity, '"' + f.title + '"', '"' + f.description + '"', '"' + (f.recommendation || "") + '"'].join(","));
+            });
+            var blob = new Blob([rows.join("\n")], { type: "text/csv" });
+            var a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+            a.download = "compliance-findings-" + new Date().toISOString().slice(0, 10) + ".csv"; a.click();
+        };
+
+        window.exportHTML = function() {
+            if (!lastReport) return;
+            var r = lastReport;
+            var html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Compliance Report</title><style>body{font-family:sans-serif;max-width:800px;margin:2rem auto;padding:0 1rem}table{width:100%;border-collapse:collapse;margin:1rem 0}th,td{border:1px solid #ddd;padding:0.5rem;text-align:left;font-size:0.85rem}th{background:#f5f5f5}.pass{color:green}.critical{color:red}.warning{color:orange}.info{color:purple}</style></head><body>';
+            html += '<h1>📋 Compliance Report</h1><p>Generated: ' + new Date().toLocaleString() + '</p>';
+            html += '<h2>Overall Score: ' + r.score + '% (Grade ' + grade(r.score) + ')</h2>';
+            html += '<table><tr><th>ID</th><th>Category</th><th>Severity</th><th>Finding</th><th>Recommendation</th></tr>';
+            r.findings.forEach(function(f) {
+                html += '<tr><td>' + f.id + '</td><td>' + f.category + '</td><td class="' + f.severity + '">' + f.severity.toUpperCase() + '</td><td>' + f.title + '</td><td>' + (f.recommendation || '✅ Pass') + '</td></tr>';
+            });
+            html += '</table></body></html>';
+            var blob = new Blob([html], { type: "text/html" });
+            var a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+            a.download = "compliance-report-" + new Date().toISOString().slice(0, 10) + ".html"; a.click();
+        };
+
+    })();
+    </script>
+</body>
+</html>

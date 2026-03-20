@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rate Limiter Simulator — gif-captcha</title>
+    <link rel="stylesheet" href="shared.css">
+    <style>
+        .sim-container { max-width: 1200px; margin: 0 auto; padding: 1.5rem; }
+        .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem; }
+        .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.2rem; }
+        .panel h3 { margin-bottom: 0.8rem; font-size: 1rem; color: var(--accent); }
+        .field { margin-bottom: 0.8rem; }
+        .field label { display: block; font-size: 0.82rem; color: var(--muted); margin-bottom: 0.3rem; }
+        .field input, .field select { width: 100%; padding: 0.5rem; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 0.9rem; }
+        .field input[type=range] { padding: 0; }
+        .range-row { display: flex; align-items: center; gap: 0.5rem; }
+        .range-val { font-size: 0.85rem; color: var(--accent); min-width: 3rem; text-align: right; font-variant-numeric: tabular-nums; }
+        .btn-row { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 1rem 0; }
+        .btn { padding: 0.5rem 1.2rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); cursor: pointer; font-size: 0.85rem; transition: background 0.15s; }
+        .btn:hover { background: var(--surface-hover); }
+        .btn.primary { background: var(--accent); color: #000; border-color: var(--accent); }
+        .btn.primary:hover { background: var(--accent-hover); }
+        .btn.danger { border-color: var(--red); color: var(--red); }
+        canvas#chart { width: 100%; height: 300px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0.8rem; margin: 1rem 0; }
+        .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 0.8rem; text-align: center; }
+        .stat-card .val { font-size: 1.5rem; font-weight: 700; }
+        .stat-card .lbl { font-size: 0.75rem; color: var(--muted); }
+        .stat-green .val { color: var(--green); }
+        .stat-red .val { color: var(--red); }
+        .stat-yellow .val { color: var(--yellow); }
+        .stat-blue .val { color: var(--accent); }
+        .log-box { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; height: 200px; overflow-y: auto; padding: 0.6rem; font-family: 'SFMono-Regular', Consolas, monospace; font-size: 0.78rem; line-height: 1.5; }
+        .log-allow { color: var(--green); }
+        .log-deny { color: var(--red); }
+        .log-warn { color: var(--yellow); }
+        .presets { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.8rem; }
+        .preset-btn { padding: 0.3rem 0.7rem; font-size: 0.75rem; border-radius: 12px; border: 1px solid var(--border); background: var(--bg); color: var(--muted); cursor: pointer; }
+        .preset-btn:hover, .preset-btn.active { background: var(--accent); color: #000; border-color: var(--accent); }
+        @media (max-width: 700px) { .controls { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🚦 Rate Limiter Simulator</h1>
+        <p class="subtitle">Configure, visualize, and stress-test rate limiting strategies for CAPTCHA endpoints</p>
+        <div class="nav-links"><a href="index.html">← Home</a> <a href="dashboard.html">Dashboard</a> <a href="fleet.html">Fleet</a></div>
+    </div>
+
+    <div class="sim-container">
+        <div class="presets">
+            <span style="color:var(--muted);font-size:0.8rem;line-height:2;">Presets:</span>
+            <button class="preset-btn active" data-preset="lenient">Lenient</button>
+            <button class="preset-btn" data-preset="moderate">Moderate</button>
+            <button class="preset-btn" data-preset="strict">Strict</button>
+            <button class="preset-btn" data-preset="sliding">Sliding Window</button>
+            <button class="preset-btn" data-preset="token">Token Bucket</button>
+            <button class="preset-btn" data-preset="ddos">DDoS Scenario</button>
+        </div>
+
+        <div class="controls">
+            <div class="panel">
+                <h3>⚙️ Rate Limiter Config</h3>
+                <div class="field">
+                    <label>Algorithm</label>
+                    <select id="algo">
+                        <option value="fixed">Fixed Window</option>
+                        <option value="sliding">Sliding Window Log</option>
+                        <option value="token">Token Bucket</option>
+                        <option value="leaky">Leaky Bucket</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label>Max Requests per Window</label>
+                    <div class="range-row">
+                        <input type="range" id="maxReq" min="1" max="200" value="30">
+                        <span class="range-val" id="maxReqVal">30</span>
+                    </div>
+                </div>
+                <div class="field">
+                    <label>Window Size (seconds)</label>
+                    <div class="range-row">
+                        <input type="range" id="window" min="1" max="120" value="60">
+                        <span class="range-val" id="windowVal">60</span>
+                    </div>
+                </div>
+                <div class="field">
+                    <label>Burst Tolerance (token/leaky only)</label>
+                    <div class="range-row">
+                        <input type="range" id="burst" min="1" max="100" value="10">
+                        <span class="range-val" id="burstVal">10</span>
+                    </div>
+                </div>
+                <div class="field">
+                    <label>Ban After N Violations (0 = no ban)</label>
+                    <div class="range-row">
+                        <input type="range" id="banAfter" min="0" max="20" value="5">
+                        <span class="range-val" id="banAfterVal">5</span>
+                    </div>
+                </div>
+                <div class="field">
+                    <label>Ban Duration (seconds)</label>
+                    <div class="range-row">
+                        <input type="range" id="banDur" min="5" max="600" value="60">
+                        <span class="range-val" id="banDurVal">60</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <h3>🤖 Traffic Pattern</h3>
+                <div class="field">
+                    <label>Simulation Duration (seconds)</label>
+                    <div class="range-row">
+                        <input type="range" id="duration" min="10" max="300" value="60">
+                        <span class="range-val" id="durationVal">60</span>
+                    </div>
+                </div>
+                <div class="field">
+                    <label>Normal Users (IPs)</label>
+                    <div class="range-row">
+                        <input type="range" id="normalUsers" min="1" max="100" value="20">
+                        <span class="range-val" id="normalUsersVal">20</span>
+                    </div>
+                </div>
+                <div class="field">
+                    <label>Normal Rate (req/min per user)</label>
+                    <div class="range-row">
+                        <input type="range" id="normalRate" min="1" max="60" value="5">
+                        <span class="range-val" id="normalRateVal">5</span>
+                    </div>
+                </div>
+                <div class="field">
+                    <label>Attackers (IPs)</label>
+                    <div class="range-row">
+                        <input type="range" id="attackers" min="0" max="50" value="3">
+                        <span class="range-val" id="attackersVal">3</span>
+                    </div>
+                </div>
+                <div class="field">
+                    <label>Attacker Rate (req/min per IP)</label>
+                    <div class="range-row">
+                        <input type="range" id="attackRate" min="10" max="600" value="120">
+                        <span class="range-val" id="attackRateVal">120</span>
+                    </div>
+                </div>
+                <div class="field">
+                    <label>Attacker Pattern</label>
+                    <select id="attackPattern">
+                        <option value="constant">Constant Flood</option>
+                        <option value="burst">Burst (spike then pause)</option>
+                        <option value="ramp">Ramp Up (gradual increase)</option>
+                        <option value="rotate">IP Rotation (new IP each wave)</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="btn-row">
+            <button class="btn primary" id="runBtn">▶ Run Simulation</button>
+            <button class="btn" id="stepBtn">⏩ Step (1s)</button>
+            <button class="btn danger" id="resetBtn">⟳ Reset</button>
+            <button class="btn" id="exportBtn">📋 Export JSON</button>
+        </div>
+
+        <canvas id="chart"></canvas>
+
+        <div class="stats-grid">
+            <div class="stat-card stat-blue"><div class="val" id="sTotalReq">0</div><div class="lbl">Total Requests</div></div>
+            <div class="stat-card stat-green"><div class="val" id="sAllowed">0</div><div class="lbl">Allowed</div></div>
+            <div class="stat-card stat-red"><div class="val" id="sDenied">0</div><div class="lbl">Denied</div></div>
+            <div class="stat-card stat-yellow"><div class="val" id="sBanned">0</div><div class="lbl">IPs Banned</div></div>
+            <div class="stat-card stat-green"><div class="val" id="sFPR">0%</div><div class="lbl">False Positive Rate</div></div>
+            <div class="stat-card stat-red"><div class="val" id="sFNR">0%</div><div class="lbl">False Negative Rate</div></div>
+        </div>
+
+        <div class="panel" style="margin-top:1rem;">
+            <h3>📜 Event Log</h3>
+            <div class="log-box" id="logBox"></div>
+        </div>
+    </div>
+
+    <footer style="text-align:center;padding:2rem;color:var(--muted);font-size:0.8rem;border-top:1px solid var(--border);margin-top:2rem;">
+        gif-captcha — Rate Limiter Simulator
+    </footer>
+
+    <script src="shared.js"></script>
+    <script>
+    (function() {
+        // --- Range slider binding ---
+        const ranges = ['maxReq','window','burst','banAfter','banDur','duration','normalUsers','normalRate','attackers','attackRate'];
+        ranges.forEach(id => {
+            const el = document.getElementById(id);
+            const valEl = document.getElementById(id + 'Val');
+            el.addEventListener('input', () => valEl.textContent = el.value);
+        });
+
+        // --- Presets ---
+        const presets = {
+            lenient:  { algo:'fixed', maxReq:60, window:60, burst:20, banAfter:0, banDur:60 },
+            moderate: { algo:'fixed', maxReq:30, window:60, burst:10, banAfter:5, banDur:60 },
+            strict:   { algo:'fixed', maxReq:10, window:60, burst:5, banAfter:3, banDur:300 },
+            sliding:  { algo:'sliding', maxReq:30, window:60, burst:10, banAfter:5, banDur:120 },
+            token:    { algo:'token', maxReq:30, window:60, burst:15, banAfter:5, banDur:120 },
+            ddos:     { algo:'token', maxReq:20, window:30, burst:10, banAfter:3, banDur:300, attackers:15, attackRate:300, attackPattern:'rotate', normalUsers:50 }
+        };
+        document.querySelectorAll('.preset-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                const p = presets[btn.dataset.preset];
+                Object.keys(p).forEach(k => {
+                    const el = document.getElementById(k);
+                    if (el) { el.value = p[k]; el.dispatchEvent(new Event('input')); }
+                });
+            });
+        });
+
+        // --- Rate Limiter Implementations ---
+        class FixedWindow {
+            constructor(max, windowSec) { this.max = max; this.windowSec = windowSec; this.buckets = {}; }
+            allow(ip, t) {
+                const key = ip + ':' + Math.floor(t / this.windowSec);
+                this.buckets[key] = (this.buckets[key] || 0) + 1;
+                return this.buckets[key] <= this.max;
+            }
+        }
+        class SlidingWindowLog {
+            constructor(max, windowSec) { this.max = max; this.windowSec = windowSec; this.logs = {}; }
+            allow(ip, t) {
+                if (!this.logs[ip]) this.logs[ip] = [];
+                const log = this.logs[ip];
+                while (log.length && log[0] <= t - this.windowSec) log.shift();
+                log.push(t);
+                return log.length <= this.max;
+            }
+        }
+        class TokenBucket {
+            constructor(max, windowSec, burst) { this.rate = max / windowSec; this.burst = burst; this.buckets = {}; }
+            allow(ip, t) {
+                if (!this.buckets[ip]) this.buckets[ip] = { tokens: this.burst, last: t };
+                const b = this.buckets[ip];
+                b.tokens = Math.min(this.burst, b.tokens + (t - b.last) * this.rate);
+                b.last = t;
+                if (b.tokens >= 1) { b.tokens--; return true; }
+                return false;
+            }
+        }
+        class LeakyBucket {
+            constructor(max, windowSec, burst) { this.rate = max / windowSec; this.burst = burst; this.buckets = {}; }
+            allow(ip, t) {
+                if (!this.buckets[ip]) this.buckets[ip] = { water: 0, last: t };
+                const b = this.buckets[ip];
+                b.water = Math.max(0, b.water - (t - b.last) * this.rate);
+                b.last = t;
+                if (b.water < this.burst) { b.water++; return true; }
+                return false;
+            }
+        }
+
+        // --- Simulation State ---
+        let simData = null;
+
+        function getConfig() {
+            return {
+                algo: document.getElementById('algo').value,
+                maxReq: +document.getElementById('maxReq').value,
+                window: +document.getElementById('window').value,
+                burst: +document.getElementById('burst').value,
+                banAfter: +document.getElementById('banAfter').value,
+                banDur: +document.getElementById('banDur').value,
+                duration: +document.getElementById('duration').value,
+                normalUsers: +document.getElementById('normalUsers').value,
+                normalRate: +document.getElementById('normalRate').value,
+                attackers: +document.getElementById('attackers').value,
+                attackRate: +document.getElementById('attackRate').value,
+                attackPattern: document.getElementById('attackPattern').value
+            };
+        }
+
+        function makeLimiter(cfg) {
+            switch (cfg.algo) {
+                case 'sliding': return new SlidingWindowLog(cfg.maxReq, cfg.window);
+                case 'token': return new TokenBucket(cfg.maxReq, cfg.window, cfg.burst);
+                case 'leaky': return new LeakyBucket(cfg.maxReq, cfg.window, cfg.burst);
+                default: return new FixedWindow(cfg.maxReq, cfg.window);
+            }
+        }
+
+        function generateTraffic(cfg) {
+            const events = [];
+            // Normal users
+            for (let u = 0; u < cfg.normalUsers; u++) {
+                const ip = '10.0.' + Math.floor(u / 255) + '.' + (u % 255 + 1);
+                const interval = 60 / cfg.normalRate;
+                for (let t = Math.random() * interval; t < cfg.duration; t += interval * (0.5 + Math.random())) {
+                    events.push({ t: +t.toFixed(3), ip, attacker: false });
+                }
+            }
+            // Attackers
+            let rotateIdx = 0;
+            for (let a = 0; a < cfg.attackers; a++) {
+                const baseIp = '192.168.' + Math.floor(a / 255) + '.' + (a % 255 + 1);
+                const interval = 60 / cfg.attackRate;
+                for (let t = 0; t < cfg.duration; t += interval * (0.3 + Math.random() * 0.4)) {
+                    let ip = baseIp;
+                    let active = true;
+                    if (cfg.attackPattern === 'burst') active = (t % 20) < 5;
+                    else if (cfg.attackPattern === 'ramp') { if (Math.random() > t / cfg.duration) continue; }
+                    else if (cfg.attackPattern === 'rotate') { if (Math.floor(t / 10) !== rotateIdx) { rotateIdx = Math.floor(t / 10); } ip = '192.168.' + (rotateIdx % 255) + '.' + (a % 255 + 1); }
+                    if (active) events.push({ t: +t.toFixed(3), ip, attacker: true });
+                }
+            }
+            events.sort((a, b) => a.t - b.t);
+            return events;
+        }
+
+        function runSim(cfg, maxT) {
+            const limiter = makeLimiter(cfg);
+            const traffic = generateTraffic(cfg);
+            const violations = {};
+            const banned = {};
+            const log = [];
+            const perSecond = [];
+            let allowed = 0, denied = 0, bannedCount = 0;
+            let normalDenied = 0, normalTotal = 0, attackAllowed = 0, attackTotal = 0;
+            const dur = maxT || cfg.duration;
+
+            for (let s = 0; s < dur; s++) perSecond.push({ allowed: 0, denied: 0 });
+
+            for (const ev of traffic) {
+                if (ev.t >= dur) break;
+                const sec = Math.floor(ev.t);
+                if (!ev.attacker) normalTotal++;
+                else attackTotal++;
+
+                // Check ban
+                if (banned[ev.ip] && ev.t < banned[ev.ip]) {
+                    denied++;
+                    if (perSecond[sec]) perSecond[sec].denied++;
+                    if (!ev.attacker) normalDenied++;
+                    continue;
+                }
+                delete banned[ev.ip];
+
+                const ok = limiter.allow(ev.ip, ev.t);
+                if (ok) {
+                    allowed++;
+                    if (perSecond[sec]) perSecond[sec].allowed++;
+                    if (ev.attacker) attackAllowed++;
+                } else {
+                    denied++;
+                    if (perSecond[sec]) perSecond[sec].denied++;
+                    if (!ev.attacker) normalDenied++;
+                    // Ban logic
+                    if (cfg.banAfter > 0) {
+                        violations[ev.ip] = (violations[ev.ip] || 0) + 1;
+                        if (violations[ev.ip] >= cfg.banAfter && !banned[ev.ip]) {
+                            banned[ev.ip] = ev.t + cfg.banDur;
+                            bannedCount++;
+                            log.push({ t: ev.t, ip: ev.ip, type: 'ban', attacker: ev.attacker });
+                        }
+                    }
+                }
+                if (log.length < 500) log.push({ t: ev.t, ip: ev.ip, type: ok ? 'allow' : 'deny', attacker: ev.attacker });
+            }
+
+            const fpr = normalTotal > 0 ? (normalDenied / normalTotal * 100) : 0;
+            const fnr = attackTotal > 0 ? (attackAllowed / attackTotal * 100) : 0;
+
+            return { perSecond, allowed, denied, bannedCount, fpr, fnr, total: allowed + denied, log };
+        }
+
+        // --- Chart Drawing ---
+        function drawChart(data) {
+            const canvas = document.getElementById('chart');
+            const dpr = window.devicePixelRatio || 1;
+            const rect = canvas.getBoundingClientRect();
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            const ctx = canvas.getContext('2d');
+            ctx.scale(dpr, dpr);
+            const W = rect.width, H = rect.height;
+            const pad = { t: 30, r: 20, b: 35, l: 55 };
+            const cW = W - pad.l - pad.r, cH = H - pad.t - pad.b;
+
+            ctx.clearRect(0, 0, W, H);
+
+            if (!data || !data.perSecond.length) return;
+            const maxY = Math.max(1, ...data.perSecond.map(d => d.allowed + d.denied)) * 1.1;
+
+            // Grid
+            ctx.strokeStyle = '#30363d'; ctx.lineWidth = 0.5;
+            for (let i = 0; i <= 5; i++) {
+                const y = pad.t + cH - (i / 5) * cH;
+                ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(W - pad.r, y); ctx.stroke();
+                ctx.fillStyle = '#8b949e'; ctx.font = '11px sans-serif'; ctx.textAlign = 'right';
+                ctx.fillText(Math.round(maxY * i / 5), pad.l - 6, y + 4);
+            }
+
+            const barW = Math.max(1, cW / data.perSecond.length - 1);
+
+            data.perSecond.forEach((d, i) => {
+                const x = pad.l + (i / data.perSecond.length) * cW;
+                const hA = (d.allowed / maxY) * cH;
+                const hD = (d.denied / maxY) * cH;
+                ctx.fillStyle = '#3fb950';
+                ctx.fillRect(x, pad.t + cH - hA - hD, barW, hA);
+                ctx.fillStyle = '#f85149';
+                ctx.fillRect(x, pad.t + cH - hD, barW, hD);
+            });
+
+            // X labels
+            ctx.fillStyle = '#8b949e'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
+            const step = Math.max(1, Math.floor(data.perSecond.length / 10));
+            for (let i = 0; i < data.perSecond.length; i += step) {
+                ctx.fillText(i + 's', pad.l + (i / data.perSecond.length) * cW + barW / 2, H - pad.b + 16);
+            }
+
+            // Legend
+            ctx.font = '12px sans-serif';
+            ctx.fillStyle = '#3fb950'; ctx.fillRect(pad.l, 8, 12, 12);
+            ctx.fillStyle = '#e6edf3'; ctx.textAlign = 'left'; ctx.fillText('Allowed', pad.l + 16, 18);
+            ctx.fillStyle = '#f85149'; ctx.fillRect(pad.l + 80, 8, 12, 12);
+            ctx.fillStyle = '#e6edf3'; ctx.fillText('Denied', pad.l + 96, 18);
+        }
+
+        function updateStats(data) {
+            document.getElementById('sTotalReq').textContent = data.total.toLocaleString();
+            document.getElementById('sAllowed').textContent = data.allowed.toLocaleString();
+            document.getElementById('sDenied').textContent = data.denied.toLocaleString();
+            document.getElementById('sBanned').textContent = data.bannedCount;
+            document.getElementById('sFPR').textContent = data.fpr.toFixed(1) + '%';
+            document.getElementById('sFNR').textContent = data.fnr.toFixed(1) + '%';
+        }
+
+        function updateLog(data) {
+            const box = document.getElementById('logBox');
+            box.innerHTML = data.log.slice(-200).map(e => {
+                const cls = e.type === 'allow' ? 'log-allow' : e.type === 'ban' ? 'log-warn' : 'log-deny';
+                const tag = e.attacker ? ' [ATTACKER]' : '';
+                const icon = e.type === 'allow' ? '✓' : e.type === 'ban' ? '⛔' : '✗';
+                return '<div class="' + cls + '">' + sanitize(e.t.toFixed(2) + 's ' + icon + ' ' + e.ip + tag + (e.type === 'ban' ? ' BANNED' : '')) + '</div>';
+            }).join('');
+            box.scrollTop = box.scrollHeight;
+        }
+
+        // --- Buttons ---
+        document.getElementById('runBtn').addEventListener('click', () => {
+            const cfg = getConfig();
+            simData = runSim(cfg);
+            drawChart(simData);
+            updateStats(simData);
+            updateLog(simData);
+        });
+
+        let stepT = 0;
+        document.getElementById('stepBtn').addEventListener('click', () => {
+            stepT++;
+            const cfg = getConfig();
+            simData = runSim(cfg, stepT);
+            drawChart(simData);
+            updateStats(simData);
+            updateLog(simData);
+        });
+
+        document.getElementById('resetBtn').addEventListener('click', () => {
+            stepT = 0; simData = null;
+            drawChart(null);
+            ['sTotalReq','sAllowed','sDenied','sBanned'].forEach(id => document.getElementById(id).textContent = '0');
+            document.getElementById('sFPR').textContent = '0%';
+            document.getElementById('sFNR').textContent = '0%';
+            document.getElementById('logBox').innerHTML = '';
+        });
+
+        document.getElementById('exportBtn').addEventListener('click', () => {
+            if (!simData) return alert('Run a simulation first.');
+            const blob = new Blob([JSON.stringify({ config: getConfig(), results: { total: simData.total, allowed: simData.allowed, denied: simData.denied, banned: simData.bannedCount, fpr: simData.fpr, fnr: simData.fnr }, perSecond: simData.perSecond }, null, 2)], { type: 'application/json' });
+            const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'rate-limiter-sim.json'; a.click();
+        });
+
+        // Init chart
+        drawChart(null);
+        window.addEventListener('resize', () => { if (simData) drawChart(simData); else drawChart(null); });
+    })();
+    </script>
+</body>
+</html>

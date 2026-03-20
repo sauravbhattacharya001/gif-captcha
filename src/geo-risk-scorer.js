@@ -1,31 +1,20 @@
 /**
- * GeoRiskScorer — Geographic risk analysis for CAPTCHA attempts.
+ * Geo-risk scoring for CAPTCHA challenge systems.
  *
- * Scores requests based on geographic signals: country risk tiers,
- * IP-to-region velocity (impossible travel), datacenter/proxy detection
- * heuristics, geo-clustering anomalies, and per-region solve-rate baselines.
+ * Evaluates geographic metadata (country, IP, coordinates) to produce
+ * a composite risk score with actionable recommendations (allow / warn /
+ * challenge / block).
  *
- * No external dependencies — works with IP metadata you supply.
+ * Extracted from index.js to reduce the monolith and make the module
+ * independently testable.
  *
- * @example
- *   var scorer = createGeoRiskScorer({ highRiskCountries: ['XX'] });
- *   var result = scorer.score({
- *     ip: '203.0.113.42',
- *     country: 'US',
- *     region: 'CA',
- *     city: 'San Francisco',
- *     lat: 37.77,
- *     lon: -122.42,
- *     isProxy: false,
- *     isDatacenter: false,
- *     timestamp: Date.now()
- *   });
- *   // result => { score: 0.15, level: 'low', factors: [...], action: 'allow' }
+ * @module geo-risk-scorer
  */
 
 "use strict";
 
 // ── Haversine distance (km) ─────────────────────────────────────────
+
 function _haversineKm(lat1, lon1, lat2, lon2) {
   var R = 6371;
   var dLat = (lat2 - lat1) * Math.PI / 180;
@@ -37,14 +26,29 @@ function _haversineKm(lat1, lon1, lat2, lon2) {
 }
 
 // ── Default risk tiers ──────────────────────────────────────────────
+
 var DEFAULT_HIGH_RISK = ["CN", "RU", "KP", "IR", "NG", "VN", "PK", "BD"];
 var DEFAULT_MEDIUM_RISK = ["BR", "IN", "ID", "PH", "UA", "RO", "TH", "EG"];
 
 // ── Thresholds ──────────────────────────────────────────────────────
-var IMPOSSIBLE_TRAVEL_SPEED_KMH = 900; // faster than commercial flight
+
+var IMPOSSIBLE_TRAVEL_SPEED_KMH = 900;
 var SUSPICIOUS_TRAVEL_SPEED_KMH = 300;
 var VELOCITY_WINDOW_MS = 3600000; // 1 hour
 
+/**
+ * Create a geo-risk scorer instance.
+ *
+ * @param {Object} [options]
+ * @param {string[]} [options.highRiskCountries]
+ * @param {string[]} [options.mediumRiskCountries]
+ * @param {number}   [options.impossibleTravelSpeedKmh=900]
+ * @param {number}   [options.suspiciousTravelSpeedKmh=300]
+ * @param {number}   [options.velocityWindowMs=3600000]
+ * @param {number}   [options.maxHistory=500]
+ * @param {Object}   [options.thresholds]
+ * @returns {Object} GeoRiskScorer instance
+ */
 function createGeoRiskScorer(options) {
   options = options || {};
 
@@ -54,34 +58,21 @@ function createGeoRiskScorer(options) {
   var suspiciousSpeedKmh = options.suspiciousTravelSpeedKmh || SUSPICIOUS_TRAVEL_SPEED_KMH;
   var velocityWindowMs = options.velocityWindowMs || VELOCITY_WINDOW_MS;
   var maxHistory = options.maxHistory || 500;
-  var maxTrackedIPs = options.maxTrackedIPs || 50000;
-  var maxTrackedSessions = options.maxTrackedSessions || 50000;
-  var blocklistTTLMs = options.blocklistTTLMs || 86400000; // 24h default
-  var allowlistTTLMs = options.allowlistTTLMs || 86400000;
-  var cleanupIntervalMs = options.cleanupIntervalMs || 60000; // sweep at most once/min
 
-  // Thresholds for action mapping
   var thresholds = options.thresholds || {};
   var blockThreshold = thresholds.block || 0.8;
   var challengeThreshold = thresholds.challenge || 0.5;
   var warnThreshold = thresholds.warn || 0.3;
 
-  // IP history for velocity checks: { ip: [{ lat, lon, ts, country }] }
   var _ipHistory = Object.create(null);
-  // Session history for geo-hopping: { sessionId: [{ country, ts }] }
   var _sessionGeo = Object.create(null);
-  // Regional stats: { country: { attempts, solves } }
   var _regionStats = Object.create(null);
-  // Custom blocklist/allowlist
   var _blockedIPs = Object.create(null);
   var _allowedIPs = Object.create(null);
 
   var _totalScored = 0;
   var _totalBlocked = 0;
   var _totalChallenged = 0;
-  var _ipAccessOrder = [];    // LRU tracking: array of IPs in access order
-  var _sessionAccessOrder = []; // LRU tracking: array of session IDs
-  var _lastCleanup = 0;       // timestamp of last periodic sweep
 
   // ── Helpers ──────────────────────────────────────────────────────
 
@@ -90,7 +81,6 @@ function createGeoRiskScorer(options) {
   function _pushCapped(arr, item, cap) {
     arr.push(item);
     if (arr.length > cap) {
-      // Splice from front in one call instead of repeated shift() — O(n) once vs O(k*n)
       arr.splice(0, arr.length - cap);
     }
   }
@@ -107,61 +97,6 @@ function createGeoRiskScorer(options) {
     if (score >= challengeThreshold) return "high";
     if (score >= warnThreshold) return "medium";
     return "low";
-  }
-
-  // ── LRU eviction for bounded maps ────────────────────────────────
-
-  function _touchLRU(orderList, map, key, maxSize) {
-    // Append to end (most recent). We don't remove duplicates on every
-    // touch — instead we skip stale entries during eviction.
-    orderList.push(key);
-    // Evict oldest entries when over capacity
-    while (Object.keys(map).length > maxSize && orderList.length > 0) {
-      var oldest = orderList.shift();
-      // Skip if this key was re-accessed (will appear later in the list)
-      if (map[oldest] !== undefined) {
-        // Check if this key appears again later (still active)
-        var dominated = false;
-        for (var k = 0; k < orderList.length; k++) {
-          if (orderList[k] === oldest) { dominated = true; break; }
-        }
-        if (!dominated) {
-          delete map[oldest];
-        }
-      }
-    }
-    // Compact order list periodically to avoid unbounded growth of the
-    // tracking array itself (remove entries whose keys no longer exist)
-    if (orderList.length > maxSize * 3) {
-      var compacted = [];
-      for (var j = 0; j < orderList.length; j++) {
-        if (map[orderList[j]] !== undefined) compacted.push(orderList[j]);
-      }
-      orderList.length = 0;
-      for (var m = 0; m < compacted.length; m++) orderList.push(compacted[m]);
-    }
-  }
-
-  // ── TTL-based cleanup for blocklist/allowlist ────────────────────
-
-  function _periodicCleanup(now) {
-    if (now - _lastCleanup < cleanupIntervalMs) return;
-    _lastCleanup = now;
-
-    // Expire blocked IPs past TTL
-    var blockedKeys = Object.keys(_blockedIPs);
-    for (var i = 0; i < blockedKeys.length; i++) {
-      if (now - _blockedIPs[blockedKeys[i]] > blocklistTTLMs) {
-        delete _blockedIPs[blockedKeys[i]];
-      }
-    }
-    // Expire allowed IPs past TTL
-    var allowedKeys = Object.keys(_allowedIPs);
-    for (var j = 0; j < allowedKeys.length; j++) {
-      if (now - _allowedIPs[allowedKeys[j]] > allowlistTTLMs) {
-        delete _allowedIPs[allowedKeys[j]];
-      }
-    }
   }
 
   // ── Factor Evaluators ────────────────────────────────────────────
@@ -194,7 +129,7 @@ function createGeoRiskScorer(options) {
     for (var i = history.length - 1; i >= 0; i--) {
       var prev = history[i];
       if (ts - prev.ts > velocityWindowMs) break;
-      var dt = (ts - prev.ts) / 3600000; // hours
+      var dt = (ts - prev.ts) / 3600000;
       if (dt <= 0) continue;
       var dist = _haversineKm(prev.lat, prev.lon, lat, lon);
       var speed = dist / dt;
@@ -232,7 +167,7 @@ function createGeoRiskScorer(options) {
     if (!country) return null;
     var cc = country.toUpperCase();
     var stats = _regionStats[cc];
-    if (!stats || stats.attempts < 20) return null; // not enough data
+    if (!stats || stats.attempts < 20) return null;
     var solveRate = stats.solves / stats.attempts;
     if (solveRate < 0.1) return { name: "region_low_solve_rate", score: 0.35, detail: cc + " solve rate " + (solveRate * 100).toFixed(1) + "%" };
     if (solveRate < 0.3) return { name: "region_below_avg_solve", score: 0.15, detail: cc + " solve rate " + (solveRate * 100).toFixed(1) + "%" };
@@ -241,37 +176,11 @@ function createGeoRiskScorer(options) {
 
   // ── Main Scoring ─────────────────────────────────────────────────
 
-  /**
-   * Score a CAPTCHA attempt based on geographic risk signals.
-   *
-   * Evaluates country risk tier, proxy/VPN/Tor detection, impossible-travel
-   * velocity between requests from the same IP, geo-hopping across countries
-   * within a session, and regional solve-rate anomalies. Returns a composite
-   * score (0–1) with a risk level, contributing factors, and recommended action.
-   *
-   * @param {Object} meta - Request metadata
-   * @param {string} [meta.ip] - Client IP address (used for velocity and blocklist checks)
-   * @param {string} [meta.country] - ISO 3166-1 alpha-2 country code
-   * @param {number} [meta.lat] - Latitude for velocity/travel analysis
-   * @param {number} [meta.lon] - Longitude for velocity/travel analysis
-   * @param {boolean} [meta.isProxy] - Whether the IP is a known proxy
-   * @param {boolean} [meta.isDatacenter] - Whether the IP belongs to a datacenter
-   * @param {boolean} [meta.isTor] - Whether the IP is a Tor exit node
-   * @param {boolean} [meta.isVpn] - Whether the IP is a known VPN endpoint
-   * @param {string} [meta.sessionId] - Session identifier for geo-hopping detection
-   * @param {number} [meta.timestamp] - Request timestamp (ms); defaults to Date.now()
-   * @returns {{ score: number, level: string, factors: Array<{name:string,score:number,detail:string}>, action: string }}
-   * @throws {Error} If meta is falsy
-   */
   function score(meta) {
     if (!meta) throw new Error("GeoRiskScorer: meta object required");
     var ts = meta.timestamp || Date.now();
     var factors = [];
 
-    // Periodic TTL-based cleanup of blocklist/allowlist
-    _periodicCleanup(ts);
-
-    // Allowlist/blocklist short-circuits
     if (meta.ip && _allowedIPs[meta.ip]) {
       return { score: 0, level: "low", factors: [{ name: "ip_allowlisted", score: 0, detail: meta.ip }], action: "allow" };
     }
@@ -279,7 +188,6 @@ function createGeoRiskScorer(options) {
       return { score: 1, level: "critical", factors: [{ name: "ip_blocklisted", score: 1, detail: meta.ip }], action: "block" };
     }
 
-    // Evaluate all factors
     factors.push(_countryRiskFactor(meta.country));
     factors.push(_proxyFactor(meta));
 
@@ -292,7 +200,6 @@ function createGeoRiskScorer(options) {
     var raf = _regionalAnomalyFactor(meta.country);
     if (raf) factors.push(raf);
 
-    // Composite score: weighted max + average blend
     var maxScore = 0;
     var sum = 0;
     var count = 0;
@@ -307,16 +214,13 @@ function createGeoRiskScorer(options) {
     var action = _toAction(composite);
     var level = _toLevel(composite);
 
-    // Update history with LRU eviction
     if (meta.ip && meta.lat != null && meta.lon != null) {
       if (!_ipHistory[meta.ip]) _ipHistory[meta.ip] = [];
       _pushCapped(_ipHistory[meta.ip], { lat: meta.lat, lon: meta.lon, ts: ts, country: (meta.country || "").toUpperCase() }, maxHistory);
-      _touchLRU(_ipAccessOrder, _ipHistory, meta.ip, maxTrackedIPs);
     }
     if (meta.sessionId && meta.country) {
       if (!_sessionGeo[meta.sessionId]) _sessionGeo[meta.sessionId] = [];
       _pushCapped(_sessionGeo[meta.sessionId], { country: meta.country.toUpperCase(), ts: ts }, maxHistory);
-      _touchLRU(_sessionAccessOrder, _sessionGeo, meta.sessionId, maxTrackedSessions);
     }
 
     _totalScored++;
@@ -328,12 +232,6 @@ function createGeoRiskScorer(options) {
 
   // ── Region Stats ─────────────────────────────────────────────────
 
-  /**
-   * Record a CAPTCHA attempt outcome for a given country to build regional baselines.
-   *
-   * @param {string} country - ISO 3166-1 alpha-2 country code
-   * @param {boolean} solved - Whether the attempt was solved successfully
-   */
   function recordAttempt(country, solved) {
     if (!country) return;
     var cc = country.toUpperCase();
@@ -342,34 +240,17 @@ function createGeoRiskScorer(options) {
     if (solved) _regionStats[cc].solves++;
   }
 
-  /**
-   * Get solve-rate statistics for a specific country or all tracked countries.
-   *
-   * @param {string} [country] - ISO country code; omit for all countries (sorted by attempts desc)
-   * @returns {?Object|Array<Object>} Stats object or sorted array; null if country has no data
-   */
   function getRegionStats(country) {
     if (country) {
       var cc = country.toUpperCase();
       var s = _regionStats[cc];
-      if (!s) return null;
-      return {
-        country: cc,
-        attempts: s.attempts,
-        solves: s.solves,
-        solveRate: s.attempts > 0 ? Math.round((s.solves / s.attempts) * 1000) / 1000 : 0
-      };
+      return s ? { country: cc, attempts: s.attempts, solves: s.solves, solveRate: s.attempts > 0 ? Math.round((s.solves / s.attempts) * 1000) / 1000 : 0 } : null;
     }
     var result = [];
     var keys = Object.keys(_regionStats);
     for (var i = 0; i < keys.length; i++) {
       var st = _regionStats[keys[i]];
-      result.push({
-        country: keys[i],
-        attempts: st.attempts,
-        solves: st.solves,
-        solveRate: st.attempts > 0 ? Math.round((st.solves / st.attempts) * 1000) / 1000 : 0
-      });
+      result.push({ country: keys[i], attempts: st.attempts, solves: st.solves, solveRate: st.attempts > 0 ? Math.round((st.solves / st.attempts) * 1000) / 1000 : 0 });
     }
     result.sort(function (a, b) { return b.attempts - a.attempts; });
     return result;
@@ -377,8 +258,8 @@ function createGeoRiskScorer(options) {
 
   // ── IP Management ────────────────────────────────────────────────
 
-  function blockIP(ip) { _blockedIPs[ip] = Date.now(); }
-  function allowIP(ip) { _allowedIPs[ip] = Date.now(); }
+  function blockIP(ip) { _blockedIPs[ip] = true; }
+  function allowIP(ip) { _allowedIPs[ip] = true; }
   function unblockIP(ip) { delete _blockedIPs[ip]; }
   function unallowIP(ip) { delete _allowedIPs[ip]; }
   function isBlocked(ip) { return !!_blockedIPs[ip]; }
@@ -386,12 +267,6 @@ function createGeoRiskScorer(options) {
 
   // ── Batch Scoring ────────────────────────────────────────────────
 
-  /**
-   * Score an array of request metadata objects in batch.
-   *
-   * @param {Array<Object>} metas - Array of meta objects (same shape as {@link score} param)
-   * @returns {Array<Object>} Corresponding array of score results
-   */
   function scoreBatch(metas) {
     var results = [];
     for (var i = 0; i < metas.length; i++) {
@@ -402,11 +277,6 @@ function createGeoRiskScorer(options) {
 
   // ── Risk Summary ─────────────────────────────────────────────────
 
-  /**
-   * Get a summary of scoring activity — totals, rates, and tracked entity counts.
-   *
-   * @returns {{ totalScored: number, totalBlocked: number, totalChallenged: number, blockRate: number, challengeRate: number, trackedIPs: number, trackedSessions: number, regionCount: number, blockedIPs: number, allowedIPs: number }}
-   */
   function summary() {
     return {
       totalScored: _totalScored,
@@ -433,9 +303,6 @@ function createGeoRiskScorer(options) {
     _totalScored = 0;
     _totalBlocked = 0;
     _totalChallenged = 0;
-    _ipAccessOrder.length = 0;
-    _sessionAccessOrder.length = 0;
-    _lastCleanup = 0;
   }
 
   return {
@@ -450,11 +317,13 @@ function createGeoRiskScorer(options) {
     isBlocked: isBlocked,
     isAllowed: isAllowed,
     summary: summary,
-    reset: reset,
-    cleanup: function () { _periodicCleanup(Date.now()); }
+    reset: reset
   };
 }
 
-if (typeof module !== "undefined" && module.exports) {
-  module.exports = { createGeoRiskScorer: createGeoRiskScorer };
-}
+// ── Exports ─────────────────────────────────────────────────────────
+
+exports.createGeoRiskScorer = createGeoRiskScorer;
+exports._haversineKm = _haversineKm;
+exports.DEFAULT_HIGH_RISK = DEFAULT_HIGH_RISK;
+exports.DEFAULT_MEDIUM_RISK = DEFAULT_MEDIUM_RISK;

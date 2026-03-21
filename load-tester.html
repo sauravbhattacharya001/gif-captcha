@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Load Tester — GIF CAPTCHA</title>
+    <link rel="stylesheet" href="shared.css">
+    <style>
+        body { padding: 0; }
+        .config-panel {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .config-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        .config-field label {
+            display: block;
+            font-size: 0.8rem;
+            color: var(--muted);
+            margin-bottom: 0.3rem;
+        }
+        .config-field input, .config-field select {
+            width: 100%;
+            padding: 0.5rem 0.75rem;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text);
+            font-size: 0.9rem;
+            font-family: inherit;
+        }
+        .config-field input:focus, .config-field select:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+        .controls { display: flex; gap: 0.75rem; align-items: center; }
+        .status-indicator {
+            display: inline-block;
+            width: 10px; height: 10px;
+            border-radius: 50%;
+            background: var(--muted);
+            margin-right: 0.5rem;
+        }
+        .status-indicator.running { background: var(--green); animation: pulse 1s infinite; }
+        .status-indicator.done { background: var(--accent); }
+        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        .metric-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.25rem;
+            text-align: center;
+        }
+        .metric-card .value {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: var(--text);
+        }
+        .metric-card .label {
+            font-size: 0.75rem;
+            color: var(--muted);
+            margin-top: 0.25rem;
+        }
+        .metric-card.green .value { color: var(--green); }
+        .metric-card.red .value { color: var(--red); }
+        .metric-card.accent .value { color: var(--accent); }
+        .metric-card.yellow .value { color: var(--yellow); }
+
+        .chart-section {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .chart-section h3 {
+            font-size: 1rem;
+            margin-bottom: 1rem;
+            color: var(--text);
+        }
+        canvas { width: 100% !important; height: 200px !important; }
+
+        .log-section {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .log-section h3 {
+            font-size: 1rem;
+            margin-bottom: 0.75rem;
+        }
+        .log-area {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.75rem;
+            max-height: 250px;
+            overflow-y: auto;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 0.78rem;
+            line-height: 1.6;
+            color: var(--muted);
+        }
+        .log-entry { padding: 0.1rem 0; }
+        .log-entry.success { color: var(--green); }
+        .log-entry.fail { color: var(--red); }
+        .log-entry.info { color: var(--accent); }
+        .log-entry .ts { color: var(--muted); opacity: 0.6; margin-right: 0.5rem; }
+
+        .percentile-bar {
+            display: flex;
+            align-items: center;
+            margin: 0.5rem 0;
+        }
+        .percentile-bar .plabel {
+            width: 50px;
+            font-size: 0.8rem;
+            color: var(--muted);
+        }
+        .percentile-bar .bar-bg {
+            flex: 1;
+            height: 18px;
+            background: var(--bg);
+            border-radius: 4px;
+            overflow: hidden;
+            position: relative;
+        }
+        .percentile-bar .bar-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.3s;
+        }
+        .percentile-bar .bar-value {
+            width: 65px;
+            text-align: right;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--text);
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>⚡ CAPTCHA Load Tester</h1>
+        <p class="subtitle">Simulate concurrent CAPTCHA sessions &amp; measure throughput</p>
+        <nav class="nav-links">
+            <a href="index.html">Case Study</a>
+            <a href="demo.html">Demo</a>
+            <a href="generator.html">Generator</a>
+            <a href="dashboard.html">Dashboard</a>
+            <a href="benchmark.html">Benchmark</a>
+            <a href="load-tester.html" style="font-weight:700">Load Tester</a>
+        </nav>
+    </div>
+
+    <div class="container">
+        <!-- Config Panel -->
+        <div class="config-panel">
+            <div class="config-grid">
+                <div class="config-field">
+                    <label>Concurrent Users</label>
+                    <input type="number" id="cfgConcurrency" value="10" min="1" max="500">
+                </div>
+                <div class="config-field">
+                    <label>Total Requests</label>
+                    <input type="number" id="cfgTotal" value="200" min="1" max="10000">
+                </div>
+                <div class="config-field">
+                    <label>Avg Solve Time (ms)</label>
+                    <input type="number" id="cfgSolveTime" value="3000" min="100" max="30000">
+                </div>
+                <div class="config-field">
+                    <label>Failure Rate (%)</label>
+                    <input type="number" id="cfgFailRate" value="8" min="0" max="100">
+                </div>
+                <div class="config-field">
+                    <label>Timeout (ms)</label>
+                    <input type="number" id="cfgTimeout" value="10000" min="1000" max="60000">
+                </div>
+                <div class="config-field">
+                    <label>Ramp-up (seconds)</label>
+                    <input type="number" id="cfgRamp" value="5" min="0" max="60">
+                </div>
+            </div>
+            <div class="controls">
+                <button class="btn btn-primary" id="btnStart">▶ Start Test</button>
+                <button class="btn btn-secondary" id="btnStop" disabled>⬛ Stop</button>
+                <button class="btn btn-secondary" id="btnReset">↺ Reset</button>
+                <span style="margin-left:auto;font-size:0.85rem;color:var(--muted)">
+                    <span class="status-indicator" id="statusDot"></span>
+                    <span id="statusText">Idle</span>
+                </span>
+            </div>
+        </div>
+
+        <!-- Live Metrics -->
+        <div class="metrics-grid">
+            <div class="metric-card green">
+                <div class="value" id="mCompleted">0</div>
+                <div class="label">Completed</div>
+            </div>
+            <div class="metric-card red">
+                <div class="value" id="mFailed">0</div>
+                <div class="label">Failed</div>
+            </div>
+            <div class="metric-card accent">
+                <div class="value" id="mRPS">0</div>
+                <div class="label">Req/s</div>
+            </div>
+            <div class="metric-card yellow">
+                <div class="value" id="mAvgTime">0ms</div>
+                <div class="label">Avg Response</div>
+            </div>
+            <div class="metric-card">
+                <div class="value" id="mActive">0</div>
+                <div class="label">Active Workers</div>
+            </div>
+            <div class="metric-card">
+                <div class="value" id="mProgress">0%</div>
+                <div class="label">Progress</div>
+            </div>
+        </div>
+
+        <!-- Throughput Chart -->
+        <div class="chart-section">
+            <h3>📈 Throughput Over Time (req/s)</h3>
+            <canvas id="throughputChart"></canvas>
+        </div>
+
+        <!-- Response Time Percentiles -->
+        <div class="chart-section">
+            <h3>📊 Response Time Percentiles</h3>
+            <div id="percentiles">
+                <div class="percentile-bar"><span class="plabel">p50</span><div class="bar-bg"><div class="bar-fill" id="bp50" style="width:0;background:var(--green)"></div></div><span class="bar-value" id="vp50">—</span></div>
+                <div class="percentile-bar"><span class="plabel">p75</span><div class="bar-bg"><div class="bar-fill" id="bp75" style="width:0;background:var(--accent)"></div></div><span class="bar-value" id="vp75">—</span></div>
+                <div class="percentile-bar"><span class="plabel">p90</span><div class="bar-bg"><div class="bar-fill" id="bp90" style="width:0;background:var(--yellow)"></div></div><span class="bar-value" id="vp90">—</span></div>
+                <div class="percentile-bar"><span class="plabel">p95</span><div class="bar-bg"><div class="bar-fill" id="bp95" style="width:0;background:var(--orange)"></div></div><span class="bar-value" id="vp95">—</span></div>
+                <div class="percentile-bar"><span class="plabel">p99</span><div class="bar-bg"><div class="bar-fill" id="bp99" style="width:0;background:var(--red)"></div></div><span class="bar-value" id="vp99">—</span></div>
+            </div>
+        </div>
+
+        <!-- Response Time Distribution Chart -->
+        <div class="chart-section">
+            <h3>🎯 Response Time Distribution</h3>
+            <canvas id="histogramChart"></canvas>
+        </div>
+
+        <!-- Event Log -->
+        <div class="log-section">
+            <h3>📋 Event Log</h3>
+            <div class="log-area" id="logArea"></div>
+        </div>
+    </div>
+
+    <footer>
+        <p>GIF CAPTCHA Load Tester — Simulated stress testing for CAPTCHA deployments</p>
+        <p><a href="index.html">← Back to Case Study</a></p>
+    </footer>
+
+    <script>
+    (function() {
+        const $ = id => document.getElementById(id);
+        let running = false, stopped = false, startTime = 0;
+        let completed = 0, failed = 0, responseTimes = [];
+        let throughputData = [], activeWorkers = 0, totalDispatched = 0;
+        let tickInterval = null;
+
+        function cfg(id) { return parseInt($(id).value) || 0; }
+        function ts() { return new Date().toLocaleTimeString('en-US', {hour12:false}); }
+
+        function log(msg, cls='') {
+            const el = $('logArea');
+            const d = document.createElement('div');
+            d.className = 'log-entry ' + cls;
+            d.innerHTML = `<span class="ts">${ts()}</span>${msg}`;
+            el.appendChild(d);
+            el.scrollTop = el.scrollHeight;
+            if (el.children.length > 500) el.removeChild(el.firstChild);
+        }
+
+        function percentile(arr, p) {
+            if (!arr.length) return 0;
+            const s = [...arr].sort((a,b) => a-b);
+            const i = Math.ceil(p/100 * s.length) - 1;
+            return s[Math.max(0, i)];
+        }
+
+        function updatePercentiles() {
+            const max = percentile(responseTimes, 99) * 1.2 || 1;
+            for (const p of [50,75,90,95,99]) {
+                const v = percentile(responseTimes, p);
+                $(`bp${p}`).style.width = (v / max * 100) + '%';
+                $(`vp${p}`).textContent = v ? v + 'ms' : '—';
+            }
+        }
+
+        function updateMetrics() {
+            const elapsed = (Date.now() - startTime) / 1000 || 1;
+            const total = cfg('cfgTotal');
+            $('mCompleted').textContent = completed;
+            $('mFailed').textContent = failed;
+            $('mRPS').textContent = (completed / elapsed).toFixed(1);
+            $('mActive').textContent = activeWorkers;
+            $('mProgress').textContent = Math.round((completed + failed) / total * 100) + '%';
+            if (responseTimes.length) {
+                const avg = Math.round(responseTimes.reduce((a,b) => a+b, 0) / responseTimes.length);
+                $('mAvgTime').textContent = avg + 'ms';
+            }
+            updatePercentiles();
+        }
+
+        function drawThroughput() {
+            const canvas = $('throughputChart');
+            const ctx = canvas.getContext('2d');
+            const dpr = window.devicePixelRatio || 1;
+            const rect = canvas.getBoundingClientRect();
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            ctx.scale(dpr, dpr);
+            const w = rect.width, h = rect.height;
+            ctx.clearRect(0, 0, w, h);
+
+            if (throughputData.length < 2) return;
+            const max = Math.max(...throughputData, 1);
+            const step = w / (throughputData.length - 1);
+
+            // Fill
+            ctx.beginPath();
+            ctx.moveTo(0, h);
+            throughputData.forEach((v, i) => ctx.lineTo(i * step, h - (v / max) * (h - 20)));
+            ctx.lineTo((throughputData.length - 1) * step, h);
+            ctx.closePath();
+            ctx.fillStyle = 'rgba(88, 166, 255, 0.1)';
+            ctx.fill();
+
+            // Line
+            ctx.beginPath();
+            throughputData.forEach((v, i) => {
+                const x = i * step, y = h - (v / max) * (h - 20);
+                i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+            });
+            ctx.strokeStyle = '#58a6ff';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
+
+        function drawHistogram() {
+            const canvas = $('histogramChart');
+            const ctx = canvas.getContext('2d');
+            const dpr = window.devicePixelRatio || 1;
+            const rect = canvas.getBoundingClientRect();
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            ctx.scale(dpr, dpr);
+            const w = rect.width, h = rect.height;
+            ctx.clearRect(0, 0, w, h);
+
+            if (!responseTimes.length) return;
+            const bucketCount = 20;
+            const minT = Math.min(...responseTimes);
+            const maxT = Math.max(...responseTimes);
+            const range = maxT - minT || 1;
+            const bucketSize = range / bucketCount;
+            const buckets = new Array(bucketCount).fill(0);
+            responseTimes.forEach(t => {
+                const i = Math.min(Math.floor((t - minT) / bucketSize), bucketCount - 1);
+                buckets[i]++;
+            });
+            const maxB = Math.max(...buckets, 1);
+            const barW = (w - 40) / bucketCount;
+            const pad = 20;
+
+            buckets.forEach((count, i) => {
+                const bh = (count / maxB) * (h - 40);
+                const x = pad + i * barW;
+                const y = h - 20 - bh;
+                ctx.fillStyle = count > maxB * 0.8 ? '#f85149' : count > maxB * 0.5 ? '#d29922' : '#3fb950';
+                ctx.fillRect(x + 1, y, barW - 2, bh);
+            });
+
+            // X-axis labels
+            ctx.fillStyle = '#8b949e';
+            ctx.font = '10px sans-serif';
+            ctx.textAlign = 'center';
+            [0, Math.floor(bucketCount/2), bucketCount-1].forEach(i => {
+                const v = Math.round(minT + i * bucketSize);
+                ctx.fillText(v + 'ms', pad + i * barW + barW/2, h - 4);
+            });
+        }
+
+        async function simulateRequest(id) {
+            activeWorkers++;
+            const baseSolve = cfg('cfgSolveTime');
+            const failRate = cfg('cfgFailRate') / 100;
+            const timeout = cfg('cfgTimeout');
+
+            // Simulate with jitter: log-normal-ish distribution
+            const jitter = 0.5 + Math.random() * 1.5;
+            const loadPenalty = 1 + (activeWorkers / cfg('cfgConcurrency')) * 0.3;
+            let solveTime = Math.round(baseSolve * jitter * loadPenalty);
+
+            const isTimeout = solveTime > timeout;
+            if (isTimeout) solveTime = timeout;
+
+            const isFail = !isTimeout && Math.random() < failRate;
+
+            await new Promise(r => setTimeout(r, Math.min(solveTime, 200))); // Cap actual wait
+
+            responseTimes.push(solveTime);
+
+            if (isTimeout) {
+                failed++;
+                log(`#${id} TIMEOUT after ${timeout}ms`, 'fail');
+            } else if (isFail) {
+                failed++;
+                log(`#${id} FAILED in ${solveTime}ms — incorrect answer`, 'fail');
+            } else {
+                completed++;
+                if (id <= 5 || id % 50 === 0) log(`#${id} solved in ${solveTime}ms`, 'success');
+            }
+            activeWorkers--;
+        }
+
+        async function runTest() {
+            const concurrency = cfg('cfgConcurrency');
+            const total = cfg('cfgTotal');
+            const rampSec = cfg('cfgRamp');
+
+            running = true; stopped = false;
+            completed = 0; failed = 0; responseTimes = []; throughputData = [];
+            activeWorkers = 0; totalDispatched = 0; startTime = Date.now();
+
+            $('btnStart').disabled = true;
+            $('btnStop').disabled = false;
+            $('statusDot').className = 'status-indicator running';
+            $('statusText').textContent = 'Running...';
+
+            log(`Starting load test: ${concurrency} users, ${total} requests, ${rampSec}s ramp`, 'info');
+
+            // Throughput tracker
+            let lastCompleted = 0;
+            tickInterval = setInterval(() => {
+                const delta = completed - lastCompleted;
+                throughputData.push(delta);
+                lastCompleted = completed;
+                updateMetrics();
+                drawThroughput();
+                drawHistogram();
+            }, 1000);
+
+            // Dispatch with ramp-up
+            const promises = [];
+            for (let i = 1; i <= total && !stopped; i++) {
+                totalDispatched = i;
+                // Ramp: gradually increase concurrency
+                const elapsed = (Date.now() - startTime) / 1000;
+                const currentMax = rampSec > 0
+                    ? Math.max(1, Math.ceil(concurrency * Math.min(elapsed / rampSec, 1)))
+                    : concurrency;
+
+                while (activeWorkers >= currentMax && !stopped) {
+                    await new Promise(r => setTimeout(r, 20));
+                }
+                if (stopped) break;
+                promises.push(simulateRequest(i));
+            }
+            await Promise.all(promises);
+
+            clearInterval(tickInterval);
+            running = false;
+            updateMetrics();
+            drawThroughput();
+            drawHistogram();
+
+            $('btnStart').disabled = false;
+            $('btnStop').disabled = true;
+            $('statusDot').className = 'status-indicator done';
+            $('statusText').textContent = stopped ? 'Stopped' : 'Complete';
+
+            const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+            log(`Test ${stopped ? 'stopped' : 'complete'}: ${completed} ok, ${failed} failed in ${elapsed}s (${(completed / elapsed).toFixed(1)} req/s)`, 'info');
+        }
+
+        $('btnStart').onclick = () => { if (!running) runTest(); };
+        $('btnStop').onclick = () => { stopped = true; };
+        $('btnReset').onclick = () => {
+            stopped = true;
+            clearInterval(tickInterval);
+            running = false;
+            completed = 0; failed = 0; responseTimes = []; throughputData = [];
+            activeWorkers = 0;
+            $('mCompleted').textContent = '0';
+            $('mFailed').textContent = '0';
+            $('mRPS').textContent = '0';
+            $('mAvgTime').textContent = '0ms';
+            $('mActive').textContent = '0';
+            $('mProgress').textContent = '0%';
+            [50,75,90,95,99].forEach(p => { $(`bp${p}`).style.width = '0'; $(`vp${p}`).textContent = '—'; });
+            $('logArea').innerHTML = '';
+            $('statusDot').className = 'status-indicator';
+            $('statusText').textContent = 'Idle';
+            $('btnStart').disabled = false;
+            $('btnStop').disabled = true;
+            const c1 = $('throughputChart').getContext('2d');
+            c1.clearRect(0, 0, c1.canvas.width, c1.canvas.height);
+            const c2 = $('histogramChart').getContext('2d');
+            c2.clearRect(0, 0, c2.canvas.width, c2.canvas.height);
+            log('Reset', 'info');
+        };
+    })();
+    </script>
+</body>
+</html>

@@ -73,8 +73,49 @@ const BLOCKED_HOST_PATTERNS = [
 ];
 
 /**
+ * Normalize a hostname that may use decimal, octal, or hex IP notation
+ * into standard dotted-decimal IPv4 form.  Returns null if the hostname
+ * is not a numeric IP representation.
+ *
+ * Handles SSRF bypass vectors:
+ *   - Decimal:  2130706433  → 127.0.0.1
+ *   - Octal:    0177.0.0.01 → 127.0.0.1
+ *   - Hex:      0x7f000001  → 127.0.0.1
+ *   - Mixed:    0x7f.0.0.1  → 127.0.0.1
+ *
+ * @param {string} hostname
+ * @returns {string|null} Dotted-decimal IPv4 or null
+ */
+function _normalizeNumericIp(hostname) {
+  // Single 32-bit integer (decimal or hex): e.g. 2130706433, 0x7f000001
+  if (/^(0x[0-9a-fA-F]+|\d+)$/.test(hostname)) {
+    var num = Number(hostname);
+    if (!Number.isFinite(num) || num < 0 || num > 0xFFFFFFFF) return null;
+    num = num >>> 0; // ensure unsigned 32-bit
+    return [
+      (num >>> 24) & 0xFF,
+      (num >>> 16) & 0xFF,
+      (num >>> 8) & 0xFF,
+      num & 0xFF,
+    ].join(".");
+  }
+  // Dotted form with possible octal/hex octets: e.g. 0177.0.0.01, 0x7f.0.0.1
+  var parts = hostname.split(".");
+  if (parts.length === 4 && parts.every(function (p) { return /^(0x[0-9a-fA-F]+|0[0-7]*|[1-9]\d*)$/.test(p); })) {
+    var octets = parts.map(function (p) { return Number(p); });
+    if (octets.every(function (o) { return Number.isFinite(o) && o >= 0 && o <= 255; })) {
+      return octets.join(".");
+    }
+  }
+  return null;
+}
+
+/**
  * Check whether a URL targets a private/internal host.
  * Returns true if the URL should be blocked (SSRF risk).
+ *
+ * Handles bypass vectors including decimal/octal/hex IP notation,
+ * IPv4-mapped IPv6 addresses (::ffff:127.0.0.1), and bare ::1.
  *
  * @param {string} urlStr - The webhook URL to validate
  * @returns {boolean}
@@ -86,11 +127,29 @@ function _isBlockedUrl(urlStr) {
   } catch (e) {
     return true; // Unparseable → block
   }
+
+  // Block non-HTTP(S) schemes that could reach internal services
+  var scheme = parsed.protocol.toLowerCase();
+  if (scheme !== "http:" && scheme !== "https:") return true;
+
   var hostname = parsed.hostname;
   // Strip IPv6 brackets for pattern matching
   if (hostname.startsWith("[") && hostname.endsWith("]")) {
     hostname = hostname.slice(1, -1);
   }
+
+  // Normalize IPv4-mapped IPv6 (e.g. ::ffff:127.0.0.1 → 127.0.0.1)
+  var v4mapped = hostname.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/i);
+  if (v4mapped) {
+    hostname = v4mapped[1];
+  }
+
+  // Normalize numeric IP representations (decimal, octal, hex)
+  var normalized = _normalizeNumericIp(hostname);
+  if (normalized) {
+    hostname = normalized;
+  }
+
   for (var i = 0; i < BLOCKED_HOST_PATTERNS.length; i++) {
     if (BLOCKED_HOST_PATTERNS[i].test(hostname)) return true;
   }

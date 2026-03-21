@@ -33,8 +33,11 @@
 
 // -- Cryptographic randomness (CWE-330 mitigation) --
 var _cryptoUtils = require("./crypto-utils");
+var _optionUtils = require("./option-utils");
 var _secureRandom = _cryptoUtils.secureRandom;
 var _secureRandomHex = _cryptoUtils.secureRandomHex;
+var _posOpt = _optionUtils._posOpt;
+var _nnOpt = _optionUtils._nnOpt;
 
 // ── Defaults ────────────────────────────────────────────────────────
 
@@ -74,14 +77,6 @@ function _validateOptions(opts) {
   if (opts.maxPoolSize != null && (typeof opts.maxPoolSize !== "number" || opts.maxPoolSize < 1)) {
     throw new Error("ChallengePoolManager: maxPoolSize must be a positive number");
   }
-}
-
-function _posOpt(val, fallback) {
-  return val != null && val > 0 ? val : fallback;
-}
-
-function _nnOpt(val, fallback) {
-  return val != null && val >= 0 ? val : fallback;
 }
 
 // ── Pool Entry ──────────────────────────────────────────────────────

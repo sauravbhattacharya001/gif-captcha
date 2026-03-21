@@ -16,6 +16,7 @@
  */
 
 const crypto = require("crypto");
+const { _posOpt } = require("./option-utils");
 
 // ── Default Config ──────────────────────────────────────────────────
 
@@ -121,10 +122,6 @@ function WebhookDispatcher(options) {
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────
-
-function _posOpt(val, fallback) {
-  return val != null && val > 0 ? val : fallback;
-}
 
 function _generateId(counter) {
   return "wh_" + Date.now().toString(36) + "_" + counter;

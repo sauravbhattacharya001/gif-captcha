@@ -23,18 +23,22 @@
  * @param {Function} [options.now] - Clock function; defaults to Date.now
  * @returns {Object} Profiler instance
  */
+function _posOpt(val, fallback) {
+  return val != null && val > 0 ? val : fallback;
+}
+
 function createResponseTimeProfiler(options) {
   options = options || {};
-  var minSamples = (options.minSamples != null && options.minSamples > 0) ? options.minSamples : 10;
-  var maxSamples = (options.maxSamples != null && options.maxSamples > 0) ? options.maxSamples : 1000;
-  var botThresholdMs = (options.botThresholdMs != null && options.botThresholdMs > 0) ? options.botThresholdMs : 500;
-  var humanMinMs = (options.humanMinMs != null && options.humanMinMs > 0) ? options.humanMinMs : 800;
-  var humanMaxMs = (options.humanMaxMs != null && options.humanMaxMs > 0) ? options.humanMaxMs : 30000;
-  var consistencyThreshold = (options.consistencyThreshold != null && options.consistencyThreshold > 0) ? options.consistencyThreshold : 0.1;
-  var burstWindowMs = (options.burstWindowMs != null && options.burstWindowMs > 0) ? options.burstWindowMs : 5000;
-  var burstThreshold = (options.burstThreshold != null && options.burstThreshold > 0) ? options.burstThreshold : 3;
-  var histogramBins = (options.histogramBins != null && options.histogramBins > 0) ? options.histogramBins : 20;
-  var maxSessions = (options.maxSessions != null && options.maxSessions > 0) ? options.maxSessions : 500;
+  var minSamples        = _posOpt(options.minSamples, 10);
+  var maxSamples        = _posOpt(options.maxSamples, 1000);
+  var botThresholdMs    = _posOpt(options.botThresholdMs, 500);
+  var humanMinMs        = _posOpt(options.humanMinMs, 800);
+  var humanMaxMs        = _posOpt(options.humanMaxMs, 30000);
+  var consistencyThreshold = _posOpt(options.consistencyThreshold, 0.1);
+  var burstWindowMs     = _posOpt(options.burstWindowMs, 5000);
+  var burstThreshold    = _posOpt(options.burstThreshold, 3);
+  var histogramBins     = _posOpt(options.histogramBins, 20);
+  var maxSessions       = _posOpt(options.maxSessions, 500);
   var nowFn = options.now || function () { return Date.now(); };
 
   var typeProfiles = Object.create(null);

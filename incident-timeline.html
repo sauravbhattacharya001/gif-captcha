@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; img-src https: data:; script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'self'; form-action 'none';">
+    <meta name="referrer" content="no-referrer">
+    <title>GIF CAPTCHA — Incident Timeline 🕐</title>
+    <link rel="stylesheet" href="shared.css">
+    <style>
+        .container { max-width: 1100px; }
+
+        /* Controls bar */
+        .controls-bar {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            padding: 1rem;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+        }
+        .controls-bar label {
+            color: var(--muted);
+            font-size: 0.85rem;
+        }
+        .controls-bar select, .controls-bar input {
+            background: var(--bg);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.4rem 0.6rem;
+            font-size: 0.85rem;
+        }
+
+        /* Stats row */
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        .stat-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1rem;
+            text-align: center;
+        }
+        .stat-card .stat-value {
+            font-size: 1.8rem;
+            font-weight: 700;
+        }
+        .stat-card .stat-label {
+            color: var(--muted);
+            font-size: 0.8rem;
+            margin-top: 0.2rem;
+        }
+
+        /* Timeline */
+        .timeline {
+            position: relative;
+            padding-left: 2.5rem;
+        }
+        .timeline::before {
+            content: '';
+            position: absolute;
+            left: 1rem;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: var(--border);
+        }
+        .timeline-item {
+            position: relative;
+            margin-bottom: 1.5rem;
+            padding: 1rem 1.2rem;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            transition: border-color 0.2s;
+            cursor: pointer;
+        }
+        .timeline-item:hover {
+            border-color: var(--accent);
+        }
+        .timeline-item::before {
+            content: '';
+            position: absolute;
+            left: -1.85rem;
+            top: 1.2rem;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            border: 2px solid var(--bg);
+        }
+        .timeline-item[data-severity="critical"]::before { background: var(--red); }
+        .timeline-item[data-severity="high"]::before { background: var(--orange); }
+        .timeline-item[data-severity="medium"]::before { background: var(--yellow); }
+        .timeline-item[data-severity="low"]::before { background: var(--cyan); }
+        .timeline-item[data-severity="info"]::before { background: var(--muted); }
+
+        .timeline-header {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            flex-wrap: wrap;
+            margin-bottom: 0.4rem;
+        }
+        .timeline-title {
+            font-weight: 600;
+            font-size: 1rem;
+        }
+        .badge {
+            display: inline-block;
+            padding: 0.15rem 0.5rem;
+            border-radius: 20px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+        .badge-critical { background: var(--red-bg); color: var(--red); }
+        .badge-high { background: var(--orange-bg); color: var(--orange); }
+        .badge-medium { background: var(--yellow-bg); color: var(--yellow); }
+        .badge-low { background: var(--cyan-bg); color: var(--cyan); }
+        .badge-info { background: rgba(139,148,158,0.15); color: var(--muted); }
+
+        .badge-open { background: var(--red-bg); color: var(--red); }
+        .badge-acknowledged { background: var(--yellow-bg); color: var(--yellow); }
+        .badge-investigating { background: var(--purple-bg); color: var(--purple); }
+        .badge-mitigating { background: var(--orange-bg); color: var(--orange); }
+        .badge-resolved { background: var(--green-bg); color: var(--green); }
+        .badge-closed { background: rgba(139,148,158,0.15); color: var(--muted); }
+
+        .timeline-meta {
+            color: var(--muted);
+            font-size: 0.8rem;
+        }
+        .timeline-source {
+            color: var(--accent);
+            font-size: 0.8rem;
+        }
+
+        /* Expanded detail */
+        .timeline-detail {
+            display: none;
+            margin-top: 0.8rem;
+            padding-top: 0.8rem;
+            border-top: 1px solid var(--border);
+        }
+        .timeline-item.expanded .timeline-detail {
+            display: block;
+        }
+        .detail-section {
+            margin-bottom: 0.6rem;
+        }
+        .detail-section h4 {
+            font-size: 0.8rem;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.3rem;
+        }
+        .detail-section pre {
+            background: var(--bg);
+            padding: 0.6rem;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            overflow-x: auto;
+            color: var(--text);
+        }
+        .event-list {
+            list-style: none;
+            padding: 0;
+        }
+        .event-list li {
+            font-size: 0.8rem;
+            padding: 0.3rem 0;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            gap: 0.5rem;
+        }
+        .event-list li:last-child { border-bottom: none; }
+        .event-time { color: var(--muted); white-space: nowrap; }
+        .event-text { color: var(--text); }
+
+        /* Canvas bar chart */
+        .chart-wrapper {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        .chart-wrapper h3 {
+            font-size: 0.9rem;
+            color: var(--muted);
+            margin-bottom: 0.8rem;
+        }
+        .chart-wrapper canvas {
+            width: 100%;
+            height: 200px;
+        }
+
+        /* Empty state */
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            color: var(--muted);
+        }
+        .empty-state .emoji { font-size: 3rem; margin-bottom: 1rem; }
+
+        /* Generate button */
+        .btn-generate {
+            background: var(--accent);
+            color: #fff;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.85rem;
+        }
+        .btn-generate:hover { background: var(--accent-hover); }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>🕐 Incident Timeline</h1>
+            <p class="subtitle">Visual incident history for your CAPTCHA system — track, filter, and analyze every event</p>
+        </div>
+    </header>
+
+    <main class="container">
+        <!-- Controls -->
+        <div class="controls-bar">
+            <div>
+                <label>Severity</label><br>
+                <select id="filterSeverity">
+                    <option value="all">All</option>
+                    <option value="critical">Critical</option>
+                    <option value="high">High</option>
+                    <option value="medium">Medium</option>
+                    <option value="low">Low</option>
+                    <option value="info">Info</option>
+                </select>
+            </div>
+            <div>
+                <label>State</label><br>
+                <select id="filterState">
+                    <option value="all">All</option>
+                    <option value="open">Open</option>
+                    <option value="acknowledged">Acknowledged</option>
+                    <option value="investigating">Investigating</option>
+                    <option value="mitigating">Mitigating</option>
+                    <option value="resolved">Resolved</option>
+                    <option value="closed">Closed</option>
+                </select>
+            </div>
+            <div>
+                <label>Source</label><br>
+                <select id="filterSource">
+                    <option value="all">All</option>
+                </select>
+            </div>
+            <div>
+                <label>Search</label><br>
+                <input type="text" id="searchInput" placeholder="Search incidents…">
+            </div>
+            <div style="margin-left:auto;">
+                <button class="btn-generate" id="btnGenerate">Generate Demo Data</button>
+            </div>
+        </div>
+
+        <!-- Stats -->
+        <div class="stats-row" id="statsRow"></div>
+
+        <!-- Severity chart -->
+        <div class="chart-wrapper">
+            <h3>Incidents by Severity Over Time</h3>
+            <canvas id="severityChart" height="200"></canvas>
+        </div>
+
+        <!-- Timeline -->
+        <div id="timeline" class="timeline"></div>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>GIF CAPTCHA Research · Incident Timeline Dashboard</p>
+        </div>
+    </footer>
+
+    <script src="shared.js"></script>
+    <script>
+    (function() {
+        'use strict';
+
+        // ── State ───────────────────────────────────────────────
+        var incidents = [];
+        var SEVERITIES = ['info', 'low', 'medium', 'high', 'critical'];
+        var STATES = ['open', 'acknowledged', 'investigating', 'mitigating', 'resolved', 'closed'];
+        var SOURCES = ['health-monitor', 'anomaly-detector', 'rate-limiter', 'honeypot', 'manual', 'funnel-analyzer'];
+        var TITLES = [
+            'Solve rate dropped below 40%',
+            'Bot burst detected — 300 req/s spike',
+            'Response time exceeded 10s threshold',
+            'Honeypot trip rate surged to 25%',
+            'Challenge pool freshness below minimum',
+            'Anomalous solve pattern detected',
+            'Rate limiter triggered for IP range',
+            'GIF rendering latency spike',
+            'Session replay attack detected',
+            'Geo risk score spike in region',
+            'CAPTCHA difficulty auto-adjusted',
+            'Certificate rotation needed',
+            'Unusual traffic from datacenter IPs',
+            'Solve funnel drop-off above 60%',
+            'Cognitive load score too high'
+        ];
+        var SEVERITY_COLORS = {
+            critical: '#f85149',
+            high: '#f0883e',
+            medium: '#d29922',
+            low: '#39d2c0',
+            info: '#8b949e'
+        };
+
+        // ── DOM refs ────────────────────────────────────────────
+        var filterSeverity = document.getElementById('filterSeverity');
+        var filterState = document.getElementById('filterState');
+        var filterSource = document.getElementById('filterSource');
+        var searchInput = document.getElementById('searchInput');
+        var timelineEl = document.getElementById('timeline');
+        var statsRow = document.getElementById('statsRow');
+        var btnGenerate = document.getElementById('btnGenerate');
+        var chartCanvas = document.getElementById('severityChart');
+
+        // ── Demo data generation ────────────────────────────────
+        function generateDemoData() {
+            incidents = [];
+            var count = 20 + Math.floor(Math.random() * 30);
+            var now = Date.now();
+            for (var i = 0; i < count; i++) {
+                var createdAt = now - Math.floor(Math.random() * 7 * 24 * 60 * 60 * 1000);
+                var severity = SEVERITIES[Math.floor(Math.random() * SEVERITIES.length)];
+                var state = STATES[Math.floor(Math.random() * STATES.length)];
+                var source = SOURCES[Math.floor(Math.random() * SOURCES.length)];
+                var title = TITLES[Math.floor(Math.random() * TITLES.length)];
+
+                var timeline = [{ time: createdAt, event: 'created', detail: 'Incident opened' }];
+                if (STATES.indexOf(state) >= 1) {
+                    timeline.push({ time: createdAt + 60000 + Math.floor(Math.random() * 120000), event: 'acknowledged', detail: 'Acknowledged by ops-team' });
+                }
+                if (STATES.indexOf(state) >= 2) {
+                    timeline.push({ time: createdAt + 300000 + Math.floor(Math.random() * 300000), event: 'investigating', detail: 'Root cause analysis started' });
+                }
+                if (STATES.indexOf(state) >= 3) {
+                    timeline.push({ time: createdAt + 600000 + Math.floor(Math.random() * 600000), event: 'mitigating', detail: 'Mitigation applied' });
+                }
+                if (STATES.indexOf(state) >= 4) {
+                    timeline.push({ time: createdAt + 900000 + Math.floor(Math.random() * 900000), event: 'resolved', detail: 'Issue resolved — challenge pool rotated' });
+                }
+                if (STATES.indexOf(state) >= 5) {
+                    timeline.push({ time: createdAt + 1200000 + Math.floor(Math.random() * 600000), event: 'closed', detail: 'Postmortem completed' });
+                }
+
+                var signals = {};
+                if (source === 'health-monitor') {
+                    signals.solveRate = (0.15 + Math.random() * 0.35).toFixed(2);
+                    signals.avgResponseMs = Math.floor(3000 + Math.random() * 8000);
+                } else if (source === 'rate-limiter') {
+                    signals.requestsPerSec = Math.floor(100 + Math.random() * 500);
+                    signals.blockedIPs = Math.floor(1 + Math.random() * 50);
+                } else if (source === 'honeypot') {
+                    signals.tripRate = (0.05 + Math.random() * 0.3).toFixed(2);
+                    signals.trapsTripped = Math.floor(1 + Math.random() * 20);
+                }
+
+                incidents.push({
+                    id: 'INC-' + String(1000 + i),
+                    title: title,
+                    severity: severity,
+                    state: state,
+                    source: source,
+                    createdAt: createdAt,
+                    signals: signals,
+                    timeline: timeline
+                });
+            }
+            incidents.sort(function(a, b) { return b.createdAt - a.createdAt; });
+            populateSourceFilter();
+            render();
+        }
+
+        function populateSourceFilter() {
+            var sources = {};
+            incidents.forEach(function(inc) { sources[inc.source] = true; });
+            filterSource.innerHTML = '<option value="all">All</option>';
+            Object.keys(sources).sort().forEach(function(s) {
+                var opt = document.createElement('option');
+                opt.value = s;
+                opt.textContent = s;
+                filterSource.appendChild(opt);
+            });
+        }
+
+        // ── Filtering ──────────────────────────────────────────
+        function getFiltered() {
+            var sv = filterSeverity.value;
+            var st = filterState.value;
+            var so = filterSource.value;
+            var q = searchInput.value.toLowerCase().trim();
+            return incidents.filter(function(inc) {
+                if (sv !== 'all' && inc.severity !== sv) return false;
+                if (st !== 'all' && inc.state !== st) return false;
+                if (so !== 'all' && inc.source !== so) return false;
+                if (q && inc.title.toLowerCase().indexOf(q) === -1 && inc.id.toLowerCase().indexOf(q) === -1) return false;
+                return true;
+            });
+        }
+
+        // ── Render stats ───────────────────────────────────────
+        function renderStats(filtered) {
+            var openCount = 0, critCount = 0, avgDuration = 0, resolvedCount = 0;
+            var totalDuration = 0, durCount = 0;
+            filtered.forEach(function(inc) {
+                if (inc.state === 'open' || inc.state === 'acknowledged' || inc.state === 'investigating' || inc.state === 'mitigating') openCount++;
+                if (inc.severity === 'critical') critCount++;
+                if (inc.state === 'resolved' || inc.state === 'closed') {
+                    resolvedCount++;
+                    var last = inc.timeline[inc.timeline.length - 1];
+                    totalDuration += (last.time - inc.createdAt);
+                    durCount++;
+                }
+            });
+            avgDuration = durCount > 0 ? Math.round(totalDuration / durCount / 60000) : 0;
+
+            statsRow.innerHTML = [
+                statCard(filtered.length, 'Total Incidents', '--accent'),
+                statCard(openCount, 'Open', '--red'),
+                statCard(critCount, 'Critical', '--orange'),
+                statCard(resolvedCount, 'Resolved', '--green'),
+                statCard(avgDuration + 'm', 'Avg Resolution', '--purple')
+            ].join('');
+        }
+
+        function statCard(value, label, color) {
+            return '<div class="stat-card"><div class="stat-value" style="color:var(' + color + ')">' +
+                sanitize(String(value)) + '</div><div class="stat-label">' + sanitize(label) + '</div></div>';
+        }
+
+        // ── Render chart ───────────────────────────────────────
+        function renderChart(filtered) {
+            var ctx = chartCanvas.getContext('2d');
+            var rect = chartCanvas.parentElement.getBoundingClientRect();
+            chartCanvas.width = rect.width - 32;
+            chartCanvas.height = 200;
+            ctx.clearRect(0, 0, chartCanvas.width, chartCanvas.height);
+
+            // Bucket by day
+            var buckets = {};
+            filtered.forEach(function(inc) {
+                var d = new Date(inc.createdAt);
+                var key = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+                if (!buckets[key]) buckets[key] = { critical:0, high:0, medium:0, low:0, info:0 };
+                buckets[key][inc.severity]++;
+            });
+
+            var days = Object.keys(buckets).sort();
+            if (days.length === 0) return;
+
+            var barGroupWidth = Math.min(80, (chartCanvas.width - 60) / days.length);
+            var barWidth = Math.max(4, (barGroupWidth - 8) / 5);
+            var maxVal = 0;
+            days.forEach(function(d) {
+                SEVERITIES.forEach(function(s) { maxVal = Math.max(maxVal, buckets[d][s]); });
+            });
+            if (maxVal === 0) maxVal = 1;
+
+            var chartH = 160;
+            var originY = 180;
+            var startX = 40;
+
+            // Y axis
+            ctx.strokeStyle = '#30363d';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(startX, 10);
+            ctx.lineTo(startX, originY);
+            ctx.stroke();
+
+            // Labels
+            ctx.fillStyle = '#8b949e';
+            ctx.font = '11px sans-serif';
+            ctx.textAlign = 'right';
+            for (var yy = 0; yy <= maxVal; yy++) {
+                var yPos = originY - (yy / maxVal) * chartH;
+                ctx.fillText(String(yy), startX - 6, yPos + 4);
+            }
+
+            // Bars
+            days.forEach(function(day, di) {
+                var x = startX + 10 + di * barGroupWidth;
+                SEVERITIES.forEach(function(sev, si) {
+                    var val = buckets[day][sev];
+                    if (val === 0) return;
+                    var h = (val / maxVal) * chartH;
+                    ctx.fillStyle = SEVERITY_COLORS[sev];
+                    ctx.fillRect(x + si * barWidth, originY - h, barWidth - 1, h);
+                });
+                // Day label
+                ctx.fillStyle = '#8b949e';
+                ctx.font = '10px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(day.slice(5), x + (5 * barWidth) / 2, originY + 14);
+            });
+
+            // Legend
+            var legendX = startX + 10;
+            SEVERITIES.forEach(function(sev, i) {
+                var lx = legendX + i * 80;
+                ctx.fillStyle = SEVERITY_COLORS[sev];
+                ctx.fillRect(lx, 2, 10, 10);
+                ctx.fillStyle = '#8b949e';
+                ctx.font = '10px sans-serif';
+                ctx.textAlign = 'left';
+                ctx.fillText(sev, lx + 14, 11);
+            });
+        }
+
+        // ── Render timeline ────────────────────────────────────
+        function renderTimeline(filtered) {
+            if (filtered.length === 0) {
+                timelineEl.innerHTML = '<div class="empty-state"><div class="emoji">🕐</div><p>No incidents match your filters.<br>Click <strong>Generate Demo Data</strong> to see the timeline in action.</p></div>';
+                return;
+            }
+            timelineEl.innerHTML = filtered.map(function(inc) {
+                var timeStr = new Date(inc.createdAt).toLocaleString();
+                var signalStr = Object.keys(inc.signals).length > 0
+                    ? JSON.stringify(inc.signals, null, 2) : '(none)';
+                var eventsHtml = inc.timeline.map(function(ev) {
+                    return '<li><span class="event-time">' + sanitize(new Date(ev.time).toLocaleTimeString()) +
+                        '</span><span class="event-text"><strong>' + sanitize(ev.event) + '</strong> — ' +
+                        sanitize(ev.detail) + '</span></li>';
+                }).join('');
+
+                return '<div class="timeline-item" data-severity="' + sanitize(inc.severity) + '" data-id="' + sanitize(inc.id) + '">' +
+                    '<div class="timeline-header">' +
+                    '<span class="timeline-title">' + sanitize(inc.title) + '</span>' +
+                    '<span class="badge badge-' + sanitize(inc.severity) + '">' + sanitize(inc.severity) + '</span>' +
+                    '<span class="badge badge-' + sanitize(inc.state) + '">' + sanitize(inc.state) + '</span>' +
+                    '</div>' +
+                    '<div class="timeline-meta">' + sanitize(inc.id) + ' · ' + sanitize(timeStr) +
+                    ' <span class="timeline-source">via ' + sanitize(inc.source) + '</span></div>' +
+                    '<div class="timeline-detail">' +
+                    '<div class="detail-section"><h4>Signals</h4><pre>' + sanitize(signalStr) + '</pre></div>' +
+                    '<div class="detail-section"><h4>Event Log</h4><ul class="event-list">' + eventsHtml + '</ul></div>' +
+                    '</div></div>';
+            }).join('');
+        }
+
+        // ── Master render ──────────────────────────────────────
+        function render() {
+            var filtered = getFiltered();
+            renderStats(filtered);
+            renderChart(filtered);
+            renderTimeline(filtered);
+        }
+
+        // ── Events ─────────────────────────────────────────────
+        filterSeverity.addEventListener('change', render);
+        filterState.addEventListener('change', render);
+        filterSource.addEventListener('change', render);
+        searchInput.addEventListener('input', render);
+        btnGenerate.addEventListener('click', generateDemoData);
+
+        timelineEl.addEventListener('click', function(e) {
+            var item = e.target.closest('.timeline-item');
+            if (item) item.classList.toggle('expanded');
+        });
+
+        // ── Init ───────────────────────────────────────────────
+        generateDemoData();
+    })();
+    </script>
+</body>
+</html>

@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'unsafe-inline'; img-src data: blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'none';">
+    <meta name="referrer" content="no-referrer">
+    <title>GIF CAPTCHA — Theme Builder</title>
+    <link rel="stylesheet" href="shared.css">
+    <style>
+        body { padding: 2rem; max-width: 1200px; margin: 0 auto; }
+        h1 { font-size: 1.8rem; margin-bottom: 0.3rem; }
+        .subtitle { color: var(--muted); margin-bottom: 2rem; }
+        .layout { display: grid; grid-template-columns: 340px 1fr; gap: 2rem; align-items: start; }
+        @media (max-width: 800px) { .layout { grid-template-columns: 1fr; } }
+
+        /* Panel */
+        .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1.25rem; }
+        .panel h2 { font-size: 1rem; color: var(--accent); margin: 0 0 1rem; }
+        .section { margin-bottom: 1.25rem; }
+        .section-title { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 0.5rem; font-weight: 600; }
+        .field { margin-bottom: 0.75rem; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+        .field label { font-size: 0.85rem; color: var(--text); white-space: nowrap; }
+        .field input[type="range"] { flex: 1; max-width: 140px; accent-color: var(--accent); }
+        .field input[type="color"] { width: 36px; height: 28px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); cursor: pointer; padding: 0; }
+        .field select { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 0.3rem 0.5rem; font-size: 0.82rem; }
+        .field .val { font-size: 0.78rem; color: var(--muted); min-width: 28px; text-align: right; }
+
+        /* Preview */
+        .preview-area { display: flex; flex-direction: column; gap: 1rem; }
+        .preview-box { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1.5rem; display: flex; flex-direction: column; align-items: center; gap: 1rem; }
+        .preview-box canvas { border-radius: 6px; image-rendering: auto; }
+        .preview-label { font-size: 0.78rem; color: var(--muted); }
+        .frames-strip { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+        .frames-strip canvas { border-radius: 4px; border: 1px solid var(--border); }
+
+        /* Presets */
+        .presets { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 1rem; }
+        .presets button { padding: 0.3rem 0.7rem; font-size: 0.78rem; border-radius: 14px; border: 1px solid var(--border); background: var(--bg); color: var(--text); cursor: pointer; transition: all 0.15s; }
+        .presets button:hover { border-color: var(--accent); color: var(--accent); }
+        .presets button.active { background: var(--accent); color: #000; border-color: var(--accent); }
+
+        /* Actions */
+        .actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+        .actions button { padding: 0.5rem 1rem; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; font-size: 0.85rem; }
+        .actions button.primary { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 600; }
+        .actions button:hover { opacity: 0.85; }
+
+        /* Export */
+        .export-area { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1rem; }
+        .export-area h3 { font-size: 0.9rem; color: var(--accent); margin: 0 0 0.75rem; }
+        .export-area pre { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 0.75rem; font-size: 0.78rem; color: var(--text); overflow-x: auto; max-height: 200px; margin: 0; }
+        .copy-btn { font-size: 0.75rem; padding: 0.2rem 0.5rem; border-radius: 4px; border: 1px solid var(--border); background: var(--bg); color: var(--muted); cursor: pointer; float: right; }
+        .copy-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+        /* Saved themes */
+        .saved-list { display: flex; flex-direction: column; gap: 0.4rem; max-height: 150px; overflow-y: auto; }
+        .saved-item { display: flex; align-items: center; justify-content: space-between; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 0.4rem 0.6rem; font-size: 0.8rem; }
+        .saved-item span { color: var(--text); cursor: pointer; }
+        .saved-item span:hover { color: var(--accent); }
+        .saved-item button { background: none; border: none; color: var(--red); cursor: pointer; font-size: 0.85rem; }
+
+        footer { text-align: center; margin-top: 2rem; padding: 1.5rem 0; border-top: 1px solid var(--border); color: var(--muted); font-size: 0.8rem; }
+        footer a { color: var(--accent); text-decoration: none; }
+    </style>
+</head>
+<body>
+    <h1>🎨 CAPTCHA Theme Builder</h1>
+    <p class="subtitle">Design custom CAPTCHA visual themes — tweak colors, fonts, distortion, and animation, then export as JSON config.</p>
+
+    <div class="presets" id="presets"></div>
+
+    <div class="layout">
+        <div>
+            <div class="panel">
+                <h2>🎛️ Theme Controls</h2>
+
+                <div class="section">
+                    <div class="section-title">Colors</div>
+                    <div class="field"><label>Background</label><input type="color" id="bgColor" value="#1a1a2e"></div>
+                    <div class="field"><label>Text</label><input type="color" id="textColor" value="#58a6ff"></div>
+                    <div class="field"><label>Noise</label><input type="color" id="noiseColor" value="#30363d"></div>
+                    <div class="field"><label>Grid Lines</label><input type="color" id="gridColor" value="#222244"></div>
+                </div>
+
+                <div class="section">
+                    <div class="section-title">Typography</div>
+                    <div class="field">
+                        <label>Font</label>
+                        <select id="fontFamily">
+                            <option value="monospace">Monospace</option>
+                            <option value="serif">Serif</option>
+                            <option value="sans-serif">Sans-serif</option>
+                            <option value="cursive">Cursive</option>
+                            <option value="fantasy">Fantasy</option>
+                        </select>
+                    </div>
+                    <div class="field"><label>Size</label><input type="range" id="fontSize" min="20" max="60" value="36"><span class="val" id="fontSizeVal">36</span></div>
+                    <div class="field"><label>Letter Spacing</label><input type="range" id="letterSpacing" min="0" max="30" value="12"><span class="val" id="letterSpacingVal">12</span></div>
+                    <div class="field">
+                        <label>Weight</label>
+                        <select id="fontWeight">
+                            <option value="normal">Normal</option>
+                            <option value="bold" selected>Bold</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <div class="section-title">Distortion</div>
+                    <div class="field"><label>Wave Amp</label><input type="range" id="waveAmp" min="0" max="15" value="4"><span class="val" id="waveAmpVal">4</span></div>
+                    <div class="field"><label>Rotation (°)</label><input type="range" id="rotation" min="0" max="30" value="10"><span class="val" id="rotationVal">10</span></div>
+                    <div class="field"><label>Noise Dots</label><input type="range" id="noiseDots" min="0" max="200" value="60"><span class="val" id="noiseDotsVal">60</span></div>
+                    <div class="field"><label>Strike Lines</label><input type="range" id="strikeLines" min="0" max="8" value="2"><span class="val" id="strikeLinesVal">2</span></div>
+                </div>
+
+                <div class="section">
+                    <div class="section-title">Animation</div>
+                    <div class="field"><label>Frames</label><input type="range" id="frameCount" min="3" max="16" value="8"><span class="val" id="frameCountVal">8</span></div>
+                    <div class="field">
+                        <label>Effect</label>
+                        <select id="animEffect">
+                            <option value="wave">Wave</option>
+                            <option value="shake">Shake</option>
+                            <option value="pulse">Pulse</option>
+                            <option value="glitch">Glitch</option>
+                            <option value="none">None</option>
+                        </select>
+                    </div>
+                    <div class="field"><label>Speed (ms)</label><input type="range" id="animSpeed" min="50" max="300" value="120"><span class="val" id="animSpeedVal">120</span></div>
+                </div>
+
+                <div class="section">
+                    <div class="section-title">Canvas</div>
+                    <div class="field"><label>Width</label><input type="range" id="canvasW" min="150" max="400" value="260"><span class="val" id="canvasWVal">260</span></div>
+                    <div class="field"><label>Height</label><input type="range" id="canvasH" min="50" max="150" value="80"><span class="val" id="canvasHVal">80</span></div>
+                    <div class="field"><label>Grid</label><input type="range" id="gridSize" min="0" max="30" value="0"><span class="val" id="gridSizeVal">0</span></div>
+                </div>
+            </div>
+
+            <div class="panel" style="margin-top:1rem;">
+                <h2>💾 Saved Themes</h2>
+                <div class="saved-list" id="savedList"><span style="color:var(--muted);font-size:0.8rem;">No saved themes yet</span></div>
+            </div>
+        </div>
+
+        <div class="preview-area">
+            <div class="preview-box">
+                <canvas id="mainCanvas" width="260" height="80"></canvas>
+                <div class="preview-label">Animated preview — text: <code id="previewText">A7xK2</code></div>
+                <div class="actions">
+                    <button class="primary" onclick="randomizeText()">🔄 New Text</button>
+                    <button onclick="saveTheme()">💾 Save Theme</button>
+                    <button onclick="downloadPNG()">📥 PNG</button>
+                </div>
+            </div>
+
+            <div class="preview-box">
+                <div class="section-title" style="align-self:flex-start;">Frame Strip</div>
+                <div class="frames-strip" id="frameStrip"></div>
+            </div>
+
+            <div class="export-area">
+                <h3>📋 Theme Config <button class="copy-btn" onclick="copyConfig()">Copy</button></h3>
+                <pre id="configOutput"></pre>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <a href="index.html">← Back to Case Study</a> · GIF CAPTCHA Theme Builder
+    </footer>
+
+    <script>
+    (function() {
+        // --- State ---
+        var CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+        var captchaText = 'A7xK2';
+        var animFrame = 0;
+        var animTimer = null;
+
+        var PRESETS = {
+            'Default': { bgColor:'#1a1a2e', textColor:'#58a6ff', noiseColor:'#30363d', gridColor:'#222244', fontFamily:'monospace', fontSize:36, letterSpacing:12, fontWeight:'bold', waveAmp:4, rotation:10, noiseDots:60, strikeLines:2, frameCount:8, animEffect:'wave', animSpeed:120, canvasW:260, canvasH:80, gridSize:0 },
+            'Neon': { bgColor:'#0a0a0a', textColor:'#39ff14', noiseColor:'#003300', gridColor:'#0a200a', fontFamily:'monospace', fontSize:40, letterSpacing:14, fontWeight:'bold', waveAmp:6, rotation:8, noiseDots:100, strikeLines:3, frameCount:10, animEffect:'glitch', animSpeed:90, canvasW:280, canvasH:85, gridSize:0 },
+            'Retro': { bgColor:'#2b1a0e', textColor:'#ffa500', noiseColor:'#4a3520', gridColor:'#3a2a1a', fontFamily:'serif', fontSize:34, letterSpacing:10, fontWeight:'bold', waveAmp:3, rotation:12, noiseDots:40, strikeLines:1, frameCount:6, animEffect:'shake', animSpeed:150, canvasW:250, canvasH:75, gridSize:0 },
+            'Ice': { bgColor:'#0c1929', textColor:'#a0d8ef', noiseColor:'#1a3050', gridColor:'#0f2040', fontFamily:'sans-serif', fontSize:38, letterSpacing:11, fontWeight:'normal', waveAmp:5, rotation:6, noiseDots:80, strikeLines:2, frameCount:8, animEffect:'wave', animSpeed:140, canvasW:260, canvasH:80, gridSize:12 },
+            'Lava': { bgColor:'#1a0000', textColor:'#ff4444', noiseColor:'#440000', gridColor:'#2a0000', fontFamily:'fantasy', fontSize:42, letterSpacing:8, fontWeight:'bold', waveAmp:7, rotation:15, noiseDots:120, strikeLines:4, frameCount:12, animEffect:'pulse', animSpeed:100, canvasW:300, canvasH:90, gridSize:0 },
+            'Paper': { bgColor:'#f5f0e8', textColor:'#333333', noiseColor:'#ccbbaa', gridColor:'#e0d8cc', fontFamily:'serif', fontSize:32, letterSpacing:10, fontWeight:'normal', waveAmp:2, rotation:8, noiseDots:30, strikeLines:1, frameCount:6, animEffect:'none', animSpeed:120, canvasW:240, canvasH:70, gridSize:0 },
+            'Cyber': { bgColor:'#0d0221', textColor:'#ff00ff', noiseColor:'#1a0040', gridColor:'#150030', fontFamily:'monospace', fontSize:36, letterSpacing:15, fontWeight:'bold', waveAmp:8, rotation:20, noiseDots:150, strikeLines:5, frameCount:14, animEffect:'glitch', animSpeed:70, canvasW:300, canvasH:90, gridSize:16 },
+            'Minimal': { bgColor:'#ffffff', textColor:'#222222', noiseColor:'#dddddd', gridColor:'#eeeeee', fontFamily:'sans-serif', fontSize:30, letterSpacing:14, fontWeight:'normal', waveAmp:1, rotation:4, noiseDots:10, strikeLines:0, frameCount:4, animEffect:'none', animSpeed:200, canvasW:220, canvasH:65, gridSize:0 }
+        };
+
+        var FIELDS = ['bgColor','textColor','noiseColor','gridColor','fontFamily','fontSize','letterSpacing','fontWeight','waveAmp','rotation','noiseDots','strikeLines','frameCount','animEffect','animSpeed','canvasW','canvasH','gridSize'];
+
+        // --- Init presets ---
+        var presetsEl = document.getElementById('presets');
+        Object.keys(PRESETS).forEach(function(name) {
+            var btn = document.createElement('button');
+            btn.textContent = name;
+            btn.onclick = function() { applyPreset(name); };
+            presetsEl.appendChild(btn);
+        });
+
+        function applyPreset(name) {
+            var p = PRESETS[name];
+            if (!p) return;
+            FIELDS.forEach(function(f) {
+                var el = document.getElementById(f);
+                if (el && p[f] !== undefined) el.value = p[f];
+            });
+            updateAllVals();
+            render();
+            // highlight
+            Array.from(presetsEl.children).forEach(function(b) {
+                b.classList.toggle('active', b.textContent === name);
+            });
+        }
+
+        // --- Read config ---
+        function getConfig() {
+            var c = {};
+            FIELDS.forEach(function(f) {
+                var el = document.getElementById(f);
+                if (!el) return;
+                c[f] = (el.type === 'range') ? parseInt(el.value, 10) : el.value;
+            });
+            return c;
+        }
+
+        // --- Update val displays ---
+        function updateAllVals() {
+            ['fontSize','letterSpacing','waveAmp','rotation','noiseDots','strikeLines','frameCount','animSpeed','canvasW','canvasH','gridSize'].forEach(function(f) {
+                var v = document.getElementById(f + 'Val');
+                var el = document.getElementById(f);
+                if (v && el) v.textContent = el.value;
+            });
+        }
+
+        // --- Render a single frame ---
+        function renderFrame(canvas, cfg, frameIdx, totalFrames) {
+            canvas.width = cfg.canvasW;
+            canvas.height = cfg.canvasH;
+            var ctx = canvas.getContext('2d');
+            var w = cfg.canvasW, h = cfg.canvasH;
+            var t = totalFrames > 1 ? frameIdx / totalFrames : 0;
+
+            // Background
+            ctx.fillStyle = cfg.bgColor;
+            ctx.fillRect(0, 0, w, h);
+
+            // Grid
+            if (cfg.gridSize > 0) {
+                ctx.strokeStyle = cfg.gridColor;
+                ctx.lineWidth = 0.5;
+                for (var gx = 0; gx < w; gx += cfg.gridSize) { ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, h); ctx.stroke(); }
+                for (var gy = 0; gy < h; gy += cfg.gridSize) { ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(w, gy); ctx.stroke(); }
+            }
+
+            // Noise dots
+            for (var i = 0; i < cfg.noiseDots; i++) {
+                ctx.fillStyle = cfg.noiseColor;
+                ctx.globalAlpha = 0.3 + Math.random() * 0.5;
+                ctx.fillRect(Math.random() * w, Math.random() * h, 1 + Math.random() * 2, 1 + Math.random() * 2);
+            }
+            ctx.globalAlpha = 1;
+
+            // Characters
+            var text = captchaText;
+            var totalTextW = text.length * (cfg.fontSize * 0.6 + cfg.letterSpacing);
+            var startX = (w - totalTextW) / 2 + cfg.fontSize * 0.3;
+            ctx.font = cfg.fontWeight + ' ' + cfg.fontSize + 'px ' + cfg.fontFamily;
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = cfg.textColor;
+
+            for (var ci = 0; ci < text.length; ci++) {
+                var cx = startX + ci * (cfg.fontSize * 0.6 + cfg.letterSpacing);
+                var cy = h / 2;
+                var maxRot = cfg.rotation * Math.PI / 180;
+                // Seeded pseudo-random per char
+                var seed = (ci * 7 + 13) % 17 / 17;
+                var charRot = (seed - 0.5) * 2 * maxRot;
+
+                // Animation offsets
+                var dx = 0, dy = 0, scale = 1;
+                if (cfg.animEffect === 'wave') {
+                    dy = Math.sin(t * Math.PI * 2 + ci * 0.8) * cfg.waveAmp;
+                } else if (cfg.animEffect === 'shake') {
+                    dx = Math.sin(t * Math.PI * 2 * 3 + ci) * cfg.waveAmp * 0.7;
+                    dy = Math.cos(t * Math.PI * 2 * 2 + ci * 1.3) * cfg.waveAmp * 0.5;
+                } else if (cfg.animEffect === 'pulse') {
+                    scale = 1 + Math.sin(t * Math.PI * 2 + ci * 0.6) * 0.12;
+                } else if (cfg.animEffect === 'glitch') {
+                    if (((frameIdx * 7 + ci * 3) % 5) === 0) {
+                        dx = (seed - 0.5) * cfg.waveAmp * 3;
+                        dy = (((ci * 11 + frameIdx) % 7) / 7 - 0.5) * cfg.waveAmp * 2;
+                    }
+                }
+
+                ctx.save();
+                ctx.translate(cx + dx, cy + dy);
+                ctx.rotate(charRot);
+                ctx.scale(scale, scale);
+                ctx.fillText(text[ci], 0, 0);
+                ctx.restore();
+            }
+
+            // Strike-through lines
+            ctx.strokeStyle = cfg.textColor;
+            ctx.globalAlpha = 0.3;
+            ctx.lineWidth = 1;
+            for (var si = 0; si < cfg.strikeLines; si++) {
+                ctx.beginPath();
+                var sy1 = h * 0.2 + Math.random() * h * 0.6;
+                var sy2 = h * 0.2 + Math.random() * h * 0.6;
+                ctx.moveTo(0, sy1);
+                ctx.bezierCurveTo(w * 0.3, sy1 + (Math.random() - 0.5) * 20, w * 0.7, sy2 + (Math.random() - 0.5) * 20, w, sy2);
+                ctx.stroke();
+            }
+            ctx.globalAlpha = 1;
+        }
+
+        // --- Full render ---
+        function render() {
+            var cfg = getConfig();
+            var mainCanvas = document.getElementById('mainCanvas');
+            var strip = document.getElementById('frameStrip');
+            var total = cfg.frameCount;
+
+            // Render main (animated)
+            renderFrame(mainCanvas, cfg, animFrame % total, total);
+
+            // Frame strip
+            strip.innerHTML = '';
+            for (var fi = 0; fi < total; fi++) {
+                var fc = document.createElement('canvas');
+                fc.width = Math.min(80, cfg.canvasW * 0.4);
+                fc.height = Math.min(30, cfg.canvasH * 0.4);
+                // Render at full size then scale down
+                var tmpC = document.createElement('canvas');
+                renderFrame(tmpC, cfg, fi, total);
+                var fctx = fc.getContext('2d');
+                fctx.drawImage(tmpC, 0, 0, fc.width, fc.height);
+                if (fi === animFrame % total) { fc.style.borderColor = 'var(--accent)'; fc.style.borderWidth = '2px'; }
+                strip.appendChild(fc);
+            }
+
+            // Config output
+            var out = {
+                theme: {
+                    background: cfg.bgColor,
+                    textColor: cfg.textColor,
+                    noiseColor: cfg.noiseColor,
+                    gridColor: cfg.gridColor,
+                    gridSize: cfg.gridSize
+                },
+                typography: {
+                    fontFamily: cfg.fontFamily,
+                    fontSize: cfg.fontSize,
+                    letterSpacing: cfg.letterSpacing,
+                    fontWeight: cfg.fontWeight
+                },
+                distortion: {
+                    waveAmplitude: cfg.waveAmp,
+                    maxRotationDeg: cfg.rotation,
+                    noiseDots: cfg.noiseDots,
+                    strikeLines: cfg.strikeLines
+                },
+                animation: {
+                    frames: cfg.frameCount,
+                    effect: cfg.animEffect,
+                    frameDelayMs: cfg.animSpeed
+                },
+                canvas: {
+                    width: cfg.canvasW,
+                    height: cfg.canvasH
+                }
+            };
+            document.getElementById('configOutput').textContent = JSON.stringify(out, null, 2);
+        }
+
+        // --- Animation loop ---
+        function startAnim() {
+            if (animTimer) clearInterval(animTimer);
+            var cfg = getConfig();
+            animTimer = setInterval(function() {
+                animFrame++;
+                var c = getConfig();
+                renderFrame(document.getElementById('mainCanvas'), c, animFrame % c.frameCount, c.frameCount);
+                // Update strip highlight
+                var strips = document.getElementById('frameStrip').children;
+                for (var i = 0; i < strips.length; i++) {
+                    strips[i].style.borderColor = (i === animFrame % c.frameCount) ? '#58a6ff' : '';
+                    strips[i].style.borderWidth = (i === animFrame % c.frameCount) ? '2px' : '1px';
+                }
+            }, cfg.animSpeed);
+        }
+
+        // --- Events ---
+        FIELDS.forEach(function(f) {
+            var el = document.getElementById(f);
+            if (!el) return;
+            el.addEventListener('input', function() {
+                updateAllVals();
+                render();
+                if (f === 'animSpeed' || f === 'frameCount') startAnim();
+            });
+        });
+
+        // --- Public functions ---
+        window.randomizeText = function() {
+            var len = 4 + Math.floor(Math.random() * 3);
+            captchaText = '';
+            for (var i = 0; i < len; i++) captchaText += CHARS[Math.floor(Math.random() * CHARS.length)];
+            document.getElementById('previewText').textContent = captchaText;
+            render();
+        };
+
+        window.copyConfig = function() {
+            var text = document.getElementById('configOutput').textContent;
+            navigator.clipboard.writeText(text).then(function() {
+                var btn = document.querySelector('.copy-btn');
+                btn.textContent = 'Copied!';
+                setTimeout(function() { btn.textContent = 'Copy'; }, 1500);
+            });
+        };
+
+        window.downloadPNG = function() {
+            var canvas = document.getElementById('mainCanvas');
+            var a = document.createElement('a');
+            a.download = 'captcha-theme-' + Date.now() + '.png';
+            a.href = canvas.toDataURL('image/png');
+            a.click();
+        };
+
+        // --- Save/Load themes ---
+        var STORAGE_KEY = 'gif-captcha-themes';
+
+        function loadSaved() {
+            try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; } catch(e) { return {}; }
+        }
+
+        function renderSavedList() {
+            var saved = loadSaved();
+            var list = document.getElementById('savedList');
+            var keys = Object.keys(saved);
+            if (!keys.length) { list.innerHTML = '<span style="color:var(--muted);font-size:0.8rem;">No saved themes yet</span>'; return; }
+            list.innerHTML = '';
+            keys.forEach(function(name) {
+                var div = document.createElement('div');
+                div.className = 'saved-item';
+                var span = document.createElement('span');
+                span.textContent = name;
+                span.onclick = function() { applySavedTheme(name); };
+                var del = document.createElement('button');
+                del.textContent = '✕';
+                del.onclick = function() { deleteSavedTheme(name); };
+                div.appendChild(span);
+                div.appendChild(del);
+                list.appendChild(div);
+            });
+        }
+
+        window.saveTheme = function() {
+            var name = prompt('Theme name:');
+            if (!name || !name.trim()) return;
+            var saved = loadSaved();
+            saved[name.trim()] = getConfig();
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
+            renderSavedList();
+        };
+
+        function applySavedTheme(name) {
+            var saved = loadSaved();
+            var p = saved[name];
+            if (!p) return;
+            FIELDS.forEach(function(f) {
+                var el = document.getElementById(f);
+                if (el && p[f] !== undefined) el.value = p[f];
+            });
+            updateAllVals();
+            render();
+            startAnim();
+        }
+
+        function deleteSavedTheme(name) {
+            var saved = loadSaved();
+            delete saved[name];
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
+            renderSavedList();
+        }
+
+        // --- Init ---
+        applyPreset('Default');
+        renderSavedList();
+        startAnim();
+    })();
+    </script>
+</body>
+</html>

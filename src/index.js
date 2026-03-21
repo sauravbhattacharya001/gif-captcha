@@ -3680,10 +3680,43 @@ function createTokenVerifier(options) {
     return _crypto.randomBytes(12).toString('hex');
   }
 
+  /**
+   * Purge nonces whose tokens have already expired.
+   * Expired nonces can never appear in a valid token (expiry is checked
+   * before nonce lookup), so they are safe to remove.  Purging them
+   * first prevents an attacker from flooding the nonce store with new
+   * verifications to evict still-valid nonces — which would re-enable
+   * replay of previously-used tokens whose nonces were flushed.
+   */
+  function _purgeExpiredNonces() {
+    var now = Date.now();
+    var writeIdx = 0;
+    for (var i = 0; i < usedNonceList.length; i++) {
+      var n = usedNonceList[i];
+      var entry = usedNonces[n];
+      // A nonce is expired if its token's TTL has elapsed since recording.
+      // We add a 30s grace period matching the future-clock tolerance in
+      // verifyToken to avoid premature purging from clock skew.
+      if (entry && (now - entry.ts) > tokenTtlMs + 30000) {
+        delete usedNonces[n];
+        usedNonceCount--;
+      } else {
+        usedNonceList[writeIdx++] = usedNonceList[i];
+      }
+    }
+    usedNonceList.length = writeIdx;
+  }
+
   function _recordNonce(nonce) {
     if (usedNonces[nonce]) {
       usedNonces[nonce].uses++;
       return usedNonces[nonce].uses;
+    }
+    // Purge expired nonces before falling back to FIFO eviction.
+    // This ensures an attacker cannot flush valid nonces by generating
+    // a flood of new token verifications (replay attack via eviction).
+    if (usedNonceCount >= maxUsedTokens) {
+      _purgeExpiredNonces();
     }
     if (usedNonceCount >= maxUsedTokens) {
       var evict = usedNonceList.shift();

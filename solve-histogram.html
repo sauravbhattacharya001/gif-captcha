@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; img-src https: data:; script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'self'; form-action 'none';">
+    <meta name="referrer" content="no-referrer">
+    <title>GIF CAPTCHA — Solve Time Histogram 📊</title>
+    <link rel="stylesheet" href="shared.css">
+    <style>
+        .container { max-width: 960px; }
+
+        .histogram-canvas {
+            width: 100%;
+            height: 420px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            margin-bottom: 1.5rem;
+        }
+
+        .controls-bar {
+            display: flex;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+            margin-bottom: 1.5rem;
+            align-items: center;
+        }
+
+        .controls-bar label {
+            font-size: 0.85rem;
+            color: var(--muted);
+        }
+
+        .controls-bar select,
+        .controls-bar input[type="number"] {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text);
+            padding: 0.4rem 0.6rem;
+            font-size: 0.85rem;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .stat-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1rem;
+            text-align: center;
+        }
+
+        .stat-card .label {
+            font-size: 0.75rem;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.3rem;
+        }
+
+        .stat-card .value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--accent);
+        }
+
+        .stat-card .value.green { color: var(--green); }
+        .stat-card .value.red { color: var(--red); }
+        .stat-card .value.yellow { color: var(--yellow); }
+        .stat-card .value.purple { color: var(--purple); }
+
+        .data-controls {
+            display: flex;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+            margin-bottom: 1.5rem;
+        }
+
+        .annotation {
+            font-size: 0.8rem;
+            color: var(--muted);
+            text-align: center;
+            margin-top: -0.8rem;
+            margin-bottom: 1rem;
+        }
+
+        .overlay-toggle {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .overlay-toggle label {
+            font-size: 0.85rem;
+            color: var(--muted);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 0.3rem;
+        }
+
+        .percentile-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 1.5rem;
+            font-size: 0.85rem;
+        }
+
+        .percentile-table th,
+        .percentile-table td {
+            border: 1px solid var(--border);
+            padding: 0.5rem 0.75rem;
+            text-align: center;
+        }
+
+        .percentile-table th {
+            background: var(--surface);
+            color: var(--muted);
+            text-transform: uppercase;
+            font-size: 0.7rem;
+            letter-spacing: 0.05em;
+        }
+
+        .percentile-table td {
+            color: var(--text);
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>📊 Solve Time Histogram</h1>
+        <p>Visualize and analyze CAPTCHA solve-time distributions to identify bots, optimize difficulty, and understand user behavior.</p>
+    </header>
+
+    <main class="container">
+        <!-- Data controls -->
+        <div class="data-controls">
+            <button class="btn btn-primary" id="generateBtn">🎲 Generate Sample Data</button>
+            <button class="btn" id="importBtn">📂 Import CSV</button>
+            <button class="btn" id="exportBtn">💾 Export PNG</button>
+            <input type="file" id="csvInput" accept=".csv" style="display:none">
+        </div>
+
+        <!-- Histogram controls -->
+        <div class="controls-bar">
+            <div>
+                <label for="binCount">Bins</label>
+                <input type="number" id="binCount" min="5" max="100" value="25" style="width:60px">
+            </div>
+            <div>
+                <label for="scaleMode">Scale</label>
+                <select id="scaleMode">
+                    <option value="linear">Linear</option>
+                    <option value="log">Logarithmic</option>
+                </select>
+            </div>
+            <div>
+                <label for="colorMode">Color</label>
+                <select id="colorMode">
+                    <option value="speed">Speed (fast→slow)</option>
+                    <option value="risk">Risk (human→bot)</option>
+                    <option value="solid">Solid</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Overlays -->
+        <div class="overlay-toggle">
+            <label><input type="checkbox" id="showMean" checked> Mean</label>
+            <label><input type="checkbox" id="showMedian" checked> Median</label>
+            <label><input type="checkbox" id="showStdDev"> ±1σ</label>
+            <label><input type="checkbox" id="showKDE"> KDE Curve</label>
+            <label><input type="checkbox" id="showBotLine"> Bot Threshold</label>
+        </div>
+
+        <!-- Canvas -->
+        <canvas class="histogram-canvas" id="histCanvas"></canvas>
+        <p class="annotation" id="annotation">Generate or import data to begin</p>
+
+        <!-- Stats -->
+        <div class="stats-grid">
+            <div class="stat-card"><div class="label">Samples</div><div class="value" id="statN">—</div></div>
+            <div class="stat-card"><div class="label">Mean</div><div class="value green" id="statMean">—</div></div>
+            <div class="stat-card"><div class="label">Median</div><div class="value" id="statMedian">—</div></div>
+            <div class="stat-card"><div class="label">Std Dev</div><div class="value yellow" id="statStd">—</div></div>
+            <div class="stat-card"><div class="label">Min</div><div class="value" id="statMin">—</div></div>
+            <div class="stat-card"><div class="label">Max</div><div class="value" id="statMax">—</div></div>
+            <div class="stat-card"><div class="label">Skewness</div><div class="value purple" id="statSkew">—</div></div>
+            <div class="stat-card"><div class="label">Suspected Bots</div><div class="value red" id="statBots">—</div></div>
+        </div>
+
+        <!-- Percentile table -->
+        <table class="percentile-table">
+            <thead>
+                <tr>
+                    <th>P5</th><th>P10</th><th>P25</th><th>P50</th><th>P75</th><th>P90</th><th>P95</th><th>P99</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td id="p5">—</td><td id="p10">—</td><td id="p25">—</td><td id="p50">—</td>
+                    <td id="p75">—</td><td id="p90">—</td><td id="p95">—</td><td id="p99">—</td>
+                </tr>
+            </tbody>
+        </table>
+    </main>
+
+    <footer>
+        <p>Part of the <a href="index.html">GIF CAPTCHA</a> research toolkit</p>
+    </footer>
+
+    <script src="shared.js"></script>
+    <script>
+    (function() {
+        'use strict';
+
+        const canvas = document.getElementById('histCanvas');
+        const ctx = canvas.getContext('2d');
+        let solveData = [];
+        const BOT_THRESHOLD_MS = 800; // solves under 800ms are suspicious
+
+        // --- Data Generation ---
+        function generateSampleData(n) {
+            n = n || 500;
+            const data = [];
+            // Human solves: log-normal distribution centered around 3-8 seconds
+            for (let i = 0; i < Math.floor(n * 0.85); i++) {
+                const mu = 1.5, sigma = 0.5;
+                const z = Math.sqrt(-2 * Math.log(Math.random())) * Math.cos(2 * Math.PI * Math.random());
+                data.push(Math.exp(mu + sigma * z) * 1000); // ms
+            }
+            // Bot solves: tight cluster around 200-600ms
+            for (let i = 0; i < Math.floor(n * 0.1); i++) {
+                data.push(200 + Math.random() * 400);
+            }
+            // Slow humans / distracted: 10-30s
+            for (let i = 0; i < Math.floor(n * 0.05); i++) {
+                data.push(10000 + Math.random() * 20000);
+            }
+            return data.map(d => Math.max(50, d));
+        }
+
+        // --- Stats ---
+        function calcStats(data) {
+            const sorted = [...data].sort((a, b) => a - b);
+            const n = sorted.length;
+            const mean = sorted.reduce((s, v) => s + v, 0) / n;
+            const variance = sorted.reduce((s, v) => s + (v - mean) ** 2, 0) / n;
+            const std = Math.sqrt(variance);
+            const median = n % 2 === 0 ? (sorted[n/2 - 1] + sorted[n/2]) / 2 : sorted[Math.floor(n/2)];
+            const skew = sorted.reduce((s, v) => s + ((v - mean) / std) ** 3, 0) / n;
+            const percentile = p => sorted[Math.floor(p / 100 * (n - 1))];
+            const bots = sorted.filter(v => v < BOT_THRESHOLD_MS).length;
+
+            return { n, mean, median, std, min: sorted[0], max: sorted[n-1], skew, bots,
+                     sorted, percentile };
+        }
+
+        function fmtMs(ms) {
+            return ms < 1000 ? ms.toFixed(0) + 'ms' : (ms / 1000).toFixed(2) + 's';
+        }
+
+        function updateStats(stats) {
+            document.getElementById('statN').textContent = stats.n;
+            document.getElementById('statMean').textContent = fmtMs(stats.mean);
+            document.getElementById('statMedian').textContent = fmtMs(stats.median);
+            document.getElementById('statStd').textContent = fmtMs(stats.std);
+            document.getElementById('statMin').textContent = fmtMs(stats.min);
+            document.getElementById('statMax').textContent = fmtMs(stats.max);
+            document.getElementById('statSkew').textContent = stats.skew.toFixed(2);
+            document.getElementById('statBots').textContent = stats.bots + ' (' + (stats.bots / stats.n * 100).toFixed(1) + '%)';
+
+            [5, 10, 25, 50, 75, 90, 95, 99].forEach(p => {
+                document.getElementById('p' + p).textContent = fmtMs(stats.percentile(p));
+            });
+        }
+
+        // --- Histogram ---
+        function buildBins(data, numBins) {
+            const min = Math.min(...data);
+            const max = Math.max(...data);
+            const binWidth = (max - min) / numBins;
+            const bins = Array.from({ length: numBins }, (_, i) => ({
+                low: min + i * binWidth,
+                high: min + (i + 1) * binWidth,
+                count: 0
+            }));
+            data.forEach(v => {
+                let idx = Math.floor((v - min) / binWidth);
+                if (idx >= numBins) idx = numBins - 1;
+                bins[idx].count++;
+            });
+            return bins;
+        }
+
+        function gaussianKDE(data, points, bandwidth) {
+            return points.map(x => {
+                const sum = data.reduce((s, xi) => {
+                    const z = (x - xi) / bandwidth;
+                    return s + Math.exp(-0.5 * z * z);
+                }, 0);
+                return sum / (data.length * bandwidth * Math.sqrt(2 * Math.PI));
+            });
+        }
+
+        function draw() {
+            if (solveData.length === 0) return;
+
+            const dpr = window.devicePixelRatio || 1;
+            const rect = canvas.getBoundingClientRect();
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+            const w = rect.width, h = rect.height;
+            const pad = { top: 20, right: 20, bottom: 50, left: 60 };
+            const plotW = w - pad.left - pad.right;
+            const plotH = h - pad.top - pad.bottom;
+
+            ctx.clearRect(0, 0, w, h);
+
+            const numBins = parseInt(document.getElementById('binCount').value) || 25;
+            const scale = document.getElementById('scaleMode').value;
+            const colorMode = document.getElementById('colorMode').value;
+            const bins = buildBins(solveData, numBins);
+            const stats = calcStats(solveData);
+
+            const maxCount = Math.max(...bins.map(b => b.count));
+            const yMax = scale === 'log' ? Math.log10(maxCount + 1) : maxCount;
+            const xMin = bins[0].low;
+            const xMax = bins[bins.length - 1].high;
+
+            function xPos(v) { return pad.left + ((v - xMin) / (xMax - xMin)) * plotW; }
+            function yPos(c) {
+                const val = scale === 'log' ? Math.log10(c + 1) : c;
+                return pad.top + plotH - (val / yMax) * plotH;
+            }
+
+            // Grid lines
+            ctx.strokeStyle = 'rgba(48, 54, 61, 0.5)';
+            ctx.lineWidth = 0.5;
+            for (let i = 0; i <= 5; i++) {
+                const y = pad.top + (plotH / 5) * i;
+                ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(w - pad.right, y); ctx.stroke();
+            }
+
+            // Bars
+            const barW = plotW / numBins;
+            bins.forEach((bin, i) => {
+                const x = pad.left + i * barW;
+                const barH = plotH - (yPos(bin.count) - pad.top);
+                const mid = (bin.low + bin.high) / 2;
+
+                if (colorMode === 'speed') {
+                    const t = Math.min(mid / 15000, 1);
+                    ctx.fillStyle = `hsl(${(1 - t) * 120}, 70%, 50%)`;
+                } else if (colorMode === 'risk') {
+                    ctx.fillStyle = mid < BOT_THRESHOLD_MS ? 'rgba(248, 81, 73, 0.8)' :
+                                    mid < 2000 ? 'rgba(210, 153, 34, 0.8)' : 'rgba(63, 185, 80, 0.6)';
+                } else {
+                    ctx.fillStyle = 'rgba(88, 166, 255, 0.7)';
+                }
+
+                ctx.fillRect(x + 1, yPos(bin.count), barW - 2, barH);
+            });
+
+            // Overlays
+            function drawVertLine(xVal, color, label) {
+                const x = xPos(xVal);
+                if (x < pad.left || x > w - pad.right) return;
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 2;
+                ctx.setLineDash([6, 4]);
+                ctx.beginPath(); ctx.moveTo(x, pad.top); ctx.lineTo(x, pad.top + plotH); ctx.stroke();
+                ctx.setLineDash([]);
+                ctx.fillStyle = color;
+                ctx.font = '11px system-ui';
+                ctx.fillText(label + ' ' + fmtMs(xVal), x + 4, pad.top + 14);
+            }
+
+            if (document.getElementById('showMean').checked) drawVertLine(stats.mean, '#3fb950', 'Mean');
+            if (document.getElementById('showMedian').checked) drawVertLine(stats.median, '#58a6ff', 'Median');
+            if (document.getElementById('showBotLine').checked) drawVertLine(BOT_THRESHOLD_MS, '#f85149', 'Bot Threshold');
+
+            if (document.getElementById('showStdDev').checked) {
+                const lo = stats.mean - stats.std, hi = stats.mean + stats.std;
+                const x1 = Math.max(xPos(lo), pad.left), x2 = Math.min(xPos(hi), w - pad.right);
+                ctx.fillStyle = 'rgba(188, 140, 255, 0.1)';
+                ctx.fillRect(x1, pad.top, x2 - x1, plotH);
+                drawVertLine(lo, '#bc8cff', '-1σ');
+                drawVertLine(hi, '#bc8cff', '+1σ');
+            }
+
+            // KDE overlay
+            if (document.getElementById('showKDE').checked) {
+                const nPoints = 200;
+                const bandwidth = stats.std * 0.4;
+                const points = Array.from({ length: nPoints }, (_, i) => xMin + (xMax - xMin) * i / (nPoints - 1));
+                const density = gaussianKDE(solveData, points, bandwidth);
+                const maxDensity = Math.max(...density);
+                const binWidth = (xMax - xMin) / numBins;
+                const scaleFactor = maxCount / (maxDensity * binWidth);
+
+                ctx.strokeStyle = '#f0883e';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                points.forEach((pt, i) => {
+                    const x = xPos(pt);
+                    const y = yPos(density[i] * scaleFactor * binWidth);
+                    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+                });
+                ctx.stroke();
+            }
+
+            // Axes
+            ctx.strokeStyle = 'var(--border)';
+            ctx.fillStyle = '#8b949e';
+            ctx.font = '11px system-ui';
+            ctx.textAlign = 'center';
+
+            // X axis labels
+            const xTicks = 8;
+            for (let i = 0; i <= xTicks; i++) {
+                const val = xMin + (xMax - xMin) * i / xTicks;
+                const x = xPos(val);
+                ctx.fillText(fmtMs(val), x, h - pad.bottom + 20);
+            }
+            ctx.fillText('Solve Time', w / 2, h - 5);
+
+            // Y axis labels
+            ctx.textAlign = 'right';
+            for (let i = 0; i <= 5; i++) {
+                const count = scale === 'log' ? Math.pow(10, yMax * (5 - i) / 5) - 1 : maxCount * (5 - i) / 5;
+                const y = pad.top + (plotH / 5) * i;
+                ctx.fillText(Math.round(count).toString(), pad.left - 8, y + 4);
+            }
+            ctx.save();
+            ctx.translate(14, pad.top + plotH / 2);
+            ctx.rotate(-Math.PI / 2);
+            ctx.textAlign = 'center';
+            ctx.fillText('Count', 0, 0);
+            ctx.restore();
+
+            updateStats(stats);
+            document.getElementById('annotation').textContent =
+                `${stats.n} samples · ${numBins} bins · ${stats.bots} suspected bot solves (< ${BOT_THRESHOLD_MS}ms)`;
+        }
+
+        // --- Event Handlers ---
+        document.getElementById('generateBtn').addEventListener('click', function() {
+            solveData = generateSampleData(500);
+            draw();
+        });
+
+        document.getElementById('importBtn').addEventListener('click', function() {
+            document.getElementById('csvInput').click();
+        });
+
+        document.getElementById('csvInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(ev) {
+                const lines = ev.target.result.split('\n');
+                const data = [];
+                lines.forEach(line => {
+                    const val = parseFloat(line.trim().split(',')[0]);
+                    if (!isNaN(val) && val > 0) data.push(val);
+                });
+                if (data.length > 0) {
+                    solveData = data;
+                    draw();
+                }
+            };
+            reader.readAsText(file);
+            e.target.value = '';
+        });
+
+        document.getElementById('exportBtn').addEventListener('click', function() {
+            if (solveData.length === 0) return;
+            const link = document.createElement('a');
+            link.download = 'solve-time-histogram.png';
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        });
+
+        // Redraw on control changes
+        ['binCount', 'scaleMode', 'colorMode', 'showMean', 'showMedian', 'showStdDev', 'showKDE', 'showBotLine']
+            .forEach(id => document.getElementById(id).addEventListener('change', draw));
+        document.getElementById('binCount').addEventListener('input', draw);
+
+        // Tooltip on hover
+        canvas.addEventListener('mousemove', function(e) {
+            if (solveData.length === 0) return;
+            const rect = canvas.getBoundingClientRect();
+            const numBins = parseInt(document.getElementById('binCount').value) || 25;
+            const bins = buildBins(solveData, numBins);
+            const xMin = bins[0].low, xMax = bins[bins.length - 1].high;
+            const pad = { left: 60, right: 20 };
+            const plotW = rect.width - pad.left - pad.right;
+            const mx = e.clientX - rect.left;
+            const binIdx = Math.floor((mx - pad.left) / (plotW / numBins));
+            if (binIdx >= 0 && binIdx < bins.length) {
+                const b = bins[binIdx];
+                canvas.title = `${fmtMs(b.low)} – ${fmtMs(b.high)}: ${b.count} solves`;
+            } else {
+                canvas.title = '';
+            }
+        });
+
+        window.addEventListener('resize', function() {
+            if (solveData.length > 0) draw();
+        });
+    })();
+    </script>
+</body>
+</html>

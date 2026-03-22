@@ -112,17 +112,18 @@ function createChallengeDecayManager(options) {
   }
 
   /**
-   * Record that a challenge was shown to a user.
+   * Internal: update a challenge entry, recompute freshness, and auto-retire
+   * if below threshold. Shared by recordExposure and recordSolve.
    * @param {string} challengeId
+   * @param {function} mutate - Receives (entry) and applies the update.
    * @returns {{ freshness: number, retired: boolean }}
    */
-  function recordExposure(challengeId) {
+  function _recordAndCheck(challengeId, mutate) {
     var entry = challenges[challengeId];
     if (!entry) throw new Error("Unknown challenge: " + challengeId);
     if (entry.retired) return { freshness: 0, retired: true };
 
-    entry.exposures++;
-    entry.lastExposedAt = _now();
+    mutate(entry);
 
     var freshness = _computeFreshness(entry);
     if (freshness < freshnessThreshold) {
@@ -134,27 +135,29 @@ function createChallengeDecayManager(options) {
   }
 
   /**
+   * Record that a challenge was shown to a user.
+   * @param {string} challengeId
+   * @returns {{ freshness: number, retired: boolean }}
+   */
+  function recordExposure(challengeId) {
+    return _recordAndCheck(challengeId, function(entry) {
+      entry.exposures++;
+      entry.lastExposedAt = _now();
+    });
+  }
+
+  /**
    * Record a solve attempt for a challenge.
    * @param {string} challengeId
    * @param {boolean} correct - Whether the solve was correct.
    * @returns {{ freshness: number, retired: boolean }}
    */
   function recordSolve(challengeId, correct) {
-    var entry = challenges[challengeId];
-    if (!entry) throw new Error("Unknown challenge: " + challengeId);
-    if (entry.retired) return { freshness: 0, retired: true };
-
-    entry.solves++;
-    if (correct) entry.correctSolves++;
-    entry.lastSolvedAt = _now();
-
-    var freshness = _computeFreshness(entry);
-    if (freshness < freshnessThreshold) {
-      _retire(challengeId, entry);
-      return { freshness: freshness, retired: true };
-    }
-
-    return { freshness: Math.round(freshness * 10000) / 10000, retired: false };
+    return _recordAndCheck(challengeId, function(entry) {
+      entry.solves++;
+      if (correct) entry.correctSolves++;
+      entry.lastSolvedAt = _now();
+    });
   }
 
   /**
@@ -288,11 +291,12 @@ function createChallengeDecayManager(options) {
   }
 
   /**
-   * Get the N freshest active challenges (for preferential selection).
-   * @param {number} [n=10] - Number to return.
-   * @returns {object[]} Array of stats objects, sorted by freshness desc.
+   * Internal: return the N active challenges sorted by freshness.
+   * @param {number} n - Number to return.
+   * @param {boolean} ascending - If true, stalest first; if false, freshest first.
+   * @returns {object[]} Array of stats objects.
    */
-  function getFreshest(n) {
+  function _getByFreshness(n, ascending) {
     n = n != null && n > 0 ? n : 10;
     var scored = [];
     var keys = Object.keys(challenges);
@@ -301,7 +305,10 @@ function createChallengeDecayManager(options) {
       if (entry.retired) continue;
       scored.push({ id: keys[i], freshness: _computeFreshness(entry) });
     }
-    scored.sort(function(a, b) { return b.freshness - a.freshness; });
+    scored.sort(ascending
+      ? function(a, b) { return a.freshness - b.freshness; }
+      : function(a, b) { return b.freshness - a.freshness; }
+    );
     var result = [];
     for (var j = 0; j < Math.min(n, scored.length); j++) {
       result.push(_buildStats(scored[j].id, challenges[scored[j].id]));
@@ -310,25 +317,21 @@ function createChallengeDecayManager(options) {
   }
 
   /**
+   * Get the N freshest active challenges (for preferential selection).
+   * @param {number} [n=10] - Number to return.
+   * @returns {object[]} Array of stats objects, sorted by freshness desc.
+   */
+  function getFreshest(n) {
+    return _getByFreshness(n, false);
+  }
+
+  /**
    * Get the N stalest active challenges (candidates for retirement).
    * @param {number} [n=10]
    * @returns {object[]}
    */
   function getStalest(n) {
-    n = n != null && n > 0 ? n : 10;
-    var scored = [];
-    var keys = Object.keys(challenges);
-    for (var i = 0; i < keys.length; i++) {
-      var entry = challenges[keys[i]];
-      if (entry.retired) continue;
-      scored.push({ id: keys[i], freshness: _computeFreshness(entry) });
-    }
-    scored.sort(function(a, b) { return a.freshness - b.freshness; });
-    var result = [];
-    for (var j = 0; j < Math.min(n, scored.length); j++) {
-      result.push(_buildStats(scored[j].id, challenges[scored[j].id]));
-    }
-    return result;
+    return _getByFreshness(n, true);
   }
 
   /**

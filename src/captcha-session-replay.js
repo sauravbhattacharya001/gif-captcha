@@ -503,17 +503,67 @@ function createSessionReplay(options) {
   }
 
   /**
+   * Fields in session metadata that may contain PII and should be
+   * redacted when exporting for analytics or sharing.
+   */
+  var PII_METADATA_FIELDS = [
+    "userId", "user_id", "userID",
+    "ip", "ipAddress", "ip_address", "clientIp",
+    "email", "name", "username", "fingerprint",
+    "sessionToken", "token", "cookie",
+    "userAgent", "user_agent",
+  ];
+
+  /**
+   * Redact PII fields from a metadata object (shallow copy).
+   * Replaces values with "[REDACTED]" so the key presence is preserved
+   * for schema compatibility but the sensitive value is removed.
+   * @param {Object} metadata
+   * @returns {Object} Redacted copy
+   */
+  function _redactMetadata(metadata) {
+    if (!metadata || typeof metadata !== "object") return metadata;
+    var copy = {};
+    var keys = Object.keys(metadata);
+    for (var i = 0; i < keys.length; i++) {
+      var k = keys[i];
+      if (PII_METADATA_FIELDS.indexOf(k) !== -1) {
+        copy[k] = "[REDACTED]";
+      } else {
+        copy[k] = metadata[k];
+      }
+    }
+    return copy;
+  }
+
+  /**
    * Export all sessions to JSON string.
-   * @param {Object} [filter] - Same as listSessions filter
+   *
+   * When `filter.redact` is true (recommended for any export that may be
+   * shared, logged, or stored outside the application), PII-bearing
+   * metadata fields (userId, IP, email, fingerprint, tokens, etc.) are
+   * replaced with "[REDACTED]" to comply with data-minimisation principles
+   * and reduce exposure risk (CWE-359: Exposure of Private Personal
+   * Information to an Unauthorized Actor).
+   *
+   * @param {Object} [filter] - Same as listSessions filter, plus:
+   * @param {boolean} [filter.redact=false] - Redact PII from metadata
    * @returns {string}
    */
   function exportJSON(filter) {
+    var redact = filter && filter.redact;
     const ids = listSessions(filter).map(function (s) {
       return s.id;
     });
     const data = ids.map(function (id) {
       return sessions.get(id);
-    }).filter(Boolean).map(_cloneDeep);
+    }).filter(Boolean).map(function (s) {
+      var copy = _cloneDeep(s);
+      if (redact && copy.metadata) {
+        copy.metadata = _redactMetadata(copy.metadata);
+      }
+      return copy;
+    });
     return JSON.stringify({ version: 1, exportedAt: _now(), sessions: data }, null, 2);
   }
 

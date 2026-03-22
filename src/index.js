@@ -281,6 +281,39 @@ function _stddev(arr, avg) {
   return Math.sqrt(sumSq / (arr.length - 1));
 }
 
+/**
+ * Compute the population standard deviation (n denominator, no Bessel's correction).
+ * Useful for cohort analysis where the data IS the entire population, not a sample.
+ * @param {number[]} arr
+ * @param {number} [avg] - Pre-computed mean
+ * @returns {number} Population standard deviation, or 0 for arrays with fewer than 2 elements
+ */
+function _populationStddev(arr, avg) {
+  if (arr.length < 2) return 0;
+  var m = avg !== undefined ? avg : _mean(arr);
+  var sumSq = 0;
+  for (var i = 0; i < arr.length; i++) {
+    var d = arr[i] - m;
+    sumSq += d * d;
+  }
+  return Math.sqrt(sumSq / arr.length);
+}
+
+/**
+ * Compute the p-th percentile of a numeric array using linear interpolation.
+ * @param {number[]} arr - Input array (not mutated)
+ * @param {number} p - Percentile (0-100)
+ * @returns {number} Percentile value, or 0 for empty arrays
+ */
+function _percentile(arr, p) {
+  if (!arr.length) return 0;
+  var sorted = arr.slice().sort(_numAsc);
+  var i = (p / 100) * (sorted.length - 1);
+  var lo = Math.floor(i);
+  var hi = Math.ceil(i);
+  return lo === hi ? sorted[lo] : sorted[lo] + (sorted[hi] - sorted[lo]) * (i - lo);
+}
+
 // ── Text Sanitizer ──────────────────────────────────────────────────
 
 /**
@@ -11377,10 +11410,12 @@ function createDeviceCohortAnalyzer(options) {
     return _cohorts[key];
   }
 
-  function _dcaMean(a) { if (!a.length) return 0; var s = 0; for (var i = 0; i < a.length; i++) s += a[i]; return s / a.length; }
-  function _dcaStddev(a, m) { if (a.length < 2) return 0; var s = 0; for (var i = 0; i < a.length; i++) { var d = a[i] - m; s += d * d; } return Math.sqrt(s / a.length); }
-  function _dcaMedian(a) { if (!a.length) return 0; var s = a.slice().sort(function(x,y){return x-y;}); var m = Math.floor(s.length/2); return s.length%2 ? s[m] : (s[m-1]+s[m])/2; }
-  function _dcaPct(a, p) { if (!a.length) return 0; var s = a.slice().sort(function(x,y){return x-y;}); var i = (p/100)*(s.length-1); var lo = Math.floor(i), hi = Math.ceil(i); return lo===hi ? s[lo] : s[lo]+(s[hi]-s[lo])*(i-lo); }
+  // Reuse top-level statistical utilities; cohort analysis uses population
+  // stddev (the cohort data IS the full population, not a sample).
+  var _dcaMean = _mean;
+  var _dcaStddev = _populationStddev;
+  var _dcaMedian = _median;
+  var _dcaPct = _percentile;
 
   function _detectAnomalies(key, entry) {
     var c = _cohorts[key];

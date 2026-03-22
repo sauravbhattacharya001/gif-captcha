@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; img-src https:; frame-ancestors 'none'; base-uri 'self'; form-action 'none';">
+    <meta name="referrer" content="no-referrer">
+    <title>Challenge Rotation Scheduler — GIF CAPTCHA</title>
+    <link rel="stylesheet" href="shared.css">
+    <style>
+        header { text-align:center; padding:2.5rem 1.5rem 1.5rem; border-bottom:1px solid var(--border); }
+        header h1 { font-size:1.8rem; margin-bottom:.4rem; }
+        header p  { color:var(--muted); }
+        main { max-width:1100px; margin:0 auto; padding:2rem 1.5rem; }
+
+        .scheduler { display:grid; grid-template-columns:320px 1fr; gap:2rem; margin-top:1.5rem; }
+        @media(max-width:800px){ .scheduler{grid-template-columns:1fr;} }
+
+        /* -- Challenge palette -- */
+        .palette { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:1.25rem; }
+        .palette h3 { font-size:1rem; margin-bottom:1rem; color:var(--accent); }
+        .challenge-chip {
+            display:inline-flex; align-items:center; gap:.4rem;
+            padding:.4rem .8rem; margin:.25rem; border-radius:16px; font-size:.82rem; font-weight:600;
+            cursor:grab; user-select:none; border:1px solid var(--border);
+            background:var(--surface-hover); color:var(--text); transition:box-shadow .15s;
+        }
+        .challenge-chip:hover { box-shadow:0 0 0 2px var(--accent); }
+        .challenge-chip .dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+
+        /* -- Timeline grid -- */
+        .timeline-panel { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:1.25rem; overflow-x:auto; }
+        .timeline-panel h3 { font-size:1rem; margin-bottom:.75rem; color:var(--accent); }
+        .week-grid { display:grid; grid-template-columns:70px repeat(24,1fr); gap:0; font-size:.72rem; }
+        .week-grid .day-label { display:flex; align-items:center; font-weight:600; color:var(--muted); padding:.35rem .5rem; border-bottom:1px solid var(--border); }
+        .week-grid .hour-header { text-align:center; color:var(--muted); padding:.25rem 0; border-bottom:1px solid var(--border); font-size:.65rem; }
+        .week-grid .slot {
+            min-height:32px; border:1px solid var(--border); cursor:pointer; transition:background .12s;
+            display:flex; align-items:center; justify-content:center; font-size:.6rem; font-weight:600;
+        }
+        .week-grid .slot:hover { background:var(--surface-hover); }
+
+        /* -- Schedule rules -- */
+        .rules { margin-top:1.5rem; }
+        .rules h3 { font-size:1rem; margin-bottom:.75rem; color:var(--accent); }
+        .rule-list { list-style:none; }
+        .rule-list li {
+            display:flex; align-items:center; gap:.75rem; padding:.65rem .85rem;
+            background:var(--surface); border:1px solid var(--border); border-radius:8px; margin-bottom:.5rem;
+        }
+        .rule-list li .badge { padding:.15rem .55rem; border-radius:10px; font-size:.72rem; font-weight:600; }
+        .rule-list li .time { color:var(--muted); font-size:.82rem; flex:1; }
+        .rule-list li button { background:none; border:none; color:var(--red); cursor:pointer; font-size:.9rem; }
+
+        .btn-row { display:flex; gap:.75rem; flex-wrap:wrap; margin-top:1.25rem; }
+        .btn { padding:.55rem 1.1rem; border:1px solid var(--border); border-radius:8px; background:var(--surface-hover); color:var(--text); cursor:pointer; font-size:.85rem; font-weight:600; transition:background .15s; }
+        .btn:hover { background:var(--accent); color:#000; }
+        .btn.primary { background:var(--accent); color:#000; }
+        .btn.primary:hover { background:var(--accent-hover); }
+        .btn.danger { border-color:var(--red); color:var(--red); }
+        .btn.danger:hover { background:var(--red); color:#fff; }
+
+        /* Stats bar */
+        .stats { display:flex; gap:1.5rem; flex-wrap:wrap; margin-bottom:1.5rem; }
+        .stat-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:1rem 1.25rem; flex:1; min-width:160px; }
+        .stat-card .label { font-size:.78rem; color:var(--muted); margin-bottom:.25rem; }
+        .stat-card .value { font-size:1.6rem; font-weight:700; }
+
+        footer { text-align:center; padding:2rem 1.5rem; border-top:1px solid var(--border); margin-top:2rem; color:var(--muted); font-size:.85rem; }
+    </style>
+</head>
+<body>
+<header>
+    <h1>🔄 Challenge Rotation Scheduler</h1>
+    <p>Schedule automatic CAPTCHA challenge-type rotation to keep bots guessing</p>
+</header>
+<main>
+    <div class="stats" id="stats"></div>
+
+    <div class="scheduler">
+        <div class="palette" id="palette">
+            <h3>Challenge Types</h3>
+        </div>
+        <div class="timeline-panel">
+            <h3>Weekly Schedule <span style="font-weight:400;color:var(--muted);font-size:.78rem;">(click slots to assign)</span></h3>
+            <div class="week-grid" id="weekGrid"></div>
+        </div>
+    </div>
+
+    <div class="rules">
+        <h3>Active Rotation Rules</h3>
+        <ul class="rule-list" id="ruleList"></ul>
+        <div class="btn-row">
+            <button class="btn primary" id="addRuleBtn">+ Add Rule</button>
+            <button class="btn" id="randomizeBtn">🎲 Randomize Week</button>
+            <button class="btn" id="exportBtn">📋 Export Config</button>
+            <button class="btn danger" id="clearBtn">Clear All</button>
+        </div>
+    </div>
+</main>
+<footer>
+    <a href="index.html">← Back to Case Study</a> &nbsp;|&nbsp; GIF CAPTCHA &copy; 2025
+</footer>
+
+<script src="shared.js"></script>
+<script>
+(function(){
+    "use strict";
+
+    // --- Challenge type definitions ---
+    var CHALLENGES = [
+        { id:"twist",      name:"Plot Twist",       color:"var(--accent)",  dot:"#58a6ff" },
+        { id:"emotion",    name:"Emotion Read",     color:"var(--green)",   dot:"#3fb950" },
+        { id:"counting",   name:"Object Count",     color:"var(--yellow)",  dot:"#d29922" },
+        { id:"sequence",   name:"Frame Sequence",   color:"var(--purple)",  dot:"#bc8cff" },
+        { id:"spatial",    name:"Spatial Relation",  color:"var(--orange)",  dot:"#f0883e" },
+        { id:"temporal",   name:"Temporal Order",    color:"var(--cyan)",    dot:"#39d2c0" },
+        { id:"absurdity",  name:"Absurdity Detect",  color:"var(--red)",     dot:"#f85149" },
+        { id:"text",       name:"Embedded Text",     color:"#e6edf3",       dot:"#e6edf3" }
+    ];
+
+    var DAYS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+    var schedule = {}; // "day-hour" -> challengeId
+    var rules = [];
+    var selectedChallenge = CHALLENGES[0].id;
+
+    // --- Palette ---
+    function renderPalette(){
+        var el = document.getElementById("palette");
+        var h = "<h3>Challenge Types</h3>";
+        CHALLENGES.forEach(function(c){
+            var sel = c.id === selectedChallenge ? "box-shadow:0 0 0 2px "+c.dot+";" : "";
+            h += '<div class="challenge-chip" data-id="'+c.id+'" style="'+sel+'">' +
+                 '<span class="dot" style="background:'+c.dot+';"></span>'+sanitize(c.name)+'</div>';
+        });
+        h += '<p style="color:var(--muted);font-size:.75rem;margin-top:1rem;">Click a type, then click slots in the grid to assign it.</p>';
+        el.innerHTML = h;
+        el.querySelectorAll(".challenge-chip").forEach(function(chip){
+            chip.addEventListener("click",function(){ selectedChallenge=this.getAttribute("data-id"); renderPalette(); });
+        });
+    }
+
+    // --- Week grid ---
+    function renderGrid(){
+        var g = document.getElementById("weekGrid");
+        var h = '<div class="day-label"></div>';
+        for(var hr=0;hr<24;hr++) h += '<div class="hour-header">'+String(hr).padStart(2,"0")+'</div>';
+        DAYS.forEach(function(day,di){
+            h += '<div class="day-label">'+day+'</div>';
+            for(var hr=0;hr<24;hr++){
+                var key = di+"-"+hr;
+                var cid = schedule[key];
+                var bg = "";
+                var label = "";
+                if(cid){
+                    var c = CHALLENGES.find(function(x){return x.id===cid;});
+                    if(c){ bg = "background:"+c.dot+"33;"; label = c.name.substring(0,3); }
+                }
+                h += '<div class="slot" data-key="'+key+'" style="'+bg+'">'+label+'</div>';
+            }
+        });
+        g.innerHTML = h;
+        g.querySelectorAll(".slot").forEach(function(slot){
+            slot.addEventListener("click",function(){
+                var k = this.getAttribute("data-key");
+                if(schedule[k] === selectedChallenge) delete schedule[k];
+                else schedule[k] = selectedChallenge;
+                renderGrid(); updateStats();
+            });
+        });
+    }
+
+    // --- Rules ---
+    var ruleId = 0;
+    function addRule(cid, startHr, endHr, days, weight){
+        rules.push({ id:++ruleId, challengeId:cid, startHr:startHr, endHr:endHr, days:days, weight:weight });
+        renderRules();
+    }
+    function renderRules(){
+        var ul = document.getElementById("ruleList");
+        if(!rules.length){ ul.innerHTML = '<li style="color:var(--muted);">No rules yet — add one or paint the grid directly.</li>'; return; }
+        ul.innerHTML = "";
+        rules.forEach(function(r){
+            var c = CHALLENGES.find(function(x){return x.id===r.challengeId;});
+            var li = document.createElement("li");
+            li.innerHTML = '<span class="badge" style="background:'+c.dot+'33;color:'+c.dot+';">'+sanitize(c.name)+'</span>' +
+                '<span class="time">'+r.days.join(", ")+" &middot; "+String(r.startHr).padStart(2,"0")+":00–"+String(r.endHr).padStart(2,"0")+":00 &middot; weight "+r.weight+'</span>' +
+                '<button data-rid="'+r.id+'" title="Remove">✕</button>';
+            li.querySelector("button").addEventListener("click",function(){
+                rules = rules.filter(function(x){return x.id !== r.id;});
+                renderRules();
+            });
+            ul.appendChild(li);
+        });
+    }
+
+    function applyRulesToGrid(){
+        schedule = {};
+        rules.forEach(function(r){
+            DAYS.forEach(function(day,di){
+                if(r.days.indexOf(day)===-1) return;
+                for(var h=r.startHr; h<r.endHr; h++) schedule[di+"-"+h] = r.challengeId;
+            });
+        });
+        renderGrid(); updateStats();
+    }
+
+    // --- Stats ---
+    function updateStats(){
+        var total = 0, covered = 0, typeCounts = {};
+        DAYS.forEach(function(_,di){
+            for(var h=0;h<24;h++){
+                total++;
+                var k = di+"-"+h;
+                if(schedule[k]){ covered++; typeCounts[schedule[k]] = (typeCounts[schedule[k]]||0)+1; }
+            }
+        });
+        var uniqueTypes = Object.keys(typeCounts).length;
+        var pct = total ? Math.round(covered/total*100) : 0;
+        document.getElementById("stats").innerHTML =
+            statCard("Coverage", pct+"%", pct<50?"var(--red)":pct<80?"var(--yellow)":"var(--green)") +
+            statCard("Slots Filled", covered+"/"+total, "var(--text)") +
+            statCard("Active Types", uniqueTypes+"/"+CHALLENGES.length, "var(--accent)") +
+            statCard("Rules", String(rules.length), "var(--purple)");
+    }
+    function statCard(label, value, color){
+        return '<div class="stat-card"><div class="label">'+label+'</div><div class="value" style="color:'+color+';">'+value+'</div></div>';
+    }
+
+    // --- Buttons ---
+    document.getElementById("addRuleBtn").addEventListener("click",function(){
+        var c = CHALLENGES[Math.floor(Math.random()*CHALLENGES.length)];
+        var start = Math.floor(Math.random()*18);
+        var end = start + 3 + Math.floor(Math.random()*6);
+        if(end>24) end=24;
+        var ds = DAYS.filter(function(){return Math.random()>.4;});
+        if(!ds.length) ds = ["Mon","Wed","Fri"];
+        addRule(c.id, start, end, ds, Math.floor(Math.random()*9)+1);
+        applyRulesToGrid();
+    });
+
+    document.getElementById("randomizeBtn").addEventListener("click",function(){
+        schedule = {};
+        DAYS.forEach(function(_,di){
+            for(var h=0;h<24;h++){
+                if(Math.random()>.35) schedule[di+"-"+h] = CHALLENGES[Math.floor(Math.random()*CHALLENGES.length)].id;
+            }
+        });
+        renderGrid(); updateStats();
+    });
+
+    document.getElementById("exportBtn").addEventListener("click",function(){
+        var cfg = { schedule:{}, rules:rules.map(function(r){ return {challengeId:r.challengeId,startHr:r.startHr,endHr:r.endHr,days:r.days,weight:r.weight}; }) };
+        Object.keys(schedule).forEach(function(k){
+            var parts = k.split("-");
+            var day = DAYS[parseInt(parts[0])];
+            if(!cfg.schedule[day]) cfg.schedule[day] = {};
+            cfg.schedule[day][parts[1]+":00"] = schedule[k];
+        });
+        var blob = new Blob([JSON.stringify(cfg,null,2)],{type:"application/json"});
+        var a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+        a.download = "rotation-schedule.json"; a.click(); URL.revokeObjectURL(a.href);
+    });
+
+    document.getElementById("clearBtn").addEventListener("click",function(){
+        schedule = {}; rules = []; ruleId = 0;
+        renderGrid(); renderRules(); updateStats();
+    });
+
+    // --- Init ---
+    renderPalette(); renderGrid(); renderRules(); updateStats();
+
+    // Seed a couple of example rules
+    addRule("twist", 8, 14, ["Mon","Tue","Wed","Thu","Fri"], 5);
+    addRule("emotion", 14, 20, ["Mon","Tue","Wed","Thu","Fri"], 3);
+    addRule("absurdity", 0, 24, ["Sat","Sun"], 7);
+    applyRulesToGrid();
+})();
+</script>
+</body>
+</html>

@@ -73,6 +73,27 @@ function createSolvePatternFingerprinter(options) {
   }
 
   /**
+   * Compute median from a pre-sorted array (avoids redundant sorting).
+   */
+  function _medianSorted(sorted) {
+    if (sorted.length === 0) return 0;
+    var mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+  }
+
+  /**
+   * Compute percentile from a pre-sorted array (avoids redundant sorting).
+   */
+  function _percentileSorted(sorted, p) {
+    if (sorted.length === 0) return 0;
+    var idx = (p / 100) * (sorted.length - 1);
+    var lo = Math.floor(idx);
+    var hi = Math.ceil(idx);
+    if (lo === hi) return sorted[lo];
+    return sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
+  }
+
+  /**
    * Cosine similarity between two equal-length arrays.
    */
   function _cosineSimilarity(a, b) {
@@ -148,6 +169,10 @@ function createSolvePatternFingerprinter(options) {
     var avgTime = _mean(times);
     var stdTime = _stddev(times, avgTime);
 
+    // Sort times once and reuse for median/percentile calculations
+    // (previously sorted 3 separate times via _median + 2x _percentile)
+    var sortedTimes = times.slice().sort(function(a, b) { return a - b; });
+
     // Normalize hour distribution to proportions
     var total = solves.length;
     var hourProp = [];
@@ -159,10 +184,10 @@ function createSolvePatternFingerprinter(options) {
       sampleCount: solves.length,
       successRate: total > 0 ? successes / total : 0,
       avgSolveTimeMs: Math.round(avgTime * 100) / 100,
-      medianSolveTimeMs: _median(times),
+      medianSolveTimeMs: _medianSorted(sortedTimes),
       stdSolveTimeMs: Math.round(stdTime * 100) / 100,
-      p10SolveTimeMs: _percentile(times, 10),
-      p90SolveTimeMs: _percentile(times, 90),
+      p10SolveTimeMs: _percentileSorted(sortedTimes, 10),
+      p90SolveTimeMs: _percentileSorted(sortedTimes, 90),
       avgCorrectTimeMs: correctTimes.length > 0 ? Math.round(_mean(correctTimes) * 100) / 100 : null,
       avgIncorrectTimeMs: incorrectTimes.length > 0 ? Math.round(_mean(incorrectTimes) * 100) / 100 : null,
       avgStreakLength: streaks.length > 0 ? Math.round(_mean(streaks) * 100) / 100 : 0,

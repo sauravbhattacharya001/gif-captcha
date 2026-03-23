@@ -207,20 +207,29 @@ function _now() { return Date.now(); }
  */
 function _constantTimeEqual(a, b) {
   if (typeof a !== 'string' || typeof b !== 'string') return false;
-  if (a.length !== b.length) return false;
 
-  // Prefer crypto.timingSafeEqual for strongest guarantee
+  // Prefer crypto.timingSafeEqual for strongest guarantee.
+  // timingSafeEqual requires equal-length buffers, so when lengths
+  // differ we still perform a full comparison (against b itself) to
+  // avoid leaking length information via early-return timing (CWE-208).
   if (_crypto && typeof _crypto.timingSafeEqual === 'function') {
     var bufA = Buffer.from(a, 'utf8');
     var bufB = Buffer.from(b, 'utf8');
-    if (bufA.length !== bufB.length) return false;
+    if (bufA.length !== bufB.length) {
+      // Compare bufB to itself so the timing is indistinguishable
+      // from a same-length comparison, then return false.
+      _crypto.timingSafeEqual(bufB, bufB);
+      return false;
+    }
     return _crypto.timingSafeEqual(bufA, bufB);
   }
 
-  // Fallback: bitwise XOR over all chars (constant-time in character count)
-  var mismatch = 0;
-  for (var i = 0; i < a.length; i++) {
-    mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  // Fallback: bitwise XOR over all chars (constant-time in character count).
+  // Always iterate over the longer string to prevent length-oracle attacks.
+  var maxLen = Math.max(a.length, b.length);
+  var mismatch = a.length ^ b.length; // non-zero if lengths differ
+  for (var i = 0; i < maxLen; i++) {
+    mismatch |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
   }
   return mismatch === 0;
 }

@@ -1,7 +1,7 @@
 FROM nginx:alpine
 
 LABEL org.opencontainers.image.source=https://github.com/sauravbhattacharya001/gif-captcha
-LABEL org.opencontainers.image.description="GIF CAPTCHA Case Study — static site"
+LABEL org.opencontainers.image.description="GIF CAPTCHA Case Study — interactive demo & analysis site"
 LABEL org.opencontainers.image.licenses=MIT
 
 # Remove default nginx content
@@ -10,8 +10,14 @@ RUN rm -rf /usr/share/nginx/html/*
 # Add security headers configuration
 COPY nginx-security.conf /etc/nginx/conf.d/security.conf
 
-# Copy all static site files
+# Reconfigure nginx to listen on 8080 (non-root can't bind <1024)
+RUN sed -i 's/listen\s*80;/listen 8080;/g' /etc/nginx/conf.d/default.conf \
+    && sed -i 's/listen\s*\[::\]:80;/listen [::]:8080;/g' /etc/nginx/conf.d/default.conf
+
+# Copy all site assets (HTML pages, CSS, JS, and library modules)
 COPY *.html /usr/share/nginx/html/
+COPY shared.css shared.js /usr/share/nginx/html/
+COPY src/ /usr/share/nginx/html/src/
 
 # Create non-root user and fix permissions
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup \
@@ -24,8 +30,7 @@ RUN addgroup -S appgroup && adduser -S appuser -G appgroup \
 
 USER appuser
 
-# Nginx runs on port 80 by default
-EXPOSE 80
+EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s \
-  CMD wget -qO- http://localhost/ || exit 1
+  CMD wget -qO- http://localhost:8080/ || exit 1

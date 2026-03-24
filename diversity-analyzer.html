@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; img-src https: data:; script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'self'; form-action 'none';">
+    <meta name="referrer" content="no-referrer">
+    <title>GIF CAPTCHA — Challenge Diversity Analyzer 🎨</title>
+    <link rel="stylesheet" href="shared.css">
+    <style>
+        .container { max-width: 1100px; }
+
+        .controls-bar {
+            display: flex;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+            margin-bottom: 1.5rem;
+            align-items: center;
+        }
+
+        .controls-bar label {
+            font-size: 0.85rem;
+            color: var(--muted);
+        }
+
+        .controls-bar select,
+        .controls-bar input[type="number"] {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text);
+            padding: 0.4rem 0.6rem;
+            font-size: 0.85rem;
+        }
+
+        .diversity-score {
+            text-align: center;
+            padding: 2rem;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            margin-bottom: 1.5rem;
+        }
+
+        .diversity-score .big-number {
+            font-size: 4rem;
+            font-weight: 700;
+            line-height: 1;
+        }
+
+        .diversity-score .label {
+            color: var(--muted);
+            font-size: 0.9rem;
+            margin-top: 0.3rem;
+        }
+
+        .dimension-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.25rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .dimension-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.25rem;
+        }
+
+        .dimension-card h3 {
+            font-size: 1rem;
+            margin-bottom: 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .bar-chart { display: flex; flex-direction: column; gap: 0.4rem; }
+
+        .bar-row {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.8rem;
+        }
+
+        .bar-label {
+            min-width: 90px;
+            text-align: right;
+            color: var(--muted);
+        }
+
+        .bar-track {
+            flex: 1;
+            height: 18px;
+            background: var(--bg);
+            border-radius: 4px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .bar-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.5s ease;
+        }
+
+        .bar-value {
+            min-width: 36px;
+            font-size: 0.8rem;
+            color: var(--muted);
+        }
+
+        .entropy-meter {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-top: 0.5rem;
+        }
+
+        .entropy-track {
+            flex: 1;
+            height: 8px;
+            background: var(--bg);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .entropy-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.6s ease;
+        }
+
+        .recommendations {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.25rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .recommendations h3 {
+            margin-bottom: 0.75rem;
+            font-size: 1rem;
+        }
+
+        .rec-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.5rem;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.85rem;
+        }
+
+        .rec-item:last-child { border-bottom: none; }
+
+        .rec-icon { font-size: 1.1rem; flex-shrink: 0; }
+
+        .rec-severity {
+            font-size: 0.7rem;
+            padding: 0.15rem 0.4rem;
+            border-radius: 4px;
+            font-weight: 600;
+            flex-shrink: 0;
+        }
+
+        .rec-severity.high { background: var(--red-bg); color: var(--red); }
+        .rec-severity.medium { background: var(--yellow-bg); color: var(--yellow); }
+        .rec-severity.low { background: var(--green-bg); color: var(--green); }
+
+        .radar-canvas {
+            width: 100%;
+            height: 320px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            margin-bottom: 1.5rem;
+        }
+
+        .summary-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .summary-table th,
+        .summary-table td {
+            padding: 0.6rem 0.75rem;
+            border-bottom: 1px solid var(--border);
+            text-align: left;
+        }
+
+        .summary-table th {
+            color: var(--muted);
+            font-weight: 600;
+            font-size: 0.8rem;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 0.1rem 0.5rem;
+            border-radius: 10px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .badge-good { background: var(--green-bg); color: var(--green); }
+        .badge-warn { background: var(--yellow-bg); color: var(--yellow); }
+        .badge-bad { background: var(--red-bg); color: var(--red); }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🎨 Challenge Diversity Analyzer</h1>
+        <p class="subtitle">Measure and visualize the diversity of your CAPTCHA challenge pool to prevent bot pattern exploitation</p>
+        <div class="nav-links">
+            <a href="index.html">Home</a>
+            <a href="dashboard.html">Dashboard</a>
+            <a href="generator.html">Generator</a>
+            <a href="theme-builder.html">Theme Builder</a>
+            <a href="solve-histogram.html">Solve Histogram</a>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="controls-bar">
+            <label>Pool Size:
+                <input type="number" id="poolSize" value="200" min="20" max="2000" step="10">
+            </label>
+            <label>Categories:
+                <select id="categoryCount">
+                    <option value="4">4 types</option>
+                    <option value="6" selected>6 types</option>
+                    <option value="8">8 types</option>
+                    <option value="10">10 types</option>
+                </select>
+            </label>
+            <label>Skew:
+                <select id="skewLevel">
+                    <option value="none">Uniform</option>
+                    <option value="mild" selected>Mild skew</option>
+                    <option value="heavy">Heavy skew</option>
+                </select>
+            </label>
+            <button class="btn btn-primary" onclick="runAnalysis()">Analyze</button>
+            <button class="btn" onclick="exportReport()">Export CSV</button>
+        </div>
+
+        <!-- Overall diversity score -->
+        <div class="diversity-score" id="overallScore">
+            <div class="big-number" style="color: var(--accent);">—</div>
+            <div class="label">Overall Diversity Score (0–100)</div>
+        </div>
+
+        <!-- Radar chart canvas -->
+        <canvas class="radar-canvas" id="radarCanvas"></canvas>
+
+        <!-- Dimension cards -->
+        <div class="dimension-grid" id="dimensionGrid"></div>
+
+        <!-- Summary table -->
+        <h3 style="margin-bottom: 0.75rem;">📋 Per-Category Breakdown</h3>
+        <table class="summary-table" id="summaryTable">
+            <thead>
+                <tr>
+                    <th>Category</th>
+                    <th>Count</th>
+                    <th>Share</th>
+                    <th>Avg Complexity</th>
+                    <th>Color Variance</th>
+                    <th>Motion Diversity</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody id="summaryBody"></tbody>
+        </table>
+
+        <!-- Recommendations -->
+        <div class="recommendations" id="recommendations">
+            <h3>💡 Recommendations</h3>
+            <div id="recList"></div>
+        </div>
+    </div>
+
+    <footer class="footer">
+        GIF CAPTCHA Research Study &bull; Challenge Diversity Analyzer
+    </footer>
+
+    <script src="shared.js"></script>
+    <script>
+    "use strict";
+
+    // ── Helpers ──────────────────────────────────────────────────
+    var CATEGORY_NAMES = [
+        "Text Reveal", "Object Count", "Motion Track", "Color Match",
+        "Sequence Order", "Shape Identify", "Spot Difference", "Pattern Complete",
+        "Rotation Match", "Speed Judge"
+    ];
+
+    var DIMENSION_LABELS = [
+        "Category Balance",
+        "Visual Complexity",
+        "Color Distribution",
+        "Motion Patterns",
+        "Difficulty Spread",
+        "Temporal Variance"
+    ];
+
+    var COLORS = [
+        "var(--accent)", "var(--green)", "var(--yellow)", "var(--red)",
+        "var(--purple)", "var(--orange)", "var(--cyan)", "#e06c75",
+        "#c678dd", "#56b6c2"
+    ];
+
+    function lerp(a, b, t) { return a + (b - a) * t; }
+    function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+    function rand(lo, hi) { return lo + Math.random() * (hi - lo); }
+    function randInt(lo, hi) { return Math.floor(rand(lo, hi + 1)); }
+
+    // Shannon entropy (normalized 0–1)
+    function shannonEntropy(counts) {
+        var total = counts.reduce(function(a, b) { return a + b; }, 0);
+        if (total === 0) return 0;
+        var maxE = Math.log2(counts.length);
+        if (maxE === 0) return 1;
+        var e = 0;
+        for (var i = 0; i < counts.length; i++) {
+            var p = counts[i] / total;
+            if (p > 0) e -= p * Math.log2(p);
+        }
+        return e / maxE;
+    }
+
+    // Simpson's diversity index (1 - D)
+    function simpsonsIndex(counts) {
+        var total = counts.reduce(function(a, b) { return a + b; }, 0);
+        if (total <= 1) return 0;
+        var d = 0;
+        for (var i = 0; i < counts.length; i++) {
+            d += counts[i] * (counts[i] - 1);
+        }
+        return 1 - d / (total * (total - 1));
+    }
+
+    // Gini-Simpson index
+    function giniSimpson(counts) {
+        var total = counts.reduce(function(a, b) { return a + b; }, 0);
+        if (total === 0) return 0;
+        var sum = 0;
+        for (var i = 0; i < counts.length; i++) {
+            var p = counts[i] / total;
+            sum += p * p;
+        }
+        return 1 - sum;
+    }
+
+    // ── Data Generation ─────────────────────────────────────────
+    function generatePool(poolSize, numCats, skew) {
+        var cats = CATEGORY_NAMES.slice(0, numCats);
+
+        // Generate category distribution
+        var counts = [];
+        if (skew === "none") {
+            var base = Math.floor(poolSize / numCats);
+            var rem = poolSize % numCats;
+            for (var i = 0; i < numCats; i++) {
+                counts.push(base + (i < rem ? 1 : 0));
+            }
+        } else {
+            // Dirichlet-like random with skew
+            var alpha = skew === "mild" ? 2 : 0.5;
+            var weights = [];
+            for (var i = 0; i < numCats; i++) {
+                // Gamma(alpha,1) approximation
+                var w = 0;
+                for (var j = 0; j < Math.ceil(alpha * 3); j++) {
+                    w += -Math.log(Math.random());
+                }
+                weights.push(Math.pow(w, alpha));
+            }
+            var wSum = weights.reduce(function(a, b) { return a + b; }, 0);
+            var assigned = 0;
+            for (var i = 0; i < numCats; i++) {
+                var c = i < numCats - 1 ?
+                    Math.round(weights[i] / wSum * poolSize) :
+                    poolSize - assigned;
+                c = Math.max(1, c);
+                counts.push(c);
+                assigned += c;
+            }
+            // Adjust to exact poolSize
+            var diff = assigned - poolSize;
+            var maxIdx = counts.indexOf(Math.max.apply(null, counts));
+            counts[maxIdx] -= diff;
+        }
+
+        // Per-category attributes
+        var categories = [];
+        for (var i = 0; i < numCats; i++) {
+            categories.push({
+                name: cats[i],
+                count: counts[i],
+                avgComplexity: rand(0.2, 0.95),
+                colorVariance: rand(0.1, 1),
+                motionDiversity: rand(0.15, 1),
+                avgDifficulty: rand(1, 10),
+                difficultyStdDev: rand(0.5, 3),
+                avgDuration: rand(1.5, 8)
+            });
+        }
+
+        return { categories: categories, counts: counts, total: poolSize };
+    }
+
+    // ── Dimension Scores ────────────────────────────────────────
+    function computeDimensions(pool) {
+        var cats = pool.categories;
+        var counts = pool.counts;
+
+        // 1. Category Balance (Shannon entropy)
+        var catBalance = shannonEntropy(counts) * 100;
+
+        // 2. Visual Complexity spread
+        var complexities = cats.map(function(c) { return c.avgComplexity; });
+        var cRange = Math.max.apply(null, complexities) - Math.min.apply(null, complexities);
+        var cMean = complexities.reduce(function(a, b) { return a + b; }, 0) / complexities.length;
+        var visualComplexity = clamp((cRange * 0.5 + cMean * 0.5) * 100, 0, 100);
+
+        // 3. Color Distribution
+        var colorVars = cats.map(function(c) { return c.colorVariance; });
+        var colorScore = (colorVars.reduce(function(a, b) { return a + b; }, 0) / colorVars.length) * 100;
+
+        // 4. Motion Patterns diversity
+        var motions = cats.map(function(c) { return c.motionDiversity; });
+        var motionScore = (motions.reduce(function(a, b) { return a + b; }, 0) / motions.length) * 100;
+
+        // 5. Difficulty Spread (want even coverage across 1-10)
+        var diffs = cats.map(function(c) { return c.avgDifficulty; });
+        var dRange = Math.max.apply(null, diffs) - Math.min.apply(null, diffs);
+        var diffSpread = clamp(dRange / 9 * 100, 0, 100);
+
+        // 6. Temporal Variance
+        var durations = cats.map(function(c) { return c.avgDuration; });
+        var dStd = Math.sqrt(durations.reduce(function(a, m) {
+            var mean = durations.reduce(function(x, y) { return x + y; }, 0) / durations.length;
+            return a + (m - mean) * (m - mean);
+        }, 0) / durations.length);
+        var temporalVariance = clamp(dStd / 3 * 100, 0, 100);
+
+        return [
+            catBalance, visualComplexity, colorScore,
+            motionScore, diffSpread, temporalVariance
+        ];
+    }
+
+    // ── Render ───────────────────────────────────────────────────
+    var lastPool = null;
+    var lastDims = null;
+
+    function runAnalysis() {
+        var poolSize = parseInt(document.getElementById("poolSize").value) || 200;
+        var numCats = parseInt(document.getElementById("categoryCount").value) || 6;
+        var skew = document.getElementById("skewLevel").value;
+
+        var pool = generatePool(poolSize, numCats, skew);
+        var dims = computeDimensions(pool);
+        lastPool = pool;
+        lastDims = dims;
+
+        // Overall score (weighted average)
+        var weights = [0.25, 0.15, 0.15, 0.15, 0.15, 0.15];
+        var overall = 0;
+        for (var i = 0; i < dims.length; i++) overall += dims[i] * weights[i];
+        overall = Math.round(overall);
+
+        var scoreEl = document.getElementById("overallScore");
+        var color = overall >= 70 ? "var(--green)" : overall >= 40 ? "var(--yellow)" : "var(--red)";
+        scoreEl.querySelector(".big-number").textContent = overall;
+        scoreEl.querySelector(".big-number").style.color = color;
+
+        drawRadar(dims);
+        renderDimensionCards(dims, pool);
+        renderSummaryTable(pool);
+        renderRecommendations(dims, pool);
+    }
+
+    // ── Radar Chart ──────────────────────────────────────────────
+    function drawRadar(dims) {
+        var canvas = document.getElementById("radarCanvas");
+        var ctx = canvas.getContext("2d");
+        var dpr = window.devicePixelRatio || 1;
+        canvas.width = canvas.offsetWidth * dpr;
+        canvas.height = canvas.offsetHeight * dpr;
+        ctx.scale(dpr, dpr);
+
+        var w = canvas.offsetWidth;
+        var h = canvas.offsetHeight;
+        var cx = w / 2;
+        var cy = h / 2;
+        var r = Math.min(cx, cy) - 50;
+        var n = dims.length;
+
+        ctx.clearRect(0, 0, w, h);
+
+        // Grid rings
+        for (var ring = 1; ring <= 5; ring++) {
+            var rr = r * ring / 5;
+            ctx.beginPath();
+            for (var i = 0; i <= n; i++) {
+                var angle = (Math.PI * 2 / n) * i - Math.PI / 2;
+                var x = cx + Math.cos(angle) * rr;
+                var y = cy + Math.sin(angle) * rr;
+                if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+            }
+            ctx.strokeStyle = "rgba(48,54,61,0.6)";
+            ctx.lineWidth = 1;
+            ctx.stroke();
+        }
+
+        // Axis lines & labels
+        ctx.font = "12px -apple-system, sans-serif";
+        ctx.fillStyle = "#8b949e";
+        ctx.textAlign = "center";
+        for (var i = 0; i < n; i++) {
+            var angle = (Math.PI * 2 / n) * i - Math.PI / 2;
+            var x1 = cx + Math.cos(angle) * r;
+            var y1 = cy + Math.sin(angle) * r;
+            ctx.beginPath();
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(x1, y1);
+            ctx.strokeStyle = "rgba(48,54,61,0.4)";
+            ctx.stroke();
+
+            // Label
+            var lx = cx + Math.cos(angle) * (r + 30);
+            var ly = cy + Math.sin(angle) * (r + 30);
+            ctx.fillText(DIMENSION_LABELS[i], lx, ly + 4);
+        }
+
+        // Data polygon
+        ctx.beginPath();
+        for (var i = 0; i <= n; i++) {
+            var idx = i % n;
+            var angle = (Math.PI * 2 / n) * idx - Math.PI / 2;
+            var val = dims[idx] / 100;
+            var x = cx + Math.cos(angle) * r * val;
+            var y = cy + Math.sin(angle) * r * val;
+            if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.fillStyle = "rgba(88,166,255,0.2)";
+        ctx.fill();
+        ctx.strokeStyle = "var(--accent)";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Data points
+        for (var i = 0; i < n; i++) {
+            var angle = (Math.PI * 2 / n) * i - Math.PI / 2;
+            var val = dims[i] / 100;
+            var x = cx + Math.cos(angle) * r * val;
+            var y = cy + Math.sin(angle) * r * val;
+            ctx.beginPath();
+            ctx.arc(x, y, 4, 0, Math.PI * 2);
+            ctx.fillStyle = "var(--accent)";
+            ctx.fill();
+        }
+    }
+
+    // ── Dimension Cards ──────────────────────────────────────────
+    function renderDimensionCards(dims, pool) {
+        var grid = document.getElementById("dimensionGrid");
+        var icons = ["⚖️", "🧩", "🎨", "🏃", "📊", "⏱️"];
+        var html = "";
+
+        for (var i = 0; i < dims.length; i++) {
+            var score = Math.round(dims[i]);
+            var color = score >= 70 ? "var(--green)" : score >= 40 ? "var(--yellow)" : "var(--red)";
+
+            html += '<div class="dimension-card">';
+            html += '<h3>' + icons[i] + ' ' + sanitize(DIMENSION_LABELS[i]) +
+                    ' <span style="margin-left:auto;color:' + color + ';font-size:1.2rem;">' +
+                    score + '%</span></h3>';
+            html += '<div class="entropy-meter">';
+            html += '<div class="entropy-track"><div class="entropy-fill" style="width:' +
+                    score + '%;background:' + color + ';"></div></div>';
+            html += '</div>';
+
+            // Show sub-detail for category balance
+            if (i === 0) {
+                html += '<div style="margin-top:0.75rem;" class="bar-chart">';
+                for (var j = 0; j < pool.categories.length; j++) {
+                    var cat = pool.categories[j];
+                    var pct = Math.round(cat.count / pool.total * 100);
+                    html += '<div class="bar-row">';
+                    html += '<span class="bar-label">' + sanitize(cat.name) + '</span>';
+                    html += '<div class="bar-track"><div class="bar-fill" style="width:' +
+                            pct + '%;background:' + COLORS[j % COLORS.length] + ';"></div></div>';
+                    html += '<span class="bar-value">' + pct + '%</span>';
+                    html += '</div>';
+                }
+                html += '</div>';
+            }
+
+            html += '</div>';
+        }
+
+        grid.innerHTML = html;
+    }
+
+    // ── Summary Table ────────────────────────────────────────────
+    function renderSummaryTable(pool) {
+        var tbody = document.getElementById("summaryBody");
+        var html = "";
+
+        for (var i = 0; i < pool.categories.length; i++) {
+            var cat = pool.categories[i];
+            var share = (cat.count / pool.total * 100).toFixed(1);
+            var idealShare = (100 / pool.categories.length).toFixed(1);
+            var deviation = Math.abs(parseFloat(share) - parseFloat(idealShare));
+
+            var badgeClass = deviation < 5 ? "badge-good" : deviation < 15 ? "badge-warn" : "badge-bad";
+            var badgeText = deviation < 5 ? "Balanced" : deviation < 15 ? "Skewed" : "Imbalanced";
+
+            html += '<tr>';
+            html += '<td><span style="color:' + COLORS[i % COLORS.length] + ';">●</span> ' +
+                    sanitize(cat.name) + '</td>';
+            html += '<td>' + cat.count + '</td>';
+            html += '<td>' + share + '%</td>';
+            html += '<td>' + (cat.avgComplexity * 10).toFixed(1) + '/10</td>';
+            html += '<td>' + (cat.colorVariance * 100).toFixed(0) + '%</td>';
+            html += '<td>' + (cat.motionDiversity * 100).toFixed(0) + '%</td>';
+            html += '<td><span class="badge ' + badgeClass + '">' + badgeText + '</span></td>';
+            html += '</tr>';
+        }
+
+        // Totals row
+        html += '<tr style="font-weight:600;border-top:2px solid var(--border);">';
+        html += '<td>Total</td>';
+        html += '<td>' + pool.total + '</td>';
+        html += '<td>100%</td>';
+        var avgC = pool.categories.reduce(function(a, c) { return a + c.avgComplexity; }, 0) / pool.categories.length;
+        html += '<td>' + (avgC * 10).toFixed(1) + '/10</td>';
+        html += '<td colspan="2">Simpson\'s: ' + simpsonsIndex(pool.counts).toFixed(3) + '</td>';
+        html += '<td><span class="badge badge-good">Σ</span></td>';
+        html += '</tr>';
+
+        tbody.innerHTML = html;
+    }
+
+    // ── Recommendations ──────────────────────────────────────────
+    function renderRecommendations(dims, pool) {
+        var recs = [];
+
+        if (dims[0] < 50) {
+            recs.push({
+                severity: "high",
+                icon: "⚠️",
+                text: "Category distribution is highly uneven (entropy " + dims[0].toFixed(0) +
+                      "%). Bots can exploit dominant categories. Add more challenges to underrepresented types."
+            });
+        } else if (dims[0] < 70) {
+            recs.push({
+                severity: "medium",
+                icon: "📊",
+                text: "Category balance is moderate (" + dims[0].toFixed(0) +
+                      "%). Consider evening out distribution for better bot resistance."
+            });
+        }
+
+        if (dims[2] < 40) {
+            recs.push({
+                severity: "high",
+                icon: "🎨",
+                text: "Low color diversity (" + dims[2].toFixed(0) +
+                      "%). Challenges may be visually monotonous, making automated pixel analysis easier."
+            });
+        }
+
+        if (dims[3] < 40) {
+            recs.push({
+                severity: "medium",
+                icon: "🏃",
+                text: "Motion patterns lack variety (" + dims[3].toFixed(0) +
+                      "%). Consider adding challenges with different animation speeds and styles."
+            });
+        }
+
+        if (dims[4] < 30) {
+            recs.push({
+                severity: "medium",
+                icon: "📈",
+                text: "Difficulty range is narrow (" + dims[4].toFixed(0) +
+                      "%). A broader difficulty spread helps adaptive systems calibrate better."
+            });
+        }
+
+        if (dims[5] < 30) {
+            recs.push({
+                severity: "low",
+                icon: "⏱️",
+                text: "Low temporal variance (" + dims[5].toFixed(0) +
+                      "%). Varying GIF durations makes timing-based attacks harder."
+            });
+        }
+
+        // Check for very small categories
+        var minCat = pool.categories.reduce(function(a, c) { return c.count < a.count ? c : a; });
+        if (minCat.count < pool.total * 0.03) {
+            recs.push({
+                severity: "high",
+                icon: "🔍",
+                text: "Category '" + minCat.name + "' has only " + minCat.count +
+                      " challenges (" + (minCat.count / pool.total * 100).toFixed(1) +
+                      "%). This makes it a predictable weak point."
+            });
+        }
+
+        if (recs.length === 0) {
+            recs.push({
+                severity: "low",
+                icon: "✅",
+                text: "Challenge pool looks diverse and well-balanced. No critical issues detected."
+            });
+        }
+
+        var html = "";
+        for (var i = 0; i < recs.length; i++) {
+            html += '<div class="rec-item">';
+            html += '<span class="rec-icon">' + recs[i].icon + '</span>';
+            html += '<span class="rec-severity ' + recs[i].severity + '">' +
+                    recs[i].severity.toUpperCase() + '</span>';
+            html += '<span>' + sanitize(recs[i].text) + '</span>';
+            html += '</div>';
+        }
+
+        document.getElementById("recList").innerHTML = html;
+    }
+
+    // ── CSV Export ───────────────────────────────────────────────
+    function exportReport() {
+        if (!lastPool) { runAnalysis(); }
+        var lines = ["Category,Count,Share%,Avg Complexity,Color Variance,Motion Diversity,Avg Difficulty,Avg Duration"];
+        for (var i = 0; i < lastPool.categories.length; i++) {
+            var c = lastPool.categories[i];
+            lines.push([
+                c.name, c.count, (c.count / lastPool.total * 100).toFixed(1),
+                (c.avgComplexity * 10).toFixed(1), (c.colorVariance * 100).toFixed(0),
+                (c.motionDiversity * 100).toFixed(0), c.avgDifficulty.toFixed(1),
+                c.avgDuration.toFixed(1)
+            ].join(","));
+        }
+        lines.push("");
+        lines.push("Dimension,Score");
+        for (var i = 0; i < lastDims.length; i++) {
+            lines.push(DIMENSION_LABELS[i] + "," + lastDims[i].toFixed(1));
+        }
+        lines.push("");
+        lines.push("Shannon Entropy," + shannonEntropy(lastPool.counts).toFixed(4));
+        lines.push("Simpson Index," + simpsonsIndex(lastPool.counts).toFixed(4));
+        lines.push("Gini-Simpson," + giniSimpson(lastPool.counts).toFixed(4));
+
+        var blob = new Blob([lines.join("\n")], { type: "text/csv" });
+        var a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = "diversity-report.csv";
+        a.click();
+        URL.revokeObjectURL(a.href);
+    }
+
+    // ── Init ─────────────────────────────────────────────────────
+    runAnalysis();
+    </script>
+</body>
+</html>

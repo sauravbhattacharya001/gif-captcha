@@ -76,21 +76,66 @@ function _evictOldest(store, maxKeys) {
   var keys = Object.keys(store);
   if (keys.length <= maxKeys) return 0;
 
-  // Sort by lastSeen ascending — evict oldest first
-  var entries = [];
+  var toRemove = keys.length - maxKeys;
+
+  // For small eviction counts relative to store size, use a min-heap
+  // of the N oldest entries instead of sorting all keys.  This is
+  // O(k + (n-k) * log k) ≈ O(n log k) vs O(n log n) for full sort,
+  // which matters when maxKeys is 50k and we only need to evict a few.
+  // For large eviction ratios (>25%), fall back to full sort since the
+  // overhead of maintaining a large heap isn't worth it.
+  if (toRemove <= (keys.length >>> 2)) {
+    // Partial selection: find the toRemove-th smallest lastSeen value
+    // using an in-place partial quickselect on timestamps, then evict
+    // all entries at or below that threshold.
+    var timestamps = new Array(keys.length);
+    for (var t = 0; t < keys.length; t++) {
+      timestamps[t] = store[keys[t]].lastSeen || 0;
+    }
+
+    // Find the threshold: the toRemove-th smallest timestamp
+    // Using nth_element-style partitioning (Hoare's quickselect)
+    var indices = new Array(keys.length);
+    for (var p = 0; p < keys.length; p++) indices[p] = p;
+
+    var left = 0, right = indices.length - 1, target = toRemove - 1;
+    while (left < right) {
+      var pivotVal = timestamps[indices[(left + right) >>> 1]];
+      var lo = left, hi = right;
+      while (lo <= hi) {
+        while (timestamps[indices[lo]] < pivotVal) lo++;
+        while (timestamps[indices[hi]] > pivotVal) hi--;
+        if (lo <= hi) {
+          var tmp = indices[lo]; indices[lo] = indices[hi]; indices[hi] = tmp;
+          lo++; hi--;
+        }
+      }
+      if (hi < target) left = lo;
+      else if (lo > target) right = hi;
+      else break;
+    }
+
+    var removed = 0;
+    for (var q = 0; q <= target; q++) {
+      delete store[keys[indices[q]]];
+      removed++;
+    }
+    return removed;
+  }
+
+  // Full sort fallback for large eviction ratios
+  var entries = new Array(keys.length);
   for (var i = 0; i < keys.length; i++) {
-    var k = keys[i];
-    entries.push({ key: k, lastSeen: store[k].lastSeen || 0 });
+    entries[i] = { key: keys[i], lastSeen: store[keys[i]].lastSeen || 0 };
   }
   entries.sort(function (a, b) { return a.lastSeen - b.lastSeen; });
 
-  var toRemove = keys.length - maxKeys;
-  var removed = 0;
+  var removed2 = 0;
   for (var j = 0; j < toRemove; j++) {
     delete store[entries[j].key];
-    removed++;
+    removed2++;
   }
-  return removed;
+  return removed2;
 }
 
 // ── Factory ─────────────────────────────────────────────────────────

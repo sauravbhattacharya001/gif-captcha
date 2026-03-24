@@ -361,6 +361,7 @@ gif-captcha/
 ├── playground.html       # Challenge Playground
 ├── streak.html           # Streak Mode
 ├── timing.html           # Response Time Analyzer
+├── cost-calculator.html  # CAPTCHA Cost Calculator — TCO comparison
 ├── shared.js             # Browser-specific shared utilities
 ├── shared.css            # Shared dark theme styles
 ├── tests/                # Test suite (Node.js built-in test runner, 43 test files)

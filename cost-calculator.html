@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; img-src https: data:; script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'self'; form-action 'none';">
+    <meta name="referrer" content="no-referrer">
+    <title>GIF CAPTCHA — Cost Calculator 💰</title>
+    <link rel="stylesheet" href="shared.css">
+    <style>
+        .container { max-width: 960px; }
+
+        .calc-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        @media (max-width: 700px) {
+            .calc-grid { grid-template-columns: 1fr; }
+        }
+
+        .input-group {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.5rem;
+        }
+
+        .input-group h3 {
+            font-size: 1rem;
+            margin-bottom: 1rem;
+            color: var(--accent);
+        }
+
+        .field {
+            margin-bottom: 1rem;
+        }
+
+        .field label {
+            display: block;
+            font-size: 0.85rem;
+            color: var(--muted);
+            margin-bottom: 0.3rem;
+        }
+
+        .field input, .field select {
+            width: 100%;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text);
+            padding: 0.5rem 0.75rem;
+            font-size: 0.9rem;
+        }
+
+        .field input:focus, .field select:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .field .hint {
+            font-size: 0.75rem;
+            color: var(--muted);
+            margin-top: 0.2rem;
+        }
+
+        .results-panel {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .results-panel h3 {
+            font-size: 1rem;
+            margin-bottom: 1rem;
+            color: var(--green);
+        }
+
+        .cost-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.6rem 0;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.9rem;
+        }
+
+        .cost-row:last-child { border-bottom: none; }
+
+        .cost-row .cost-label { color: var(--muted); }
+        .cost-row .cost-value { font-weight: 600; }
+
+        .cost-total {
+            display: flex;
+            justify-content: space-between;
+            padding: 1rem 0 0;
+            margin-top: 0.5rem;
+            border-top: 2px solid var(--accent);
+            font-size: 1.1rem;
+            font-weight: 700;
+        }
+
+        .comparison-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+        }
+
+        .comparison-table th, .comparison-table td {
+            padding: 0.6rem 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.85rem;
+        }
+
+        .comparison-table th {
+            color: var(--muted);
+            font-weight: 600;
+        }
+
+        .comparison-table tr.highlight td {
+            background: var(--green-bg);
+            color: var(--green);
+            font-weight: 600;
+        }
+
+        .bar-chart {
+            margin-top: 1.5rem;
+        }
+
+        .bar-row {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 0.6rem;
+        }
+
+        .bar-label {
+            width: 120px;
+            font-size: 0.8rem;
+            color: var(--muted);
+            text-align: right;
+            flex-shrink: 0;
+        }
+
+        .bar-track {
+            flex: 1;
+            height: 24px;
+            background: var(--bg);
+            border-radius: 4px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .bar-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.5s ease;
+        }
+
+        .bar-amount {
+            width: 90px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            flex-shrink: 0;
+        }
+
+        .savings-badge {
+            display: inline-block;
+            background: var(--green-bg);
+            color: var(--green);
+            padding: 0.4rem 0.8rem;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-top: 0.5rem;
+        }
+
+        .export-btn {
+            margin-top: 1rem;
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1>💰 CAPTCHA Cost Calculator</h1>
+    <p class="subtitle">Estimate total cost of ownership for CAPTCHA solutions — compute, user friction, support, and opportunity costs</p>
+    <nav class="nav-links">
+        <a href="index.html">Home</a>
+        <a href="dashboard.html">Dashboard</a>
+        <a href="demo.html">Demo</a>
+        <a href="analysis.html">Analysis</a>
+    </nav>
+</div>
+
+<div class="container">
+
+    <div class="calc-grid">
+        <div class="input-group">
+            <h3>📊 Traffic &amp; Usage</h3>
+            <div class="field">
+                <label>Monthly Page Views</label>
+                <input type="number" id="monthlyViews" value="1000000" min="0">
+                <div class="hint">Total pages where CAPTCHA may appear</div>
+            </div>
+            <div class="field">
+                <label>CAPTCHA Trigger Rate (%)</label>
+                <input type="number" id="triggerRate" value="15" min="0" max="100" step="0.1">
+                <div class="hint">% of visitors who see a CAPTCHA challenge</div>
+            </div>
+            <div class="field">
+                <label>Average Solve Rate (%)</label>
+                <input type="number" id="solveRate" value="92" min="0" max="100" step="0.1">
+                <div class="hint">% of humans who solve successfully</div>
+            </div>
+            <div class="field">
+                <label>Average Revenue per Conversion ($)</label>
+                <input type="number" id="revenuePerConversion" value="25" min="0" step="0.01">
+            </div>
+        </div>
+
+        <div class="input-group">
+            <h3>⚙️ Infrastructure</h3>
+            <div class="field">
+                <label>CAPTCHA Solution</label>
+                <select id="captchaSolution">
+                    <option value="gif-captcha">GIF CAPTCHA (self-hosted)</option>
+                    <option value="recaptcha">reCAPTCHA Enterprise</option>
+                    <option value="hcaptcha">hCaptcha Pro</option>
+                    <option value="turnstile">Cloudflare Turnstile</option>
+                    <option value="custom">Custom / Other</option>
+                </select>
+            </div>
+            <div class="field">
+                <label>Monthly Service Cost ($)</label>
+                <input type="number" id="serviceCost" value="0" min="0" step="1">
+                <div class="hint">API fees, license, or SaaS subscription</div>
+            </div>
+            <div class="field">
+                <label>Server Cost per 1M Challenges ($)</label>
+                <input type="number" id="serverCostPer1M" value="12" min="0" step="0.01">
+                <div class="hint">Compute, bandwidth, storage for serving challenges</div>
+            </div>
+            <div class="field">
+                <label>Monthly Support Tickets (CAPTCHA-related)</label>
+                <input type="number" id="supportTickets" value="50" min="0">
+            </div>
+            <div class="field">
+                <label>Cost per Support Ticket ($)</label>
+                <input type="number" id="costPerTicket" value="15" min="0" step="0.01">
+            </div>
+        </div>
+    </div>
+
+    <button class="btn" onclick="calculate()">Calculate Total Cost 💰</button>
+
+    <div id="results" style="display:none;">
+
+        <div class="results-panel" style="margin-top:1.5rem;">
+            <h3>📋 Monthly Cost Breakdown</h3>
+            <div id="costBreakdown"></div>
+            <div class="cost-total" id="totalCost"></div>
+        </div>
+
+        <div class="results-panel">
+            <h3>📉 Hidden Costs — User Friction</h3>
+            <div id="frictionCosts"></div>
+        </div>
+
+        <div class="results-panel">
+            <h3>📊 Cost Comparison — CAPTCHA Solutions</h3>
+            <div class="bar-chart" id="comparisonChart"></div>
+            <table class="comparison-table" id="comparisonTable">
+                <thead>
+                    <tr>
+                        <th>Solution</th>
+                        <th>Service</th>
+                        <th>Infrastructure</th>
+                        <th>Friction Loss</th>
+                        <th>Support</th>
+                        <th>Total / mo</th>
+                    </tr>
+                </thead>
+                <tbody id="comparisonBody"></tbody>
+            </table>
+        </div>
+
+        <div class="results-panel">
+            <h3>💡 Recommendations</h3>
+            <div id="recommendations"></div>
+        </div>
+
+        <button class="btn export-btn" onclick="exportCSV()">Export as CSV 📥</button>
+    </div>
+
+</div>
+
+<footer>
+    <p>GIF CAPTCHA Research Study &mdash; Cost Calculator</p>
+</footer>
+
+<script src="shared.js"></script>
+<script>
+    // Predefined solution profiles for comparison
+    var solutionProfiles = {
+        'gif-captcha':  { name: 'GIF CAPTCHA',          service: 0,    serverPer1M: 12,  solveRate: 92, avgDropoff: 5 },
+        'recaptcha':    { name: 'reCAPTCHA Enterprise',  service: 1000, serverPer1M: 2,   solveRate: 96, avgDropoff: 3 },
+        'hcaptcha':     { name: 'hCaptcha Pro',          service: 500,  serverPer1M: 3,   solveRate: 91, avgDropoff: 7 },
+        'turnstile':    { name: 'Cloudflare Turnstile',  service: 0,    serverPer1M: 1,   solveRate: 98, avgDropoff: 1 },
+        'custom':       { name: 'Custom Solution',       service: 200,  serverPer1M: 20,  solveRate: 85, avgDropoff: 10 }
+    };
+
+    var barColors = ['var(--accent)', 'var(--green)', 'var(--purple)', 'var(--orange)', 'var(--red)'];
+
+    function getInputs() {
+        return {
+            monthlyViews:         parseFloat(document.getElementById('monthlyViews').value) || 0,
+            triggerRate:           parseFloat(document.getElementById('triggerRate').value) || 0,
+            solveRate:             parseFloat(document.getElementById('solveRate').value) || 0,
+            revenuePerConversion:  parseFloat(document.getElementById('revenuePerConversion').value) || 0,
+            captchaSolution:       document.getElementById('captchaSolution').value,
+            serviceCost:           parseFloat(document.getElementById('serviceCost').value) || 0,
+            serverCostPer1M:       parseFloat(document.getElementById('serverCostPer1M').value) || 0,
+            supportTickets:        parseFloat(document.getElementById('supportTickets').value) || 0,
+            costPerTicket:         parseFloat(document.getElementById('costPerTicket').value) || 0
+        };
+    }
+
+    function computeCosts(inputs, profile) {
+        var challenges = inputs.monthlyViews * (inputs.triggerRate / 100);
+        var sRate = profile ? profile.solveRate : inputs.solveRate;
+        var dropoff = profile ? profile.avgDropoff : (100 - inputs.solveRate);
+        var svc = profile ? profile.service : inputs.serviceCost;
+        var srv = profile ? profile.serverPer1M : inputs.serverCostPer1M;
+
+        var serviceFee = svc;
+        var infraCost = (challenges / 1000000) * srv;
+        var supportCost = inputs.supportTickets * inputs.costPerTicket;
+        var failedChallenges = challenges * ((100 - sRate) / 100);
+        var abandonedUsers = challenges * (dropoff / 100);
+        var frictionLoss = abandonedUsers * inputs.revenuePerConversion;
+
+        return {
+            challenges: challenges,
+            serviceFee: serviceFee,
+            infraCost: infraCost,
+            supportCost: supportCost,
+            frictionLoss: frictionLoss,
+            failedChallenges: failedChallenges,
+            abandonedUsers: abandonedUsers,
+            total: serviceFee + infraCost + supportCost + frictionLoss
+        };
+    }
+
+    function fmt(n) {
+        return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function fmtInt(n) {
+        return n.toLocaleString('en-US', { maximumFractionDigits: 0 });
+    }
+
+    function calculate() {
+        var inputs = getInputs();
+        var costs = computeCosts(inputs, null);
+
+        // Breakdown
+        var breakdown = document.getElementById('costBreakdown');
+        breakdown.innerHTML =
+            '<div class="cost-row"><span class="cost-label">Service / License Fee</span><span class="cost-value">' + fmt(costs.serviceFee) + '</span></div>' +
+            '<div class="cost-row"><span class="cost-label">Infrastructure (' + fmtInt(costs.challenges) + ' challenges)</span><span class="cost-value">' + fmt(costs.infraCost) + '</span></div>' +
+            '<div class="cost-row"><span class="cost-label">Support (' + fmtInt(inputs.supportTickets) + ' tickets)</span><span class="cost-value">' + fmt(costs.supportCost) + '</span></div>' +
+            '<div class="cost-row"><span class="cost-label">User Friction / Drop-off Loss</span><span class="cost-value" style="color:var(--red)">' + fmt(costs.frictionLoss) + '</span></div>';
+
+        document.getElementById('totalCost').innerHTML =
+            '<span>Total Monthly Cost</span><span>' + fmt(costs.total) + '</span>';
+
+        // Friction details
+        var friction = document.getElementById('frictionCosts');
+        friction.innerHTML =
+            '<div class="cost-row"><span class="cost-label">Challenges served / month</span><span class="cost-value">' + fmtInt(costs.challenges) + '</span></div>' +
+            '<div class="cost-row"><span class="cost-label">Failed attempts</span><span class="cost-value">' + fmtInt(costs.failedChallenges) + '</span></div>' +
+            '<div class="cost-row"><span class="cost-label">Estimated abandoned users</span><span class="cost-value" style="color:var(--yellow)">' + fmtInt(costs.abandonedUsers) + '</span></div>' +
+            '<div class="cost-row"><span class="cost-label">Lost revenue (drop-off)</span><span class="cost-value" style="color:var(--red)">' + fmt(costs.frictionLoss) + '</span></div>' +
+            '<div class="cost-row"><span class="cost-label">Annual friction cost</span><span class="cost-value" style="color:var(--red)">' + fmt(costs.frictionLoss * 12) + '</span></div>';
+
+        // Comparison
+        var allCosts = [];
+        var keys = Object.keys(solutionProfiles);
+        for (var i = 0; i < keys.length; i++) {
+            var p = solutionProfiles[keys[i]];
+            var c = computeCosts(inputs, p);
+            allCosts.push({ key: keys[i], name: p.name, costs: c });
+        }
+        allCosts.sort(function(a, b) { return a.costs.total - b.costs.total; });
+
+        var maxTotal = allCosts[allCosts.length - 1].costs.total || 1;
+
+        // Bar chart
+        var chartHtml = '';
+        for (var i = 0; i < allCosts.length; i++) {
+            var pct = (allCosts[i].costs.total / maxTotal * 100).toFixed(1);
+            var isSelected = allCosts[i].key === inputs.captchaSolution;
+            chartHtml += '<div class="bar-row">' +
+                '<span class="bar-label">' + sanitize(allCosts[i].name) + '</span>' +
+                '<div class="bar-track"><div class="bar-fill" style="width:' + pct + '%;background:' + barColors[i % barColors.length] + (isSelected ? ';box-shadow:0 0 8px ' + barColors[i % barColors.length] : '') + '"></div></div>' +
+                '<span class="bar-amount">' + fmt(allCosts[i].costs.total) + '</span>' +
+                '</div>';
+        }
+        document.getElementById('comparisonChart').innerHTML = chartHtml;
+
+        // Table
+        var tbody = '';
+        for (var i = 0; i < allCosts.length; i++) {
+            var c = allCosts[i].costs;
+            var isSelected = allCosts[i].key === inputs.captchaSolution;
+            var isCheapest = i === 0;
+            tbody += '<tr' + (isSelected ? ' class="highlight"' : '') + '>' +
+                '<td>' + sanitize(allCosts[i].name) + (isCheapest ? ' ✅' : '') + '</td>' +
+                '<td>' + fmt(c.serviceFee) + '</td>' +
+                '<td>' + fmt(c.infraCost) + '</td>' +
+                '<td>' + fmt(c.frictionLoss) + '</td>' +
+                '<td>' + fmt(c.supportCost) + '</td>' +
+                '<td><strong>' + fmt(c.total) + '</strong></td>' +
+                '</tr>';
+        }
+        document.getElementById('comparisonBody').innerHTML = tbody;
+
+        // Recommendations
+        var recs = [];
+        if (costs.frictionLoss > costs.serviceFee + costs.infraCost) {
+            recs.push('⚠️ <strong>Friction is your biggest cost.</strong> User drop-off losses exceed infrastructure costs. Consider lowering difficulty or using invisible/passive challenges.');
+        }
+        if (costs.infraCost > 500) {
+            recs.push('💡 <strong>High infrastructure spend.</strong> Look into CDN caching for challenge assets or pre-generating challenge pools to reduce compute.');
+        }
+        if (inputs.supportTickets > 100) {
+            recs.push('📞 <strong>High support volume.</strong> Improve error messages, add accessibility alternatives, or provide a bypass for verified accounts.');
+        }
+        var cheapest = allCosts[0];
+        if (cheapest.key !== inputs.captchaSolution) {
+            var savings = costs.total - cheapest.costs.total;
+            recs.push('💰 <strong>Switching to ' + sanitize(cheapest.name) + '</strong> could save ~' + fmt(savings) + '/month (' + fmt(savings * 12) + '/year).');
+        }
+        if (costs.frictionLoss * 12 > 50000) {
+            recs.push('🔴 <strong>Annual friction cost exceeds $50K.</strong> This deserves executive attention. A/B test CAPTCHA placement to reduce unnecessary triggers.');
+        }
+        if (recs.length === 0) {
+            recs.push('✅ Your CAPTCHA setup looks cost-efficient! Keep monitoring drop-off rates for changes.');
+        }
+        document.getElementById('recommendations').innerHTML = recs.join('<br><br>');
+
+        // Savings badge
+        if (cheapest.key !== inputs.captchaSolution) {
+            var savings = costs.total - cheapest.costs.total;
+            document.getElementById('recommendations').innerHTML += '<br><span class="savings-badge">Potential savings: ' + fmt(savings * 12) + ' / year</span>';
+        }
+
+        document.getElementById('results').style.display = 'block';
+    }
+
+    function exportCSV() {
+        var inputs = getInputs();
+        var rows = [['Solution', 'Service Fee', 'Infrastructure', 'Friction Loss', 'Support', 'Total']];
+        var keys = Object.keys(solutionProfiles);
+        for (var i = 0; i < keys.length; i++) {
+            var p = solutionProfiles[keys[i]];
+            var c = computeCosts(inputs, p);
+            rows.push([p.name, c.serviceFee.toFixed(2), c.infraCost.toFixed(2), c.frictionLoss.toFixed(2), c.supportCost.toFixed(2), c.total.toFixed(2)]);
+        }
+        var csv = rows.map(function(r) { return r.join(','); }).join('\n');
+        var blob = new Blob([csv], { type: 'text/csv' });
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'captcha-cost-comparison.csv';
+        a.click();
+        URL.revokeObjectURL(a.href);
+    }
+
+    // Auto-update service cost when solution changes
+    document.getElementById('captchaSolution').addEventListener('change', function() {
+        var p = solutionProfiles[this.value];
+        if (p) {
+            document.getElementById('serviceCost').value = p.service;
+            document.getElementById('serverCostPer1M').value = p.serverPer1M;
+        }
+    });
+
+    // Calculate on load
+    calculate();
+</script>
+
+</body>
+</html>

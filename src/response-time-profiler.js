@@ -1,5 +1,39 @@
 'use strict';
 
+// ── O(1) LRU Tracker (doubly-linked list) ───────────────────────────
+function LruTracker() {
+  this._map = Object.create(null);
+  this._head = null;
+  this._tail = null;
+  this.length = 0;
+}
+LruTracker.prototype.push = function (key) {
+  if (this._map[key]) { this.touch(key); return; }
+  var node = { key: key, prev: this._tail, next: null };
+  if (this._tail) this._tail.next = node; else this._head = node;
+  this._tail = node;
+  this._map[key] = node;
+  this.length++;
+};
+LruTracker.prototype.touch = function (key) {
+  var node = this._map[key];
+  if (!node || node === this._tail) return;
+  if (node.prev) node.prev.next = node.next; else this._head = node.next;
+  if (node.next) node.next.prev = node.prev;
+  node.prev = this._tail; node.next = null;
+  this._tail.next = node; this._tail = node;
+};
+LruTracker.prototype.evictOldest = function () {
+  if (!this._head) return undefined;
+  var node = this._head;
+  this._head = node.next;
+  if (this._head) this._head.prev = null; else this._tail = null;
+  delete this._map[node.key];
+  this.length--;
+  return node.key;
+};
+LruTracker.prototype.has = function (key) { return !!this._map[key]; };
+
 /**
  * Response Time Profiler for CAPTCHA systems.
  *
@@ -40,6 +74,7 @@ function createResponseTimeProfiler(options) {
   var typeProfiles = Object.create(null);
   var sessions = Object.create(null);
   var sessionCount = 0;
+  var sessionLru = new LruTracker();
 
   function _mean(a) { if (!a.length) return 0; var s=0; for (var i=0;i<a.length;i++) s+=a[i]; return s/a.length; }
   function _median(a) { if (!a.length) return 0; var s=a.slice().sort(function(x,y){return x-y}); var m=Math.floor(s.length/2); return s.length%2?s[m]:(s[m-1]+s[m])/2; }
@@ -77,8 +112,10 @@ function createResponseTimeProfiler(options) {
       p.difficulties.splice(0, p.difficulties.length - maxSamples);
     }
     if (!sessions[entry.sessionId]) {
-      if (sessionCount>=maxSessions) { var oldest=null,oldTs=Infinity,ks=Object.keys(sessions); for(var i=0;i<ks.length;i++){var s=sessions[ks[i]];if(s.solves.length>0&&s.solves[0].ts<oldTs){oldTs=s.solves[0].ts;oldest=ks[i];}} if(oldest){delete sessions[oldest];sessionCount--;} }
-      sessions[entry.sessionId]={solves:[],classification:null}; sessionCount++;
+      if (sessionCount>=maxSessions) { var oldest=sessionLru.evictOldest(); if(oldest){delete sessions[oldest];sessionCount--;} }
+      sessions[entry.sessionId]={solves:[],classification:null}; sessionCount++; sessionLru.push(entry.sessionId);
+    } else {
+      sessionLru.touch(entry.sessionId);
     }
     sessions[entry.sessionId].solves.push({time:entry.responseTimeMs,type:type,solved:entry.solved,difficulty:entry.difficulty||null,ts:ts});
     sessions[entry.sessionId].classification=null;
@@ -212,7 +249,7 @@ function createResponseTimeProfiler(options) {
   function importData(data) {
     if(!data||data.version!==1)throw new Error('Invalid or unsupported export format');
     var ks=Object.keys(data.typeProfiles||{});for(var i=0;i<ks.length;i++){var s=data.typeProfiles[ks[i]];typeProfiles[ks[i]]={times:s.times.slice(),solved:s.solved.slice(),difficulties:(s.difficulties||[]).slice()};}
-    var sk=Object.keys(data.sessions||{});for(var j=0;j<sk.length;j++){sessions[sk[j]]={solves:data.sessions[sk[j]].solves.slice(),classification:null};}
+    var sk=Object.keys(data.sessions||{});for(var j=0;j<sk.length;j++){sessions[sk[j]]={solves:data.sessions[sk[j]].solves.slice(),classification:null};sessionLru.push(sk[j]);}
     sessionCount=Object.keys(sessions).length;
   }
 
@@ -225,6 +262,7 @@ function createResponseTimeProfiler(options) {
   function reset() {
     var tk=Object.keys(typeProfiles);for(var i=0;i<tk.length;i++)delete typeProfiles[tk[i]];
     var sk=Object.keys(sessions);for(var j=0;j<sk.length;j++)delete sessions[sk[j]];sessionCount=0;
+    sessionLru=new LruTracker();
   }
 
   return{record:record,getTypeProfile:getTypeProfile,getAllTypeProfiles:getAllTypeProfiles,detectAnomalies:detectAnomalies,classifySession:classifySession,

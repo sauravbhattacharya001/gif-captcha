@@ -82,11 +82,40 @@ function secureRandomHex(len) {
 /**
  * Generate a cryptographically secure random integer in [0, exclusiveMax).
  *
- * @param {number} exclusiveMax - Exclusive upper bound (must be > 0)
+ * Uses rejection sampling to eliminate modulo bias: raw 32-bit random
+ * values that fall in the biased remainder zone (above the largest
+ * multiple of exclusiveMax that fits in 2^32) are discarded and
+ * re-sampled.  This guarantees a perfectly uniform distribution for
+ * any exclusiveMax up to 2^32.
+ *
+ * @param {number} exclusiveMax - Exclusive upper bound (must be > 0 and <= 2^32)
  * @returns {number} Random integer in [0, exclusiveMax)
  */
 function secureRandomInt(exclusiveMax) {
-  return Math.floor(secureRandom() * exclusiveMax);
+  if (exclusiveMax <= 0 || exclusiveMax > 4294967296) {
+    throw new Error("exclusiveMax must be in (0, 2^32]");
+  }
+  if (exclusiveMax === 1) return 0;
+
+  // Rejection sampling: discard values in the biased tail.
+  // limit is the largest multiple of exclusiveMax that fits in 2^32.
+  var limit = 4294967296 - (4294967296 % exclusiveMax);
+
+  if (_crypto && typeof _crypto.randomBytes === "function") {
+    for (;;) {
+      var val = _crypto.randomBytes(4).readUInt32BE(0);
+      if (val < limit) return val % exclusiveMax;
+    }
+  }
+  if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+    var arr = new Uint32Array(1);
+    for (;;) {
+      crypto.getRandomValues(arr);
+      if (arr[0] < limit) return arr[0] % exclusiveMax;
+    }
+  }
+  _warnOnce();
+  return Math.floor(Math.random() * exclusiveMax);
 }
 
 if (typeof module !== "undefined" && module.exports) {

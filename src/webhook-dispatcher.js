@@ -317,13 +317,18 @@ WebhookDispatcher.prototype._deliver = function (wh, eventType, payload) {
     return Promise.resolve(skipped);
   }
 
+  var deliveryTimestamp = new Date().toISOString();
   var headers = Object.assign({}, wh.headers, {
     "Content-Type": "application/json",
     "X-GifCaptcha-Event": eventType,
-    "X-GifCaptcha-Timestamp": new Date().toISOString(),
+    "X-GifCaptcha-Timestamp": deliveryTimestamp,
+    "X-GifCaptcha-Delivery-Timestamp": deliveryTimestamp,
   });
 
-  var signature = _signPayload(payload, wh.secret);
+  // Sign timestamp + payload to bind the HMAC to the delivery time,
+  // preventing replay attacks with captured payloads.
+  var signedContent = deliveryTimestamp + "." + payload;
+  var signature = _signPayload(signedContent, wh.secret);
   if (signature) {
     headers["X-GifCaptcha-Signature"] = "sha256=" + signature;
   }
@@ -478,17 +483,39 @@ WebhookDispatcher.prototype.isPaused = function () { return this._paused; };
 // ── Verify Signature (static helper for consumers) ─────────────────
 
 /**
- * Verify a webhook payload signature.
- * Consumers of the webhook can use this to validate authenticity.
+ * Verify a webhook payload signature, with optional replay-attack
+ * protection via timestamp tolerance.
+ *
+ * The signed content is ``timestamp + "." + payload`` when a timestamp
+ * header is present, which binds the signature to the delivery time
+ * and prevents replaying captured payloads later.
  *
  * @param {string} payload - Raw JSON payload string
  * @param {string} signature - The X-GifCaptcha-Signature header value
  * @param {string} secret - The shared secret
+ * @param {Object} [opts]
+ * @param {string} [opts.timestamp] - X-GifCaptcha-Delivery-Timestamp header
+ * @param {number} [opts.toleranceMs=300000] - Max age of delivery (default 5 min)
  * @returns {boolean}
  */
-WebhookDispatcher.verifySignature = function (payload, signature, secret) {
+WebhookDispatcher.verifySignature = function (payload, signature, secret, opts) {
   if (!payload || !signature || !secret) return false;
-  var expected = "sha256=" + crypto.createHmac("sha256", secret).update(payload).digest("hex");
+  opts = opts || {};
+
+  // Replay protection: reject stale deliveries
+  var timestamp = opts.timestamp;
+  if (timestamp) {
+    var ts = Date.parse(timestamp);
+    if (isNaN(ts)) return false;
+    var age = Math.abs(Date.now() - ts);
+    var tolerance = opts.toleranceMs != null ? opts.toleranceMs : 300000;
+    if (age > tolerance) return false;
+  }
+
+  // The signed content includes the timestamp when available, binding
+  // the HMAC to the delivery time.
+  var signedContent = timestamp ? timestamp + "." + payload : payload;
+  var expected = "sha256=" + crypto.createHmac("sha256", secret).update(signedContent).digest("hex");
   try {
     return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
   } catch (e) {

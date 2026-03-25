@@ -11566,6 +11566,7 @@ var createSessionReplay = require("./captcha-session-replay").createSessionRepla
 var createComplianceReporter = require("./compliance-reporter").createComplianceReporter;
 var createABExperimentRunner = require("./ab-experiment-runner").createABExperimentRunner;
 var createTrustScoreEngine = require("./trust-score-engine").createTrustScoreEngine;
+var createRetentionAnalyzer = require("./captcha-retention-analyzer").createRetentionAnalyzer;
 var gifCaptcha = {
   sanitize: sanitize,
   createSanitizer: createSanitizer,
@@ -11614,6 +11615,7 @@ var gifCaptcha = {
   createChallengeRotationScheduler: createChallengeRotationScheduler,
   createChallengePoolManager: createChallengePoolManager,
   createSessionReplay: createSessionReplay,
+  createRetentionAnalyzer: createRetentionAnalyzer,
 };
 
 // UMD export — works in Node.js, AMD, and browser globals

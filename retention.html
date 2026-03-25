@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; img-src https: data:; script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'self'; form-action 'none';">
+    <meta name="referrer" content="no-referrer">
+    <title>GIF CAPTCHA — Retention Funnel Analyzer 📉</title>
+    <link rel="stylesheet" href="shared.css">
+    <style>
+        .container { max-width: 1060px; }
+
+        .funnel-section {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .funnel-chart {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.25rem;
+            margin: 1.5rem 0;
+        }
+
+        .funnel-stage {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 1rem;
+            padding: 1rem;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+            cursor: default;
+            position: relative;
+        }
+
+        .funnel-stage:hover {
+            transform: scale(1.02);
+            box-shadow: 0 0 20px rgba(88, 166, 255, 0.15);
+        }
+
+        .funnel-stage .label {
+            font-weight: 600;
+            font-size: 0.95rem;
+            min-width: 120px;
+            text-align: right;
+        }
+
+        .funnel-stage .count {
+            font-size: 1.3rem;
+            font-weight: 700;
+            min-width: 80px;
+        }
+
+        .funnel-stage .rate {
+            font-size: 0.85rem;
+            color: var(--muted);
+            min-width: 100px;
+        }
+
+        .funnel-arrow {
+            color: var(--muted);
+            font-size: 1.2rem;
+        }
+
+        .controls-bar {
+            display: flex;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+            margin-bottom: 1.5rem;
+            align-items: center;
+        }
+
+        .controls-bar label {
+            font-size: 0.85rem;
+            color: var(--muted);
+        }
+
+        .controls-bar select,
+        .controls-bar input {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text);
+            padding: 0.4rem 0.6rem;
+            font-size: 0.85rem;
+        }
+
+        .cohort-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .cohort-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.2rem;
+            text-align: center;
+        }
+
+        .cohort-card h3 {
+            font-size: 0.85rem;
+            color: var(--muted);
+            margin-bottom: 0.5rem;
+        }
+
+        .cohort-card .big-number {
+            font-size: 2rem;
+            font-weight: 700;
+        }
+
+        .cohort-card .trend {
+            font-size: 0.8rem;
+            margin-top: 0.25rem;
+        }
+
+        .trend.up { color: var(--green); }
+        .trend.down { color: var(--red); }
+        .trend.flat { color: var(--muted); }
+
+        .heatmap-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.8rem;
+        }
+
+        .heatmap-table th,
+        .heatmap-table td {
+            padding: 0.5rem;
+            text-align: center;
+            border: 1px solid var(--border);
+        }
+
+        .heatmap-table th {
+            background: var(--surface);
+            color: var(--muted);
+            font-weight: 600;
+        }
+
+        .heatmap-cell {
+            font-weight: 600;
+            border-radius: 4px;
+        }
+
+        .timeline-canvas {
+            width: 100%;
+            height: 300px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+        }
+
+        .insight-list {
+            list-style: none;
+            padding: 0;
+        }
+
+        .insight-list li {
+            padding: 0.75rem 1rem;
+            border-left: 3px solid var(--accent);
+            background: rgba(88, 166, 255, 0.05);
+            border-radius: 0 6px 6px 0;
+            margin-bottom: 0.5rem;
+            font-size: 0.9rem;
+        }
+
+        .insight-list li.warning {
+            border-left-color: var(--yellow);
+            background: var(--yellow-bg);
+        }
+
+        .insight-list li.danger {
+            border-left-color: var(--red);
+            background: var(--red-bg);
+        }
+
+        .insight-list li.success {
+            border-left-color: var(--green);
+            background: var(--green-bg);
+        }
+
+        .tab-bar {
+            display: flex;
+            gap: 0.25rem;
+            margin-bottom: 1.5rem;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 0;
+        }
+
+        .tab-bar button {
+            background: none;
+            border: none;
+            color: var(--muted);
+            padding: 0.6rem 1.2rem;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+        }
+
+        .tab-bar button.active {
+            color: var(--accent);
+            border-bottom-color: var(--accent);
+        }
+
+        .tab-bar button:hover {
+            color: var(--text);
+        }
+
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; }
+
+        @media (max-width: 600px) {
+            .cohort-grid { grid-template-columns: 1fr; }
+            .funnel-stage .label { min-width: 80px; font-size: 0.8rem; }
+            .funnel-stage .count { font-size: 1rem; min-width: 50px; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>📉 Retention Funnel Analyzer</h1>
+        <p>Understand how CAPTCHA difficulty impacts user retention across the verification funnel</p>
+    </header>
+
+    <main class="container">
+        <!-- Controls -->
+        <div class="controls-bar">
+            <label>Difficulty:
+                <select id="difficultyFilter">
+                    <option value="all">All Levels</option>
+                    <option value="easy">Easy</option>
+                    <option value="medium">Medium</option>
+                    <option value="hard">Hard</option>
+                    <option value="extreme">Extreme</option>
+                </select>
+            </label>
+            <label>Time Range:
+                <select id="timeRange">
+                    <option value="7d">Last 7 Days</option>
+                    <option value="30d" selected>Last 30 Days</option>
+                    <option value="90d">Last 90 Days</option>
+                    <option value="custom">Custom</option>
+                </select>
+            </label>
+            <label>Cohort Size:
+                <select id="cohortSize">
+                    <option value="daily">Daily</option>
+                    <option value="weekly" selected>Weekly</option>
+                    <option value="monthly">Monthly</option>
+                </select>
+            </label>
+            <button class="btn" onclick="refreshData()">🔄 Refresh</button>
+            <button class="btn" onclick="exportCSV()">📥 Export CSV</button>
+        </div>
+
+        <!-- KPI Cards -->
+        <div class="cohort-grid" id="kpiCards"></div>
+
+        <!-- Tabs -->
+        <div class="tab-bar" id="tabBar">
+            <button class="active" data-tab="funnel">Funnel</button>
+            <button data-tab="cohorts">Cohort Heatmap</button>
+            <button data-tab="timeline">Trend Timeline</button>
+            <button data-tab="insights">Insights</button>
+        </div>
+
+        <!-- Funnel Tab -->
+        <div class="tab-panel active" id="tab-funnel">
+            <div class="funnel-section">
+                <h2>Verification Funnel</h2>
+                <div class="funnel-chart" id="funnelChart"></div>
+            </div>
+        </div>
+
+        <!-- Cohort Heatmap Tab -->
+        <div class="tab-panel" id="tab-cohorts">
+            <div class="funnel-section">
+                <h2>Retention Cohort Heatmap</h2>
+                <p style="color: var(--muted); font-size: 0.85rem; margin-bottom: 1rem;">
+                    Each row is a cohort of users who first encountered CAPTCHA in that period. 
+                    Columns show % who returned in subsequent periods.
+                </p>
+                <div style="overflow-x: auto;">
+                    <table class="heatmap-table" id="cohortTable"></table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Timeline Tab -->
+        <div class="tab-panel" id="tab-timeline">
+            <div class="funnel-section">
+                <h2>Retention Rate Over Time</h2>
+                <canvas class="timeline-canvas" id="timelineCanvas"></canvas>
+            </div>
+        </div>
+
+        <!-- Insights Tab -->
+        <div class="tab-panel" id="tab-insights">
+            <div class="funnel-section">
+                <h2>Automated Insights</h2>
+                <ul class="insight-list" id="insightsList"></ul>
+            </div>
+        </div>
+    </main>
+
+    <footer>
+        <p>GIF CAPTCHA Research &middot; Retention Funnel Analyzer &middot; <a href="index.html">Home</a></p>
+    </footer>
+
+    <script src="shared.js"></script>
+    <script>
+    (function() {
+        'use strict';
+
+        // ===== Simulated Data Engine =====
+        const STAGES = ['Presented', 'Attempted', 'Solved', 'Returned (24h)', 'Returned (7d)'];
+        const DIFFICULTIES = ['easy', 'medium', 'hard', 'extreme'];
+
+        function generateFunnelData(difficulty) {
+            const baseRates = {
+                easy:    [1.00, 0.92, 0.88, 0.72, 0.58],
+                medium:  [1.00, 0.85, 0.74, 0.61, 0.45],
+                hard:    [1.00, 0.78, 0.58, 0.42, 0.29],
+                extreme: [1.00, 0.65, 0.38, 0.22, 0.12],
+                all:     [1.00, 0.82, 0.67, 0.51, 0.37]
+            };
+            const rates = baseRates[difficulty] || baseRates.all;
+            const base = Math.floor(Math.random() * 5000) + 8000;
+            return rates.map((r, i) => ({
+                stage: STAGES[i],
+                count: Math.floor(base * r * (0.92 + Math.random() * 0.16)),
+                rate: r
+            }));
+        }
+
+        function generateCohortData(periods) {
+            const cohorts = [];
+            const now = new Date();
+            for (let i = periods - 1; i >= 0; i--) {
+                const d = new Date(now);
+                d.setDate(d.getDate() - i * 7);
+                const label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                const initial = Math.floor(Math.random() * 2000) + 1000;
+                const retentions = [];
+                let prev = 1.0;
+                for (let w = 0; w < Math.min(periods - i, 8); w++) {
+                    if (w === 0) {
+                        retentions.push(1.0);
+                    } else {
+                        const decay = 0.55 + Math.random() * 0.25;
+                        prev *= decay;
+                        retentions.push(Math.max(prev, 0.02 + Math.random() * 0.05));
+                    }
+                }
+                cohorts.push({ label, initial, retentions });
+            }
+            return cohorts;
+        }
+
+        function generateTimelineData(days) {
+            const data = [];
+            const now = new Date();
+            let retention = 0.5 + Math.random() * 0.1;
+            for (let i = days; i >= 0; i--) {
+                const d = new Date(now);
+                d.setDate(d.getDate() - i);
+                retention += (Math.random() - 0.48) * 0.03;
+                retention = Math.max(0.15, Math.min(0.85, retention));
+                data.push({
+                    date: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+                    value: retention
+                });
+            }
+            return data;
+        }
+
+        function generateInsights(funnel) {
+            const insights = [];
+            const dropOff = funnel[0].count - funnel[2].count;
+            const dropPct = ((dropOff / funnel[0].count) * 100).toFixed(1);
+            const attemptRate = ((funnel[1].count / funnel[0].count) * 100).toFixed(1);
+            const solveRate = ((funnel[2].count / funnel[1].count) * 100).toFixed(1);
+            const return24 = ((funnel[3].count / funnel[2].count) * 100).toFixed(1);
+            const return7d = ((funnel[4].count / funnel[2].count) * 100).toFixed(1);
+
+            insights.push({
+                text: `${dropPct}% of presented users never complete the CAPTCHA (${dropOff.toLocaleString()} users lost).`,
+                type: dropPct > 40 ? 'danger' : dropPct > 25 ? 'warning' : 'success'
+            });
+
+            insights.push({
+                text: `Attempt rate is ${attemptRate}% — ${attemptRate < 80 ? 'some users abandon before even trying' : 'most users engage with the challenge'}.`,
+                type: attemptRate < 80 ? 'warning' : 'success'
+            });
+
+            insights.push({
+                text: `Solve rate among attempters: ${solveRate}%. ${solveRate < 70 ? 'Consider reducing difficulty to improve conversions.' : 'Healthy completion rate.'}`,
+                type: solveRate < 70 ? 'warning' : 'success'
+            });
+
+            insights.push({
+                text: `24-hour return rate: ${return24}% of solvers come back within a day.`,
+                type: return24 < 50 ? 'warning' : 'success'
+            });
+
+            insights.push({
+                text: `7-day return rate: ${return7d}%. ${return7d < 35 ? 'Long-term retention is concerning — CAPTCHA friction may be driving users away.' : 'Solid week-over-week retention.'}`,
+                type: return7d < 35 ? 'danger' : 'success'
+            });
+
+            return insights;
+        }
+
+        // ===== Renderers =====
+        function renderKPIs(funnel) {
+            const el = document.getElementById('kpiCards');
+            const kpis = [
+                { title: 'Total Presented', value: funnel[0].count.toLocaleString(), trend: '+3.2%', dir: 'up' },
+                { title: 'Solve Rate', value: ((funnel[2].count / funnel[0].count) * 100).toFixed(1) + '%', trend: funnel[2].rate > 0.65 ? '+1.8%' : '-2.1%', dir: funnel[2].rate > 0.65 ? 'up' : 'down' },
+                { title: '24h Retention', value: ((funnel[3].count / funnel[2].count) * 100).toFixed(1) + '%', trend: '+0.5%', dir: 'up' },
+                { title: '7d Retention', value: ((funnel[4].count / funnel[2].count) * 100).toFixed(1) + '%', trend: '-1.2%', dir: 'down' }
+            ];
+            el.innerHTML = kpis.map(k => `
+                <div class="cohort-card">
+                    <h3>${sanitize(k.title)}</h3>
+                    <div class="big-number">${sanitize(k.value)}</div>
+                    <div class="trend ${k.dir}">${k.dir === 'up' ? '↑' : '↓'} ${sanitize(k.trend)} vs prev period</div>
+                </div>
+            `).join('');
+        }
+
+        function renderFunnel(funnel) {
+            const el = document.getElementById('funnelChart');
+            const maxCount = funnel[0].count;
+            const colors = ['var(--accent)', 'var(--purple)', 'var(--green)', 'var(--cyan)', 'var(--yellow)'];
+            let html = '';
+            funnel.forEach((s, i) => {
+                const widthPct = 30 + (s.count / maxCount) * 70;
+                const convRate = i > 0 ? ((s.count / funnel[i-1].count) * 100).toFixed(1) + '% conv.' : '100%';
+                html += `
+                    <div class="funnel-stage" style="width: ${widthPct}%; background: ${colors[i]}22; border: 1px solid ${colors[i]}55;">
+                        <span class="label" style="color: ${colors[i]}">${sanitize(s.stage)}</span>
+                        <span class="count">${s.count.toLocaleString()}</span>
+                        <span class="rate">${convRate}</span>
+                    </div>
+                `;
+                if (i < funnel.length - 1) {
+                    const lost = funnel[i].count - funnel[i+1].count;
+                    html += `<div class="funnel-arrow">▼ <span style="font-size: 0.75rem; color: var(--red);">-${lost.toLocaleString()} lost</span></div>`;
+                }
+            });
+            el.innerHTML = html;
+        }
+
+        function renderCohortHeatmap(cohorts) {
+            const table = document.getElementById('cohortTable');
+            const maxWeeks = Math.max(...cohorts.map(c => c.retentions.length));
+            let html = '<thead><tr><th>Cohort</th><th>Users</th>';
+            for (let w = 0; w < maxWeeks; w++) {
+                html += `<th>W${w}</th>`;
+            }
+            html += '</tr></thead><tbody>';
+            cohorts.forEach(c => {
+                html += `<tr><td style="text-align:left; font-weight:600;">${sanitize(c.label)}</td>`;
+                html += `<td>${c.initial.toLocaleString()}</td>`;
+                c.retentions.forEach(r => {
+                    const pct = (r * 100).toFixed(1);
+                    const intensity = Math.floor(r * 255);
+                    const bg = `rgba(88, 166, 255, ${(r * 0.6).toFixed(2)})`;
+                    html += `<td class="heatmap-cell" style="background: ${bg};">${pct}%</td>`;
+                });
+                // Fill remaining cells
+                for (let w = c.retentions.length; w < maxWeeks; w++) {
+                    html += '<td></td>';
+                }
+                html += '</tr>';
+            });
+            html += '</tbody>';
+            table.innerHTML = html;
+        }
+
+        function renderTimeline(data) {
+            const canvas = document.getElementById('timelineCanvas');
+            const ctx = canvas.getContext('2d');
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = canvas.offsetWidth * dpr;
+            canvas.height = canvas.offsetHeight * dpr;
+            ctx.scale(dpr, dpr);
+
+            const w = canvas.offsetWidth;
+            const h = canvas.offsetHeight;
+            const pad = { top: 30, right: 20, bottom: 40, left: 55 };
+            const plotW = w - pad.left - pad.right;
+            const plotH = h - pad.top - pad.bottom;
+
+            // Background
+            ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--surface').trim();
+            ctx.fillRect(0, 0, w, h);
+
+            // Grid
+            ctx.strokeStyle = '#30363d';
+            ctx.lineWidth = 0.5;
+            for (let i = 0; i <= 4; i++) {
+                const y = pad.top + (plotH / 4) * i;
+                ctx.beginPath();
+                ctx.moveTo(pad.left, y);
+                ctx.lineTo(w - pad.right, y);
+                ctx.stroke();
+                ctx.fillStyle = '#8b949e';
+                ctx.font = '11px monospace';
+                ctx.textAlign = 'right';
+                ctx.fillText(((1 - i / 4) * 100).toFixed(0) + '%', pad.left - 8, y + 4);
+            }
+
+            // X labels
+            const step = Math.max(1, Math.floor(data.length / 8));
+            ctx.textAlign = 'center';
+            data.forEach((d, i) => {
+                if (i % step === 0) {
+                    const x = pad.left + (i / (data.length - 1)) * plotW;
+                    ctx.fillStyle = '#8b949e';
+                    ctx.fillText(d.date, x, h - pad.bottom + 18);
+                }
+            });
+
+            // Line
+            ctx.beginPath();
+            ctx.strokeStyle = '#58a6ff';
+            ctx.lineWidth = 2;
+            data.forEach((d, i) => {
+                const x = pad.left + (i / (data.length - 1)) * plotW;
+                const y = pad.top + (1 - d.value) * plotH;
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            });
+            ctx.stroke();
+
+            // Area fill
+            ctx.lineTo(pad.left + plotW, pad.top + plotH);
+            ctx.lineTo(pad.left, pad.top + plotH);
+            ctx.closePath();
+            const grad = ctx.createLinearGradient(0, pad.top, 0, pad.top + plotH);
+            grad.addColorStop(0, 'rgba(88, 166, 255, 0.2)');
+            grad.addColorStop(1, 'rgba(88, 166, 255, 0)');
+            ctx.fillStyle = grad;
+            ctx.fill();
+
+            // Title
+            ctx.fillStyle = '#e6edf3';
+            ctx.font = 'bold 13px sans-serif';
+            ctx.textAlign = 'left';
+            ctx.fillText('7-Day Retention Rate', pad.left, 18);
+        }
+
+        function renderInsights(insights) {
+            const el = document.getElementById('insightsList');
+            el.innerHTML = insights.map(ins =>
+                `<li class="${ins.type}">${sanitize(ins.text)}</li>`
+            ).join('');
+        }
+
+        // ===== Tab Switching =====
+        document.getElementById('tabBar').addEventListener('click', function(e) {
+            if (e.target.tagName !== 'BUTTON') return;
+            document.querySelectorAll('.tab-bar button').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+            e.target.classList.add('active');
+            document.getElementById('tab-' + e.target.dataset.tab).classList.add('active');
+            if (e.target.dataset.tab === 'timeline') {
+                setTimeout(() => renderTimeline(timelineData), 50);
+            }
+        });
+
+        // ===== CSV Export =====
+        function exportCSV() {
+            let csv = 'Stage,Count,Rate\n';
+            currentFunnel.forEach(s => {
+                csv += `${s.stage},${s.count},${(s.rate * 100).toFixed(1)}%\n`;
+            });
+            csv += '\nCohort Heatmap\nCohort,Initial';
+            const maxW = Math.max(...cohortData.map(c => c.retentions.length));
+            for (let w = 0; w < maxW; w++) csv += `,W${w}`;
+            csv += '\n';
+            cohortData.forEach(c => {
+                csv += `${c.label},${c.initial}`;
+                c.retentions.forEach(r => csv += `,${(r * 100).toFixed(1)}%`);
+                csv += '\n';
+            });
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'retention-funnel.csv';
+            a.click();
+            URL.revokeObjectURL(a.href);
+        }
+        window.exportCSV = exportCSV;
+
+        // ===== Main =====
+        let currentFunnel, cohortData, timelineData;
+
+        function refreshData() {
+            const diff = document.getElementById('difficultyFilter').value;
+            const range = document.getElementById('timeRange').value;
+            const days = range === '7d' ? 7 : range === '90d' ? 90 : 30;
+
+            currentFunnel = generateFunnelData(diff);
+            cohortData = generateCohortData(Math.min(Math.ceil(days / 7), 12));
+            timelineData = generateTimelineData(days);
+
+            renderKPIs(currentFunnel);
+            renderFunnel(currentFunnel);
+            renderCohortHeatmap(cohortData);
+            renderInsights(generateInsights(currentFunnel));
+
+            const activeTab = document.querySelector('.tab-bar button.active');
+            if (activeTab && activeTab.dataset.tab === 'timeline') {
+                setTimeout(() => renderTimeline(timelineData), 50);
+            }
+        }
+        window.refreshData = refreshData;
+
+        refreshData();
+
+        // Redraw timeline on resize
+        window.addEventListener('resize', function() {
+            const activeTab = document.querySelector('.tab-bar button.active');
+            if (activeTab && activeTab.dataset.tab === 'timeline') {
+                renderTimeline(timelineData);
+            }
+        });
+    })();
+    </script>
+</body>
+</html>

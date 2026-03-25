@@ -68,6 +68,26 @@ describe("WebhookDispatcher", () => {
       assert.throws(() => dispatcher.register({ url: "http://[fd12:3456::1]/hook" }), /SSRF protection/);
     });
 
+    it("blocks IPv4-mapped IPv6 addresses (SSRF bypass)", () => {
+      // Dotted-quad form: ::ffff:A.B.C.D
+      assert.throws(() => dispatcher.register({ url: "http://[::ffff:127.0.0.1]/hook" }), /SSRF protection/);
+      assert.throws(() => dispatcher.register({ url: "http://[::ffff:10.0.0.1]/hook" }), /SSRF protection/);
+      assert.throws(() => dispatcher.register({ url: "http://[::ffff:192.168.1.1]/hook" }), /SSRF protection/);
+      assert.throws(() => dispatcher.register({ url: "http://[::ffff:169.254.169.254]/hook" }), /SSRF protection/);
+      assert.throws(() => dispatcher.register({ url: "http://[::ffff:172.16.0.1]/hook" }), /SSRF protection/);
+
+      // Hex form: ::ffff:XXYY:ZZWW (127.0.0.1 = ::ffff:7f00:1)
+      assert.throws(() => dispatcher.register({ url: "http://[::ffff:7f00:1]/hook" }), /SSRF protection/);
+      // 10.0.0.1 = ::ffff:a00:1
+      assert.throws(() => dispatcher.register({ url: "http://[::ffff:a00:1]/hook" }), /SSRF protection/);
+      // 169.254.169.254 = ::ffff:a9fe:a9fe
+      assert.throws(() => dispatcher.register({ url: "http://[::ffff:a9fe:a9fe]/hook" }), /SSRF protection/);
+
+      // Public IPs in mapped form should still be allowed
+      // 8.8.8.8 = ::ffff:808:808
+      assert.doesNotThrow(() => dispatcher.register({ url: "https://[::ffff:8.8.8.8]/hook" }));
+    });
+
     it("allows public internet URLs", () => {
       assert.doesNotThrow(() => dispatcher.register({ url: "https://hooks.slack.com/services/T00/B00/xxx" }));
       assert.doesNotThrow(() => dispatcher.register({ url: "https://8.8.8.8/hook" }));

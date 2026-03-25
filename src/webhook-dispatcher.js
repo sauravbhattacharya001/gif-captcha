@@ -73,8 +73,36 @@ const BLOCKED_HOST_PATTERNS = [
 ];
 
 /**
+ * Extract the IPv4 address from an IPv4-mapped or IPv4-compatible IPv6
+ * address (e.g. "::ffff:10.0.0.1" → "10.0.0.1", "::ffff:7f00:1" → "127.0.0.1").
+ * Returns null if the address is not an IPv4-mapped/compatible form.
+ *
+ * @param {string} addr - IPv6 address (without brackets)
+ * @returns {string|null} Extracted IPv4 dotted-quad, or null
+ */
+function _extractMappedIPv4(addr) {
+  // Dotted-quad form: ::ffff:A.B.C.D or ::A.B.C.D
+  var dottedMatch = /^::(?:ffff:)?(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/i.exec(addr);
+  if (dottedMatch) return dottedMatch[1];
+
+  // Hex form: ::ffff:XXYY:ZZWW → X.Y.Z.W
+  var hexMatch = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i.exec(addr);
+  if (hexMatch) {
+    var hi = parseInt(hexMatch[1], 16);
+    var lo = parseInt(hexMatch[2], 16);
+    return ((hi >> 8) & 0xff) + "." + (hi & 0xff) + "." +
+           ((lo >> 8) & 0xff) + "." + (lo & 0xff);
+  }
+
+  return null;
+}
+
+/**
  * Check whether a URL targets a private/internal host.
  * Returns true if the URL should be blocked (SSRF risk).
+ *
+ * Handles IPv4-mapped IPv6 addresses (::ffff:127.0.0.1, ::ffff:a00:1, etc.)
+ * that would otherwise bypass IPv4-only blocklist patterns.
  *
  * @param {string} urlStr - The webhook URL to validate
  * @returns {boolean}
@@ -91,9 +119,23 @@ function _isBlockedUrl(urlStr) {
   if (hostname.startsWith("[") && hostname.endsWith("]")) {
     hostname = hostname.slice(1, -1);
   }
+
+  // Check the hostname itself against all patterns
   for (var i = 0; i < BLOCKED_HOST_PATTERNS.length; i++) {
     if (BLOCKED_HOST_PATTERNS[i].test(hostname)) return true;
   }
+
+  // Unwrap IPv4-mapped/compatible IPv6 addresses and re-check the
+  // extracted IPv4 against the blocklist. Without this, an attacker
+  // can bypass SSRF protection using e.g. http://[::ffff:127.0.0.1]/
+  // or http://[::ffff:a9fe:a9fe]/ (169.254.169.254 cloud metadata).
+  var mappedV4 = _extractMappedIPv4(hostname);
+  if (mappedV4) {
+    for (var j = 0; j < BLOCKED_HOST_PATTERNS.length; j++) {
+      if (BLOCKED_HOST_PATTERNS[j].test(mappedV4)) return true;
+    }
+  }
+
   return false;
 }
 

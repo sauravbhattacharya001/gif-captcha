@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; img-src https: data:; script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'self'; form-action 'none';">
+    <meta name="referrer" content="no-referrer">
+    <title>GIF CAPTCHA — Performance Profiler ⚡</title>
+    <link rel="stylesheet" href="shared.css">
+    <style>
+        .container { max-width: 1060px; }
+
+        .profiler-grid {
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        @media (max-width: 768px) {
+            .profiler-grid { grid-template-columns: 1fr; }
+        }
+
+        .config-panel {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.25rem;
+        }
+
+        .config-panel h3 {
+            font-size: 0.9rem;
+            color: var(--accent);
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .field-group {
+            margin-bottom: 1rem;
+        }
+
+        .field-group label {
+            display: block;
+            font-size: 0.8rem;
+            color: var(--muted);
+            margin-bottom: 0.3rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        .field-group select,
+        .field-group input {
+            width: 100%;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text);
+            padding: 0.5rem 0.6rem;
+            font-size: 0.85rem;
+        }
+
+        .field-group input[type="range"] {
+            padding: 0;
+            -webkit-appearance: none;
+            height: 6px;
+            border-radius: 3px;
+            background: var(--border);
+            outline: none;
+        }
+
+        .field-group input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: var(--accent);
+            cursor: pointer;
+        }
+
+        .range-value {
+            font-size: 0.8rem;
+            color: var(--accent);
+            float: right;
+        }
+
+        .btn-run {
+            width: 100%;
+            padding: 0.7rem;
+            background: var(--accent);
+            color: #000;
+            border: none;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: background 0.2s;
+            margin-top: 0.5rem;
+        }
+
+        .btn-run:hover { background: var(--accent-hover); }
+        .btn-run:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .results-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 0.75rem;
+        }
+
+        .stat-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1rem;
+            text-align: center;
+        }
+
+        .stat-card .label {
+            font-size: 0.7rem;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.25rem;
+        }
+
+        .stat-card .value {
+            font-size: 1.4rem;
+            font-weight: 700;
+        }
+
+        .stat-card .value.green { color: var(--green); }
+        .stat-card .value.red { color: var(--red); }
+        .stat-card .value.yellow { color: var(--yellow); }
+        .stat-card .value.accent { color: var(--accent); }
+        .stat-card .value.purple { color: var(--purple); }
+        .stat-card .value.cyan { color: var(--cyan); }
+
+        .chart-area {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.25rem;
+        }
+
+        .chart-area h3 {
+            font-size: 0.85rem;
+            color: var(--muted);
+            margin-bottom: 0.75rem;
+        }
+
+        .bar-chart {
+            display: flex;
+            align-items: flex-end;
+            gap: 3px;
+            height: 180px;
+            padding-top: 0.5rem;
+        }
+
+        .bar {
+            flex: 1;
+            min-width: 4px;
+            border-radius: 3px 3px 0 0;
+            transition: height 0.4s ease, background 0.3s;
+            cursor: pointer;
+            position: relative;
+        }
+
+        .bar:hover { opacity: 0.8; }
+
+        .bar .tooltip {
+            display: none;
+            position: absolute;
+            bottom: calc(100% + 6px);
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.4rem 0.6rem;
+            font-size: 0.7rem;
+            color: var(--text);
+            white-space: nowrap;
+            z-index: 10;
+        }
+
+        .bar:hover .tooltip { display: block; }
+
+        .chart-legend {
+            display: flex;
+            gap: 1rem;
+            margin-top: 0.75rem;
+            font-size: 0.75rem;
+            color: var(--muted);
+        }
+
+        .legend-dot {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 0.3rem;
+            vertical-align: middle;
+        }
+
+        .history-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.8rem;
+        }
+
+        .history-table th,
+        .history-table td {
+            padding: 0.5rem 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .history-table th {
+            color: var(--muted);
+            text-transform: uppercase;
+            font-size: 0.7rem;
+            letter-spacing: 0.05em;
+        }
+
+        .history-table td { color: var(--text); }
+
+        .perf-badge {
+            display: inline-block;
+            padding: 0.15rem 0.5rem;
+            border-radius: 10px;
+            font-size: 0.7rem;
+            font-weight: 600;
+        }
+
+        .perf-fast { background: var(--green-bg); color: var(--green); }
+        .perf-medium { background: var(--yellow-bg); color: var(--yellow); }
+        .perf-slow { background: var(--red-bg); color: var(--red); }
+
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            color: var(--muted);
+            font-size: 0.9rem;
+        }
+
+        .empty-state .icon { font-size: 2.5rem; margin-bottom: 0.75rem; }
+
+        .progress-bar {
+            height: 4px;
+            background: var(--border);
+            border-radius: 2px;
+            overflow: hidden;
+            margin-bottom: 1rem;
+            display: none;
+        }
+
+        .progress-bar.active { display: block; }
+
+        .progress-fill {
+            height: 100%;
+            background: var(--accent);
+            border-radius: 2px;
+            transition: width 0.3s ease;
+            width: 0%;
+        }
+
+        .comparison-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+
+        @media (max-width: 768px) {
+            .comparison-row { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>⚡ Performance Profiler</h1>
+            <p class="subtitle">Benchmark CAPTCHA generation across configurations — measure render time, file size, and throughput</p>
+        </div>
+
+        <div class="progress-bar" id="progressBar">
+            <div class="progress-fill" id="progressFill"></div>
+        </div>
+
+        <div class="profiler-grid">
+            <div class="config-panel">
+                <h3>⚙️ Profile Configuration</h3>
+
+                <div class="field-group">
+                    <label>Difficulty Level</label>
+                    <select id="cfgDifficulty">
+                        <option value="easy">Easy</option>
+                        <option value="medium" selected>Medium</option>
+                        <option value="hard">Hard</option>
+                        <option value="extreme">Extreme</option>
+                    </select>
+                </div>
+
+                <div class="field-group">
+                    <label>Frame Count <span class="range-value" id="frameCountVal">8</span></label>
+                    <input type="range" id="cfgFrames" min="4" max="30" value="8">
+                </div>
+
+                <div class="field-group">
+                    <label>Image Width (px) <span class="range-value" id="widthVal">200</span></label>
+                    <input type="range" id="cfgWidth" min="80" max="400" step="10" value="200">
+                </div>
+
+                <div class="field-group">
+                    <label>Image Height (px) <span class="range-value" id="heightVal">70</span></label>
+                    <input type="range" id="cfgHeight" min="40" max="200" step="10" value="70">
+                </div>
+
+                <div class="field-group">
+                    <label>Noise Level <span class="range-value" id="noiseVal">3</span></label>
+                    <input type="range" id="cfgNoise" min="0" max="10" value="3">
+                </div>
+
+                <div class="field-group">
+                    <label>Iterations (per profile)</label>
+                    <input type="number" id="cfgIterations" min="5" max="200" value="25">
+                </div>
+
+                <div class="field-group">
+                    <label>Text Length</label>
+                    <select id="cfgTextLen">
+                        <option value="4">4 characters</option>
+                        <option value="5">5 characters</option>
+                        <option value="6" selected>6 characters</option>
+                        <option value="8">8 characters</option>
+                    </select>
+                </div>
+
+                <button class="btn-run" id="btnRun" onclick="runProfile()">▶ Run Profile</button>
+                <button class="btn-run" id="btnCompare" onclick="runComparison()" style="background: var(--purple); margin-top: 0.5rem;">⚖️ Compare All Difficulties</button>
+            </div>
+
+            <div class="results-panel">
+                <div class="stats-row" id="statsRow">
+                    <div class="stat-card"><div class="label">Avg Render</div><div class="value accent" id="statAvgRender">—</div></div>
+                    <div class="stat-card"><div class="label">P95 Render</div><div class="value yellow" id="statP95">—</div></div>
+                    <div class="stat-card"><div class="label">Avg Size</div><div class="value green" id="statAvgSize">—</div></div>
+                    <div class="stat-card"><div class="label">Throughput</div><div class="value purple" id="statThroughput">—</div></div>
+                    <div class="stat-card"><div class="label">Min / Max</div><div class="value cyan" id="statMinMax">—</div></div>
+                    <div class="stat-card"><div class="label">Std Dev</div><div class="value" id="statStdDev" style="color: var(--orange)">—</div></div>
+                </div>
+
+                <div class="chart-area">
+                    <h3>Render Time Distribution (ms)</h3>
+                    <div class="bar-chart" id="renderChart">
+                        <div class="empty-state" id="emptyState">
+                            <div class="icon">📊</div>
+                            <p>Run a profile to see results</p>
+                        </div>
+                    </div>
+                    <div class="chart-legend" id="chartLegend" style="display:none">
+                        <span><span class="legend-dot" style="background:var(--accent)"></span> Render Time</span>
+                        <span><span class="legend-dot" style="background:var(--green)"></span> Fast (&lt;P25)</span>
+                        <span><span class="legend-dot" style="background:var(--yellow)"></span> Normal</span>
+                        <span><span class="legend-dot" style="background:var(--red)"></span> Slow (&gt;P75)</span>
+                    </div>
+                </div>
+
+                <div class="comparison-row" id="comparisonRow" style="display:none">
+                    <div class="chart-area">
+                        <h3>Render Time by Difficulty</h3>
+                        <div class="bar-chart" id="compareRenderChart"></div>
+                    </div>
+                    <div class="chart-area">
+                        <h3>File Size by Difficulty</h3>
+                        <div class="bar-chart" id="compareSizeChart"></div>
+                    </div>
+                </div>
+
+                <div class="chart-area">
+                    <h3>Profile History</h3>
+                    <table class="history-table">
+                        <thead>
+                            <tr>
+                                <th>Run</th>
+                                <th>Difficulty</th>
+                                <th>Frames</th>
+                                <th>Size (px)</th>
+                                <th>Avg Time</th>
+                                <th>P95</th>
+                                <th>Avg Size</th>
+                                <th>Rating</th>
+                            </tr>
+                        </thead>
+                        <tbody id="historyBody">
+                            <tr><td colspan="8" style="text-align:center;color:var(--muted);padding:1.5rem">No profiles recorded yet</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <footer class="footer">
+            <p>GIF CAPTCHA Performance Profiler — Simulated benchmarks for CAPTCHA generation research</p>
+            <p style="margin-top:0.5rem"><a href="index.html">← Back to Case Study</a> · <a href="dashboard.html">Dashboard</a> · <a href="solve-histogram.html">Solve Histogram</a></p>
+        </footer>
+    </div>
+
+    <script src="shared.js"></script>
+    <script>
+    (function() {
+        'use strict';
+
+        // ─── Range slider sync ───
+        const rangeInputs = [
+            ['cfgFrames', 'frameCountVal'],
+            ['cfgWidth', 'widthVal'],
+            ['cfgHeight', 'heightVal'],
+            ['cfgNoise', 'noiseVal']
+        ];
+        rangeInputs.forEach(([inputId, displayId]) => {
+            const input = document.getElementById(inputId);
+            const display = document.getElementById(displayId);
+            input.addEventListener('input', () => { display.textContent = input.value; });
+        });
+
+        let runCounter = 0;
+        const history = [];
+
+        // ─── Simulated CAPTCHA generation profiling ───
+        // In a real deployment this would call the server-side generator.
+        // Here we simulate realistic render times based on configuration.
+        function simulateRender(config) {
+            const baseTime = {easy: 12, medium: 22, hard: 38, extreme: 65}[config.difficulty] || 22;
+            const frameMultiplier = 1 + (config.frames - 4) * 0.08;
+            const pixelMultiplier = 1 + ((config.width * config.height) - 5600) / 50000;
+            const noiseMultiplier = 1 + config.noise * 0.06;
+            const textMultiplier = 1 + (config.textLen - 4) * 0.05;
+
+            const mean = baseTime * frameMultiplier * pixelMultiplier * noiseMultiplier * textMultiplier;
+            // Box-Muller for normal distribution
+            const u1 = Math.random(), u2 = Math.random();
+            const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+            const renderTime = Math.max(2, mean + z * (mean * 0.2));
+
+            // Estimate file size (bytes)
+            const baseSize = config.width * config.height * config.frames * 0.15;
+            const sizeNoise = 1 + (Math.random() - 0.5) * 0.3;
+            const fileSize = Math.round(baseSize * sizeNoise * (1 + config.noise * 0.1));
+
+            return { renderTime: Math.round(renderTime * 100) / 100, fileSize };
+        }
+
+        function getConfig() {
+            return {
+                difficulty: document.getElementById('cfgDifficulty').value,
+                frames: parseInt(document.getElementById('cfgFrames').value),
+                width: parseInt(document.getElementById('cfgWidth').value),
+                height: parseInt(document.getElementById('cfgHeight').value),
+                noise: parseInt(document.getElementById('cfgNoise').value),
+                iterations: parseInt(document.getElementById('cfgIterations').value),
+                textLen: parseInt(document.getElementById('cfgTextLen').value)
+            };
+        }
+
+        function percentile(arr, p) {
+            const sorted = [...arr].sort((a, b) => a - b);
+            const idx = Math.ceil(sorted.length * p / 100) - 1;
+            return sorted[Math.max(0, idx)];
+        }
+
+        function mean(arr) { return arr.reduce((a, b) => a + b, 0) / arr.length; }
+
+        function stdDev(arr) {
+            const m = mean(arr);
+            return Math.sqrt(arr.reduce((s, v) => s + (v - m) ** 2, 0) / arr.length);
+        }
+
+        function formatSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / 1048576).toFixed(2) + ' MB';
+        }
+
+        function perfRating(avgMs) {
+            if (avgMs < 25) return {label: 'Fast', cls: 'perf-fast'};
+            if (avgMs < 50) return {label: 'Medium', cls: 'perf-medium'};
+            return {label: 'Slow', cls: 'perf-slow'};
+        }
+
+        function renderBarChart(containerId, values, colorFn) {
+            const container = document.getElementById(containerId);
+            const max = Math.max(...values);
+            container.innerHTML = '';
+            values.forEach((v, i) => {
+                const bar = document.createElement('div');
+                bar.className = 'bar';
+                const h = Math.max(4, (v / max) * 170);
+                bar.style.height = h + 'px';
+                bar.style.background = colorFn(v, i);
+                bar.innerHTML = '<div class="tooltip">#' + (i + 1) + ': ' + v.toFixed(1) + ' ms</div>';
+                container.appendChild(bar);
+            });
+        }
+
+        function renderGroupedBars(containerId, groups, labelKey, valueKey, colors) {
+            const container = document.getElementById(containerId);
+            container.innerHTML = '';
+            const max = Math.max(...groups.map(g => g[valueKey]));
+            groups.forEach((g, i) => {
+                const bar = document.createElement('div');
+                bar.className = 'bar';
+                const h = Math.max(8, (g[valueKey] / max) * 160);
+                bar.style.height = h + 'px';
+                bar.style.background = colors[i % colors.length];
+                bar.style.minWidth = '40px';
+                const displayVal = valueKey === 'avgSize' ? formatSize(g[valueKey]) : g[valueKey].toFixed(1) + ' ms';
+                bar.innerHTML = '<div class="tooltip">' + sanitize(g[labelKey]) + ': ' + displayVal + '</div>';
+                container.appendChild(bar);
+            });
+        }
+
+        window.runProfile = function() {
+            const config = getConfig();
+            const btn = document.getElementById('btnRun');
+            const progress = document.getElementById('progressBar');
+            const fill = document.getElementById('progressFill');
+
+            btn.disabled = true;
+            progress.classList.add('active');
+
+            const results = [];
+            let done = 0;
+
+            function step() {
+                if (done >= config.iterations) {
+                    finishProfile(config, results);
+                    btn.disabled = false;
+                    progress.classList.remove('active');
+                    return;
+                }
+                const batch = Math.min(5, config.iterations - done);
+                for (let j = 0; j < batch; j++) {
+                    results.push(simulateRender(config));
+                    done++;
+                }
+                fill.style.width = (done / config.iterations * 100) + '%';
+                requestAnimationFrame(step);
+            }
+            step();
+        };
+
+        function finishProfile(config, results) {
+            runCounter++;
+            const times = results.map(r => r.renderTime);
+            const sizes = results.map(r => r.fileSize);
+
+            const avgTime = mean(times);
+            const p95Time = percentile(times, 95);
+            const avgSize = mean(sizes);
+            const sd = stdDev(times);
+            const throughput = (1000 / avgTime).toFixed(1);
+
+            document.getElementById('statAvgRender').textContent = avgTime.toFixed(1) + ' ms';
+            document.getElementById('statP95').textContent = p95Time.toFixed(1) + ' ms';
+            document.getElementById('statAvgSize').textContent = formatSize(Math.round(avgSize));
+            document.getElementById('statThroughput').textContent = throughput + '/s';
+            document.getElementById('statMinMax').textContent = Math.min(...times).toFixed(0) + ' / ' + Math.max(...times).toFixed(0);
+            document.getElementById('statStdDev').textContent = sd.toFixed(1) + ' ms';
+
+            const p25 = percentile(times, 25);
+            const p75 = percentile(times, 75);
+            renderBarChart('renderChart', times, (v) => {
+                if (v <= p25) return 'var(--green)';
+                if (v >= p75) return 'var(--red)';
+                return 'var(--accent)';
+            });
+
+            document.getElementById('emptyState')?.remove();
+            document.getElementById('chartLegend').style.display = 'flex';
+
+            const rating = perfRating(avgTime);
+            const entry = {
+                run: runCounter,
+                difficulty: config.difficulty,
+                frames: config.frames,
+                size: config.width + '×' + config.height,
+                avgTime: avgTime.toFixed(1),
+                p95: p95Time.toFixed(1),
+                avgSize: formatSize(Math.round(avgSize)),
+                rating
+            };
+            history.unshift(entry);
+
+            const tbody = document.getElementById('historyBody');
+            const rows = history.map(e =>
+                '<tr>' +
+                '<td>#' + e.run + '</td>' +
+                '<td>' + sanitize(e.difficulty) + '</td>' +
+                '<td>' + e.frames + '</td>' +
+                '<td>' + sanitize(e.size) + '</td>' +
+                '<td>' + e.avgTime + ' ms</td>' +
+                '<td>' + e.p95 + ' ms</td>' +
+                '<td>' + sanitize(e.avgSize) + '</td>' +
+                '<td><span class="perf-badge ' + e.rating.cls + '">' + e.rating.label + '</span></td>' +
+                '</tr>'
+            ).join('');
+            tbody.innerHTML = rows;
+        }
+
+        window.runComparison = function() {
+            const config = getConfig();
+            const btn = document.getElementById('btnCompare');
+            btn.disabled = true;
+
+            const difficulties = ['easy', 'medium', 'hard', 'extreme'];
+            const colors = ['var(--green)', 'var(--accent)', 'var(--yellow)', 'var(--red)'];
+            const groups = [];
+
+            difficulties.forEach(d => {
+                const cfg = {...config, difficulty: d};
+                const results = [];
+                for (let i = 0; i < cfg.iterations; i++) {
+                    results.push(simulateRender(cfg));
+                }
+                const times = results.map(r => r.renderTime);
+                const sizes = results.map(r => r.fileSize);
+                groups.push({
+                    label: d.charAt(0).toUpperCase() + d.slice(1),
+                    avgTime: mean(times),
+                    avgSize: mean(sizes)
+                });
+            });
+
+            document.getElementById('comparisonRow').style.display = 'grid';
+            renderGroupedBars('compareRenderChart', groups, 'label', 'avgTime', colors);
+            renderGroupedBars('compareSizeChart', groups, 'label', 'avgSize', colors);
+
+            btn.disabled = false;
+        };
+    })();
+    </script>
+</body>
+</html>

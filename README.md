@@ -279,6 +279,17 @@ Analyze response time patterns across CAPTCHA types:
 - **Time Distribution Charts** — Histogram of response times
 - **Outlier Detection** — Flag unusually fast (bot?) or slow responses
 
+### ⚡ Performance Profiler
+
+**[Open Profiler →](https://sauravbhattacharya001.github.io/gif-captcha/performance-profiler.html)**
+
+Benchmark CAPTCHA generation across configurations:
+- **Configurable Parameters** — Difficulty, frame count, image dimensions, noise level, text length
+- **Render Time Distribution** — Color-coded bar chart with P25/P75 quartile highlighting
+- **Key Metrics** — Average render time, P95 latency, file size, throughput (CAPTCHAs/sec), standard deviation
+- **Difficulty Comparison** — Side-by-side render time and file size charts across all difficulty levels
+- **Profile History** — Track and compare results from multiple benchmark runs with performance ratings
+
 ## 🛠️ Tech Stack
 
 | Technology | Purpose |
@@ -361,6 +372,7 @@ gif-captcha/
 ├── playground.html       # Challenge Playground
 ├── streak.html           # Streak Mode
 ├── timing.html           # Response Time Analyzer
+├── performance-profiler.html  # Performance Profiler — benchmark generation configs
 ├── shared.js             # Browser-specific shared utilities
 ├── shared.css            # Shared dark theme styles
 ├── tests/                # Test suite (Node.js built-in test runner, 43 test files)

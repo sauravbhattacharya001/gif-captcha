@@ -139,6 +139,20 @@ function createHoneypotInjector(options) {
     return false;
   }
 
+  /**
+   * Create a single honeypot trap for a session.
+   *
+   * Returns the trap metadata including generated HTML that should be
+   * injected into the page. The trap is tracked internally and can be
+   * verified later via {@link check}.
+   *
+   * @param {Object} opts
+   * @param {string} opts.sessionId - Session to associate the trap with
+   * @param {string} [opts.strategy] - Concealment strategy override (default: random)
+   * @param {string} [opts.fieldName] - Field name override (default: random from pool)
+   * @returns {{ id: string, fieldName: string, strategy: string, html: string, createdAt: number }}
+   * @throws {Error} If sessionId is missing or empty
+   */
   function createTrap(opts) {
     if (!opts || typeof opts.sessionId !== 'string' || opts.sessionId.length === 0) throw new Error('sessionId is required');
     _evictExpired();
@@ -156,6 +170,18 @@ function createHoneypotInjector(options) {
     return { id: id, fieldName: fieldName, strategy: strategy, html: html, createdAt: now };
   }
 
+  /**
+   * Create multiple honeypot traps with distinct strategies for a session.
+   *
+   * Each trap uses a different concealment strategy to maximize detection
+   * coverage. Returns an array of trap descriptors.
+   *
+   * @param {Object} opts
+   * @param {string} opts.sessionId - Session to associate traps with
+   * @param {number} [opts.count=3] - Number of traps (capped at available strategies)
+   * @returns {Array<{ id: string, fieldName: string, strategy: string, html: string, createdAt: number }>}
+   * @throws {Error} If sessionId is missing or empty
+   */
   function createTrapSet(opts) {
     if (!opts || typeof opts.sessionId !== 'string' || opts.sessionId.length === 0) throw new Error('sessionId is required');
     var count = (opts.count != null && opts.count > 0) ? Math.min(Math.floor(opts.count), strategies.length) : Math.min(3, strategies.length);
@@ -169,6 +195,19 @@ function createHoneypotInjector(options) {
     return results;
   }
 
+  /**
+   * Check whether a honeypot trap was triggered by examining the submitted value.
+   *
+   * Any non-empty value in a honeypot field indicates bot activity (real users
+   * cannot see or interact with these fields). Returns a verdict with confidence
+   * score. Automated-looking values (URLs, HTML, high entropy) yield higher confidence.
+   *
+   * @param {Object} opts
+   * @param {string} opts.trapId - The trap identifier returned by {@link createTrap}
+   * @param {*} [opts.value] - The submitted value for the honeypot field
+   * @returns {{ tripped: boolean, confidence: number, trapId: string, strategy: string|null, detail: string, sessionId?: string }}
+   * @throws {Error} If trapId is missing
+   */
   function check(opts) {
     if (!opts || typeof opts.trapId !== 'string') throw new Error('trapId is required');
     stats.totalChecked++;
@@ -192,6 +231,17 @@ function createHoneypotInjector(options) {
     return { tripped: false, confidence: 0, trapId: trap.id, strategy: trap.strategy, detail: 'clean' };
   }
 
+  /**
+   * Check multiple honeypot traps at once and produce an aggregate verdict.
+   *
+   * Combines individual trap results into a single classification:
+   * 'human' (no traps tripped), 'likely_bot' (1 tripped), or
+   * 'definite_bot' (2+ tripped). Confidence increases with each additional trip.
+   *
+   * @param {Array<{ trapId: string, value?: * }>} checks - Array of trap checks
+   * @returns {{ results: Array, anyTripped: boolean, trippedCount: number, total: number, confidence: number, verdict: string }}
+   * @throws {Error} If checks is not an array
+   */
   function checkBatch(checks) {
     if (!Array.isArray(checks)) throw new Error('checks must be an array');
     var results = [], trippedCount = 0, maxConf = 0;
@@ -205,6 +255,16 @@ function createHoneypotInjector(options) {
     return { results: results, anyTripped: trippedCount > 0, trippedCount: trippedCount, total: checks.length, confidence: confidence, verdict: verdict };
   }
 
+  /**
+   * Get the bot probability score for a specific session.
+   *
+   * Aggregates all honeypot interactions for the session to produce a
+   * bot probability (0–0.99) and verdict ('human', 'bot', or 'unknown').
+   *
+   * @param {string} sessionId - Session identifier
+   * @returns {{ sessionId: string, traps: number, checked: number, tripped: number, clean: number, botProbability: number, verdict: string }}
+   * @throws {Error} If sessionId is missing or empty
+   */
   function getSessionScore(sessionId) {
     if (typeof sessionId !== 'string' || sessionId.length === 0) throw new Error('sessionId is required');
     var s = stats.bySession[sessionId];
@@ -214,6 +274,14 @@ function createHoneypotInjector(options) {
     return { sessionId: sessionId, traps: s.created, checked: s.checked, tripped: s.tripped, clean: s.clean, botProbability: botProb, verdict: verdict };
   }
 
+  /**
+   * Get effectiveness statistics for each concealment strategy.
+   *
+   * Returns an array sorted by trip rate (descending), showing how many
+   * traps of each strategy were created, checked, and tripped.
+   *
+   * @returns {Array<{ strategy: string, created: number, checked: number, tripped: number, tripRate: number }>}
+   */
   function getStrategyStats() {
     var result = [], keys = Object.keys(stats.byStrategy);
     for (var t = 0; t < keys.length; t++) {
@@ -224,6 +292,14 @@ function createHoneypotInjector(options) {
     return result;
   }
 
+  /**
+   * Retrieve metadata for a specific trap by ID.
+   *
+   * Returns null if the trap has expired or was never created.
+   *
+   * @param {string} trapId - Trap identifier
+   * @returns {{ id: string, sessionId: string, fieldName: string, strategy: string, createdAt: number, checked: boolean, tripped: boolean } | null}
+   */
   function getTrap(trapId) {
     _evictExpired();
     var t = traps[trapId];
@@ -231,11 +307,25 @@ function createHoneypotInjector(options) {
     return { id: t.id, sessionId: t.sessionId, fieldName: t.fieldName, strategy: t.strategy, createdAt: t.createdAt, checked: t.checked, tripped: t.tripped };
   }
 
+  /**
+   * Get recent tripped honeypot records.
+   *
+   * @param {number} [limit=20] - Maximum records to return
+   * @returns {Array<{ trapId: string, sessionId: string, value: string, timestamp: number, strategy: string, fieldName: string }>}
+   */
   function getTrippedHistory(limit) {
     var n = (limit != null && limit > 0) ? Math.floor(limit) : 20;
     return trippedHistory.slice(-n);
   }
 
+  /**
+   * Generate a comprehensive summary of honeypot system status.
+   *
+   * Includes active trap count, totals, trip rates, session bot rates,
+   * and per-strategy effectiveness breakdown.
+   *
+   * @returns {Object} Summary with activeTraps, totalCreated, totalChecked, totalTripped, tripRate, sessions, botSessions, botRate, bestStrategy, strategies
+   */
   function summary() {
     _evictExpired();
     var activeCount = Object.keys(traps).length;
@@ -253,6 +343,11 @@ function createHoneypotInjector(options) {
     };
   }
 
+  /**
+   * Generate a human-readable text report of honeypot effectiveness.
+   *
+   * @returns {string} Multi-line formatted report
+   */
   function generateReport() {
     var s = summary();
     var lines = ['=== Honeypot Injector Report ===', '', 'Active Traps:   ' + s.activeTraps,
@@ -269,10 +364,21 @@ function createHoneypotInjector(options) {
     return lines.join('\n');
   }
 
+  /**
+   * Export the current state for persistence or transfer.
+   *
+   * @returns {{ stats: Object, trippedHistory: Array, trapCount: number }}
+   */
   function exportState() {
     return { stats: JSON.parse(JSON.stringify(stats)), trippedHistory: trippedHistory.slice(), trapCount: trapCount };
   }
 
+  /**
+   * Import previously exported state, restoring stats and tripped history.
+   *
+   * @param {Object} state - State object from {@link exportState}
+   * @throws {Error} If state is not an object
+   */
   function importState(state) {
     if (!state || typeof state !== 'object') throw new Error('state must be an object');
     if (state.stats) {
@@ -285,6 +391,9 @@ function createHoneypotInjector(options) {
     if (Array.isArray(state.trippedHistory)) trippedHistory = state.trippedHistory.slice();
   }
 
+  /**
+   * Reset all traps, statistics, and history to initial state.
+   */
   function reset() {
     traps = Object.create(null); trapCount = 0; trippedHistory = [];
     stats.totalCreated = 0; stats.totalChecked = 0; stats.totalTripped = 0;

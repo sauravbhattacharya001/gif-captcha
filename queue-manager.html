@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; img-src https: data:; script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'self'; form-action 'none';">
+    <meta name="referrer" content="no-referrer">
+    <title>GIF CAPTCHA — Queue Manager 📋</title>
+    <link rel="stylesheet" href="shared.css">
+    <style>
+        .container { max-width: 1100px; }
+
+        .queue-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .queue-header h2 { margin: 0; }
+
+        .live-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            background: var(--green-bg);
+            color: var(--green);
+            padding: 0.3rem 0.8rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .live-badge .dot {
+            width: 8px; height: 8px;
+            background: var(--green);
+            border-radius: 50%;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .stat-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1rem;
+            text-align: center;
+        }
+
+        .stat-card .label {
+            font-size: 0.75rem;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.3rem;
+        }
+
+        .stat-card .value {
+            font-size: 1.6rem;
+            font-weight: 700;
+            color: var(--accent);
+        }
+
+        .stat-card .value.green { color: var(--green); }
+        .stat-card .value.red { color: var(--red); }
+        .stat-card .value.yellow { color: var(--yellow); }
+        .stat-card .value.purple { color: var(--purple); }
+
+        .stat-card .trend {
+            font-size: 0.75rem;
+            margin-top: 0.25rem;
+        }
+
+        .trend.up { color: var(--red); }
+        .trend.down { color: var(--green); }
+        .trend.flat { color: var(--muted); }
+
+        .panel {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.25rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .panel h3 {
+            margin: 0 0 1rem 0;
+            font-size: 1rem;
+            color: var(--text);
+        }
+
+        .throughput-chart {
+            width: 100%;
+            height: 220px;
+            position: relative;
+        }
+
+        .throughput-chart canvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        .queue-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .queue-table th {
+            text-align: left;
+            padding: 0.6rem 0.8rem;
+            font-size: 0.75rem;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .queue-table td {
+            padding: 0.6rem 0.8rem;
+            font-size: 0.85rem;
+            color: var(--text);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .queue-table tr:hover td {
+            background: var(--surface-hover);
+        }
+
+        .priority-badge {
+            display: inline-block;
+            padding: 0.15rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .priority-badge.high { background: var(--red-bg); color: var(--red); }
+        .priority-badge.medium { background: var(--yellow-bg); color: var(--yellow); }
+        .priority-badge.low { background: var(--green-bg); color: var(--green); }
+
+        .status-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+            font-size: 0.8rem;
+        }
+
+        .status-indicator .circle {
+            width: 6px; height: 6px;
+            border-radius: 50%;
+        }
+
+        .status-indicator.processing .circle { background: var(--accent); }
+        .status-indicator.waiting .circle { background: var(--yellow); }
+        .status-indicator.completed .circle { background: var(--green); }
+        .status-indicator.failed .circle { background: var(--red); }
+
+        .config-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1rem;
+        }
+
+        .config-field label {
+            display: block;
+            font-size: 0.8rem;
+            color: var(--muted);
+            margin-bottom: 0.3rem;
+        }
+
+        .config-field input,
+        .config-field select {
+            width: 100%;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text);
+            padding: 0.5rem;
+            font-size: 0.85rem;
+        }
+
+        .btn-row {
+            display: flex;
+            gap: 0.75rem;
+            margin-top: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .alert-bar {
+            display: none;
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            font-size: 0.85rem;
+        }
+
+        .alert-bar.warning {
+            display: block;
+            background: var(--yellow-bg);
+            border: 1px solid var(--yellow);
+            color: var(--yellow);
+        }
+
+        .alert-bar.critical {
+            display: block;
+            background: var(--red-bg);
+            border: 1px solid var(--red);
+            color: var(--red);
+        }
+
+        .tabs {
+            display: flex;
+            gap: 0;
+            margin-bottom: 1.5rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .tab {
+            padding: 0.6rem 1.2rem;
+            font-size: 0.85rem;
+            color: var(--muted);
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .tab:hover { color: var(--text); }
+        .tab.active {
+            color: var(--accent);
+            border-bottom-color: var(--accent);
+        }
+
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>📋 Queue Manager</h1>
+        <p>Monitor and manage CAPTCHA challenge queues — track depth, wait times, throughput, and backpressure in real time.</p>
+    </header>
+
+    <main class="container">
+        <div id="alertBar" class="alert-bar"></div>
+
+        <div class="queue-header">
+            <div>
+                <span class="live-badge"><span class="dot"></span> Live</span>
+            </div>
+            <div class="btn-row" style="margin:0">
+                <button class="btn btn-sm" onclick="pauseQueue()">⏸ Pause Queue</button>
+                <button class="btn btn-sm" onclick="flushQueue()">🗑 Flush</button>
+                <button class="btn btn-sm btn-primary" onclick="refreshData()">↻ Refresh</button>
+            </div>
+        </div>
+
+        <div class="stats-row">
+            <div class="stat-card">
+                <div class="label">Queue Depth</div>
+                <div class="value" id="queueDepth">0</div>
+                <div class="trend flat" id="depthTrend">—</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Avg Wait Time</div>
+                <div class="value yellow" id="avgWait">0ms</div>
+                <div class="trend flat" id="waitTrend">—</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Throughput/min</div>
+                <div class="value green" id="throughput">0</div>
+                <div class="trend flat" id="throughputTrend">—</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Active Workers</div>
+                <div class="value purple" id="workers">0</div>
+                <div class="trend flat" id="workerTrend">—</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Failed / Retried</div>
+                <div class="value red" id="failedRetried">0 / 0</div>
+                <div class="trend flat" id="failTrend">—</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Uptime</div>
+                <div class="value" id="uptime">0h 0m</div>
+                <div class="trend flat">since start</div>
+            </div>
+        </div>
+
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('live')">Live Queue</div>
+            <div class="tab" onclick="switchTab('throughput')">Throughput</div>
+            <div class="tab" onclick="switchTab('config')">Configuration</div>
+            <div class="tab" onclick="switchTab('history')">History</div>
+        </div>
+
+        <!-- Live Queue Tab -->
+        <div id="tab-live" class="tab-content active">
+            <div class="panel">
+                <h3>Active Queue Items</h3>
+                <table class="queue-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Type</th>
+                            <th>Priority</th>
+                            <th>Status</th>
+                            <th>Wait Time</th>
+                            <th>Retries</th>
+                            <th>Enqueued</th>
+                        </tr>
+                    </thead>
+                    <tbody id="queueBody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Throughput Tab -->
+        <div id="tab-throughput" class="tab-content">
+            <div class="panel">
+                <h3>Throughput Over Time (challenges/min)</h3>
+                <div class="throughput-chart">
+                    <canvas id="throughputCanvas"></canvas>
+                </div>
+            </div>
+            <div class="panel">
+                <h3>Wait Time Distribution</h3>
+                <div class="throughput-chart">
+                    <canvas id="waitCanvas"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Config Tab -->
+        <div id="tab-config" class="tab-content">
+            <div class="panel">
+                <h3>Queue Configuration</h3>
+                <div class="config-grid">
+                    <div class="config-field">
+                        <label>Max Queue Size</label>
+                        <input type="number" id="cfgMaxSize" value="1000" min="10" max="100000">
+                    </div>
+                    <div class="config-field">
+                        <label>Worker Count</label>
+                        <input type="number" id="cfgWorkers" value="4" min="1" max="64">
+                    </div>
+                    <div class="config-field">
+                        <label>Max Retries</label>
+                        <input type="number" id="cfgRetries" value="3" min="0" max="10">
+                    </div>
+                    <div class="config-field">
+                        <label>Timeout (ms)</label>
+                        <input type="number" id="cfgTimeout" value="5000" min="500" max="60000">
+                    </div>
+                    <div class="config-field">
+                        <label>Backpressure Strategy</label>
+                        <select id="cfgBackpressure">
+                            <option value="reject">Reject new</option>
+                            <option value="drop-oldest">Drop oldest</option>
+                            <option value="pause" selected>Pause intake</option>
+                        </select>
+                    </div>
+                    <div class="config-field">
+                        <label>Priority Mode</label>
+                        <select id="cfgPriority">
+                            <option value="fifo">FIFO</option>
+                            <option value="priority" selected>Priority-based</option>
+                            <option value="weighted">Weighted fair</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="btn-row">
+                    <button class="btn btn-primary" onclick="applyConfig()">Apply Configuration</button>
+                    <button class="btn" onclick="resetConfig()">Reset to Defaults</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- History Tab -->
+        <div id="tab-history" class="tab-content">
+            <div class="panel">
+                <h3>Recent Completed Challenges</h3>
+                <table class="queue-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Type</th>
+                            <th>Result</th>
+                            <th>Wait Time</th>
+                            <th>Process Time</th>
+                            <th>Completed</th>
+                        </tr>
+                    </thead>
+                    <tbody id="historyBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <footer>
+        <p>GIF CAPTCHA — Queue Manager &copy; 2025</p>
+    </footer>
+
+    <script src="shared.js"></script>
+    <script>
+    (function() {
+        'use strict';
+
+        // --- State ---
+        var queue = [];
+        var history = [];
+        var throughputData = [];
+        var waitData = [];
+        var paused = false;
+        var startTime = Date.now();
+        var totalProcessed = 0;
+        var totalFailed = 0;
+        var totalRetried = 0;
+        var idCounter = 1000;
+        var workerCount = 4;
+
+        var TYPES = ['image-select', 'text-match', 'animation-track', 'pattern-recall', 'object-count', 'color-match'];
+        var PRIORITIES = ['high', 'medium', 'low'];
+
+        // --- Tab switching ---
+        window.switchTab = function(name) {
+            document.querySelectorAll('.tab').forEach(function(t, i) {
+                var tabs = ['live', 'throughput', 'config', 'history'];
+                t.classList.toggle('active', tabs[i] === name);
+            });
+            document.querySelectorAll('.tab-content').forEach(function(c) {
+                c.classList.toggle('active', c.id === 'tab-' + name);
+            });
+            if (name === 'throughput') drawCharts();
+        };
+
+        // --- Queue simulation ---
+        function generateItem() {
+            idCounter++;
+            var pri = PRIORITIES[Math.floor(Math.random() * PRIORITIES.length)];
+            return {
+                id: 'CQ-' + idCounter,
+                type: TYPES[Math.floor(Math.random() * TYPES.length)],
+                priority: pri,
+                priorityWeight: pri === 'high' ? 3 : pri === 'medium' ? 2 : 1,
+                status: 'waiting',
+                waitTime: 0,
+                retries: 0,
+                enqueued: new Date()
+            };
+        }
+
+        function tick() {
+            if (paused) return;
+
+            // Enqueue 1-3 new items
+            var newCount = 1 + Math.floor(Math.random() * 3);
+            var maxSize = parseInt(document.getElementById('cfgMaxSize').value) || 1000;
+            for (var i = 0; i < newCount; i++) {
+                if (queue.length >= maxSize) {
+                    var strategy = document.getElementById('cfgBackpressure').value;
+                    if (strategy === 'reject') break;
+                    if (strategy === 'drop-oldest') queue.shift();
+                    if (strategy === 'pause') { paused = true; showAlert('warning', 'Queue paused — backpressure triggered at ' + maxSize + ' items'); break; }
+                }
+                queue.push(generateItem());
+            }
+
+            // Sort by priority if needed
+            var mode = document.getElementById('cfgPriority').value;
+            if (mode === 'priority') {
+                queue.sort(function(a, b) { return b.priorityWeight - a.priorityWeight; });
+            }
+
+            // Process items (workers)
+            var workers = parseInt(document.getElementById('cfgWorkers').value) || 4;
+            workerCount = workers;
+            var processed = 0;
+            for (var w = 0; w < workers && queue.length > 0; w++) {
+                var item = queue.shift();
+                item.waitTime = Date.now() - item.enqueued.getTime();
+                var maxRetries = parseInt(document.getElementById('cfgRetries').value) || 3;
+
+                // 8% failure rate
+                if (Math.random() < 0.08) {
+                    if (item.retries < maxRetries) {
+                        item.retries++;
+                        item.status = 'waiting';
+                        totalRetried++;
+                        queue.push(item);
+                    } else {
+                        item.status = 'failed';
+                        totalFailed++;
+                        history.unshift({
+                            id: item.id,
+                            type: item.type,
+                            result: 'failed',
+                            waitTime: item.waitTime,
+                            processTime: Math.round(50 + Math.random() * 200),
+                            completed: new Date()
+                        });
+                    }
+                } else {
+                    processed++;
+                    totalProcessed++;
+                    history.unshift({
+                        id: item.id,
+                        type: item.type,
+                        result: 'success',
+                        waitTime: item.waitTime,
+                        processTime: Math.round(50 + Math.random() * 300),
+                        completed: new Date()
+                    });
+                }
+            }
+
+            // Keep history manageable
+            if (history.length > 200) history.length = 200;
+
+            // Update wait times for queued items
+            var now = Date.now();
+            queue.forEach(function(item) {
+                item.waitTime = now - item.enqueued.getTime();
+            });
+
+            // Track throughput
+            throughputData.push({ time: new Date(), count: processed });
+            if (throughputData.length > 60) throughputData.shift();
+
+            // Track avg wait
+            var avgW = 0;
+            if (queue.length > 0) {
+                var sum = queue.reduce(function(s, i) { return s + i.waitTime; }, 0);
+                avgW = Math.round(sum / queue.length);
+            }
+            waitData.push({ time: new Date(), avg: avgW });
+            if (waitData.length > 60) waitData.shift();
+
+            updateUI();
+        }
+
+        // --- UI Updates ---
+        function updateUI() {
+            // Stats
+            var prevDepth = parseInt(document.getElementById('queueDepth').textContent) || 0;
+            document.getElementById('queueDepth').textContent = queue.length;
+            setTrend('depthTrend', queue.length, prevDepth, true);
+
+            var avgWait = 0;
+            if (queue.length > 0) {
+                avgWait = Math.round(queue.reduce(function(s, i) { return s + i.waitTime; }, 0) / queue.length);
+            }
+            document.getElementById('avgWait').textContent = avgWait + 'ms';
+
+            var recentThroughput = 0;
+            if (throughputData.length > 0) {
+                var last5 = throughputData.slice(-5);
+                recentThroughput = Math.round(last5.reduce(function(s, d) { return s + d.count; }, 0) / last5.length * 60);
+            }
+            document.getElementById('throughput').textContent = recentThroughput;
+            document.getElementById('workers').textContent = workerCount;
+            document.getElementById('failedRetried').textContent = totalFailed + ' / ' + totalRetried;
+
+            var elapsed = Date.now() - startTime;
+            var hours = Math.floor(elapsed / 3600000);
+            var mins = Math.floor((elapsed % 3600000) / 60000);
+            document.getElementById('uptime').textContent = hours + 'h ' + mins + 'm';
+
+            // Alert
+            if (queue.length > 800) {
+                showAlert('critical', '⚠ Queue depth critical: ' + queue.length + ' items. Consider increasing workers or enabling backpressure.');
+            } else if (queue.length > 500) {
+                showAlert('warning', '⚡ Queue depth elevated: ' + queue.length + ' items.');
+            } else {
+                hideAlert();
+            }
+
+            // Queue table
+            var tbody = document.getElementById('queueBody');
+            var rows = '';
+            var displayed = queue.slice(0, 25);
+            for (var i = 0; i < displayed.length; i++) {
+                var item = displayed[i];
+                rows += '<tr>'
+                    + '<td><code>' + sanitize(item.id) + '</code></td>'
+                    + '<td>' + sanitize(item.type) + '</td>'
+                    + '<td><span class="priority-badge ' + item.priority + '">' + item.priority + '</span></td>'
+                    + '<td><span class="status-indicator ' + item.status + '"><span class="circle"></span> ' + item.status + '</span></td>'
+                    + '<td>' + item.waitTime + 'ms</td>'
+                    + '<td>' + item.retries + '</td>'
+                    + '<td>' + item.enqueued.toLocaleTimeString() + '</td>'
+                    + '</tr>';
+            }
+            if (queue.length > 25) {
+                rows += '<tr><td colspan="7" style="text-align:center;color:var(--muted)">… and ' + (queue.length - 25) + ' more items</td></tr>';
+            }
+            if (queue.length === 0) {
+                rows = '<tr><td colspan="7" style="text-align:center;color:var(--muted)">Queue empty — all challenges processed ✅</td></tr>';
+            }
+            tbody.innerHTML = rows;
+
+            // History table
+            var hbody = document.getElementById('historyBody');
+            var hrows = '';
+            var hDisplayed = history.slice(0, 30);
+            for (var h = 0; h < hDisplayed.length; h++) {
+                var hi = hDisplayed[h];
+                var resultClass = hi.result === 'success' ? 'completed' : 'failed';
+                hrows += '<tr>'
+                    + '<td><code>' + sanitize(hi.id) + '</code></td>'
+                    + '<td>' + sanitize(hi.type) + '</td>'
+                    + '<td><span class="status-indicator ' + resultClass + '"><span class="circle"></span> ' + hi.result + '</span></td>'
+                    + '<td>' + hi.waitTime + 'ms</td>'
+                    + '<td>' + hi.processTime + 'ms</td>'
+                    + '<td>' + hi.completed.toLocaleTimeString() + '</td>'
+                    + '</tr>';
+            }
+            hbody.innerHTML = hrows || '<tr><td colspan="6" style="text-align:center;color:var(--muted)">No history yet</td></tr>';
+        }
+
+        function setTrend(id, current, previous, invertColor) {
+            var el = document.getElementById(id);
+            if (current > previous) {
+                el.textContent = '▲ ' + (current - previous);
+                el.className = 'trend ' + (invertColor ? 'up' : 'down');
+            } else if (current < previous) {
+                el.textContent = '▼ ' + (previous - current);
+                el.className = 'trend ' + (invertColor ? 'down' : 'up');
+            } else {
+                el.textContent = '— stable';
+                el.className = 'trend flat';
+            }
+        }
+
+        function showAlert(level, msg) {
+            var bar = document.getElementById('alertBar');
+            bar.className = 'alert-bar ' + level;
+            bar.textContent = msg;
+        }
+
+        function hideAlert() {
+            document.getElementById('alertBar').className = 'alert-bar';
+        }
+
+        // --- Charts ---
+        function drawCharts() {
+            drawLineChart('throughputCanvas', throughputData, 'count', 'Challenges/tick', 'var(--green)');
+            drawLineChart('waitCanvas', waitData, 'avg', 'Avg wait (ms)', 'var(--yellow)');
+        }
+
+        function drawLineChart(canvasId, data, field, label, color) {
+            var canvas = document.getElementById(canvasId);
+            if (!canvas) return;
+            var ctx = canvas.getContext('2d');
+            var W = canvas.parentElement.clientWidth;
+            var H = canvas.parentElement.clientHeight;
+            canvas.width = W * window.devicePixelRatio;
+            canvas.height = H * window.devicePixelRatio;
+            canvas.style.width = W + 'px';
+            canvas.style.height = H + 'px';
+            ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+            ctx.clearRect(0, 0, W, H);
+
+            if (data.length < 2) {
+                ctx.fillStyle = '#8b949e';
+                ctx.font = '14px system-ui';
+                ctx.textAlign = 'center';
+                ctx.fillText('Collecting data…', W / 2, H / 2);
+                return;
+            }
+
+            var pad = { top: 30, right: 20, bottom: 30, left: 50 };
+            var cW = W - pad.left - pad.right;
+            var cH = H - pad.top - pad.bottom;
+
+            var max = Math.max.apply(null, data.map(function(d) { return d[field]; })) || 1;
+            max = Math.ceil(max * 1.2);
+
+            // Grid
+            ctx.strokeStyle = '#30363d';
+            ctx.lineWidth = 0.5;
+            for (var g = 0; g <= 4; g++) {
+                var gy = pad.top + (cH / 4) * g;
+                ctx.beginPath();
+                ctx.moveTo(pad.left, gy);
+                ctx.lineTo(W - pad.right, gy);
+                ctx.stroke();
+                ctx.fillStyle = '#8b949e';
+                ctx.font = '11px system-ui';
+                ctx.textAlign = 'right';
+                ctx.fillText(Math.round(max - (max / 4) * g), pad.left - 8, gy + 4);
+            }
+
+            // Label
+            ctx.fillStyle = '#8b949e';
+            ctx.font = '12px system-ui';
+            ctx.textAlign = 'center';
+            ctx.fillText(label, W / 2, 16);
+
+            // Line
+            var cssColor = color.replace('var(', '').replace(')', '');
+            var colors = { '--green': '#3fb950', '--yellow': '#d29922', '--accent': '#58a6ff' };
+            var lineColor = colors[cssColor] || '#58a6ff';
+
+            ctx.strokeStyle = lineColor;
+            ctx.lineWidth = 2;
+            ctx.lineJoin = 'round';
+            ctx.beginPath();
+            for (var i = 0; i < data.length; i++) {
+                var x = pad.left + (cW / (data.length - 1)) * i;
+                var y = pad.top + cH - (data[i][field] / max) * cH;
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+
+            // Area fill
+            ctx.lineTo(pad.left + cW, pad.top + cH);
+            ctx.lineTo(pad.left, pad.top + cH);
+            ctx.closePath();
+            ctx.fillStyle = lineColor.replace('#', '#') + '20';
+            ctx.fill();
+        }
+
+        // --- Controls ---
+        window.pauseQueue = function() {
+            paused = !paused;
+            if (paused) {
+                showAlert('warning', 'Queue paused manually. Click Pause again to resume.');
+            } else {
+                hideAlert();
+            }
+        };
+
+        window.flushQueue = function() {
+            if (confirm('Flush all queued items? This cannot be undone.')) {
+                queue.length = 0;
+                updateUI();
+            }
+        };
+
+        window.refreshData = function() {
+            updateUI();
+            if (document.querySelector('.tab-content#tab-throughput.active')) {
+                drawCharts();
+            }
+        };
+
+        window.applyConfig = function() {
+            showAlert('warning', '✅ Configuration applied successfully.');
+            setTimeout(hideAlert, 3000);
+        };
+
+        window.resetConfig = function() {
+            document.getElementById('cfgMaxSize').value = 1000;
+            document.getElementById('cfgWorkers').value = 4;
+            document.getElementById('cfgRetries').value = 3;
+            document.getElementById('cfgTimeout').value = 5000;
+            document.getElementById('cfgBackpressure').value = 'pause';
+            document.getElementById('cfgPriority').value = 'priority';
+        };
+
+        // --- Bootstrap ---
+        // Seed initial queue
+        for (var s = 0; s < 12; s++) {
+            queue.push(generateItem());
+        }
+        updateUI();
+
+        setInterval(tick, 1000);
+        setInterval(function() {
+            if (document.querySelector('.tab-content#tab-throughput.active')) {
+                drawCharts();
+            }
+        }, 2000);
+    })();
+    </script>
+</body>
+</html>

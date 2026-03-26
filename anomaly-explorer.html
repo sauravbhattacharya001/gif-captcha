@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; img-src https: data:; script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'self'; form-action 'none';">
+    <meta name="referrer" content="no-referrer">
+    <title>GIF CAPTCHA — Anomaly Explorer 🔍</title>
+    <link rel="stylesheet" href="shared.css">
+    <style>
+        .container { max-width: 1100px; }
+
+        .controls-bar {
+            display: flex;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+            margin-bottom: 1.5rem;
+            align-items: center;
+        }
+        .controls-bar label {
+            font-size: 0.85rem;
+            color: var(--muted);
+        }
+        .controls-bar select,
+        .controls-bar input {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text);
+            padding: 0.4rem 0.6rem;
+            font-size: 0.85rem;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        .stat-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1rem;
+            text-align: center;
+        }
+        .stat-card .label { font-size: 0.8rem; color: var(--muted); margin-bottom: 0.3rem; }
+        .stat-card .value { font-size: 1.5rem; font-weight: 700; }
+
+        .timeline-canvas {
+            width: 100%;
+            height: 300px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            margin-bottom: 1.5rem;
+        }
+
+        .anomaly-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 1.5rem;
+        }
+        .anomaly-table th,
+        .anomaly-table td {
+            text-align: left;
+            padding: 0.6rem 0.8rem;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.85rem;
+        }
+        .anomaly-table th {
+            color: var(--muted);
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+            background: var(--bg);
+        }
+        .anomaly-table tr:hover { background: var(--surface-hover); }
+
+        .severity-badge {
+            display: inline-block;
+            padding: 0.15rem 0.5rem;
+            border-radius: 999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .severity-critical { background: var(--red-bg); color: var(--red); }
+        .severity-warning  { background: var(--yellow-bg); color: var(--yellow); }
+        .severity-info     { background: var(--purple-bg); color: var(--purple); }
+
+        .detail-panel {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.25rem;
+            margin-bottom: 1.5rem;
+            display: none;
+        }
+        .detail-panel.active { display: block; }
+        .detail-panel h3 { margin-bottom: 0.75rem; font-size: 1rem; }
+        .detail-panel pre {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.75rem;
+            font-size: 0.8rem;
+            overflow-x: auto;
+            color: var(--muted);
+        }
+
+        .filter-chips {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            margin-bottom: 1rem;
+        }
+        .chip {
+            padding: 0.25rem 0.7rem;
+            border-radius: 999px;
+            border: 1px solid var(--border);
+            font-size: 0.8rem;
+            cursor: pointer;
+            background: var(--surface);
+            color: var(--muted);
+            transition: all 0.15s;
+        }
+        .chip.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+        .chip:hover { border-color: var(--accent); }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🔍 Anomaly Explorer</h1>
+        <p>Simulate, visualize, and drill into CAPTCHA anomaly events in real-time</p>
+        <a href="index.html">← Back to home</a>
+    </div>
+
+    <div class="container">
+        <!-- Controls -->
+        <div class="controls-bar">
+            <label>Sensitivity:
+                <select id="sensitivity">
+                    <option value="low">Low</option>
+                    <option value="medium" selected>Medium</option>
+                    <option value="high">High</option>
+                </select>
+            </label>
+            <label>Events:
+                <input type="number" id="eventCount" value="200" min="20" max="2000" step="10" style="width:80px">
+            </label>
+            <label>Bot %:
+                <input type="number" id="botPercent" value="15" min="0" max="100" step="1" style="width:60px">
+            </label>
+            <label>Burst attack:
+                <input type="checkbox" id="injectBurst">
+            </label>
+            <button class="btn" onclick="runSimulation()">▶ Run Simulation</button>
+            <button class="btn btn-secondary" onclick="exportCSV()">📥 Export CSV</button>
+        </div>
+
+        <!-- Stats -->
+        <div class="stats-grid" id="statsGrid">
+            <div class="stat-card"><div class="label">Total Events</div><div class="value" id="totalEvents">—</div></div>
+            <div class="stat-card"><div class="label">Anomalies</div><div class="value" id="anomalyCount">—</div></div>
+            <div class="stat-card"><div class="label">Critical</div><div class="value" id="criticalCount" style="color:var(--red)">—</div></div>
+            <div class="stat-card"><div class="label">Healthy</div><div class="value" id="healthStatus">—</div></div>
+            <div class="stat-card"><div class="label">Avg Duration</div><div class="value" id="avgDuration">—</div></div>
+            <div class="stat-card"><div class="label">Solve Rate</div><div class="value" id="solveRate">—</div></div>
+        </div>
+
+        <!-- Filter chips -->
+        <div class="filter-chips" id="filterChips">
+            <span class="chip active" data-filter="all">All</span>
+            <span class="chip" data-filter="solve_rate">Solve Rate</span>
+            <span class="chip" data-filter="response_time">Response Time</span>
+            <span class="chip" data-filter="traffic_volume">Traffic Volume</span>
+            <span class="chip" data-filter="failure_burst">Failure Burst</span>
+            <span class="chip" data-filter="geo_shift">Geo Shift</span>
+        </div>
+
+        <!-- Timeline -->
+        <canvas id="timeline" class="timeline-canvas"></canvas>
+
+        <!-- Anomaly table -->
+        <div style="overflow-x:auto; max-height: 400px; overflow-y: auto; border: 1px solid var(--border); border-radius: 10px;">
+            <table class="anomaly-table" id="anomalyTable">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Time</th>
+                        <th>Type</th>
+                        <th>Severity</th>
+                        <th>Z-Score</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody id="anomalyBody"></tbody>
+            </table>
+        </div>
+
+        <!-- Detail panel -->
+        <div class="detail-panel" id="detailPanel">
+            <h3 id="detailTitle">Anomaly Detail</h3>
+            <pre id="detailJSON"></pre>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <p>GIF CAPTCHA Research Study — Anomaly Explorer</p>
+    </footer>
+
+    <script src="shared.js"></script>
+    <script>
+    "use strict";
+
+    // ── State ────────────────────────────────────────────────────
+    var lastReport = null;
+    var allAnomalies = [];
+    var allEvents = [];
+    var activeFilter = "all";
+
+    // ── Chip filters ─────────────────────────────────────────────
+    document.getElementById("filterChips").addEventListener("click", function(e) {
+        if (!e.target.classList.contains("chip")) return;
+        document.querySelectorAll(".chip").forEach(function(c) { c.classList.remove("active"); });
+        e.target.classList.add("active");
+        activeFilter = e.target.dataset.filter;
+        renderTable();
+    });
+
+    // ── Simulation (self-contained, no external deps) ────────────
+    function runSimulation() {
+        var sensitivity = document.getElementById("sensitivity").value;
+        var count = parseInt(document.getElementById("eventCount").value, 10) || 200;
+        var botPct = parseInt(document.getElementById("botPercent").value, 10) || 15;
+        var injectBurst = document.getElementById("injectBurst").checked;
+
+        var presets = {
+            low:    { zThreshold: 3.5, iqrMult: 2.5, burstWindow: 120000, burstThreshold: 20 },
+            medium: { zThreshold: 2.5, iqrMult: 1.8, burstWindow: 60000,  burstThreshold: 10 },
+            high:   { zThreshold: 2.0, iqrMult: 1.5, burstWindow: 30000,  burstThreshold: 5  }
+        };
+        var cfg = presets[sensitivity];
+
+        // Generate synthetic events
+        var events = [];
+        var baseTime = Date.now() - count * 500;
+        var countries = ["US","US","US","GB","DE","FR","JP","BR","IN","CA"];
+
+        for (var i = 0; i < count; i++) {
+            var isBot = Math.random() * 100 < botPct;
+            var t = baseTime + i * 500 + Math.random() * 200;
+
+            if (isBot) {
+                events.push({
+                    time: t,
+                    type: "solve",
+                    duration: 100 + Math.random() * 300,
+                    success: Math.random() > 0.6,
+                    country: countries[Math.floor(Math.random() * countries.length)],
+                    isBot: true
+                });
+            } else {
+                events.push({
+                    time: t,
+                    type: "solve",
+                    duration: 1500 + Math.random() * 4000,
+                    success: Math.random() > 0.15,
+                    country: countries[Math.floor(Math.random() * 6)],
+                    isBot: false
+                });
+            }
+        }
+
+        // Inject burst attack
+        if (injectBurst) {
+            var burstTime = baseTime + Math.floor(count * 0.6) * 500;
+            for (var b = 0; b < 25; b++) {
+                events.push({
+                    time: burstTime + b * 200,
+                    type: "solve",
+                    duration: 50 + Math.random() * 100,
+                    success: false,
+                    country: "RU",
+                    isBot: true
+                });
+            }
+            events.sort(function(a, b) { return a.time - b.time; });
+        }
+
+        allEvents = events;
+
+        // Analyze
+        var durations = events.map(function(e) { return e.duration; });
+        var successes = events.filter(function(e) { return e.success; }).length;
+        var solveRate = successes / events.length;
+        var mean = durations.reduce(function(a, b) { return a + b; }, 0) / durations.length;
+        var sorted = durations.slice().sort(function(a, b) { return a - b; });
+        var q1 = sorted[Math.floor(sorted.length * 0.25)];
+        var q3 = sorted[Math.floor(sorted.length * 0.75)];
+        var iqr = q3 - q1;
+        var variance = durations.reduce(function(s, v) { return s + (v - mean) * (v - mean); }, 0) / durations.length;
+        var stddev = Math.sqrt(variance);
+
+        // Detect anomalies
+        var anomalies = [];
+        var windowFailures = [];
+
+        for (var j = 0; j < events.length; j++) {
+            var ev = events[j];
+            var z = stddev > 0 ? Math.abs((ev.duration - mean) / stddev) : 0;
+
+            // Z-score anomaly on response time
+            if (z > cfg.zThreshold) {
+                anomalies.push({
+                    index: j,
+                    time: ev.time,
+                    type: "response_time",
+                    severity: z > cfg.zThreshold * 1.5 ? "critical" : "warning",
+                    zScore: z,
+                    description: "Response time " + Math.round(ev.duration) + "ms (z=" + z.toFixed(2) + ")",
+                    event: ev
+                });
+            }
+
+            // IQR fence
+            if (ev.duration < q1 - cfg.iqrMult * iqr) {
+                anomalies.push({
+                    index: j,
+                    time: ev.time,
+                    type: "solve_rate",
+                    severity: ev.duration < 200 ? "critical" : "info",
+                    zScore: z,
+                    description: "Suspiciously fast solve: " + Math.round(ev.duration) + "ms (IQR fence: " + Math.round(q1 - cfg.iqrMult * iqr) + "ms)",
+                    event: ev
+                });
+            }
+
+            // Failure burst detection
+            windowFailures.push({ time: ev.time, failed: !ev.success });
+            windowFailures = windowFailures.filter(function(f) { return ev.time - f.time < cfg.burstWindow; });
+            var failCount = windowFailures.filter(function(f) { return f.failed; }).length;
+            if (failCount >= cfg.burstThreshold && !ev.success) {
+                anomalies.push({
+                    index: j,
+                    time: ev.time,
+                    type: "failure_burst",
+                    severity: failCount >= cfg.burstThreshold * 2 ? "critical" : "warning",
+                    zScore: failCount,
+                    description: failCount + " failures in " + (cfg.burstWindow / 1000) + "s window",
+                    event: ev
+                });
+            }
+        }
+
+        // Geo shift detection — check if any country dominates unexpectedly
+        var geoCounts = {};
+        events.forEach(function(e) { geoCounts[e.country] = (geoCounts[e.country] || 0) + 1; });
+        var totalGeo = events.length;
+        Object.keys(geoCounts).forEach(function(c) {
+            var pct = geoCounts[c] / totalGeo;
+            if (pct > 0.4 && c !== "US") {
+                anomalies.push({
+                    index: -1,
+                    time: events[events.length - 1].time,
+                    type: "geo_shift",
+                    severity: pct > 0.6 ? "critical" : "warning",
+                    zScore: pct * 100,
+                    description: c + " accounts for " + (pct * 100).toFixed(1) + "% of traffic",
+                    event: null
+                });
+            }
+        });
+
+        // Deduplicate nearby anomalies
+        var deduped = [];
+        anomalies.sort(function(a, b) { return a.time - b.time; });
+        for (var d = 0; d < anomalies.length; d++) {
+            if (d === 0 || anomalies[d].type !== anomalies[d - 1].type || anomalies[d].time - anomalies[d - 1].time > 2000) {
+                deduped.push(anomalies[d]);
+            }
+        }
+
+        allAnomalies = deduped;
+        var criticals = deduped.filter(function(a) { return a.severity === "critical"; }).length;
+
+        lastReport = {
+            total: events.length,
+            anomalyCount: deduped.length,
+            criticals: criticals,
+            healthy: deduped.length === 0,
+            avgDuration: mean,
+            solveRate: solveRate,
+            config: cfg
+        };
+
+        // Update UI
+        document.getElementById("totalEvents").textContent = events.length;
+        document.getElementById("anomalyCount").textContent = deduped.length;
+        document.getElementById("criticalCount").textContent = criticals;
+        document.getElementById("healthStatus").textContent = deduped.length === 0 ? "✅ Yes" : "⚠️ No";
+        document.getElementById("healthStatus").style.color = deduped.length === 0 ? "var(--green)" : "var(--yellow)";
+        document.getElementById("avgDuration").textContent = Math.round(mean) + "ms";
+        document.getElementById("solveRate").textContent = (solveRate * 100).toFixed(1) + "%";
+
+        renderTimeline();
+        renderTable();
+    }
+
+    // ── Timeline canvas ──────────────────────────────────────────
+    function renderTimeline() {
+        var canvas = document.getElementById("timeline");
+        var ctx = canvas.getContext("2d");
+        var dpr = window.devicePixelRatio || 1;
+        canvas.width = canvas.clientWidth * dpr;
+        canvas.height = canvas.clientHeight * dpr;
+        ctx.scale(dpr, dpr);
+
+        var W = canvas.clientWidth;
+        var H = canvas.clientHeight;
+        ctx.clearRect(0, 0, W, H);
+
+        if (!allEvents.length) return;
+
+        var tMin = allEvents[0].time;
+        var tMax = allEvents[allEvents.length - 1].time;
+        var dMax = 0;
+        allEvents.forEach(function(e) { if (e.duration > dMax) dMax = e.duration; });
+        dMax = dMax * 1.1;
+
+        var pad = { top: 20, right: 20, bottom: 30, left: 55 };
+        var plotW = W - pad.left - pad.right;
+        var plotH = H - pad.top - pad.bottom;
+
+        // Grid
+        ctx.strokeStyle = "#30363d";
+        ctx.lineWidth = 0.5;
+        for (var g = 0; g <= 4; g++) {
+            var gy = pad.top + (plotH / 4) * g;
+            ctx.beginPath(); ctx.moveTo(pad.left, gy); ctx.lineTo(W - pad.right, gy); ctx.stroke();
+            ctx.fillStyle = "#8b949e";
+            ctx.font = "11px -apple-system, sans-serif";
+            ctx.textAlign = "right";
+            ctx.fillText(Math.round(dMax - (dMax / 4) * g) + "ms", pad.left - 6, gy + 4);
+        }
+
+        // Plot events
+        var anomalyTimes = {};
+        allAnomalies.forEach(function(a) { anomalyTimes[a.index] = a.severity; });
+
+        for (var i = 0; i < allEvents.length; i++) {
+            var ev = allEvents[i];
+            var x = pad.left + ((ev.time - tMin) / (tMax - tMin || 1)) * plotW;
+            var y = pad.top + plotH - (ev.duration / dMax) * plotH;
+            var r = 2.5;
+
+            if (anomalyTimes[i]) {
+                r = 5;
+                ctx.fillStyle = anomalyTimes[i] === "critical" ? "#f85149" : "#d29922";
+                ctx.globalAlpha = 0.9;
+            } else {
+                ctx.fillStyle = ev.success ? "#3fb950" : "#8b949e";
+                ctx.globalAlpha = 0.5;
+            }
+
+            ctx.beginPath();
+            ctx.arc(x, y, r, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+
+        // X-axis label
+        ctx.fillStyle = "#8b949e";
+        ctx.font = "11px -apple-system, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("Time →", W / 2, H - 5);
+    }
+
+    // ── Anomaly table ────────────────────────────────────────────
+    function renderTable() {
+        var tbody = document.getElementById("anomalyBody");
+        var filtered = activeFilter === "all" ? allAnomalies : allAnomalies.filter(function(a) { return a.type === activeFilter; });
+
+        if (filtered.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:2rem">No anomalies detected — try increasing bot % or enabling burst attack</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = filtered.map(function(a, idx) {
+            var timeStr = new Date(a.time).toLocaleTimeString();
+            var sevClass = "severity-" + (a.severity === "critical" ? "critical" : a.severity === "warning" ? "warning" : "info");
+            return '<tr onclick="showDetail(' + idx + ')" style="cursor:pointer">' +
+                '<td>' + (idx + 1) + '</td>' +
+                '<td>' + sanitize(timeStr) + '</td>' +
+                '<td>' + sanitize(a.type.replace(/_/g, " ")) + '</td>' +
+                '<td><span class="severity-badge ' + sevClass + '">' + sanitize(a.severity) + '</span></td>' +
+                '<td>' + a.zScore.toFixed(2) + '</td>' +
+                '<td>' + sanitize(a.description) + '</td>' +
+                '</tr>';
+        }).join("");
+    }
+
+    // ── Detail panel ─────────────────────────────────────────────
+    function showDetail(idx) {
+        var filtered = activeFilter === "all" ? allAnomalies : allAnomalies.filter(function(a) { return a.type === activeFilter; });
+        var a = filtered[idx];
+        if (!a) return;
+
+        var panel = document.getElementById("detailPanel");
+        panel.classList.add("active");
+        document.getElementById("detailTitle").textContent = "Anomaly: " + a.type.replace(/_/g, " ") + " (" + a.severity + ")";
+
+        var detail = {
+            type: a.type,
+            severity: a.severity,
+            zScore: parseFloat(a.zScore.toFixed(3)),
+            description: a.description,
+            timestamp: new Date(a.time).toISOString()
+        };
+        if (a.event) {
+            detail.event = {
+                duration: Math.round(a.event.duration) + "ms",
+                success: a.event.success,
+                country: a.event.country,
+                isBot: a.event.isBot
+            };
+        }
+        document.getElementById("detailJSON").textContent = JSON.stringify(detail, null, 2);
+    }
+
+    // ── CSV export ───────────────────────────────────────────────
+    function exportCSV() {
+        if (!allAnomalies.length) { alert("Run a simulation first!"); return; }
+        var rows = [["Index","Time","Type","Severity","ZScore","Description"]];
+        allAnomalies.forEach(function(a, i) {
+            rows.push([i + 1, new Date(a.time).toISOString(), a.type, a.severity, a.zScore.toFixed(3), '"' + a.description + '"']);
+        });
+        var csv = rows.map(function(r) { return r.join(","); }).join("\n");
+        var blob = new Blob([csv], { type: "text/csv" });
+        var url = URL.createObjectURL(blob);
+        var link = document.createElement("a");
+        link.href = url;
+        link.download = "anomalies-" + new Date().toISOString().slice(0, 10) + ".csv";
+        link.click();
+        URL.revokeObjectURL(url);
+    }
+
+    // ── Resize handler ───────────────────────────────────────────
+    window.addEventListener("resize", function() { if (allEvents.length) renderTimeline(); });
+
+    // Auto-run on load
+    runSimulation();
+    </script>
+</body>
+</html>

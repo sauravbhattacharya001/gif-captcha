@@ -82,11 +82,51 @@ function secureRandomHex(len) {
 /**
  * Generate a cryptographically secure random integer in [0, exclusiveMax).
  *
+ * Uses rejection sampling to eliminate modulo bias (CWE-330).
+ * When exclusiveMax doesn't evenly divide 2^32, a naive
+ * `floor(random_uint32 / 2^32 * max)` approach produces a non-uniform
+ * distribution — some values are slightly more probable than others.
+ * For security-critical selection (challenge picking, token generation,
+ * Fisher-Yates shuffling), this bias is theoretically exploitable.
+ *
+ * Rejection sampling discards values in the biased tail of [0, 2^32)
+ * and re-draws, guaranteeing a perfectly uniform result.  The expected
+ * number of draws is < 2 for any exclusiveMax.
+ *
+ * Falls back to the float-multiplication approach when no CSPRNG is
+ * available (same as secureRandom's Math.random fallback).
+ *
  * @param {number} exclusiveMax - Exclusive upper bound (must be > 0)
- * @returns {number} Random integer in [0, exclusiveMax)
+ * @returns {number} Uniformly distributed random integer in [0, exclusiveMax)
  */
 function secureRandomInt(exclusiveMax) {
-  return Math.floor(secureRandom() * exclusiveMax);
+  if (exclusiveMax <= 0) return 0;
+  if (exclusiveMax === 1) return 0;
+
+  // When a CSPRNG is available, use rejection sampling on raw uint32
+  // to avoid modulo bias entirely.
+  if (_crypto && typeof _crypto.randomBytes === "function") {
+    var max32 = 4294967296; // 2^32
+    var limit = max32 - (max32 % exclusiveMax); // largest multiple of exclusiveMax <= 2^32
+    var val;
+    do {
+      val = _crypto.randomBytes(4).readUInt32BE(0);
+    } while (val >= limit);
+    return val % exclusiveMax;
+  }
+  if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+    var max32w = 4294967296;
+    var limitW = max32w - (max32w % exclusiveMax);
+    var arr = new Uint32Array(1);
+    do {
+      crypto.getRandomValues(arr);
+    } while (arr[0] >= limitW);
+    return arr[0] % exclusiveMax;
+  }
+
+  // Fallback (no CSPRNG) — float multiplication (biased but best-effort)
+  _warnOnce();
+  return Math.floor(Math.random() * exclusiveMax);
 }
 
 if (typeof module !== "undefined" && module.exports) {

@@ -37,7 +37,26 @@
   function _clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
   function _grade(s) { if (s >= 90) return "A"; if (s >= 80) return "B"; if (s >= 65) return "C"; if (s >= 50) return "D"; return "F"; }
   function _now() { return new Date().toISOString(); }
-  function _uid() { var h = 0, s = _now() + Math.random().toString(36); for (var i = 0; i < s.length; i++) { h = ((h << 5) - h + s.charCodeAt(i)) | 0; } return "f-" + Math.abs(h).toString(36); }
+  function _uid() {
+    // Use crypto for unpredictable IDs when available (CWE-330 mitigation).
+    // Falls back to timestamp-based hash only in browser contexts without
+    // Web Crypto, which is acceptable for internal finding IDs.
+    var _cr;
+    try { if (typeof require !== "undefined") _cr = require("crypto"); } catch (e) { /* browser */ }
+    if (_cr && typeof _cr.randomBytes === "function") {
+      return "f-" + _cr.randomBytes(6).toString("hex");
+    }
+    if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+      var bytes = new Uint8Array(6);
+      crypto.getRandomValues(bytes);
+      var s = "f-";
+      for (var k = 0; k < bytes.length; k++) s += bytes[k].toString(16).padStart(2, "0");
+      return s;
+    }
+    var h = 0, ts = _now() + Math.random().toString(36);
+    for (var i = 0; i < ts.length; i++) { h = ((h << 5) - h + ts.charCodeAt(i)) | 0; }
+    return "f-" + Math.abs(h).toString(36);
+  }
 
   function _parseHex(hex) {
     if (typeof hex !== "string") return null;

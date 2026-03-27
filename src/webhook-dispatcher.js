@@ -16,6 +16,7 @@
  */
 
 const crypto = require("crypto");
+const { secureRandomHex } = require("./crypto-utils");
 
 // ── Default Config ──────────────────────────────────────────────────
 
@@ -116,7 +117,6 @@ function WebhookDispatcher(options) {
   this._deliveryLog = []; // recent deliveries
   this._maxLogSize = _posOpt(options.maxLogSize, 500);
   this._rateBuckets = new Map(); // webhookId → { count, windowStart }
-  this._idCounter = 0;
   this._paused = false;
 }
 
@@ -126,8 +126,8 @@ function _posOpt(val, fallback) {
   return val != null && val > 0 ? val : fallback;
 }
 
-function _generateId(counter) {
-  return "wh_" + Date.now().toString(36) + "_" + counter;
+function _generateId() {
+  return "wh_" + secureRandomHex(12) + "_" + Date.now().toString(36);
 }
 
 function _signPayload(payload, secret) {
@@ -173,7 +173,7 @@ WebhookDispatcher.prototype.register = function (config) {
     }
   }
 
-  var id = _generateId(++this._idCounter);
+  var id = _generateId();
   this._webhooks.set(id, {
     id: id,
     url: config.url,
@@ -408,7 +408,8 @@ WebhookDispatcher.prototype._attemptDelivery = function (wh, headers, payload, e
 WebhookDispatcher.prototype._addLog = function (entry) {
   this._deliveryLog.push(entry);
   if (this._deliveryLog.length > this._maxLogSize) {
-    this._deliveryLog = this._deliveryLog.slice(-Math.floor(this._maxLogSize * 0.8));
+    // Remove oldest 20% in place instead of creating a new array
+    this._deliveryLog.splice(0, Math.ceil(this._maxLogSize * 0.2));
   }
 };
 

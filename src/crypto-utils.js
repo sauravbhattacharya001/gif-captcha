@@ -17,27 +17,16 @@
 var _crypto;
 try { _crypto = require("crypto"); } catch (e) { _crypto = null; }
 
-var _warnedNoCrypto = false;
-
-function _warnOnce() {
-  if (!_warnedNoCrypto) {
-    _warnedNoCrypto = true;
-    if (typeof console !== "undefined" && console.warn) {
-      console.warn(
-        "gif-captcha/crypto-utils: no crypto source available, falling back to " +
-        "Math.random(). Random values will be predictable (CWE-330)."
-      );
-    }
-  }
-}
-
 /**
  * Return a cryptographically secure random float in [0, 1).
  *
  * Uses Node.js crypto.randomBytes or Web Crypto API when available.
- * Falls back to Math.random() with a console warning.
+ * Throws if no cryptographic source is available — a CAPTCHA library
+ * must never fall back to Math.random() as it is predictable (CWE-330)
+ * and would allow attackers to forecast challenges.
  *
  * @returns {number} Random float in [0, 1)
+ * @throws {Error} If no cryptographic random source is available
  */
 function secureRandom() {
   if (_crypto && typeof _crypto.randomBytes === "function") {
@@ -48,8 +37,12 @@ function secureRandom() {
     crypto.getRandomValues(arr);
     return arr[0] / 4294967296;
   }
-  _warnOnce();
-  return Math.random();
+  throw new Error(
+    "gif-captcha/crypto-utils: no cryptographic random source available. " +
+    "CAPTCHA security requires crypto.randomBytes (Node.js) or " +
+    "crypto.getRandomValues (browser). Math.random() is predictable " +
+    "and must not be used for challenge generation (CWE-330)."
+  );
 }
 
 /**
@@ -71,22 +64,62 @@ function secureRandomHex(len) {
     }
     return s.slice(0, len);
   }
-  _warnOnce();
-  var s = "";
-  for (var j = 0; j < len; j++) {
-    s += Math.floor(Math.random() * 16).toString(16);
-  }
-  return s;
+  throw new Error(
+    "gif-captcha/crypto-utils: no cryptographic random source available. " +
+    "CAPTCHA security requires crypto.randomBytes (Node.js) or " +
+    "crypto.getRandomValues (browser). Math.random() is predictable " +
+    "and must not be used for challenge generation (CWE-330)."
+  );
 }
 
 /**
  * Generate a cryptographically secure random integer in [0, exclusiveMax).
  *
+ * Uses Node.js crypto.randomInt when available for bias-free generation.
+ * Falls back to rejection sampling with crypto.randomBytes or Web Crypto
+ * to eliminate modulo bias (which could let attackers predict challenges
+ * with slightly skewed probability distributions).
+ *
  * @param {number} exclusiveMax - Exclusive upper bound (must be > 0)
  * @returns {number} Random integer in [0, exclusiveMax)
+ * @throws {Error} If no cryptographic random source is available
  */
 function secureRandomInt(exclusiveMax) {
-  return Math.floor(secureRandom() * exclusiveMax);
+  if (exclusiveMax <= 0) {
+    throw new RangeError("exclusiveMax must be > 0, got " + exclusiveMax);
+  }
+  if (exclusiveMax === 1) return 0;
+
+  // Prefer crypto.randomInt — no bias, no rejection loop
+  if (_crypto && typeof _crypto.randomInt === "function") {
+    return _crypto.randomInt(exclusiveMax);
+  }
+
+  // Rejection sampling to eliminate modulo bias
+  if (_crypto && typeof _crypto.randomBytes === "function") {
+    var limit = Math.floor(0x100000000 / exclusiveMax) * exclusiveMax;
+    var val;
+    do {
+      val = _crypto.randomBytes(4).readUInt32BE(0);
+    } while (val >= limit);
+    return val % exclusiveMax;
+  }
+
+  if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+    var arr = new Uint32Array(1);
+    var limit = Math.floor(0x100000000 / exclusiveMax) * exclusiveMax;
+    do {
+      crypto.getRandomValues(arr);
+    } while (arr[0] >= limit);
+    return arr[0] % exclusiveMax;
+  }
+
+  throw new Error(
+    "gif-captcha/crypto-utils: no cryptographic random source available. " +
+    "CAPTCHA security requires crypto.randomInt/randomBytes (Node.js) or " +
+    "crypto.getRandomValues (browser). Math.random() is predictable " +
+    "and must not be used for challenge generation (CWE-330)."
+  );
 }
 
 if (typeof module !== "undefined" && module.exports) {

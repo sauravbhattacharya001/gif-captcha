@@ -370,6 +370,7 @@ gif-captcha/
 ├── heatmap.html          # Interaction Heatmap
 ├── leaderboard.html      # Performance Leaderboard
 ├── playground.html       # Challenge Playground
+├── fingerprint-explorer.html # Fingerprint Explorer — visualize & compare solve-pattern fingerprints
 ├── streak.html           # Streak Mode
 ├── timing.html           # Response Time Analyzer
 ├── performance-profiler.html  # Performance Profiler — benchmark generation configs

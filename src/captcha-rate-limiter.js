@@ -500,9 +500,7 @@ function createCaptchaRateLimiter(options) {
 
       var canConsume = Math.min(count, Math.floor(entry.tokens));
       if (canConsume < count) {
-        // Partial or zero consumption
-        if (canConsume > 0) entry.tokens -= canConsume;
-        var deficit = (count - canConsume) - (entry.tokens - (canConsume > 0 ? 0 : entry.tokens));
+        // Not enough tokens — reject without draining any tokens
         var retryMs = Math.ceil(((count - entry.tokens) / refillRate) * 1000);
         totalRejected++;
         if (enableBans) {

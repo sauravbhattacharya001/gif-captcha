@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'unsafe-inline'; img-src data: blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'none';">
+    <meta name="referrer" content="no-referrer">
+    <title>Entropy Analyzer — GIF CAPTCHA</title>
+    <link rel="stylesheet" href="shared.css">
+    <style>
+        body { padding: 0; }
+        .controls {
+            display: flex; gap: 1rem; flex-wrap: wrap;
+            align-items: center; margin-bottom: 1.5rem;
+        }
+        .controls label { font-size: 0.85rem; color: var(--muted); }
+        .controls select, .controls input[type="number"] {
+            background: var(--surface); color: var(--text);
+            border: 1px solid var(--border); border-radius: 6px;
+            padding: 0.4rem 0.6rem; font-size: 0.85rem; font-family: inherit;
+        }
+        .metric-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem; margin-bottom: 2rem;
+        }
+        .metric-card {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 10px; padding: 1.25rem; text-align: center;
+        }
+        .metric-card .value {
+            font-size: 2rem; font-weight: 700; margin: 0.3rem 0;
+        }
+        .metric-card .label { font-size: 0.8rem; color: var(--muted); }
+        .metric-card .grade {
+            display: inline-block; padding: 0.15rem 0.6rem;
+            border-radius: 12px; font-size: 0.75rem; font-weight: 600;
+            margin-top: 0.3rem;
+        }
+        .grade-excellent { background: var(--green-bg); color: var(--green); }
+        .grade-good { background: var(--yellow-bg); color: var(--yellow); }
+        .grade-poor { background: var(--red-bg); color: var(--red); }
+        canvas {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 10px; width: 100%; margin-bottom: 1.5rem;
+        }
+        .chart-section { margin-bottom: 2rem; }
+        .chart-section h3 { font-size: 1rem; margin-bottom: 0.75rem; color: var(--accent); }
+        .sample-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+            gap: 0.5rem; margin-bottom: 1.5rem;
+        }
+        .sample-cell {
+            aspect-ratio: 1; border-radius: 6px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 0.7rem; color: var(--text); font-weight: 600;
+            border: 1px solid var(--border);
+        }
+        .findings { margin-top: 1.5rem; }
+        .finding-item {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 8px; padding: 1rem 1.25rem; margin-bottom: 0.75rem;
+        }
+        .finding-item.warn { border-left: 4px solid var(--yellow); }
+        .finding-item.pass { border-left: 4px solid var(--green); }
+        .finding-item.fail { border-left: 4px solid var(--red); }
+        .finding-item h4 { font-size: 0.9rem; margin-bottom: 0.3rem; }
+        .finding-item p { font-size: 0.8rem; color: var(--muted); margin: 0; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🎲 Entropy Analyzer</h1>
+        <p class="subtitle">Measure randomness and unpredictability of CAPTCHA generation</p>
+        <div class="nav-links">
+            <a href="index.html">Study</a>
+            <a href="demo.html">Demo</a>
+            <a href="generator.html">Generator</a>
+            <a href="analysis.html">Analysis</a>
+            <a href="dashboard.html">Dashboard</a>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="controls">
+            <div>
+                <label for="sampleSize">Sample Size</label><br>
+                <select id="sampleSize">
+                    <option value="100">100</option>
+                    <option value="500" selected>500</option>
+                    <option value="1000">1,000</option>
+                    <option value="5000">5,000</option>
+                </select>
+            </div>
+            <div>
+                <label for="challengeType">Challenge Type</label><br>
+                <select id="challengeType">
+                    <option value="all">All Types</option>
+                    <option value="text">Text Recognition</option>
+                    <option value="object">Object Identification</option>
+                    <option value="sequence">Sequence Ordering</option>
+                    <option value="spatial">Spatial Reasoning</option>
+                </select>
+            </div>
+            <div>
+                <label for="seed">Seed (optional)</label><br>
+                <input type="number" id="seed" placeholder="Random" style="width:100px">
+            </div>
+            <button class="btn btn-primary btn-small" onclick="runAnalysis()">Analyze</button>
+            <button class="btn btn-secondary btn-small" onclick="exportReport()">Export CSV</button>
+        </div>
+
+        <div class="metric-grid" id="metrics">
+            <div class="metric-card">
+                <div class="label">Shannon Entropy</div>
+                <div class="value" id="shannonValue">—</div>
+                <div class="label">bits per symbol</div>
+                <span class="grade" id="shannonGrade"></span>
+            </div>
+            <div class="metric-card">
+                <div class="label">Min-Entropy</div>
+                <div class="value" id="minEntropyValue">—</div>
+                <div class="label">worst-case bits</div>
+                <span class="grade" id="minEntropyGrade"></span>
+            </div>
+            <div class="metric-card">
+                <div class="label">Chi-Squared (χ²)</div>
+                <div class="value" id="chiValue">—</div>
+                <div class="label">p-value</div>
+                <span class="grade" id="chiGrade"></span>
+            </div>
+            <div class="metric-card">
+                <div class="label">Serial Correlation</div>
+                <div class="value" id="serialValue">—</div>
+                <div class="label">coefficient</div>
+                <span class="grade" id="serialGrade"></span>
+            </div>
+            <div class="metric-card">
+                <div class="label">Collision Rate</div>
+                <div class="value" id="collisionValue">—</div>
+                <div class="label">duplicates</div>
+                <span class="grade" id="collisionGrade"></span>
+            </div>
+            <div class="metric-card">
+                <div class="label">Overall Score</div>
+                <div class="value" id="overallValue">—</div>
+                <div class="label">out of 100</div>
+                <span class="grade" id="overallGrade"></span>
+            </div>
+        </div>
+
+        <div class="chart-section">
+            <h3>Frequency Distribution</h3>
+            <canvas id="freqChart" height="200"></canvas>
+        </div>
+
+        <div class="chart-section">
+            <h3>Sequential Correlation Heatmap</h3>
+            <div class="sample-grid" id="heatmap"></div>
+        </div>
+
+        <div class="chart-section">
+            <h3>Bit Pattern Distribution</h3>
+            <canvas id="bitChart" height="180"></canvas>
+        </div>
+
+        <div class="findings" id="findings">
+            <h3 style="margin-bottom:1rem">Findings</h3>
+        </div>
+
+        <footer>
+            <p><a href="index.html">GIF CAPTCHA Case Study</a> · Entropy Analyzer</p>
+        </footer>
+    </div>
+
+    <script>
+    // Seeded PRNG (xoshiro128**)
+    function makeRng(seed) {
+        let s = [seed|1, seed*2654435761>>>0|1, seed*2246822519>>>0|1, seed*3266489917>>>0|1];
+        function next() {
+            const r = (((s[1]*5)<<7|(s[1]*5)>>>25)*9)>>>0;
+            const t = s[1]<<9;
+            s[2]^=s[0]; s[3]^=s[1]; s[1]^=s[2]; s[0]^=s[3];
+            s[2]^=t; s[3]=(s[3]<<11|s[3]>>>21);
+            return r/4294967296;
+        }
+        return next;
+    }
+
+    const CATEGORIES = ['text','object','sequence','spatial'];
+    const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+
+    function generateSamples(n, type, seed) {
+        const rng = seed != null ? makeRng(seed) : Math.random;
+        const samples = [];
+        for (let i = 0; i < n; i++) {
+            const cat = type === 'all' ? CATEGORIES[Math.floor(rng() * CATEGORIES.length)] : type;
+            let token = '';
+            const len = 6 + Math.floor(rng() * 5);
+            for (let j = 0; j < len; j++) token += ALPHABET[Math.floor(rng() * ALPHABET.length)];
+            samples.push({ category: cat, token, difficulty: 0.3 + rng() * 0.7 });
+        }
+        return samples;
+    }
+
+    function shannonEntropy(tokens) {
+        const freq = {};
+        let total = 0;
+        for (const t of tokens) for (const c of t) { freq[c] = (freq[c]||0)+1; total++; }
+        let h = 0;
+        for (const k in freq) { const p = freq[k]/total; h -= p * Math.log2(p); }
+        return { h, freq, total };
+    }
+
+    function minEntropy(freq, total) {
+        let maxP = 0;
+        for (const k in freq) maxP = Math.max(maxP, freq[k]/total);
+        return -Math.log2(maxP);
+    }
+
+    function chiSquared(freq, total) {
+        const n = Object.keys(freq).length;
+        const expected = total / n;
+        let chi = 0;
+        for (const k in freq) chi += Math.pow(freq[k]-expected, 2)/expected;
+        // Approximate p-value using incomplete gamma (simplified)
+        const df = n - 1;
+        const z = Math.sqrt(2*chi) - Math.sqrt(2*df-1);
+        const p = 0.5 * (1 - erf(z/Math.SQRT2));
+        return { chi, p: Math.max(0, Math.min(1, p)) };
+    }
+
+    function erf(x) {
+        const a1=0.254829592, a2=-0.284496736, a3=1.421413741, a4=-1.453152027, a5=1.061405429;
+        const p=0.3275911;
+        const sign = x<0?-1:1; x=Math.abs(x);
+        const t=1/(1+p*x);
+        return sign*(1-((((a5*t+a4)*t+a3)*t+a2)*t+a1)*t*Math.exp(-x*x));
+    }
+
+    function serialCorrelation(tokens) {
+        const vals = [];
+        for (const t of tokens) for (const c of t) vals.push(c.charCodeAt(0));
+        if (vals.length < 2) return 0;
+        let mean = vals.reduce((a,b)=>a+b,0)/vals.length;
+        let num=0, den=0;
+        for (let i = 0; i < vals.length-1; i++) {
+            num += (vals[i]-mean)*(vals[i+1]-mean);
+            den += (vals[i]-mean)**2;
+        }
+        den += (vals[vals.length-1]-mean)**2;
+        return den===0 ? 0 : num/den;
+    }
+
+    function collisionRate(tokens) {
+        const set = new Set(tokens);
+        return 1 - set.size/tokens.length;
+    }
+
+    function grade(metric, value) {
+        const thresholds = {
+            shannon: [5.5, 4.5],
+            minEntropy: [4, 3],
+            chi: [0.05, 0.01],
+            serial: [0.05, 0.15],
+            collision: [0.01, 0.05],
+            overall: [80, 60]
+        };
+        const t = thresholds[metric];
+        if (!t) return 'good';
+        if (metric==='serial'||metric==='collision') {
+            return Math.abs(value)<=t[0]?'excellent':Math.abs(value)<=t[1]?'good':'poor';
+        }
+        if (metric==='chi') {
+            return value>=t[0]?'excellent':value>=t[1]?'good':'poor';
+        }
+        return value>=t[0]?'excellent':value>=t[1]?'good':'poor';
+    }
+
+    function setMetric(id, value, fmt, metric) {
+        document.getElementById(id+'Value').textContent = fmt;
+        const g = grade(metric, value);
+        const el = document.getElementById(id+'Grade');
+        el.textContent = g.toUpperCase();
+        el.className = 'grade grade-'+g;
+    }
+
+    function drawFreqChart(freq) {
+        const canvas = document.getElementById('freqChart');
+        const ctx = canvas.getContext('2d');
+        canvas.width = canvas.offsetWidth * 2;
+        canvas.height = 400;
+        ctx.scale(2,2);
+        const w = canvas.offsetWidth, h = 200;
+        ctx.clearRect(0,0,w,h);
+
+        const keys = Object.keys(freq).sort();
+        const vals = keys.map(k=>freq[k]);
+        const max = Math.max(...vals);
+        const barW = Math.max(2, (w-60)/keys.length - 1);
+        const startX = 40;
+
+        // Axes
+        ctx.strokeStyle = '#30363d'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(startX, 10); ctx.lineTo(startX, h-25); ctx.lineTo(w-10, h-25); ctx.stroke();
+
+        // Bars
+        keys.forEach((k, i) => {
+            const bh = (vals[i]/max) * (h-50);
+            const x = startX + i*(barW+1);
+            ctx.fillStyle = vals[i]/max > 0.85 ? '#3fb950' : vals[i]/max < 0.4 ? '#f85149' : '#58a6ff';
+            ctx.fillRect(x, h-25-bh, barW, bh);
+        });
+
+        // Labels (every nth)
+        ctx.fillStyle = '#8b949e'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
+        const step = Math.max(1, Math.floor(keys.length/20));
+        keys.forEach((k, i) => {
+            if (i%step===0) ctx.fillText(k, startX+i*(barW+1)+barW/2, h-12);
+        });
+    }
+
+    function drawBitChart(tokens) {
+        const canvas = document.getElementById('bitChart');
+        const ctx = canvas.getContext('2d');
+        canvas.width = canvas.offsetWidth * 2;
+        canvas.height = 360;
+        ctx.scale(2,2);
+        const w = canvas.offsetWidth, h = 180;
+
+        // Count 2-char patterns
+        const patterns = {};
+        for (const t of tokens) {
+            for (let i = 0; i < t.length-1; i++) {
+                const p = t[i]+t[i+1];
+                patterns[p] = (patterns[p]||0)+1;
+            }
+        }
+        const sorted = Object.entries(patterns).sort((a,b)=>b[1]-a[1]).slice(0,50);
+        const max = sorted[0]?sorted[0][1]:1;
+        const barW = Math.max(3, (w-60)/sorted.length - 1);
+
+        ctx.clearRect(0,0,w,h);
+        ctx.strokeStyle = '#30363d'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(40,10); ctx.lineTo(40,h-25); ctx.lineTo(w-10,h-25); ctx.stroke();
+
+        sorted.forEach(([p,v], i) => {
+            const bh = (v/max)*(h-50);
+            ctx.fillStyle = '#bc8cff';
+            ctx.fillRect(40+i*(barW+1), h-25-bh, barW, bh);
+        });
+
+        ctx.fillStyle = '#8b949e'; ctx.font = '8px sans-serif'; ctx.textAlign = 'center';
+        const step = Math.max(1, Math.floor(sorted.length/15));
+        sorted.forEach(([p], i) => {
+            if (i%step===0) ctx.fillText(p, 40+i*(barW+1)+barW/2, h-12);
+        });
+    }
+
+    function drawHeatmap(tokens) {
+        const grid = document.getElementById('heatmap');
+        grid.innerHTML = '';
+        // Position correlation: for each position pair (i,j), measure how correlated chars are
+        const maxPos = Math.min(10, Math.min(...tokens.map(t=>t.length)));
+        const corr = [];
+        for (let i = 0; i < maxPos; i++) {
+            for (let j = 0; j < maxPos; j++) {
+                // Pearson correlation between position i and j char codes
+                const a = tokens.map(t=>t.charCodeAt(i));
+                const b = tokens.map(t=>t.charCodeAt(j));
+                const ma = a.reduce((s,v)=>s+v,0)/a.length;
+                const mb = b.reduce((s,v)=>s+v,0)/b.length;
+                let num=0, da=0, db=0;
+                for (let k=0;k<a.length;k++) { num+=(a[k]-ma)*(b[k]-mb); da+=(a[k]-ma)**2; db+=(b[k]-mb)**2; }
+                const r = (da&&db)?num/Math.sqrt(da*db):0;
+                corr.push({ i, j, r });
+            }
+        }
+        grid.style.gridTemplateColumns = `repeat(${maxPos}, 1fr)`;
+        corr.forEach(({i,j,r})=>{
+            const cell = document.createElement('div');
+            cell.className = 'sample-cell';
+            const absR = Math.abs(r);
+            const red = Math.round(absR*248);
+            const green = Math.round((1-absR)*63+absR*30);
+            const blue = Math.round((1-absR)*80+absR*50);
+            cell.style.background = `rgba(${red},${green},${blue},${0.2+absR*0.6})`;
+            cell.textContent = r.toFixed(2);
+            cell.title = `Pos ${i}↔${j}: r=${r.toFixed(4)}`;
+            grid.appendChild(cell);
+        });
+    }
+
+    function generateFindings(results) {
+        const el = document.getElementById('findings');
+        el.innerHTML = '<h3 style="margin-bottom:1rem">Findings</h3>';
+        const items = [];
+
+        if (results.shannon >= 5.5) items.push({ cls:'pass', title:'High Shannon Entropy', msg:`At ${results.shannon.toFixed(2)} bits/symbol, the challenge pool exhibits excellent randomness across the character space.`});
+        else if (results.shannon >= 4.5) items.push({ cls:'warn', title:'Moderate Shannon Entropy', msg:`Shannon entropy of ${results.shannon.toFixed(2)} bits/symbol is acceptable but could be improved by expanding the character set.`});
+        else items.push({ cls:'fail', title:'Low Shannon Entropy', msg:`Only ${results.shannon.toFixed(2)} bits/symbol — challenge tokens may be predictable. Consider wider character distributions.`});
+
+        if (Math.abs(results.serial) < 0.05) items.push({ cls:'pass', title:'No Serial Correlation', msg:`Coefficient of ${results.serial.toFixed(4)} shows no meaningful sequential patterns.`});
+        else items.push({ cls:'warn', title:'Serial Correlation Detected', msg:`Coefficient of ${results.serial.toFixed(4)} suggests adjacent characters may be partially predictable.`});
+
+        if (results.collision < 0.01) items.push({ cls:'pass', title:'Negligible Collisions', msg:`Only ${(results.collision*100).toFixed(2)}% duplicate tokens — collision resistance is strong.`});
+        else items.push({ cls:'fail', title:'High Collision Rate', msg:`${(results.collision*100).toFixed(1)}% of tokens are duplicates. Increase token space to prevent replay attacks.`});
+
+        if (results.chiP >= 0.05) items.push({ cls:'pass', title:'Uniform Distribution (χ² test)', msg:`p-value of ${results.chiP.toFixed(4)} — cannot reject the null hypothesis of uniform distribution.`});
+        else items.push({ cls:'warn', title:'Non-Uniform Distribution', msg:`χ² p-value of ${results.chiP.toFixed(4)} indicates statistically significant deviation from uniform randomness.`});
+
+        items.forEach(({cls,title,msg})=>{
+            el.innerHTML += `<div class="finding-item ${cls}"><h4>${title}</h4><p>${msg}</p></div>`;
+        });
+    }
+
+    let lastResults = null;
+
+    function runAnalysis() {
+        const n = parseInt(document.getElementById('sampleSize').value);
+        const type = document.getElementById('challengeType').value;
+        const seedEl = document.getElementById('seed');
+        const seed = seedEl.value ? parseInt(seedEl.value) : null;
+
+        const samples = generateSamples(n, type, seed);
+        const tokens = samples.map(s=>s.token);
+
+        const {h, freq, total} = shannonEntropy(tokens);
+        const me = minEntropy(freq, total);
+        const {chi, p} = chiSquared(freq, total);
+        const sc = serialCorrelation(tokens);
+        const cr = collisionRate(tokens);
+
+        const overall = Math.round(
+            (Math.min(h/6, 1)*25) +
+            (Math.min(me/5, 1)*20) +
+            (Math.min(p/0.05, 1)*20) +
+            ((1-Math.min(Math.abs(sc)/0.2, 1))*15) +
+            ((1-Math.min(cr/0.05, 1))*20)
+        );
+
+        setMetric('shannon', h, h.toFixed(2), 'shannon');
+        setMetric('minEntropy', me, me.toFixed(2), 'minEntropy');
+        setMetric('chi', p, p.toFixed(4), 'chi');
+        setMetric('serial', sc, sc.toFixed(4), 'serial');
+        setMetric('collision', cr, (cr*100).toFixed(2)+'%', 'collision');
+        setMetric('overall', overall, overall, 'overall');
+
+        drawFreqChart(freq);
+        drawBitChart(tokens);
+        drawHeatmap(tokens);
+        generateFindings({ shannon:h, minEntropy:me, chiP:p, serial:sc, collision:cr, overall });
+
+        lastResults = { n, type, seed, shannon:h, minEntropy:me, chi, chiP:p, serial:sc, collision:cr, overall, freq, tokens };
+    }
+
+    function exportReport() {
+        if (!lastResults) { runAnalysis(); }
+        const r = lastResults;
+        let csv = 'Metric,Value\n';
+        csv += `Sample Size,${r.n}\n`;
+        csv += `Challenge Type,${r.type}\n`;
+        csv += `Shannon Entropy,${r.shannon.toFixed(4)}\n`;
+        csv += `Min-Entropy,${r.minEntropy.toFixed(4)}\n`;
+        csv += `Chi-Squared,${r.chi.toFixed(4)}\n`;
+        csv += `Chi-Squared p-value,${r.chiP.toFixed(6)}\n`;
+        csv += `Serial Correlation,${r.serial.toFixed(6)}\n`;
+        csv += `Collision Rate,${(r.collision*100).toFixed(4)}%\n`;
+        csv += `Overall Score,${r.overall}\n\n`;
+        csv += 'Symbol,Frequency\n';
+        for (const [k,v] of Object.entries(r.freq).sort((a,b)=>b[1]-a[1])) csv += `${k},${v}\n`;
+
+        const blob = new Blob([csv], {type:'text/csv'});
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'captcha-entropy-report.csv';
+        a.click();
+    }
+
+    // Auto-run on load
+    runAnalysis();
+    </script>
+</body>
+</html>

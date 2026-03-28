@@ -770,12 +770,25 @@ function createCaptchaRateLimiter(options) {
   }
 
   /**
+   * Reject keys that could cause prototype pollution.
+   * @param {string} key
+   * @returns {boolean} true if the key is safe
+   */
+  function _isSafeKey(key) {
+    return key !== "__proto__" && key !== "constructor" && key !== "prototype";
+  }
+
+  /**
    * Import previously exported state.
+   *
+   * Validates imported data to prevent prototype pollution and
+   * rejects entries with unsafe keys or malformed payloads.
+   *
    * @param {Object} state - State from exportState()
    * @returns {number} Number of keys restored
    */
   function importState(state) {
-    if (!state || typeof state !== "object") {
+    if (!state || typeof state !== "object" || Array.isArray(state)) {
       throw new Error("Invalid state object");
     }
     if (state.algorithm && state.algorithm !== algorithm) {
@@ -783,29 +796,39 @@ function createCaptchaRateLimiter(options) {
     }
 
     var count = 0;
-    if (state.store) {
+    if (state.store && typeof state.store === "object" && !Array.isArray(state.store)) {
       var sKeys = Object.keys(state.store);
       for (var i = 0; i < sKeys.length; i++) {
-        store[sKeys[i]] = state.store[sKeys[i]];
+        if (!_isSafeKey(sKeys[i])) continue;
+        var entry = state.store[sKeys[i]];
+        if (!entry || typeof entry !== "object") continue;
+        store[sKeys[i]] = entry;
         count++;
       }
     }
-    if (state.bans) {
+    if (state.bans && typeof state.bans === "object" && !Array.isArray(state.bans)) {
       var bKeys = Object.keys(state.bans);
       for (var j = 0; j < bKeys.length; j++) {
-        bans[bKeys[j]] = state.bans[bKeys[j]];
+        if (!_isSafeKey(bKeys[j])) continue;
+        var banEntry = state.bans[bKeys[j]];
+        if (!banEntry || typeof banEntry !== "object" ||
+            typeof banEntry.expiresAt !== "number") continue;
+        bans[bKeys[j]] = banEntry;
       }
     }
-    if (state.strikes) {
+    if (state.strikes && typeof state.strikes === "object" && !Array.isArray(state.strikes)) {
       var kKeys = Object.keys(state.strikes);
       for (var k = 0; k < kKeys.length; k++) {
-        strikes[kKeys[k]] = state.strikes[kKeys[k]];
+        if (!_isSafeKey(kKeys[k])) continue;
+        var strikeVal = state.strikes[kKeys[k]];
+        if (typeof strikeVal !== "number" || strikeVal < 0) continue;
+        strikes[kKeys[k]] = strikeVal;
       }
     }
-    if (state.stats) {
-      totalAllowed += state.stats.totalAllowed || 0;
-      totalRejected += state.stats.totalRejected || 0;
-      totalBanned += state.stats.totalBanned || 0;
+    if (state.stats && typeof state.stats === "object") {
+      totalAllowed += Number(state.stats.totalAllowed) || 0;
+      totalRejected += Number(state.stats.totalRejected) || 0;
+      totalBanned += Number(state.stats.totalBanned) || 0;
     }
     return count;
   }

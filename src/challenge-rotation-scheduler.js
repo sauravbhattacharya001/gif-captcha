@@ -609,7 +609,7 @@ function createChallengeRotationScheduler(options) {
     _totalRotations = 0;
     _rotationLog.length = 0;
     for (var k in _solveHistory) {
-      if (_solveHistory.hasOwnProperty(k)) delete _solveHistory[k];
+      if (Object.prototype.hasOwnProperty.call(_solveHistory, k)) delete _solveHistory[k];
     }
     _listeners = Object.create(null);
   }

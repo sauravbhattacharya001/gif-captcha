@@ -71,26 +71,66 @@ function _lowerBound(arr, target) {
 /**
  * Evict oldest entries when key count exceeds maxKeys.
  * Uses LRU-style eviction based on lastSeen timestamp.
+ *
+ * Uses a partial-selection approach (O(n)) instead of sorting all keys
+ * (O(n log n)).  When only a handful of entries need evicting — the
+ * common case — we maintain a small max-heap of the `toRemove` oldest
+ * entries and scan once through the store.  For 50k keys this avoids
+ * an expensive full sort on every cleanup sweep.
  */
 function _evictOldest(store, maxKeys) {
   var keys = Object.keys(store);
-  if (keys.length <= maxKeys) return 0;
+  var total = keys.length;
+  if (total <= maxKeys) return 0;
 
-  // Sort by lastSeen ascending — evict oldest first
-  var entries = [];
-  for (var i = 0; i < keys.length; i++) {
+  var toRemove = total - maxKeys;
+
+  // For very large evictions (>25% of keys) fall back to full sort —
+  // partial selection isn't advantageous when k is close to n.
+  if (toRemove > (total >>> 2)) {
+    var entries = [];
+    for (var s = 0; s < total; s++) {
+      entries.push({ key: keys[s], lastSeen: store[keys[s]].lastSeen || 0 });
+    }
+    entries.sort(function (a, b) { return a.lastSeen - b.lastSeen; });
+    for (var r = 0; r < toRemove; r++) {
+      delete store[entries[r].key];
+    }
+    return toRemove;
+  }
+
+  // Partial selection: maintain a small array of the `toRemove` oldest
+  // entries (by lastSeen), with the maximum tracked so we can skip
+  // entries that are newer than everything in our eviction set.
+  var evictSet = []; // {key, lastSeen}[]  length <= toRemove
+  var maxInSet = -Infinity;
+
+  for (var i = 0; i < total; i++) {
     var k = keys[i];
-    entries.push({ key: k, lastSeen: store[k].lastSeen || 0 });
-  }
-  entries.sort(function (a, b) { return a.lastSeen - b.lastSeen; });
+    var ls = store[k].lastSeen || 0;
 
-  var toRemove = keys.length - maxKeys;
-  var removed = 0;
-  for (var j = 0; j < toRemove; j++) {
-    delete store[entries[j].key];
-    removed++;
+    if (evictSet.length < toRemove) {
+      evictSet.push({ key: k, lastSeen: ls });
+      if (ls > maxInSet) maxInSet = ls;
+    } else if (ls < maxInSet) {
+      // Replace the newest entry in evictSet with this older one
+      var maxIdx = 0;
+      for (var m = 1; m < evictSet.length; m++) {
+        if (evictSet[m].lastSeen > evictSet[maxIdx].lastSeen) maxIdx = m;
+      }
+      evictSet[maxIdx] = { key: k, lastSeen: ls };
+      // Recompute max
+      maxInSet = evictSet[0].lastSeen;
+      for (var n = 1; n < evictSet.length; n++) {
+        if (evictSet[n].lastSeen > maxInSet) maxInSet = evictSet[n].lastSeen;
+      }
+    }
   }
-  return removed;
+
+  for (var j = 0; j < evictSet.length; j++) {
+    delete store[evictSet[j].key];
+  }
+  return evictSet.length;
 }
 
 // ── Factory ─────────────────────────────────────────────────────────

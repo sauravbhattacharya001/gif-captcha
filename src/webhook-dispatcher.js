@@ -70,6 +70,8 @@ const BLOCKED_HOST_PATTERNS = [
   /^\[?fe80:/i,                       // IPv6 link-local
   /^\[?fc00:/i,                       // IPv6 unique local (ULA)
   /^\[?fd/i,                          // IPv6 ULA
+  /^0\.0\.0\.0$/,                     // Unspecified address
+  /^\[?::ffff:/i,                     // IPv6-mapped IPv4
 ];
 
 /**
@@ -86,15 +88,123 @@ function _isBlockedUrl(urlStr) {
   } catch (e) {
     return true; // Unparseable → block
   }
+
+  // Block non-HTTP(S) protocols
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return true;
+
+  // Block URLs with credentials (potential redirect-based SSRF)
+  if (parsed.username || parsed.password) return true;
+
   var hostname = parsed.hostname;
   // Strip IPv6 brackets for pattern matching
   if (hostname.startsWith("[") && hostname.endsWith("]")) {
     hostname = hostname.slice(1, -1);
   }
+
+  // Normalise IP addresses to catch octal, hex, and decimal bypass attempts.
+  // Examples that would bypass string-based regex checks:
+  //   0x7f000001          → 127.0.0.1  (hex)
+  //   2130706433          → 127.0.0.1  (decimal)
+  //   0177.0.0.1          → 127.0.0.1  (octal)
+  //   ::ffff:127.0.0.1    → 127.0.0.1  (IPv6-mapped IPv4)
+  //   ::ffff:10.0.0.1     → 10.0.0.1   (IPv6-mapped IPv4)
+  var normalised = _normaliseIp(hostname);
+  if (normalised) {
+    hostname = normalised;
+  }
+
   for (var i = 0; i < BLOCKED_HOST_PATTERNS.length; i++) {
     if (BLOCKED_HOST_PATTERNS[i].test(hostname)) return true;
   }
+
+  // Block IPv6-mapped IPv4 that resolved to a private IPv4
+  if (/^::ffff:/i.test(hostname)) {
+    var mapped = hostname.replace(/^::ffff:/i, "");
+    for (var j = 0; j < BLOCKED_HOST_PATTERNS.length; j++) {
+      if (BLOCKED_HOST_PATTERNS[j].test(mapped)) return true;
+    }
+  }
+
   return false;
+}
+
+/**
+ * Attempt to normalise non-standard IP representations to dotted-decimal.
+ * Returns the normalised IPv4 string, or null if hostname is not an IP.
+ *
+ * Handles:
+ *  - Single decimal integer (2130706433 → 127.0.0.1)
+ *  - Octal octets (0177.0.0.01 → 127.0.0.1)
+ *  - Hex integer (0x7f000001 → 127.0.0.1)
+ *  - IPv6-mapped IPv4 (::ffff:127.0.0.1 → 127.0.0.1)
+ *
+ * @param {string} hostname
+ * @returns {string|null} Normalised dotted-decimal IPv4, or null
+ */
+function _normaliseIp(hostname) {
+  if (!hostname) return null;
+
+  // IPv6-mapped IPv4 — extract the v4 portion
+  var mappedMatch = /^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/i.exec(hostname);
+  if (mappedMatch) return mappedMatch[1];
+
+  // Single hex integer (0x7f000001)
+  if (/^0x[0-9a-f]+$/i.test(hostname)) {
+    var n = parseInt(hostname, 16);
+    if (n >= 0 && n <= 0xffffffff) {
+      return _intToIp(n);
+    }
+  }
+
+  // Single decimal integer (2130706433)
+  if (/^\d{4,10}$/.test(hostname)) {
+    var d = parseInt(hostname, 10);
+    if (d >= 0 && d <= 0xffffffff) {
+      return _intToIp(d);
+    }
+  }
+
+  // Dotted notation with possible octal octets (0177.0.0.01)
+  var parts = hostname.split(".");
+  if (parts.length === 4) {
+    var hasOctal = false;
+    var octets = [];
+    for (var i = 0; i < 4; i++) {
+      var p = parts[i];
+      var val;
+      if (/^0[0-7]+$/.test(p)) {
+        // Octal
+        val = parseInt(p, 8);
+        hasOctal = true;
+      } else if (/^0x[0-9a-f]+$/i.test(p)) {
+        val = parseInt(p, 16);
+        hasOctal = true;
+      } else if (/^\d+$/.test(p)) {
+        val = parseInt(p, 10);
+      } else {
+        return null; // Not a numeric IP
+      }
+      if (val < 0 || val > 255) return null;
+      octets.push(val);
+    }
+    if (hasOctal) return octets.join(".");
+  }
+
+  return null;
+}
+
+/**
+ * Convert a 32-bit integer to dotted-decimal IPv4.
+ * @param {number} n
+ * @returns {string}
+ */
+function _intToIp(n) {
+  return [
+    (n >>> 24) & 0xff,
+    (n >>> 16) & 0xff,
+    (n >>> 8) & 0xff,
+    n & 0xff,
+  ].join(".");
 }
 
 // ── Webhook Dispatcher ─────────────────────────────────────────────

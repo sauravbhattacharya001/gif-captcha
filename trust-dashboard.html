@@ -1,0 +1,853 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trust Score Dashboard — gif-captcha</title>
+    <link rel="stylesheet" href="shared.css">
+    <style>
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        @media (max-width: 768px) {
+            .dashboard-grid { grid-template-columns: 1fr; }
+        }
+        .stat-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1.5rem;
+        }
+        .stat-card h3 {
+            margin: 0 0 0.5rem;
+            color: var(--muted);
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--text);
+        }
+        .score-gauge {
+            width: 100%;
+            height: 24px;
+            background: var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+            position: relative;
+            margin: 0.5rem 0;
+        }
+        .score-gauge-fill {
+            height: 100%;
+            border-radius: 12px;
+            transition: width 0.4s ease;
+        }
+        .score-high { background: var(--green); }
+        .score-medium { background: var(--yellow); }
+        .score-low { background: var(--orange); }
+        .score-blocked { background: var(--red); }
+        .client-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+        }
+        .client-table th, .client-table td {
+            padding: 0.75rem 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+        .client-table th {
+            color: var(--muted);
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .client-table tr:hover td {
+            background: var(--surface-hover);
+        }
+        .action-badge {
+            display: inline-block;
+            padding: 0.2rem 0.6rem;
+            border-radius: 999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .action-pass { background: var(--green-bg); color: var(--green); }
+        .action-softChallenge { background: var(--yellow-bg); color: var(--yellow); }
+        .action-challenge { background: var(--orange-bg); color: var(--orange); }
+        .action-block { background: var(--red-bg); color: var(--red); }
+        .signal-bar-container {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .signal-bar {
+            flex: 1;
+            height: 8px;
+            background: var(--border);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .signal-bar-inner {
+            height: 100%;
+            border-radius: 4px;
+            background: var(--accent);
+        }
+        .signal-label {
+            min-width: 100px;
+            font-size: 0.85rem;
+            color: var(--muted);
+        }
+        .signal-value {
+            min-width: 40px;
+            text-align: right;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+        .controls-row {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            margin-bottom: 1.5rem;
+            align-items: center;
+        }
+        .controls-row input, .controls-row select {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text);
+            padding: 0.5rem 0.75rem;
+            font-size: 0.9rem;
+        }
+        .detail-panel {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-top: 1.5rem;
+            display: none;
+        }
+        .detail-panel.active { display: block; }
+        .detail-panel h3 { margin-top: 0; }
+        .trend-chart {
+            display: flex;
+            align-items: flex-end;
+            gap: 2px;
+            height: 60px;
+            margin-top: 0.5rem;
+        }
+        .trend-bar {
+            flex: 1;
+            min-width: 3px;
+            max-width: 8px;
+            border-radius: 2px 2px 0 0;
+            transition: height 0.3s;
+        }
+        .threshold-markers {
+            position: relative;
+            height: 100%;
+            pointer-events: none;
+        }
+        .threshold-line {
+            position: absolute;
+            left: 0;
+            right: 0;
+            height: 1px;
+            border-top: 1px dashed;
+        }
+        .config-section {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+        .config-field label {
+            display: block;
+            color: var(--muted);
+            font-size: 0.8rem;
+            margin-bottom: 0.25rem;
+        }
+        .config-field input[type="range"] {
+            width: 100%;
+        }
+        .sim-btn {
+            background: var(--accent);
+            color: #fff;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+        .sim-btn:hover { background: var(--accent-hover); }
+        .sim-btn.danger { background: var(--red); }
+        .sim-btn.danger:hover { background: #e5453d; }
+        .pie-chart {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .pie-slice {
+            display: flex;
+            align-items: center;
+            gap: 0.3rem;
+            font-size: 0.85rem;
+        }
+        .pie-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+        .full-width { grid-column: 1 / -1; }
+        .mini-score {
+            display: inline-block;
+            width: 48px;
+            text-align: center;
+            font-weight: 600;
+            font-size: 0.85rem;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>🛡️ Trust Score Dashboard</h1>
+        <p>Real-time visualization of the trust score engine — monitor clients, tune thresholds, and simulate scenarios.</p>
+    </header>
+    <main>
+        <!-- Controls -->
+        <div class="controls-row">
+            <button class="sim-btn" onclick="addRandomClients(5)">+ Add 5 Clients</button>
+            <button class="sim-btn" onclick="addRandomClients(20)">+ Add 20 Clients</button>
+            <button class="sim-btn" onclick="simulateAttack()">⚡ Simulate Attack</button>
+            <button class="sim-btn" onclick="simulateGoodBurst()">✅ Good Burst</button>
+            <button class="sim-btn danger" onclick="resetAll()">🗑 Reset</button>
+            <label style="color:var(--muted);font-size:0.85rem;display:flex;align-items:center;gap:0.3rem;">
+                <input type="checkbox" id="autoRefresh" checked> Auto-refresh (2s)
+            </label>
+        </div>
+
+        <!-- Stats overview -->
+        <div class="dashboard-grid" id="statsGrid">
+            <div class="stat-card">
+                <h3>Total Evaluations</h3>
+                <div class="stat-value" id="statEvals">0</div>
+            </div>
+            <div class="stat-card">
+                <h3>Active Clients</h3>
+                <div class="stat-value" id="statClients">0</div>
+            </div>
+            <div class="stat-card">
+                <h3>Average Trust Score</h3>
+                <div class="stat-value" id="statAvg">—</div>
+                <div class="score-gauge"><div class="score-gauge-fill" id="avgGauge"></div></div>
+            </div>
+            <div class="stat-card">
+                <h3>Action Distribution</h3>
+                <div class="pie-chart" id="actionPie"></div>
+            </div>
+        </div>
+
+        <!-- Threshold tuner -->
+        <div class="stat-card" style="margin-bottom:1.5rem;">
+            <h3 style="margin-bottom:1rem;">⚙️ Threshold Configuration</h3>
+            <div class="config-section">
+                <div class="config-field">
+                    <label>Block Threshold: <span id="blockVal">0.20</span></label>
+                    <input type="range" min="0" max="100" value="20" id="blockSlider" oninput="updateThresholds()">
+                </div>
+                <div class="config-field">
+                    <label>Challenge Threshold: <span id="challengeVal">0.50</span></label>
+                    <input type="range" min="0" max="100" value="50" id="challengeSlider" oninput="updateThresholds()">
+                </div>
+                <div class="config-field">
+                    <label>Pass Threshold: <span id="passVal">0.70</span></label>
+                    <input type="range" min="0" max="100" value="70" id="passSlider" oninput="updateThresholds()">
+                </div>
+            </div>
+            <div class="score-gauge" style="margin-top:1rem;height:16px;position:relative;" id="thresholdViz">
+                <div style="position:absolute;height:100%;background:var(--red);border-radius:12px 0 0 12px;" id="threshZoneBlock"></div>
+                <div style="position:absolute;height:100%;background:var(--orange);" id="threshZoneChallenge"></div>
+                <div style="position:absolute;height:100%;background:var(--yellow);" id="threshZoneSoft"></div>
+                <div style="position:absolute;height:100%;background:var(--green);border-radius:0 12px 12px 0;" id="threshZonePass"></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:0.75rem;color:var(--muted);margin-top:0.25rem;">
+                <span>Block</span><span>Challenge</span><span>Soft Challenge</span><span>Pass</span>
+            </div>
+        </div>
+
+        <!-- Client list -->
+        <div class="stat-card full-width">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
+                <h3 style="margin:0;">👥 Client Scores</h3>
+                <div class="controls-row" style="margin:0;">
+                    <input type="text" placeholder="Filter clients..." id="clientFilter" oninput="renderClients()">
+                    <select id="actionFilter" onchange="renderClients()">
+                        <option value="">All actions</option>
+                        <option value="pass">Pass</option>
+                        <option value="softChallenge">Soft Challenge</option>
+                        <option value="challenge">Challenge</option>
+                        <option value="block">Block</option>
+                    </select>
+                    <select id="sortBy" onchange="renderClients()">
+                        <option value="score-asc">Score ↑</option>
+                        <option value="score-desc">Score ↓</option>
+                        <option value="name">Name</option>
+                    </select>
+                </div>
+            </div>
+            <table class="client-table">
+                <thead>
+                    <tr>
+                        <th>Client ID</th>
+                        <th>Trust Score</th>
+                        <th>Action</th>
+                        <th>Signals</th>
+                        <th>Trend</th>
+                    </tr>
+                </thead>
+                <tbody id="clientTableBody"></tbody>
+            </table>
+        </div>
+
+        <!-- Detail panel -->
+        <div class="detail-panel" id="detailPanel">
+            <h3>📊 Client Detail: <span id="detailClientId"></span></h3>
+            <div class="dashboard-grid">
+                <div>
+                    <h4 style="color:var(--muted);margin:0 0 0.5rem;">Score Breakdown</h4>
+                    <div id="detailBreakdown"></div>
+                </div>
+                <div>
+                    <h4 style="color:var(--muted);margin:0 0 0.5rem;">Score History</h4>
+                    <div class="trend-chart" id="detailTrendChart"></div>
+                    <div id="detailTrendInfo" style="font-size:0.85rem;color:var(--muted);margin-top:0.5rem;"></div>
+                </div>
+            </div>
+            <div style="margin-top:1rem;">
+                <h4 style="color:var(--muted);margin:0 0 0.5rem;">Manual Signal Override</h4>
+                <div class="controls-row">
+                    <select id="overrideSignal">
+                        <option value="reputation">reputation</option>
+                        <option value="fingerprint">fingerprint</option>
+                        <option value="botDetection">botDetection</option>
+                        <option value="rateLimit">rateLimit</option>
+                        <option value="responseQuality">responseQuality</option>
+                        <option value="behaviorEntropy">behaviorEntropy</option>
+                    </select>
+                    <input type="range" min="0" max="100" value="50" id="overrideValue" style="width:200px;">
+                    <span id="overrideDisplay" style="color:var(--text);font-weight:600;min-width:40px;">0.50</span>
+                    <button class="sim-btn" onclick="applyOverride()">Apply</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Weight tuner -->
+        <div class="stat-card" style="margin-top:1.5rem;">
+            <h3 style="margin-bottom:1rem;">⚖️ Signal Weights</h3>
+            <div id="weightSliders"></div>
+        </div>
+    </main>
+    <footer>
+        <p>gif-captcha Trust Score Dashboard — Interactive trust engine visualization</p>
+    </footer>
+
+    <script src="shared.js"></script>
+    <script>
+    // ===== Inline trust score engine (browser build) =====
+    // Simplified inline version for the dashboard demo
+    (function() {
+        function LruTracker() {
+            this._map = Object.create(null);
+            this._head = null;
+            this._tail = null;
+            this.length = 0;
+        }
+        LruTracker.prototype.push = function(key) {
+            if (this._map[key]) { this.touch(key); return; }
+            var node = { key: key, prev: this._tail, next: null };
+            if (this._tail) this._tail.next = node; else this._head = node;
+            this._tail = node;
+            this._map[key] = node;
+            this.length++;
+        };
+        LruTracker.prototype.touch = function(key) {
+            var node = this._map[key];
+            if (!node || node === this._tail) return;
+            if (node.prev) node.prev.next = node.next; else this._head = node.next;
+            if (node.next) node.next.prev = node.prev;
+            node.prev = this._tail; node.next = null;
+            this._tail.next = node; this._tail = node;
+        };
+        LruTracker.prototype.evictOldest = function() {
+            if (!this._head) return undefined;
+            var node = this._head;
+            this._head = node.next;
+            if (this._head) this._head.prev = null; else this._tail = null;
+            delete this._map[node.key]; this.length--;
+            return node.key;
+        };
+        LruTracker.prototype.remove = function(key) {
+            var node = this._map[key];
+            if (!node) return false;
+            if (node.prev) node.prev.next = node.next; else this._head = node.next;
+            if (node.next) node.next.prev = node.prev; else this._tail = node.prev;
+            delete this._map[node.key]; this.length--;
+            return true;
+        };
+        LruTracker.prototype.has = function(key) { return !!this._map[key]; };
+        LruTracker.prototype.toArray = function() {
+            var r = [], n = this._head;
+            while (n) { r.push(n.key); n = n.next; }
+            return r;
+        };
+        LruTracker.prototype.clear = function() {
+            this._map = Object.create(null);
+            this._head = null; this._tail = null; this.length = 0;
+        };
+
+        function _clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+
+        window.createTrustScoreEngine = function(options) {
+            options = options || {};
+            var defaultWeights = { reputation:1, fingerprint:1, botDetection:1, rateLimit:1, responseQuality:1, behaviorEntropy:1 };
+            var weights = Object.assign({}, defaultWeights, options.weights || {});
+            var thresholds = options.thresholds || {};
+            var blockT = thresholds.block != null ? thresholds.block : 0.2;
+            var challengeT = thresholds.challenge != null ? thresholds.challenge : 0.5;
+            var passT = thresholds.pass != null ? thresholds.pass : 0.7;
+            var cacheTtl = options.cacheTtlMs || 30000;
+            var maxClients = options.maxClients || 5000;
+            var maxHistory = options.maxHistory || 100;
+            var decayFactor = options.decayFactor != null ? options.decayFactor : 0.7;
+            var anomalyDrop = options.anomalyDropThreshold || 0.3;
+
+            var clients = Object.create(null);
+            var clientOrder = new LruTracker();
+            var totalEvaluations = 0;
+            var actionCounts = { block:0, challenge:0, softChallenge:0, pass:0 };
+            var providers = Object.create(null);
+
+            function _evict() { while (clientOrder.length > maxClients) { var o = clientOrder.evictOldest(); if (o !== undefined) delete clients[o]; } }
+            function _action(s) {
+                if (s <= blockT) return "block";
+                if (s <= challengeT) return "challenge";
+                if (s <= passT) return "softChallenge";
+                return "pass";
+            }
+
+            var engine = {
+                registerProvider: function(name, fn) { if (name && typeof fn === "function") providers[name] = fn; },
+                evaluate: function(clientId, manual) {
+                    if (!clientId) return { clientId:"", score:0, action:"block", signals:{}, breakdown:[], cached:false };
+                    var cached = clients[clientId];
+                    if (cached && (Date.now() - cached.timestamp) < cacheTtl) {
+                        clientOrder.push(clientId);
+                        return { clientId:clientId, score:cached.score, action:cached.action, signals:cached.signals, breakdown:cached.breakdown, cached:true };
+                    }
+                    manual = manual || {};
+                    var signals = Object.create(null), breakdown = [];
+                    Object.keys(providers).forEach(function(pn) {
+                        try {
+                            var r = providers[pn](clientId);
+                            if (r && typeof r.score === "number") signals[pn] = { score:_clamp(r.score,0,1), confidence: r.confidence != null ? _clamp(r.confidence,0,1) : 1, detail: r.detail || null };
+                        } catch(e) { signals[pn] = { score:0.5, confidence:0, detail:"error", error:true }; }
+                    });
+                    Object.keys(manual).forEach(function(mn) {
+                        var mv = manual[mn];
+                        if (typeof mv === "number") signals[mn] = { score:_clamp(mv,0,1), confidence:1, detail:"manual" };
+                        else if (mv && typeof mv.score === "number") signals[mn] = { score:_clamp(mv.score,0,1), confidence: mv.confidence != null ? _clamp(mv.confidence,0,1) : 1, detail: mv.detail || "manual" };
+                    });
+                    var ws = 0, tw = 0;
+                    Object.keys(signals).forEach(function(sn) {
+                        var sig = signals[sn], w = weights[sn] || 0;
+                        if (w <= 0) return;
+                        var ew = w * sig.confidence;
+                        ws += sig.score * ew; tw += ew;
+                        breakdown.push({ signal:sn, score:sig.score, weight:w, confidence:sig.confidence, effectiveWeight:ew, contribution:sig.score*ew, detail:sig.detail });
+                    });
+                    var raw = tw > 0 ? ws / tw : 0.5;
+                    var blended = raw;
+                    if (cached && cached.history && cached.history.length > 0) {
+                        var hl = cached.history.length, wd = (hl*(hl+1))/2, hwsum = 0;
+                        for (var i=0;i<hl;i++) hwsum += cached.history[i].score*(i+1);
+                        var ha = hwsum/wd, ed = decayFactor;
+                        var drop = ha - raw;
+                        if (drop > anomalyDrop) { var dr = Math.min(drop/anomalyDrop,2); ed = decayFactor*Math.max(0.25,1-dr*0.5); }
+                        blended = raw*(1-ed) + ha*ed;
+                    }
+                    var final_ = _clamp(Math.round(blended*1000)/1000,0,1);
+                    var act = _action(final_);
+                    breakdown.sort(function(a,b){return b.contribution-a.contribution;});
+                    var history = (cached && cached.history) ? cached.history.slice() : [];
+                    history.push({ score:raw, timestamp:Date.now() });
+                    if (history.length > maxHistory) history = history.slice(history.length - maxHistory);
+                    clients[clientId] = { score:final_, action:act, signals:signals, breakdown:breakdown, timestamp:Date.now(), history:history, rawScore:raw };
+                    clientOrder.push(clientId); _evict();
+                    totalEvaluations++; actionCounts[act] = (actionCounts[act]||0)+1;
+                    return { clientId:clientId, score:final_, rawScore:raw, action:act, signals:signals, breakdown:breakdown, cached:false };
+                },
+                getScore: function(cid) {
+                    var c = clients[cid]; if (!c) return null;
+                    return { clientId:cid, score:c.score, action:c.action, age:Date.now()-c.timestamp, historyLength:c.history?c.history.length:0 };
+                },
+                getScoreTrend: function(cid, lastN) {
+                    var c = clients[cid]; if (!c || !c.history || c.history.length < 2) return null;
+                    var h = c.history;
+                    if (typeof lastN === "number" && lastN > 0 && lastN < h.length) h = h.slice(h.length-lastN);
+                    var scores=[], sum=0, min=1, max=0;
+                    for (var i=0;i<h.length;i++) { var s=h[i].score; scores.push(s); sum+=s; if(s<min)min=s; if(s>max)max=s; }
+                    var avg = sum/scores.length, n=scores.length;
+                    var sx=0,sy=0,sxy=0,sxx=0;
+                    for (var j=0;j<n;j++){sx+=j;sy+=scores[j];sxy+=j*scores[j];sxx+=j*j;}
+                    var slope = n>1?(n*sxy-sx*sy)/(n*sxx-sx*sx):0;
+                    var trend = slope>0.01?"improving":slope<-0.01?"declining":"stable";
+                    return { trend:trend, slope:Math.round(slope*10000)/10000, min:min, max:max, avg:Math.round(avg*1000)/1000, count:scores.length, scores:scores };
+                },
+                getStats: function() {
+                    var cc = clientOrder.length, ss = 0;
+                    var buckets = { high:0, medium:0, low:0, veryLow:0 };
+                    clientOrder.toArray().forEach(function(id) {
+                        var c = clients[id]; if (!c) return;
+                        ss += c.score;
+                        if (c.score > passT) buckets.high++;
+                        else if (c.score > challengeT) buckets.medium++;
+                        else if (c.score > blockT) buckets.low++;
+                        else buckets.veryLow++;
+                    });
+                    return { totalEvaluations:totalEvaluations, activeClients:cc, averageScore:cc>0?Math.round((ss/cc)*1000)/1000:0, actionCounts:Object.assign({},actionCounts), scoreBuckets:buckets };
+                },
+                getAllClients: function() {
+                    return clientOrder.toArray().map(function(id) {
+                        var c = clients[id];
+                        return c ? { clientId:id, score:c.score, action:c.action, signals:c.signals, breakdown:c.breakdown, history:c.history } : null;
+                    }).filter(Boolean);
+                },
+                setThresholds: function(t) {
+                    if (t.block != null) blockT = t.block;
+                    if (t.challenge != null) challengeT = t.challenge;
+                    if (t.pass != null) passT = t.pass;
+                },
+                getThresholds: function() { return { block:blockT, challenge:challengeT, pass:passT }; },
+                setWeights: function(nw) { Object.keys(nw).forEach(function(k){if(typeof nw[k]==="number")weights[k]=nw[k];}); },
+                getWeights: function() { return Object.assign({}, weights); },
+                invalidate: function(cid) { if(clients[cid]) clients[cid].timestamp=0; },
+                reset: function() {
+                    clients = Object.create(null); clientOrder.clear();
+                    totalEvaluations = 0; actionCounts = { block:0, challenge:0, softChallenge:0, pass:0 };
+                }
+            };
+            return engine;
+        };
+    })();
+
+    // ===== Dashboard Logic =====
+    var engine = createTrustScoreEngine({ cacheTtlMs: 500 });
+    var clientCounter = 0;
+    var selectedClient = null;
+    var refreshTimer = null;
+
+    // Register demo providers that generate semi-random signals
+    var clientProfiles = {}; // clientId → { base signals }
+
+    function makeProfile() {
+        var archetype = Math.random();
+        if (archetype < 0.15) {
+            // Bot-like
+            return { reputation: 0.1+Math.random()*0.2, fingerprint: 0.05+Math.random()*0.15, botDetection: 0.05+Math.random()*0.2, rateLimit: 0.1+Math.random()*0.3, responseQuality: 0.1+Math.random()*0.2, behaviorEntropy: 0.05+Math.random()*0.15 };
+        } else if (archetype < 0.35) {
+            // Suspicious
+            return { reputation: 0.3+Math.random()*0.3, fingerprint: 0.3+Math.random()*0.3, botDetection: 0.3+Math.random()*0.3, rateLimit: 0.4+Math.random()*0.3, responseQuality: 0.3+Math.random()*0.3, behaviorEntropy: 0.3+Math.random()*0.3 };
+        } else {
+            // Legitimate
+            return { reputation: 0.6+Math.random()*0.4, fingerprint: 0.7+Math.random()*0.3, botDetection: 0.7+Math.random()*0.3, rateLimit: 0.8+Math.random()*0.2, responseQuality: 0.6+Math.random()*0.4, behaviorEntropy: 0.6+Math.random()*0.4 };
+        }
+    }
+
+    var signalNames = ["reputation","fingerprint","botDetection","rateLimit","responseQuality","behaviorEntropy"];
+    signalNames.forEach(function(name) {
+        engine.registerProvider(name, function(clientId) {
+            var p = clientProfiles[clientId];
+            if (!p) return { score: 0.5 };
+            var base = p[name] || 0.5;
+            // Add noise
+            var noise = (Math.random() - 0.5) * 0.1;
+            return { score: Math.max(0, Math.min(1, base + noise)), confidence: 0.7 + Math.random() * 0.3 };
+        });
+    });
+
+    function addRandomClients(n) {
+        for (var i = 0; i < n; i++) {
+            clientCounter++;
+            var id = "client-" + String(clientCounter).padStart(4, "0");
+            clientProfiles[id] = makeProfile();
+            engine.evaluate(id);
+        }
+        // Evaluate a few times for history
+        Object.keys(clientProfiles).forEach(function(id) {
+            engine.invalidate(id);
+            engine.evaluate(id);
+        });
+        refreshDashboard();
+    }
+
+    function simulateAttack() {
+        for (var i = 0; i < 8; i++) {
+            clientCounter++;
+            var id = "bot-" + String(clientCounter).padStart(4, "0");
+            clientProfiles[id] = {
+                reputation: Math.random()*0.1, fingerprint: Math.random()*0.1,
+                botDetection: Math.random()*0.1, rateLimit: Math.random()*0.15,
+                responseQuality: Math.random()*0.1, behaviorEntropy: Math.random()*0.05
+            };
+            engine.evaluate(id);
+        }
+        refreshDashboard();
+    }
+
+    function simulateGoodBurst() {
+        for (var i = 0; i < 8; i++) {
+            clientCounter++;
+            var id = "user-" + String(clientCounter).padStart(4, "0");
+            clientProfiles[id] = {
+                reputation: 0.8+Math.random()*0.2, fingerprint: 0.85+Math.random()*0.15,
+                botDetection: 0.9+Math.random()*0.1, rateLimit: 0.9+Math.random()*0.1,
+                responseQuality: 0.8+Math.random()*0.2, behaviorEntropy: 0.75+Math.random()*0.25
+            };
+            engine.evaluate(id);
+        }
+        refreshDashboard();
+    }
+
+    function resetAll() {
+        engine.reset();
+        clientProfiles = {};
+        clientCounter = 0;
+        selectedClient = null;
+        document.getElementById("detailPanel").classList.remove("active");
+        refreshDashboard();
+    }
+
+    function updateThresholds() {
+        var b = document.getElementById("blockSlider").value / 100;
+        var c = document.getElementById("challengeSlider").value / 100;
+        var p = document.getElementById("passSlider").value / 100;
+        document.getElementById("blockVal").textContent = b.toFixed(2);
+        document.getElementById("challengeVal").textContent = c.toFixed(2);
+        document.getElementById("passVal").textContent = p.toFixed(2);
+        engine.setThresholds({ block: b, challenge: c, pass: p });
+
+        // Update threshold viz
+        document.getElementById("threshZoneBlock").style.left = "0";
+        document.getElementById("threshZoneBlock").style.width = (b*100)+"%";
+        document.getElementById("threshZoneChallenge").style.left = (b*100)+"%";
+        document.getElementById("threshZoneChallenge").style.width = ((c-b)*100)+"%";
+        document.getElementById("threshZoneSoft").style.left = (c*100)+"%";
+        document.getElementById("threshZoneSoft").style.width = ((p-c)*100)+"%";
+        document.getElementById("threshZonePass").style.left = (p*100)+"%";
+        document.getElementById("threshZonePass").style.width = ((1-p)*100)+"%";
+
+        // Re-evaluate all clients with new thresholds
+        Object.keys(clientProfiles).forEach(function(id) {
+            engine.invalidate(id);
+            engine.evaluate(id);
+        });
+        refreshDashboard();
+    }
+
+    function scoreColor(score) {
+        var t = engine.getThresholds();
+        if (score > t.pass) return "var(--green)";
+        if (score > t.challenge) return "var(--yellow)";
+        if (score > t.block) return "var(--orange)";
+        return "var(--red)";
+    }
+
+    function scoreClass(score) {
+        var t = engine.getThresholds();
+        if (score > t.pass) return "score-high";
+        if (score > t.challenge) return "score-medium";
+        if (score > t.block) return "score-low";
+        return "score-blocked";
+    }
+
+    function refreshDashboard() {
+        var stats = engine.getStats();
+
+        document.getElementById("statEvals").textContent = stats.totalEvaluations.toLocaleString();
+        document.getElementById("statClients").textContent = stats.activeClients.toLocaleString();
+        document.getElementById("statAvg").textContent = stats.activeClients > 0 ? stats.averageScore.toFixed(3) : "—";
+
+        var gauge = document.getElementById("avgGauge");
+        gauge.style.width = (stats.averageScore * 100) + "%";
+        gauge.className = "score-gauge-fill " + scoreClass(stats.averageScore);
+
+        // Action pie
+        var total = stats.actionCounts.pass + stats.actionCounts.softChallenge + stats.actionCounts.challenge + stats.actionCounts.block;
+        var pieHtml = "";
+        if (total > 0) {
+            var items = [
+                { label: "Pass", count: stats.actionCounts.pass, color: "var(--green)" },
+                { label: "Soft", count: stats.actionCounts.softChallenge, color: "var(--yellow)" },
+                { label: "Challenge", count: stats.actionCounts.challenge, color: "var(--orange)" },
+                { label: "Block", count: stats.actionCounts.block, color: "var(--red)" }
+            ];
+            items.forEach(function(item) {
+                var pct = total > 0 ? Math.round(item.count / total * 100) : 0;
+                pieHtml += '<div class="pie-slice"><span class="pie-dot" style="background:'+item.color+'"></span>'+item.label+': '+item.count+' ('+pct+'%)</div>';
+            });
+        } else {
+            pieHtml = '<span style="color:var(--muted)">No data yet</span>';
+        }
+        document.getElementById("actionPie").innerHTML = pieHtml;
+
+        renderClients();
+
+        if (selectedClient) showDetail(selectedClient);
+    }
+
+    function renderClients() {
+        var all = engine.getAllClients();
+        var filter = document.getElementById("clientFilter").value.toLowerCase();
+        var actionF = document.getElementById("actionFilter").value;
+        var sortBy = document.getElementById("sortBy").value;
+
+        if (filter) all = all.filter(function(c) { return c.clientId.toLowerCase().indexOf(filter) !== -1; });
+        if (actionF) all = all.filter(function(c) { return c.action === actionF; });
+
+        if (sortBy === "score-asc") all.sort(function(a,b){return a.score-b.score;});
+        else if (sortBy === "score-desc") all.sort(function(a,b){return b.score-a.score;});
+        else all.sort(function(a,b){return a.clientId.localeCompare(b.clientId);});
+
+        var tbody = document.getElementById("clientTableBody");
+        var html = "";
+        all.forEach(function(c) {
+            var trend = engine.getScoreTrend(c.clientId, 10);
+            var trendIcon = trend ? (trend.trend === "improving" ? "📈" : trend.trend === "declining" ? "📉" : "➡️") : "—";
+            var signalBars = "";
+            signalNames.forEach(function(sn) {
+                var sig = c.signals[sn];
+                var val = sig ? sig.score : 0;
+                signalBars += '<div style="display:flex;align-items:center;gap:4px;"><span style="width:6px;height:6px;border-radius:50%;background:'+scoreColor(val)+'"></span><div style="width:40px;height:4px;background:var(--border);border-radius:2px;overflow:hidden;"><div style="width:'+(val*100)+'%;height:100%;background:'+scoreColor(val)+';border-radius:2px;"></div></div></div>';
+            });
+            var sel = selectedClient === c.clientId ? 'style="background:var(--surface-hover);"' : '';
+            html += '<tr '+sel+' onclick="showDetail(\''+c.clientId+'\')" style="cursor:pointer;">';
+            html += '<td style="font-family:monospace;">'+sanitize(c.clientId)+'</td>';
+            html += '<td><span class="mini-score" style="color:'+scoreColor(c.score)+'">'+c.score.toFixed(3)+'</span>';
+            html += '<div class="score-gauge" style="height:6px;margin-top:4px;"><div class="score-gauge-fill '+scoreClass(c.score)+'" style="width:'+(c.score*100)+'%"></div></div></td>';
+            html += '<td><span class="action-badge action-'+c.action+'">'+c.action+'</span></td>';
+            html += '<td><div style="display:flex;gap:6px;flex-wrap:wrap;">'+signalBars+'</div></td>';
+            html += '<td>'+trendIcon+'</td>';
+            html += '</tr>';
+        });
+        if (!html) html = '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:2rem;">No clients yet — click "Add Clients" to start</td></tr>';
+        tbody.innerHTML = html;
+    }
+
+    function showDetail(clientId) {
+        selectedClient = clientId;
+        var panel = document.getElementById("detailPanel");
+        panel.classList.add("active");
+        document.getElementById("detailClientId").textContent = clientId;
+
+        var all = engine.getAllClients();
+        var c = all.find(function(x){return x.clientId===clientId;});
+        if (!c) return;
+
+        // Breakdown
+        var bdHtml = "";
+        (c.breakdown || []).forEach(function(b) {
+            bdHtml += '<div class="signal-bar-container" style="margin-bottom:0.5rem;">';
+            bdHtml += '<span class="signal-label">'+sanitize(b.signal)+'</span>';
+            bdHtml += '<div class="signal-bar"><div class="signal-bar-inner" style="width:'+(b.score*100)+'%;background:'+scoreColor(b.score)+'"></div></div>';
+            bdHtml += '<span class="signal-value" style="color:'+scoreColor(b.score)+'">'+b.score.toFixed(2)+'</span>';
+            bdHtml += '</div>';
+        });
+        document.getElementById("detailBreakdown").innerHTML = bdHtml || '<span style="color:var(--muted)">No breakdown available</span>';
+
+        // Trend chart
+        var trend = engine.getScoreTrend(clientId, 30);
+        var chartHtml = "";
+        if (trend && trend.scores.length > 0) {
+            trend.scores.forEach(function(s) {
+                var h = Math.max(4, s * 60);
+                chartHtml += '<div class="trend-bar" style="height:'+h+'px;background:'+scoreColor(s)+';"></div>';
+            });
+            document.getElementById("detailTrendInfo").textContent = "Trend: " + trend.trend + " | Slope: " + trend.slope + " | Avg: " + trend.avg + " | Range: " + trend.min.toFixed(3) + "–" + trend.max.toFixed(3);
+        } else {
+            chartHtml = '<span style="color:var(--muted);font-size:0.85rem;">Need 2+ evaluations for trend</span>';
+            document.getElementById("detailTrendInfo").textContent = "";
+        }
+        document.getElementById("detailTrendChart").innerHTML = chartHtml;
+    }
+
+    function applyOverride() {
+        if (!selectedClient) return;
+        var sig = document.getElementById("overrideSignal").value;
+        var val = document.getElementById("overrideValue").value / 100;
+        var manual = {};
+        manual[sig] = val;
+        engine.invalidate(selectedClient);
+        engine.evaluate(selectedClient, manual);
+        refreshDashboard();
+    }
+
+    document.getElementById("overrideValue").addEventListener("input", function() {
+        document.getElementById("overrideDisplay").textContent = (this.value / 100).toFixed(2);
+    });
+
+    // Weight sliders
+    function renderWeightSliders() {
+        var w = engine.getWeights();
+        var html = '<div class="config-section">';
+        signalNames.forEach(function(name) {
+            var val = w[name] != null ? w[name] : 1;
+            html += '<div class="config-field">';
+            html += '<label>'+name+': <span id="w_'+name+'_val">'+val.toFixed(1)+'</span></label>';
+            html += '<input type="range" min="0" max="30" value="'+(val*10)+'" id="w_'+name+'" oninput="updateWeight(\''+name+'\', this.value)">';
+            html += '</div>';
+        });
+        html += '</div>';
+        document.getElementById("weightSliders").innerHTML = html;
+    }
+
+    window.updateWeight = function(name, val) {
+        var v = val / 10;
+        document.getElementById("w_"+name+"_val").textContent = v.toFixed(1);
+        var nw = {};
+        nw[name] = v;
+        engine.setWeights(nw);
+        Object.keys(clientProfiles).forEach(function(id) { engine.invalidate(id); engine.evaluate(id); });
+        refreshDashboard();
+    };
+
+    // Auto-refresh
+    function startAutoRefresh() {
+        if (refreshTimer) clearInterval(refreshTimer);
+        refreshTimer = setInterval(function() {
+            if (!document.getElementById("autoRefresh").checked) return;
+            if (Object.keys(clientProfiles).length === 0) return;
+            // Simulate ongoing evaluations (re-evaluate with noise)
+            var ids = Object.keys(clientProfiles);
+            var batch = ids.slice(0, Math.min(5, ids.length));
+            batch.forEach(function(id) { engine.invalidate(id); engine.evaluate(id); });
+            refreshDashboard();
+        }, 2000);
+    }
+
+    // Init
+    updateThresholds();
+    renderWeightSliders();
+    startAutoRefresh();
+    refreshDashboard();
+
+    // Seed some initial data
+    addRandomClients(10);
+    </script>
+</body>
+</html>

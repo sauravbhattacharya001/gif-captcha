@@ -209,7 +209,7 @@ When proposing new GIFs for the test suite:
 
 ## Code of Conduct
 
-Be kind, constructive, and respectful. We're all here to advance understanding of AI capabilities and CAPTCHA design.
+This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code — be kind, constructive, and respectful. Report unacceptable behavior to [@sauravbhattacharya001](https://github.com/sauravbhattacharya001).
 
 ## Questions?
 

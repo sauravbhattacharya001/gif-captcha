@@ -20,51 +20,24 @@
 
 "use strict";
 
+// ── Shared statistics helpers (deduplicated — issue #91) ────────────
+var _shared = require("./shared-utils");
+var _mean = _shared._mean;
+var _stddev = _shared._stddev;
+var _median = _shared._median;
+var _percentile = _shared._percentile;
+var _numAsc = _shared._numAsc;
+
+function _sortedCopy(arr) {
+  return arr.slice().sort(_numAsc);
+}
+
 // ── Sensitivity presets ─────────────────────────────────────────────
 var SENSITIVITY_PRESETS = {
   low:    { zThreshold: 3.5, iqrMultiplier: 2.5, emaAlpha: 0.1, minSamples: 50, burstWindow: 120000, burstThreshold: 20 },
   medium: { zThreshold: 2.5, iqrMultiplier: 1.8, emaAlpha: 0.2, minSamples: 30, burstWindow: 60000,  burstThreshold: 10 },
   high:   { zThreshold: 2.0, iqrMultiplier: 1.5, emaAlpha: 0.3, minSamples: 15, burstWindow: 30000,  burstThreshold: 5  }
 };
-
-// ── Statistics helpers ──────────────────────────────────────────────
-
-function _mean(arr) {
-  if (!arr.length) return 0;
-  var sum = 0;
-  for (var i = 0; i < arr.length; i++) sum += arr[i];
-  return sum / arr.length;
-}
-
-function _stddev(arr, avg) {
-  if (arr.length < 2) return 0;
-  if (avg === undefined) avg = _mean(arr);
-  var sumSq = 0;
-  for (var i = 0; i < arr.length; i++) {
-    var d = arr[i] - avg;
-    sumSq += d * d;
-  }
-  return Math.sqrt(sumSq / arr.length);
-}
-
-function _median(sorted) {
-  if (!sorted.length) return 0;
-  var mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-}
-
-function _percentile(sorted, p) {
-  if (!sorted.length) return 0;
-  var idx = (p / 100) * (sorted.length - 1);
-  var lo = Math.floor(idx);
-  var hi = Math.ceil(idx);
-  if (lo === hi) return sorted[lo];
-  return sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
-}
-
-function _sortedCopy(arr) {
-  return arr.slice().sort(function (a, b) { return a - b; });
-}
 
 // ── Core factory ────────────────────────────────────────────────────
 

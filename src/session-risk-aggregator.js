@@ -98,13 +98,7 @@ function _decayFactor(ageMs, halfLifeMs) {
 }
 
 function _percentile(arr, p) {
-  if (!arr || arr.length === 0) return 0;
-  var sorted = arr.slice().sort(function (a, b) { return a - b; });
-  var idx = (p / 100) * (sorted.length - 1);
-  var lo = Math.floor(idx);
-  var hi = Math.ceil(idx);
-  if (lo === hi) return sorted[lo];
-  return sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
+  return require("./shared-utils")._percentile(arr, p);
 }
 
 // ── Module name normalization ───────────────────────────────────────

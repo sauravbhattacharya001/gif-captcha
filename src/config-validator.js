@@ -1,42 +1,14 @@
 "use strict";
 
-// LruTracker is defined in index.js; import via _internal to avoid circular issues at init time.
-var _LruTracker = null;
-function _getLruTracker() {
-  if (!_LruTracker) {
-    _LruTracker = require("./index")._internal.LruTracker;
-  }
-  return _LruTracker;
-}
-
-// Shared helpers (duplicated from index.js to avoid circular deps)
-function _now() { return Date.now(); }
-function _clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
-function _numAsc(a, b) { return a - b; }
-function _mean(arr) {
-  if (arr.length === 0) return 0;
-  var sum = 0;
-  for (var i = 0; i < arr.length; i++) sum += arr[i];
-  return sum / arr.length;
-}
-function _median(arr) {
-  if (arr.length === 0) return 0;
-  var sorted = arr.slice().sort(_numAsc);
-  var mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0
-    ? (sorted[mid - 1] + sorted[mid]) / 2
-    : sorted[mid];
-}
-function _stddev(arr, avg) {
-  if (arr.length < 2) return 0;
-  var m = avg !== undefined ? avg : _mean(arr);
-  var sumSq = 0;
-  for (var i = 0; i < arr.length; i++) {
-    var d = arr[i] - m;
-    sumSq += d * d;
-  }
-  return Math.sqrt(sumSq / (arr.length - 1));
-}
+// ── Shared utilities (deduplicated — issue #91) ─────────────────────
+var _shared = require("./shared-utils");
+var _now = _shared._now;
+var _clamp = _shared._clamp;
+var _numAsc = _shared._numAsc;
+var _mean = _shared._mean;
+var _median = _shared._median;
+var _stddev = _shared._stddev;
+var LruTracker = _shared.LruTracker;
 
 
 // ── Configuration Validator ─────────────────────────────────────────
@@ -570,7 +542,7 @@ function createChallengeAnalytics(options) {
   // challengeId -> { events: [], stats cache }
   var store = Object.create(null);
   var challengeCount = 0;
-  var evictionOrder = new (_getLruTracker())();  // true LRU via doubly-linked list
+  var evictionOrder = new LruTracker();  // true LRU via doubly-linked list
 
   function _ensureEntry(challengeId) {
     if (store[challengeId]) {

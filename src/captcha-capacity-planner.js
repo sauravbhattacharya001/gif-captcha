@@ -48,44 +48,13 @@ var HEALTH_LEVELS = {
   overloaded: { label: 'Overloaded', utilization: 1.0 }
 };
 
-// ── Helpers ─────────────────────────────────────────────────────────
-
-function _clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
-
-function _mean(arr) {
-  if (!arr.length) return 0;
-  var s = 0;
-  for (var i = 0; i < arr.length; i++) s += arr[i];
-  return s / arr.length;
-}
-
-function _median(arr) {
-  if (!arr.length) return 0;
-  var sorted = arr.slice().sort(function (a, b) { return a - b; });
-  var mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-}
-
-function _percentile(arr, p) {
-  if (!arr.length) return 0;
-  var sorted = arr.slice().sort(function (a, b) { return a - b; });
-  var idx = (p / 100) * (sorted.length - 1);
-  var lo = Math.floor(idx);
-  var hi = Math.ceil(idx);
-  if (lo === hi) return sorted[lo];
-  return sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
-}
-
-function _stddev(arr) {
-  if (arr.length < 2) return 0;
-  var m = _mean(arr);
-  var ss = 0;
-  for (var i = 0; i < arr.length; i++) {
-    var d = arr[i] - m;
-    ss += d * d;
-  }
-  return Math.sqrt(ss / (arr.length - 1));
-}
+// ── Helpers (deduplicated — shared math from shared-utils.js) ───────
+var _shared = require("./shared-utils");
+var _mean = _shared._mean;
+var _median = _shared._median;
+var _percentile = _shared._percentile;
+var _stddev = _shared._stddev;
+var _clamp = _shared._clamp;
 
 function _linearRegression(xs, ys) {
   var n = xs.length;

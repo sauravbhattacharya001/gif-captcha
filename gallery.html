@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src https: data:; frame-ancestors 'none'; base-uri 'self'; form-action 'none';">
+    <meta name="referrer" content="no-referrer">
+    <title>Challenge Preview Gallery — GIF CAPTCHA</title>
+    <link rel="stylesheet" href="shared.css">
+    <style>
+        body { padding: 0; }
+        .gallery-header {
+            text-align: center;
+            padding: 2.5rem 1.5rem 1.5rem;
+            border-bottom: 1px solid var(--border);
+        }
+        .gallery-header h1 { font-size: 2rem; margin-bottom: 0.5rem; }
+        .gallery-header p { color: var(--muted); max-width: 600px; margin: 0 auto; }
+
+        .controls {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+            padding: 1.5rem;
+            border-bottom: 1px solid var(--border);
+            background: var(--surface);
+        }
+        .controls input, .controls select {
+            background: var(--bg);
+            color: var(--text);
+            border: 1px solid var(--border);
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            font-size: 0.9rem;
+        }
+        .controls input { min-width: 250px; }
+        .controls select { min-width: 140px; }
+
+        .stats-bar {
+            display: flex;
+            gap: 2rem;
+            justify-content: center;
+            padding: 1rem 1.5rem;
+            color: var(--muted);
+            font-size: 0.85rem;
+            border-bottom: 1px solid var(--border);
+        }
+        .stats-bar span { font-weight: 600; color: var(--text); }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 1.5rem;
+            padding: 2rem;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+            transition: transform 0.15s, box-shadow 0.15s;
+            cursor: pointer;
+        }
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+        }
+        .card.expanded .card-details { display: block; }
+
+        .card-preview {
+            height: 180px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 4rem;
+            background: linear-gradient(135deg, var(--bg), var(--surface));
+            position: relative;
+        }
+        .card-preview .difficulty-pill {
+            position: absolute;
+            top: 0.75rem;
+            right: 0.75rem;
+            padding: 0.2rem 0.6rem;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+        .diff-easy { background: var(--green-bg); color: var(--green); }
+        .diff-medium { background: var(--yellow-bg); color: var(--yellow); }
+        .diff-hard { background: var(--red-bg); color: var(--red); }
+
+        .card-body { padding: 1.25rem; }
+        .card-body h3 { font-size: 1.05rem; margin-bottom: 0.4rem; }
+        .card-body .desc { color: var(--muted); font-size: 0.85rem; line-height: 1.5; }
+
+        .card-tags {
+            display: flex;
+            gap: 0.4rem;
+            flex-wrap: wrap;
+            padding: 0 1.25rem 1rem;
+        }
+        .tag {
+            padding: 0.15rem 0.5rem;
+            border-radius: 10px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            background: var(--purple-bg);
+            color: var(--purple);
+        }
+        .tag.tag-visual { background: var(--cyan-bg); color: var(--cyan); }
+        .tag.tag-cognitive { background: var(--orange-bg); color: var(--orange); }
+        .tag.tag-temporal { background: var(--yellow-bg); color: var(--yellow); }
+
+        .card-details {
+            display: none;
+            padding: 1rem 1.25rem 1.25rem;
+            border-top: 1px solid var(--border);
+        }
+        .card-details h4 { font-size: 0.85rem; color: var(--accent); margin-bottom: 0.5rem; }
+        .detail-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.5rem;
+            font-size: 0.8rem;
+        }
+        .detail-grid .label { color: var(--muted); }
+        .detail-grid .value { color: var(--text); text-align: right; }
+
+        .card-details .config-snippet {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.75rem;
+            font-family: monospace;
+            font-size: 0.75rem;
+            color: var(--muted);
+            margin-top: 0.75rem;
+            overflow-x: auto;
+            white-space: pre;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 4rem 2rem;
+            color: var(--muted);
+            font-size: 1.1rem;
+        }
+
+        footer {
+            text-align: center;
+            padding: 2rem;
+            color: var(--muted);
+            font-size: 0.85rem;
+            border-top: 1px solid var(--border);
+            margin-top: 2rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="gallery-header">
+        <h1>🖼️ Challenge Preview Gallery</h1>
+        <p>Browse all available GIF CAPTCHA challenge types. Click a card for configuration details and usage snippets.</p>
+    </div>
+
+    <div class="controls">
+        <input type="text" id="search" placeholder="Search challenges…" autocomplete="off">
+        <select id="filterDifficulty">
+            <option value="all">All Difficulties</option>
+            <option value="easy">Easy</option>
+            <option value="medium">Medium</option>
+            <option value="hard">Hard</option>
+        </select>
+        <select id="filterCategory">
+            <option value="all">All Categories</option>
+            <option value="visual">Visual</option>
+            <option value="cognitive">Cognitive</option>
+            <option value="temporal">Temporal</option>
+        </select>
+        <select id="sortBy">
+            <option value="name">Sort: Name</option>
+            <option value="difficulty">Sort: Difficulty</option>
+            <option value="solveRate">Sort: Solve Rate</option>
+        </select>
+    </div>
+
+    <div class="stats-bar" id="statsBar">
+        <div>Showing <span id="visibleCount">0</span> of <span id="totalCount">0</span> challenges</div>
+        <div>Avg solve rate: <span id="avgSolveRate">—</span></div>
+        <div>Avg bot block rate: <span id="avgBotBlock">—</span></div>
+    </div>
+
+    <div class="grid" id="gallery"></div>
+    <div class="empty-state" id="emptyState" style="display:none">No challenges match your filters.</div>
+
+    <footer>GIF CAPTCHA Research Project — Challenge Preview Gallery</footer>
+
+    <script>
+    var challenges = [
+        {
+            name: "Frame Sequence",
+            emoji: "🎬",
+            difficulty: "easy",
+            category: "visual",
+            tags: ["visual", "ordering"],
+            desc: "User identifies the correct sequence of frames from an animated GIF. Tests basic visual attention.",
+            solveRate: 94,
+            botBlockRate: 72,
+            avgSolveTime: "3.2s",
+            frameCount: "4-6",
+            config: '{ "type": "frame-sequence",\n  "frames": 5,\n  "shuffle": true,\n  "timeout": 15000 }'
+        },
+        {
+            name: "Object Count",
+            emoji: "🔢",
+            difficulty: "easy",
+            category: "cognitive",
+            tags: ["cognitive", "counting"],
+            desc: "Count specific objects appearing across GIF frames. Simple cognitive task with high human pass rates.",
+            solveRate: 91,
+            botBlockRate: 68,
+            avgSolveTime: "4.1s",
+            frameCount: "3-8",
+            config: '{ "type": "object-count",\n  "targetObject": "auto",\n  "tolerance": 1,\n  "timeout": 20000 }'
+        },
+        {
+            name: "Direction Detection",
+            emoji: "➡️",
+            difficulty: "easy",
+            category: "visual",
+            tags: ["visual", "motion"],
+            desc: "Identify the direction an object moves in the GIF animation. Leverages temporal visual processing.",
+            solveRate: 96,
+            botBlockRate: 65,
+            avgSolveTime: "2.1s",
+            frameCount: "6-10",
+            config: '{ "type": "direction-detect",\n  "directions": ["up","down","left","right"],\n  "speed": "medium",\n  "timeout": 10000 }'
+        },
+        {
+            name: "Color Shift",
+            emoji: "🎨",
+            difficulty: "medium",
+            category: "visual",
+            tags: ["visual", "color"],
+            desc: "Identify which element changes color during the animation. Requires sustained attention across frames.",
+            solveRate: 87,
+            botBlockRate: 81,
+            avgSolveTime: "5.4s",
+            frameCount: "8-12",
+            config: '{ "type": "color-shift",\n  "elements": 6,\n  "shiftCount": 1,\n  "subtlety": "medium",\n  "timeout": 20000 }'
+        },
+        {
+            name: "Odd One Out",
+            emoji: "🔍",
+            difficulty: "medium",
+            category: "cognitive",
+            tags: ["cognitive", "pattern"],
+            desc: "Spot the element that behaves differently from the others in the GIF. Tests pattern recognition.",
+            solveRate: 83,
+            botBlockRate: 85,
+            avgSolveTime: "6.2s",
+            frameCount: "5-8",
+            config: '{ "type": "odd-one-out",\n  "elements": 5,\n  "differenceType": "motion",\n  "timeout": 25000 }'
+        },
+        {
+            name: "Speed Comparison",
+            emoji: "⚡",
+            difficulty: "medium",
+            category: "temporal",
+            tags: ["temporal", "motion"],
+            desc: "Determine which object moves faster in the animation. Requires temporal processing bots struggle with.",
+            solveRate: 85,
+            botBlockRate: 88,
+            avgSolveTime: "4.8s",
+            frameCount: "10-15",
+            config: '{ "type": "speed-compare",\n  "objects": 2,\n  "speedDiff": 1.5,\n  "timeout": 15000 }'
+        },
+        {
+            name: "Disappearing Act",
+            emoji: "👻",
+            difficulty: "medium",
+            category: "temporal",
+            tags: ["temporal", "memory"],
+            desc: "Identify which object disappears during the animation. Combines visual tracking with short-term memory.",
+            solveRate: 80,
+            botBlockRate: 83,
+            avgSolveTime: "5.9s",
+            frameCount: "6-10",
+            config: '{ "type": "disappearing-act",\n  "objects": 5,\n  "disappearFrame": "random",\n  "timeout": 20000 }'
+        },
+        {
+            name: "Loop Counter",
+            emoji: "🔄",
+            difficulty: "medium",
+            category: "temporal",
+            tags: ["temporal", "counting"],
+            desc: "Count how many times a specific event occurs across GIF loops. Exploits GIF's looping nature.",
+            solveRate: 79,
+            botBlockRate: 86,
+            avgSolveTime: "7.3s",
+            frameCount: "8-12",
+            config: '{ "type": "loop-counter",\n  "event": "bounce",\n  "loops": 3,\n  "tolerance": 0,\n  "timeout": 25000 }'
+        },
+        {
+            name: "Semantic Match",
+            emoji: "🧠",
+            difficulty: "hard",
+            category: "cognitive",
+            tags: ["cognitive", "semantic"],
+            desc: "Match the GIF animation to a text description. Requires high-level scene understanding.",
+            solveRate: 76,
+            botBlockRate: 92,
+            avgSolveTime: "8.1s",
+            frameCount: "5-15",
+            config: '{ "type": "semantic-match",\n  "options": 4,\n  "distractors": "similar",\n  "timeout": 30000 }'
+        },
+        {
+            name: "Temporal Order",
+            emoji: "⏱️",
+            difficulty: "hard",
+            category: "temporal",
+            tags: ["temporal", "ordering"],
+            desc: "Arrange events in the correct temporal order as they appear in the GIF. Multi-step temporal reasoning.",
+            solveRate: 71,
+            botBlockRate: 91,
+            avgSolveTime: "9.5s",
+            frameCount: "10-20",
+            config: '{ "type": "temporal-order",\n  "events": 4,\n  "playbackSpeed": 1.0,\n  "replays": 2,\n  "timeout": 35000 }'
+        },
+        {
+            name: "Anomaly Spotter",
+            emoji: "🚨",
+            difficulty: "hard",
+            category: "cognitive",
+            tags: ["cognitive", "visual", "anomaly"],
+            desc: "Identify the frame containing an anomaly or glitch. Requires careful frame-by-frame attention.",
+            solveRate: 68,
+            botBlockRate: 94,
+            avgSolveTime: "10.2s",
+            frameCount: "12-20",
+            config: '{ "type": "anomaly-spot",\n  "anomalyType": "visual-glitch",\n  "position": "random",\n  "timeout": 30000 }'
+        },
+        {
+            name: "Causality Chain",
+            emoji: "⛓️",
+            difficulty: "hard",
+            category: "cognitive",
+            tags: ["cognitive", "causal"],
+            desc: "Determine the cause-and-effect relationship shown in the GIF. Deep cognitive processing required.",
+            solveRate: 65,
+            botBlockRate: 95,
+            avgSolveTime: "11.8s",
+            frameCount: "8-15",
+            config: '{ "type": "causality-chain",\n  "steps": 3,\n  "distractorCauses": 2,\n  "timeout": 35000 }'
+        }
+    ];
+
+    var gallery = document.getElementById('gallery');
+    var searchEl = document.getElementById('search');
+    var filterDiff = document.getElementById('filterDifficulty');
+    var filterCat = document.getElementById('filterCategory');
+    var sortBy = document.getElementById('sortBy');
+    var emptyState = document.getElementById('emptyState');
+    var visibleCount = document.getElementById('visibleCount');
+    var totalCount = document.getElementById('totalCount');
+    var avgSolveRate = document.getElementById('avgSolveRate');
+    var avgBotBlock = document.getElementById('avgBotBlock');
+
+    totalCount.textContent = challenges.length;
+
+    function diffOrder(d) { return d === 'easy' ? 0 : d === 'medium' ? 1 : 2; }
+
+    function render() {
+        var q = searchEl.value.toLowerCase();
+        var diff = filterDiff.value;
+        var cat = filterCat.value;
+        var sort = sortBy.value;
+
+        var filtered = challenges.filter(function(c) {
+            if (q && c.name.toLowerCase().indexOf(q) === -1 && c.desc.toLowerCase().indexOf(q) === -1) return false;
+            if (diff !== 'all' && c.difficulty !== diff) return false;
+            if (cat !== 'all' && c.category !== cat) return false;
+            return true;
+        });
+
+        filtered.sort(function(a, b) {
+            if (sort === 'difficulty') return diffOrder(a.difficulty) - diffOrder(b.difficulty);
+            if (sort === 'solveRate') return b.solveRate - a.solveRate;
+            return a.name.localeCompare(b.name);
+        });
+
+        visibleCount.textContent = filtered.length;
+        if (filtered.length > 0) {
+            var sr = 0, bb = 0;
+            filtered.forEach(function(c) { sr += c.solveRate; bb += c.botBlockRate; });
+            avgSolveRate.textContent = (sr / filtered.length).toFixed(1) + '%';
+            avgBotBlock.textContent = (bb / filtered.length).toFixed(1) + '%';
+        } else {
+            avgSolveRate.textContent = '—';
+            avgBotBlock.textContent = '—';
+        }
+
+        gallery.innerHTML = '';
+        emptyState.style.display = filtered.length === 0 ? 'block' : 'none';
+
+        filtered.forEach(function(c) {
+            var card = document.createElement('div');
+            card.className = 'card';
+            card.onclick = function() { card.classList.toggle('expanded'); };
+
+            card.innerHTML =
+                '<div class="card-preview">' +
+                    '<span>' + c.emoji + '</span>' +
+                    '<span class="difficulty-pill diff-' + c.difficulty + '">' + c.difficulty + '</span>' +
+                '</div>' +
+                '<div class="card-body">' +
+                    '<h3>' + c.name + '</h3>' +
+                    '<div class="desc">' + c.desc + '</div>' +
+                '</div>' +
+                '<div class="card-tags">' +
+                    c.tags.map(function(t) {
+                        var cls = t === 'visual' ? 'tag-visual' : t === 'cognitive' ? 'tag-cognitive' : t === 'temporal' ? 'tag-temporal' : '';
+                        return '<span class="tag ' + cls + '">' + t + '</span>';
+                    }).join('') +
+                '</div>' +
+                '<div class="card-details">' +
+                    '<h4>Performance Metrics</h4>' +
+                    '<div class="detail-grid">' +
+                        '<div class="label">Human solve rate</div><div class="value">' + c.solveRate + '%</div>' +
+                        '<div class="label">Bot block rate</div><div class="value">' + c.botBlockRate + '%</div>' +
+                        '<div class="label">Avg solve time</div><div class="value">' + c.avgSolveTime + '</div>' +
+                        '<div class="label">Frame count</div><div class="value">' + c.frameCount + '</div>' +
+                    '</div>' +
+                    '<h4 style="margin-top:1rem">Configuration</h4>' +
+                    '<div class="config-snippet">' + c.config + '</div>' +
+                '</div>';
+
+            gallery.appendChild(card);
+        });
+    }
+
+    searchEl.addEventListener('input', render);
+    filterDiff.addEventListener('change', render);
+    filterCat.addEventListener('change', render);
+    sortBy.addEventListener('change', render);
+    render();
+    </script>
+</body>
+</html>

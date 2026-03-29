@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src https:; frame-ancestors 'none'; base-uri 'self'; form-action 'none';">
+    <meta name="referrer" content="no-referrer">
+    <title>Audit Log — GIF CAPTCHA</title>
+    <link rel="stylesheet" href="shared.css">
+    <style>
+        body { padding: 2rem; max-width: 1200px; margin: 0 auto; }
+        h1 { font-size: 1.8rem; margin-bottom: 0.5rem; }
+        .subtitle { color: var(--muted); font-size: 0.95rem; margin-bottom: 1.5rem; }
+
+        .controls { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1.5rem; align-items: center; }
+        .controls input, .controls select {
+            background: var(--surface); border: 1px solid var(--border); color: var(--text);
+            padding: 0.5rem 0.75rem; border-radius: 6px; font-size: 0.85rem;
+        }
+        .controls input { flex: 1; min-width: 200px; }
+        .controls select { min-width: 140px; }
+
+        .stats-row { display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+        .stat-card {
+            background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+            padding: 1rem 1.25rem; flex: 1; min-width: 150px;
+        }
+        .stat-card .label { color: var(--muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
+        .stat-card .value { font-size: 1.5rem; font-weight: 700; color: var(--text); margin-top: 0.25rem; }
+
+        .log-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        .log-table th {
+            background: var(--surface); color: var(--muted); text-align: left;
+            padding: 0.6rem 0.75rem; border-bottom: 2px solid var(--border);
+            cursor: pointer; user-select: none; white-space: nowrap;
+        }
+        .log-table th:hover { color: var(--text); }
+        .log-table th .sort-arrow { margin-left: 0.3rem; font-size: 0.7rem; }
+        .log-table td {
+            padding: 0.55rem 0.75rem; border-bottom: 1px solid var(--border); color: var(--text);
+        }
+        .log-table tr:hover td { background: var(--surface-hover); }
+
+        .badge {
+            display: inline-block; padding: 0.15rem 0.5rem; border-radius: 10px;
+            font-size: 0.75rem; font-weight: 600;
+        }
+        .badge-pass { background: var(--green-bg); color: var(--green); }
+        .badge-fail { background: var(--red-bg); color: var(--red); }
+        .badge-timeout { background: var(--yellow-bg); color: var(--yellow); }
+        .badge-suspicious { background: var(--purple-bg); color: var(--purple); }
+
+        .risk-low { color: var(--green); }
+        .risk-medium { color: var(--yellow); }
+        .risk-high { color: var(--orange); }
+        .risk-critical { color: var(--red); }
+
+        .pagination { display: flex; gap: 0.5rem; justify-content: center; margin-top: 1.5rem; align-items: center; }
+        .pagination button {
+            background: var(--surface); border: 1px solid var(--border); color: var(--text);
+            padding: 0.4rem 0.75rem; border-radius: 6px; cursor: pointer; font-size: 0.85rem;
+        }
+        .pagination button:hover { background: var(--surface-hover); }
+        .pagination button:disabled { opacity: 0.4; cursor: default; }
+        .pagination .page-info { color: var(--muted); font-size: 0.85rem; }
+
+        .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem; }
+        .export-btn {
+            background: var(--accent); color: #fff; border: none; padding: 0.5rem 1rem;
+            border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 600;
+        }
+        .export-btn:hover { background: var(--accent-hover); }
+
+        .detail-panel {
+            background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+            padding: 1.25rem; margin-top: 1.5rem; display: none;
+        }
+        .detail-panel h3 { margin: 0 0 1rem; font-size: 1.1rem; }
+        .detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.75rem; }
+        .detail-item .label { color: var(--muted); font-size: 0.75rem; text-transform: uppercase; }
+        .detail-item .value { color: var(--text); font-size: 0.9rem; margin-top: 0.15rem; }
+        .close-btn {
+            float: right; background: none; border: none; color: var(--muted);
+            cursor: pointer; font-size: 1.2rem;
+        }
+        .close-btn:hover { color: var(--text); }
+
+        footer { margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid var(--border); color: var(--muted); font-size: 0.85rem; }
+    </style>
+</head>
+<body>
+    <h1>📋 Audit Log</h1>
+    <p class="subtitle">Browse, search, and export CAPTCHA challenge &amp; response records</p>
+
+    <div class="stats-row" id="stats-row"></div>
+
+    <div class="toolbar">
+        <div class="controls" id="controls">
+            <input type="text" id="search" placeholder="Search by IP, session, user agent…">
+            <select id="filter-result">
+                <option value="">All Results</option>
+                <option value="pass">Pass</option>
+                <option value="fail">Fail</option>
+                <option value="timeout">Timeout</option>
+                <option value="suspicious">Suspicious</option>
+            </select>
+            <select id="filter-risk">
+                <option value="">All Risk Levels</option>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+                <option value="critical">Critical</option>
+            </select>
+            <select id="filter-range">
+                <option value="1h">Last 1 Hour</option>
+                <option value="24h" selected>Last 24 Hours</option>
+                <option value="7d">Last 7 Days</option>
+                <option value="30d">Last 30 Days</option>
+                <option value="all">All Time</option>
+            </select>
+        </div>
+        <div>
+            <button class="export-btn" id="export-csv">⬇ Export CSV</button>
+            <button class="export-btn" id="export-json" style="background:var(--surface);color:var(--accent);border:1px solid var(--border);margin-left:0.5rem;">⬇ JSON</button>
+        </div>
+    </div>
+
+    <table class="log-table">
+        <thead>
+            <tr id="table-head"></tr>
+        </thead>
+        <tbody id="table-body"></tbody>
+    </table>
+
+    <div class="pagination" id="pagination"></div>
+
+    <div class="detail-panel" id="detail-panel">
+        <button class="close-btn" id="close-detail">&times;</button>
+        <h3>Challenge Detail</h3>
+        <div class="detail-grid" id="detail-grid"></div>
+    </div>
+
+    <footer>
+        <p>GIF CAPTCHA Audit Log &mdash; <a href="index.html" style="color:var(--accent);">Back to Case Study</a></p>
+    </footer>
+
+    <script src="shared.js"></script>
+    <script>
+    (function() {
+        // --- Simulated audit data generator ---
+        var IPS = ['192.168.1.42','10.0.0.15','172.16.8.3','203.0.113.50','198.51.100.22','100.24.55.8','45.33.32.156','91.198.174.192','151.101.1.69','104.244.42.1'];
+        var UAS = ['Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122','Mozilla/5.0 (Macintosh; Intel Mac OS X) Safari/17','Mozilla/5.0 (Linux; Android 14) Mobile Chrome/122','Mozilla/5.0 (iPhone; CPU iOS 17) Safari/604','curl/8.4.0','python-requests/2.31','Googlebot/2.1','HeadlessChrome/122'];
+        var CHALLENGES = ['cat-surprise','dog-skateboard','baby-laugh','bird-dance','cake-fail','trampoline-flip','magic-trick','domino-chain','balloon-pop','parkour-cat'];
+        var RESULTS = ['pass','pass','pass','fail','fail','timeout','suspicious'];
+        var RISKS = ['low','low','low','medium','medium','high','critical'];
+
+        function randEl(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+        function randInt(a, b) { return a + Math.floor(Math.random() * (b - a + 1)); }
+        function genId() { return 'ses_' + Math.random().toString(36).substr(2, 10); }
+
+        var now = Date.now();
+        var entries = [];
+        for (var i = 0; i < 500; i++) {
+            var ts = now - randInt(0, 30 * 24 * 3600 * 1000);
+            var result = randEl(RESULTS);
+            var risk = result === 'suspicious' ? randEl(['high','critical']) : result === 'timeout' ? randEl(['medium','high']) : result === 'fail' ? randEl(['low','medium','high']) : randEl(['low','low','medium']);
+            var solveTime = result === 'timeout' ? null : (randInt(800, 12000));
+            entries.push({
+                id: i + 1,
+                timestamp: ts,
+                sessionId: genId(),
+                ip: randEl(IPS),
+                userAgent: randEl(UAS),
+                challenge: randEl(CHALLENGES),
+                result: result,
+                risk: risk,
+                solveTimeMs: solveTime,
+                attempts: result === 'pass' ? randInt(1, 2) : randInt(1, 5),
+                country: randEl(['US','DE','JP','BR','IN','GB','AU','CA','FR','NG'])
+            });
+        }
+        entries.sort(function(a, b) { return b.timestamp - a.timestamp; });
+
+        // --- Columns ---
+        var columns = [
+            { key: 'timestamp', label: 'Time' },
+            { key: 'sessionId', label: 'Session' },
+            { key: 'ip', label: 'IP Address' },
+            { key: 'challenge', label: 'Challenge' },
+            { key: 'result', label: 'Result' },
+            { key: 'risk', label: 'Risk' },
+            { key: 'solveTimeMs', label: 'Solve Time' },
+            { key: 'attempts', label: 'Attempts' },
+            { key: 'country', label: 'Country' }
+        ];
+
+        var PAGE_SIZE = 25;
+        var currentPage = 1;
+        var sortKey = 'timestamp';
+        var sortDir = -1;
+
+        function getFiltered() {
+            var search = document.getElementById('search').value.toLowerCase();
+            var fResult = document.getElementById('filter-result').value;
+            var fRisk = document.getElementById('filter-risk').value;
+            var fRange = document.getElementById('filter-range').value;
+            var cutoff = 0;
+            if (fRange === '1h') cutoff = now - 3600000;
+            else if (fRange === '24h') cutoff = now - 86400000;
+            else if (fRange === '7d') cutoff = now - 7 * 86400000;
+            else if (fRange === '30d') cutoff = now - 30 * 86400000;
+
+            return entries.filter(function(e) {
+                if (cutoff && e.timestamp < cutoff) return false;
+                if (fResult && e.result !== fResult) return false;
+                if (fRisk && e.risk !== fRisk) return false;
+                if (search) {
+                    var hay = (e.sessionId + ' ' + e.ip + ' ' + e.userAgent + ' ' + e.challenge + ' ' + e.country).toLowerCase();
+                    if (hay.indexOf(search) === -1) return false;
+                }
+                return true;
+            }).sort(function(a, b) {
+                var va = a[sortKey], vb = b[sortKey];
+                if (va == null) return 1; if (vb == null) return -1;
+                return (va < vb ? -1 : va > vb ? 1 : 0) * sortDir;
+            });
+        }
+
+        function fmtTime(ts) {
+            var d = new Date(ts);
+            return d.toISOString().replace('T', ' ').substr(0, 19);
+        }
+
+        function renderStats(data) {
+            var total = data.length;
+            var pass = data.filter(function(e) { return e.result === 'pass'; }).length;
+            var fail = data.filter(function(e) { return e.result === 'fail'; }).length;
+            var suspicious = data.filter(function(e) { return e.result === 'suspicious'; }).length;
+            var avgSolve = 0;
+            var solved = data.filter(function(e) { return e.solveTimeMs != null; });
+            if (solved.length) avgSolve = Math.round(solved.reduce(function(s, e) { return s + e.solveTimeMs; }, 0) / solved.length);
+
+            document.getElementById('stats-row').innerHTML =
+                '<div class="stat-card"><div class="label">Total Events</div><div class="value">' + total + '</div></div>' +
+                '<div class="stat-card"><div class="label">Pass Rate</div><div class="value" style="color:var(--green)">' + (total ? Math.round(pass / total * 100) : 0) + '%</div></div>' +
+                '<div class="stat-card"><div class="label">Failures</div><div class="value" style="color:var(--red)">' + fail + '</div></div>' +
+                '<div class="stat-card"><div class="label">Suspicious</div><div class="value" style="color:var(--purple)">' + suspicious + '</div></div>' +
+                '<div class="stat-card"><div class="label">Avg Solve</div><div class="value">' + (avgSolve ? (avgSolve / 1000).toFixed(1) + 's' : '—') + '</div></div>';
+        }
+
+        function renderHead() {
+            var h = '';
+            columns.forEach(function(col) {
+                var arrow = sortKey === col.key ? (sortDir === 1 ? '▲' : '▼') : '';
+                h += '<th data-key="' + col.key + '">' + sanitize(col.label) + '<span class="sort-arrow">' + arrow + '</span></th>';
+            });
+            document.getElementById('table-head').innerHTML = h;
+        }
+
+        function renderTable() {
+            var data = getFiltered();
+            renderStats(data);
+            var totalPages = Math.max(1, Math.ceil(data.length / PAGE_SIZE));
+            if (currentPage > totalPages) currentPage = totalPages;
+            var start = (currentPage - 1) * PAGE_SIZE;
+            var page = data.slice(start, start + PAGE_SIZE);
+
+            var html = '';
+            page.forEach(function(e) {
+                var badgeClass = 'badge-' + e.result;
+                var riskClass = 'risk-' + e.risk;
+                html += '<tr data-id="' + e.id + '" style="cursor:pointer">' +
+                    '<td>' + fmtTime(e.timestamp) + '</td>' +
+                    '<td style="font-family:monospace;font-size:0.8rem">' + sanitize(e.sessionId) + '</td>' +
+                    '<td>' + sanitize(e.ip) + '</td>' +
+                    '<td>' + sanitize(e.challenge) + '</td>' +
+                    '<td><span class="badge ' + badgeClass + '">' + e.result + '</span></td>' +
+                    '<td><span class="' + riskClass + '">' + e.risk + '</span></td>' +
+                    '<td>' + (e.solveTimeMs != null ? (e.solveTimeMs / 1000).toFixed(1) + 's' : '—') + '</td>' +
+                    '<td>' + e.attempts + '</td>' +
+                    '<td>' + sanitize(e.country) + '</td>' +
+                    '</tr>';
+            });
+            document.getElementById('table-body').innerHTML = html;
+
+            // Pagination
+            var pag = '<button id="prev-page" ' + (currentPage <= 1 ? 'disabled' : '') + '>&laquo; Prev</button>' +
+                '<span class="page-info">Page ' + currentPage + ' of ' + totalPages + ' (' + data.length + ' records)</span>' +
+                '<button id="next-page" ' + (currentPage >= totalPages ? 'disabled' : '') + '>Next &raquo;</button>';
+            document.getElementById('pagination').innerHTML = pag;
+        }
+
+        function showDetail(id) {
+            var e = entries.filter(function(x) { return x.id === id; })[0];
+            if (!e) return;
+            var fields = [
+                { label: 'Event ID', value: '#' + e.id },
+                { label: 'Timestamp', value: fmtTime(e.timestamp) },
+                { label: 'Session ID', value: e.sessionId },
+                { label: 'IP Address', value: e.ip },
+                { label: 'User Agent', value: e.userAgent },
+                { label: 'Challenge', value: e.challenge },
+                { label: 'Result', value: e.result },
+                { label: 'Risk Level', value: e.risk },
+                { label: 'Solve Time', value: e.solveTimeMs != null ? (e.solveTimeMs / 1000).toFixed(1) + 's' : 'N/A (timeout)' },
+                { label: 'Attempts', value: String(e.attempts) },
+                { label: 'Country', value: e.country }
+            ];
+            var html = '';
+            fields.forEach(function(f) {
+                html += '<div class="detail-item"><div class="label">' + sanitize(f.label) + '</div><div class="value">' + sanitize(f.value) + '</div></div>';
+            });
+            document.getElementById('detail-grid').innerHTML = html;
+            document.getElementById('detail-panel').style.display = 'block';
+        }
+
+        function toCSV(data) {
+            var header = columns.map(function(c) { return c.label; }).concat('User Agent').join(',');
+            var rows = data.map(function(e) {
+                return [fmtTime(e.timestamp), e.sessionId, e.ip, e.challenge, e.result, e.risk,
+                    e.solveTimeMs != null ? e.solveTimeMs : '', e.attempts, e.country,
+                    '"' + (e.userAgent || '').replace(/"/g, '""') + '"'].join(',');
+            });
+            return header + '\n' + rows.join('\n');
+        }
+
+        function download(content, filename, type) {
+            var blob = new Blob([content], { type: type });
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url; a.download = filename; a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        // --- Events ---
+        renderHead();
+        renderTable();
+
+        document.getElementById('search').addEventListener('input', function() { currentPage = 1; renderTable(); });
+        document.getElementById('filter-result').addEventListener('change', function() { currentPage = 1; renderTable(); });
+        document.getElementById('filter-risk').addEventListener('change', function() { currentPage = 1; renderTable(); });
+        document.getElementById('filter-range').addEventListener('change', function() { currentPage = 1; renderTable(); });
+
+        document.getElementById('table-head').addEventListener('click', function(ev) {
+            var th = ev.target.closest('th');
+            if (!th) return;
+            var key = th.getAttribute('data-key');
+            if (sortKey === key) sortDir *= -1;
+            else { sortKey = key; sortDir = -1; }
+            renderHead();
+            renderTable();
+        });
+
+        document.getElementById('pagination').addEventListener('click', function(ev) {
+            if (ev.target.id === 'prev-page' && currentPage > 1) { currentPage--; renderTable(); }
+            if (ev.target.id === 'next-page') { currentPage++; renderTable(); }
+        });
+
+        document.getElementById('table-body').addEventListener('click', function(ev) {
+            var tr = ev.target.closest('tr');
+            if (tr) showDetail(parseInt(tr.getAttribute('data-id')));
+        });
+
+        document.getElementById('close-detail').addEventListener('click', function() {
+            document.getElementById('detail-panel').style.display = 'none';
+        });
+
+        document.getElementById('export-csv').addEventListener('click', function() {
+            download(toCSV(getFiltered()), 'captcha-audit-log.csv', 'text/csv');
+        });
+
+        document.getElementById('export-json').addEventListener('click', function() {
+            download(JSON.stringify(getFiltered(), null, 2), 'captcha-audit-log.json', 'application/json');
+        });
+    })();
+    </script>
+</body>
+</html>

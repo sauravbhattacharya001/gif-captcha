@@ -374,6 +374,7 @@ gif-captcha/
 ├── streak.html           # Streak Mode
 ├── timing.html           # Response Time Analyzer
 ├── performance-profiler.html  # Performance Profiler — benchmark generation configs
+├── audit-log.html        # Audit Log — browse, search & export challenge records
 ├── shared.js             # Browser-specific shared utilities
 ├── shared.css            # Shared dark theme styles
 ├── tests/                # Test suite (Node.js built-in test runner, 43 test files)

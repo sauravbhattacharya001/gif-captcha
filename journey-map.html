@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>User Journey Map — gif-captcha</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+.journey-container { max-width: 960px; margin: 0 auto; }
+.controls { display: flex; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem; align-items: center; }
+.controls label { color: var(--muted); font-size: 0.85rem; }
+.controls select, .controls input {
+  background: var(--surface); border: 1px solid var(--border); color: var(--text);
+  border-radius: 6px; padding: 0.4rem 0.8rem; font-size: 0.85rem;
+}
+.controls button {
+  background: var(--accent); color: #fff; border: none; border-radius: 6px;
+  padding: 0.5rem 1.2rem; cursor: pointer; font-weight: 600;
+}
+.controls button:hover { background: var(--accent-hover); }
+.metrics-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+.metric-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; text-align: center; }
+.metric-card .value { font-size: 1.8rem; font-weight: 700; color: var(--accent); }
+.metric-card .label { color: var(--muted); font-size: 0.8rem; margin-top: 0.2rem; }
+canvas#sankey { width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+.legend { display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 1rem; }
+.legend-item { display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; color: var(--muted); }
+.legend-swatch { width: 14px; height: 14px; border-radius: 3px; }
+.journey-table { width: 100%; border-collapse: collapse; margin-top: 1.5rem; }
+.journey-table th, .journey-table td { padding: 0.6rem 1rem; text-align: left; border-bottom: 1px solid var(--border); font-size: 0.85rem; }
+.journey-table th { color: var(--muted); font-weight: 600; }
+.journey-table td { color: var(--text); }
+.tooltip { position: absolute; background: #1c2129; border: 1px solid var(--border); color: var(--text); padding: 0.5rem 0.8rem; border-radius: 6px; font-size: 0.8rem; pointer-events: none; display: none; z-index: 10; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🗺️ User Journey Map</h1>
+  <p>Sankey flow visualization of user paths through the CAPTCHA challenge lifecycle</p>
+</header>
+<main class="journey-container">
+  <div class="controls">
+    <div>
+      <label>Time Range</label><br>
+      <select id="timeRange">
+        <option value="1h">Last Hour</option>
+        <option value="6h">Last 6 Hours</option>
+        <option value="24h" selected>Last 24 Hours</option>
+        <option value="7d">Last 7 Days</option>
+        <option value="30d">Last 30 Days</option>
+      </select>
+    </div>
+    <div>
+      <label>Min Flow %</label><br>
+      <input type="number" id="minFlow" value="1" min="0" max="50" step="1" style="width:70px">
+    </div>
+    <div>
+      <label>Challenge Type</label><br>
+      <select id="challengeType">
+        <option value="all">All Types</option>
+        <option value="object-id">Object ID</option>
+        <option value="sequence">Sequence</option>
+        <option value="motion">Motion</option>
+        <option value="color">Color Match</option>
+      </select>
+    </div>
+    <button onclick="refreshData()">Refresh</button>
+  </div>
+
+  <div class="metrics-row" id="metrics"></div>
+
+  <div style="position:relative">
+    <canvas id="sankey" height="420"></canvas>
+    <div class="tooltip" id="tooltip"></div>
+  </div>
+
+  <div class="legend" id="legend"></div>
+
+  <table class="journey-table" id="flowTable">
+    <thead><tr><th>From</th><th>To</th><th>Users</th><th>% of Total</th><th>Avg Time</th></tr></thead>
+    <tbody></tbody>
+  </table>
+</main>
+<footer><p>gif-captcha · User Journey Map</p></footer>
+
+<script src="shared.js"></script>
+<script>
+// ===== Stages & Colors =====
+const STAGES = ['Presented','Loaded','Engaged','Attempted','Solved','Failed','Abandoned','Retried'];
+const STAGE_COLORS = {
+  Presented: '#58a6ff', Loaded: '#79b8ff', Engaged: '#bc8cff',
+  Attempted: '#d29922', Solved: '#3fb950', Failed: '#f85149',
+  Abandoned: '#8b949e', Retried: '#f0883e'
+};
+
+// ===== Simulated Data Generator =====
+function generateFlows(seed) {
+  const r = mulberry32(seed);
+  const total = Math.floor(r() * 40000) + 10000;
+  const flows = [];
+  function addFlow(from, to, pct) {
+    const n = Math.max(1, Math.floor(total * pct * (0.8 + r() * 0.4)));
+    const avgTime = +(r() * 4 + 0.3).toFixed(1);
+    flows.push({ from, to, count: n, avgTime });
+  }
+  addFlow('Presented','Loaded', 0.92);
+  addFlow('Presented','Abandoned', 0.08);
+  addFlow('Loaded','Engaged', 0.78);
+  addFlow('Loaded','Abandoned', 0.14);
+  addFlow('Engaged','Attempted', 0.70);
+  addFlow('Engaged','Abandoned', 0.08);
+  addFlow('Attempted','Solved', 0.55);
+  addFlow('Attempted','Failed', 0.12);
+  addFlow('Attempted','Abandoned', 0.03);
+  addFlow('Failed','Retried', 0.08);
+  addFlow('Failed','Abandoned', 0.04);
+  addFlow('Retried','Solved', 0.05);
+  addFlow('Retried','Failed', 0.02);
+  addFlow('Retried','Abandoned', 0.01);
+  return { total, flows };
+}
+
+function mulberry32(a) {
+  return function() {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    var t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+function getSeed() {
+  const tr = document.getElementById('timeRange').value;
+  const ct = document.getElementById('challengeType').value;
+  let s = 0;
+  for (let c of tr + ct) s = ((s << 5) - s + c.charCodeAt(0)) | 0;
+  return Math.abs(s) || 42;
+}
+
+// ===== Rendering =====
+function refreshData() {
+  const { total, flows } = generateFlows(getSeed());
+  const minPct = parseFloat(document.getElementById('minFlow').value) || 0;
+  const filtered = flows.filter(f => (f.count / total * 100) >= minPct);
+
+  // Metrics
+  const solved = filtered.filter(f => f.to === 'Solved').reduce((s, f) => s + f.count, 0);
+  const failed = filtered.filter(f => f.to === 'Failed').reduce((s, f) => s + f.count, 0);
+  const abandoned = filtered.filter(f => f.to === 'Abandoned').reduce((s, f) => s + f.count, 0);
+  const retried = filtered.filter(f => f.to === 'Retried').reduce((s, f) => s + f.count, 0);
+  const avgTime = filtered.length ? (filtered.reduce((s,f) => s + f.avgTime * f.count, 0) / filtered.reduce((s,f) => s + f.count, 0)).toFixed(1) : '0';
+
+  document.getElementById('metrics').innerHTML = [
+    { v: total.toLocaleString(), l: 'Total Presented' },
+    { v: solved.toLocaleString(), l: 'Solved', c: 'var(--green)' },
+    { v: failed.toLocaleString(), l: 'Failed', c: 'var(--red)' },
+    { v: abandoned.toLocaleString(), l: 'Abandoned', c: 'var(--muted)' },
+    { v: retried.toLocaleString(), l: 'Retried', c: 'var(--orange)' },
+    { v: avgTime + 's', l: 'Avg Journey Time' },
+    { v: (solved / total * 100).toFixed(1) + '%', l: 'Completion Rate', c: 'var(--green)' },
+  ].map(m => `<div class="metric-card"><div class="value" style="color:${m.c||'var(--accent)'}">${sanitize(String(m.v))}</div><div class="label">${sanitize(m.l)}</div></div>`).join('');
+
+  drawSankey(filtered, total);
+  drawTable(filtered, total);
+  drawLegend();
+}
+
+function drawLegend() {
+  document.getElementById('legend').innerHTML = STAGES.map(s =>
+    `<div class="legend-item"><div class="legend-swatch" style="background:${STAGE_COLORS[s]}"></div>${s}</div>`
+  ).join('');
+}
+
+function drawTable(flows, total) {
+  const tbody = document.querySelector('#flowTable tbody');
+  tbody.innerHTML = flows
+    .sort((a,b) => b.count - a.count)
+    .map(f => `<tr><td>${sanitize(f.from)}</td><td>${sanitize(f.to)}</td><td>${f.count.toLocaleString()}</td><td>${(f.count/total*100).toFixed(1)}%</td><td>${f.avgTime}s</td></tr>`)
+    .join('');
+}
+
+// ===== Sankey Canvas Drawing =====
+function drawSankey(flows, total) {
+  const canvas = document.getElementById('sankey');
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = 420 * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  const W = rect.width, H = 420;
+  ctx.clearRect(0, 0, W, H);
+
+  // Determine columns (left to right)
+  const columns = [
+    ['Presented'],
+    ['Loaded','Abandoned'],
+    ['Engaged','Abandoned'],
+    ['Attempted','Abandoned'],
+    ['Solved','Failed','Abandoned'],
+    ['Retried','Abandoned'],
+    ['Solved','Failed','Abandoned']
+  ];
+
+  // Simplified: position stages in fixed x columns
+  const stageX = { Presented: 0, Loaded: 1, Engaged: 2, Attempted: 3, Solved: 4.5, Failed: 4.5, Abandoned: 5.5, Retried: 4.5 };
+  const maxCol = 5.5;
+  const pad = 60, nodeW = 20;
+
+  // Calculate node heights proportional to throughput
+  const nodeIn = {}, nodeOut = {};
+  STAGES.forEach(s => { nodeIn[s] = 0; nodeOut[s] = 0; });
+  flows.forEach(f => { nodeOut[f.from] += f.count; nodeIn[f.to] += f.count; });
+  const nodeVal = {};
+  STAGES.forEach(s => nodeVal[s] = Math.max(nodeIn[s], nodeOut[s]));
+  nodeVal['Presented'] = total;
+
+  const activeStages = STAGES.filter(s => nodeVal[s] > 0);
+  const totalVal = Object.values(nodeVal).reduce((a,b) => a+b, 1);
+  const usableH = H - 40;
+
+  // Group stages by column
+  const colStages = {};
+  activeStages.forEach(s => {
+    const col = stageX[s];
+    if (!colStages[col]) colStages[col] = [];
+    colStages[col].push(s);
+  });
+
+  // Position nodes
+  const nodePos = {}; // { stage: { x, y, h } }
+  Object.keys(colStages).sort((a,b) => a-b).forEach(col => {
+    const stages = colStages[col];
+    const colTotal = stages.reduce((s, st) => s + nodeVal[st], 0);
+    const scale = Math.min(1, (usableH - stages.length * 10) / (colTotal / total * usableH));
+    let y = 20;
+    stages.forEach(st => {
+      const h = Math.max(8, (nodeVal[st] / total) * usableH * scale);
+      const x = pad + (parseFloat(col) / maxCol) * (W - 2 * pad - nodeW);
+      nodePos[st] = { x, y, h };
+      y += h + 10;
+    });
+  });
+
+  // Draw flows as curved bands
+  // Track port offsets
+  const outOffset = {}, inOffset = {};
+  activeStages.forEach(s => { outOffset[s] = 0; inOffset[s] = 0; });
+
+  flows.sort((a,b) => b.count - a.count).forEach(f => {
+    const src = nodePos[f.from], dst = nodePos[f.to];
+    if (!src || !dst) return;
+    const srcH = (f.count / Math.max(1, nodeVal[f.from])) * src.h;
+    const dstH = (f.count / Math.max(1, nodeVal[f.to])) * dst.h;
+    const x0 = src.x + nodeW, y0 = src.y + outOffset[f.from];
+    const x1 = dst.x, y1 = dst.y + inOffset[f.to];
+    outOffset[f.from] += srcH;
+    inOffset[f.to] += dstH;
+
+    const cp = (x1 - x0) * 0.5;
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    ctx.bezierCurveTo(x0 + cp, y0, x1 - cp, y1, x1, y1);
+    ctx.lineTo(x1, y1 + dstH);
+    ctx.bezierCurveTo(x1 - cp, y1 + dstH, x0 + cp, y0 + srcH, x0, y0 + srcH);
+    ctx.closePath();
+    const color = STAGE_COLORS[f.to] || '#58a6ff';
+    ctx.fillStyle = color.replace(')', ',0.25)').replace('rgb', 'rgba').replace('#', '');
+    // Use hex to rgba
+    ctx.fillStyle = hexToRgba(color, 0.3);
+    ctx.fill();
+    ctx.strokeStyle = hexToRgba(color, 0.6);
+    ctx.lineWidth = 0.5;
+    ctx.stroke();
+  });
+
+  // Draw nodes
+  activeStages.forEach(s => {
+    const n = nodePos[s];
+    if (!n) return;
+    ctx.fillStyle = STAGE_COLORS[s];
+    ctx.fillRect(n.x, n.y, nodeW, n.h);
+    // Label
+    ctx.fillStyle = '#e6edf3';
+    ctx.font = '12px system-ui, sans-serif';
+    ctx.textBaseline = 'middle';
+    const labelX = n.x < W / 2 ? n.x + nodeW + 6 : n.x - 6;
+    ctx.textAlign = n.x < W / 2 ? 'left' : 'right';
+    ctx.fillText(`${s} (${nodeVal[s].toLocaleString()})`, labelX, n.y + n.h / 2);
+  });
+
+  // Tooltip on hover
+  canvas.onmousemove = function(e) {
+    const br = canvas.getBoundingClientRect();
+    const mx = e.clientX - br.left, my = e.clientY - br.top;
+    let hit = null;
+    // Check flows (rough)
+    for (const f of flows) {
+      const src = nodePos[f.from], dst = nodePos[f.to];
+      if (!src || !dst) continue;
+      const midX = (src.x + nodeW + dst.x) / 2;
+      const midY = (src.y + outOffset[f.from] / 2 + dst.y + inOffset[f.to] / 2) / 2;
+      // Simple proximity
+      if (Math.abs(mx - midX) < 60 && Math.abs(my - midY) < 30) {
+        hit = f; break;
+      }
+    }
+    const tip = document.getElementById('tooltip');
+    if (hit) {
+      tip.style.display = 'block';
+      tip.style.left = (e.clientX - br.left + 12) + 'px';
+      tip.style.top = (e.clientY - br.top - 10) + 'px';
+      tip.innerHTML = `<strong>${sanitize(hit.from)} → ${sanitize(hit.to)}</strong><br>${hit.count.toLocaleString()} users (${(hit.count/total*100).toFixed(1)}%)<br>Avg: ${hit.avgTime}s`;
+    } else {
+      tip.style.display = 'none';
+    }
+  };
+  canvas.onmouseleave = () => { document.getElementById('tooltip').style.display = 'none'; };
+}
+
+function hexToRgba(hex, alpha) {
+  hex = hex.replace('#','');
+  if (hex.length === 3) hex = hex[0]+hex[0]+hex[1]+hex[1]+hex[2]+hex[2];
+  const r = parseInt(hex.slice(0,2),16), g = parseInt(hex.slice(2,4),16), b = parseInt(hex.slice(4,6),16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+// Init
+refreshData();
+window.addEventListener('resize', refreshData);
+</script>
+</body>
+</html>

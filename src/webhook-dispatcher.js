@@ -17,6 +17,7 @@
 
 const crypto = require("crypto");
 const { secureRandomHex } = require("./crypto-utils");
+const { _posOpt } = require("./shared-utils");
 
 // ── Default Config ──────────────────────────────────────────────────
 
@@ -231,10 +232,6 @@ function WebhookDispatcher(options) {
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────
-
-function _posOpt(val, fallback) {
-  return val != null && val > 0 ? val : fallback;
-}
 
 function _generateId() {
   return "wh_" + secureRandomHex(12) + "_" + Date.now().toString(36);

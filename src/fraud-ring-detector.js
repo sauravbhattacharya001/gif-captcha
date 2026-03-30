@@ -46,14 +46,21 @@ function createFraudRingDetector(options) {
   var decayHalfLifeMs = options.decayHalfLifeMs != null && options.decayHalfLifeMs > 0
     ? options.decayHalfLifeMs : 604800000;
 
-  // sessionId -> { id, ip, userAgent, solves, signals, addedAt }
+  // sessionId -> { id, ip, userAgent, solves, signals, addedAt, _timingDist, _responseDist, _successRate }
   var sessions = Object.create(null);
   var sessionCount = 0;
+  // Insertion-order tracking for O(1) oldest-session eviction.
+  // Previously eviction scanned all sessions (O(n)) to find the oldest.
+  var sessionInsertionOrder = [];
 
   // ringId -> { id, members: Set, confidence, evidence, createdAt, updatedAt }
   var rings = Object.create(null);
   var ringCount = 0;
   var nextRingId = 1;
+
+  // Reverse index: sessionId -> [ringId, ...] for O(1) checkSession lookups.
+  // Previously checkSession scanned every ring's member list.
+  var sessionToRings = Object.create(null);
 
   // ── Helpers ──────────────────────────────────────────────────────
 
@@ -134,29 +141,44 @@ function createFraudRingDetector(options) {
   }
 
   /**
+   * Precompute and cache distribution vectors on a session object.
+   * Called once when a session is added or its solves are updated,
+   * so detect() can skip redundant O(solves) distribution builds.
+   * Before this change, detect() rebuilt distributions for every pair
+   * comparison — O(n² × solves) total work.  Now it's O(n × solves)
+   * at ingestion time and O(n²) with only vector lookups at detect time.
+   */
+  function _precomputeDistributions(session) {
+    session._timingDist = _buildTimingDistribution(session.solves);
+    session._responseDist = _buildResponseTimeDistribution(session.solves);
+    session._successRate = _successRate(session.solves);
+  }
+
+  /**
    * Compute multi-dimensional similarity between two sessions.
+   * Uses precomputed distributions when available (set by _precomputeDistributions).
    */
   function _sessionSimilarity(a, b) {
     var scores = [];
     var weights = [];
 
     // 1. Timing distribution similarity (when do they solve?)
-    var tA = _buildTimingDistribution(a.solves);
-    var tB = _buildTimingDistribution(b.solves);
+    var tA = a._timingDist || _buildTimingDistribution(a.solves);
+    var tB = b._timingDist || _buildTimingDistribution(b.solves);
     var timingSim = _cosineSimilarity(tA, tB);
     scores.push(timingSim);
     weights.push(0.30);
 
     // 2. Response time distribution similarity (how fast?)
-    var rA = _buildResponseTimeDistribution(a.solves);
-    var rB = _buildResponseTimeDistribution(b.solves);
+    var rA = a._responseDist || _buildResponseTimeDistribution(a.solves);
+    var rB = b._responseDist || _buildResponseTimeDistribution(b.solves);
     var responseSim = _cosineSimilarity(rA, rB);
     scores.push(responseSim);
     weights.push(0.30);
 
     // 3. Success rate similarity
-    var srA = _successRate(a.solves);
-    var srB = _successRate(b.solves);
+    var srA = typeof a._successRate === 'number' ? a._successRate : _successRate(a.solves);
+    var srB = typeof b._successRate === 'number' ? b._successRate : _successRate(b.solves);
     var successSim = 1 - Math.abs(srA - srB);
     scores.push(successSim);
     weights.push(0.20);
@@ -247,20 +269,19 @@ function createFraudRingDetector(options) {
       }
       if (data.signals) existing.signals = Object.assign(existing.signals || {}, data.signals);
       existing.updatedAt = _now();
+      // Re-derive cached distributions after solve data changes
+      _precomputeDistributions(existing);
       return;
     }
 
-    // Enforce max sessions (evict oldest)
-    if (sessionCount >= maxSessions) {
-      var oldestId = null, oldestTime = Infinity;
-      var skeys = Object.keys(sessions);
-      for (var i = 0; i < skeys.length; i++) {
-        if (sessions[skeys[i]].addedAt < oldestTime) {
-          oldestTime = sessions[skeys[i]].addedAt;
-          oldestId = skeys[i];
-        }
-      }
-      if (oldestId) {
+    // Enforce max sessions — evict from insertion-order queue (O(1)
+    // amortized).  Previously this scanned all sessions to find the
+    // oldest addedAt timestamp, which was O(n) per eviction.
+    while (sessionCount >= maxSessions && sessionInsertionOrder.length > 0) {
+      var oldestId = sessionInsertionOrder.shift();
+      if (sessions[oldestId]) {
+        // Clean up ring index entries for evicted session
+        if (sessionToRings[oldestId]) delete sessionToRings[oldestId];
         delete sessions[oldestId];
         sessionCount--;
       }
@@ -275,6 +296,8 @@ function createFraudRingDetector(options) {
       addedAt: _now(),
       updatedAt: _now()
     };
+    _precomputeDistributions(sessions[sessionId]);
+    sessionInsertionOrder.push(sessionId);
     sessionCount++;
   }
 
@@ -389,6 +412,11 @@ function createFraudRingDetector(options) {
         if (ringCount < maxRings) {
           rings[ringId] = ring;
           ringCount++;
+          // Update reverse index for O(1) checkSession
+          for (var mi = 0; mi < component.length; mi++) {
+            if (!sessionToRings[component[mi]]) sessionToRings[component[mi]] = [];
+            sessionToRings[component[mi]].push(ringId);
+          }
         }
 
         detectedRings.push(ring);
@@ -443,15 +471,18 @@ function createFraudRingDetector(options) {
 
   /**
    * Check if a session belongs to any known ring.
+   * Uses the sessionToRings reverse index for O(1) lookup instead of
+   * scanning every ring's member list (previously O(rings × members)).
    * @param {string} sessionId
    * @returns {Array} rings containing this session
    */
   function checkSession(sessionId) {
     var found = [];
-    var rkeys = Object.keys(rings);
-    for (var i = 0; i < rkeys.length; i++) {
-      var r = rings[rkeys[i]];
-      if (r.members.indexOf(sessionId) !== -1) {
+    var ringIds = sessionToRings[sessionId];
+    if (!ringIds) return found;
+    for (var i = 0; i < ringIds.length; i++) {
+      var r = rings[ringIds[i]];
+      if (r) {
         found.push({
           id: r.id,
           confidence: r.confidence,
@@ -467,7 +498,17 @@ function createFraudRingDetector(options) {
    * Remove a ring by ID.
    */
   function removeRing(ringId) {
-    if (rings[ringId]) {
+    var r = rings[ringId];
+    if (r) {
+      // Clean up reverse index
+      for (var i = 0; i < r.members.length; i++) {
+        var rids = sessionToRings[r.members[i]];
+        if (rids) {
+          var idx = rids.indexOf(ringId);
+          if (idx !== -1) rids.splice(idx, 1);
+          if (rids.length === 0) delete sessionToRings[r.members[i]];
+        }
+      }
       delete rings[ringId];
       ringCount--;
       return true;
@@ -481,6 +522,7 @@ function createFraudRingDetector(options) {
   function clearRings() {
     rings = Object.create(null);
     ringCount = 0;
+    sessionToRings = Object.create(null);
   }
 
   /**
@@ -515,10 +557,27 @@ function createFraudRingDetector(options) {
 
   /**
    * Export all data as JSON-serializable object.
+   * Strips internal cached distribution fields (_timingDist, _responseDist,
+   * _successRate) to keep the export payload lean — they are recomputed
+   * on import/addSession.
    */
   function exportData() {
+    var exportedSessions = Object.create(null);
+    var skeys = Object.keys(sessions);
+    for (var i = 0; i < skeys.length; i++) {
+      var s = sessions[skeys[i]];
+      exportedSessions[skeys[i]] = {
+        id: s.id,
+        ip: s.ip,
+        userAgent: s.userAgent,
+        solves: s.solves,
+        signals: s.signals,
+        addedAt: s.addedAt,
+        updatedAt: s.updatedAt
+      };
+    }
     return {
-      sessions: JSON.parse(JSON.stringify(sessions)),
+      sessions: exportedSessions,
       rings: JSON.parse(JSON.stringify(rings)),
       options: {
         similarityThreshold: similarityThreshold,
@@ -542,6 +601,8 @@ function createFraudRingDetector(options) {
       var skeys = Object.keys(data.sessions);
       for (var i = 0; i < skeys.length; i++) {
         sessions[skeys[i]] = data.sessions[skeys[i]];
+        _precomputeDistributions(sessions[skeys[i]]);
+        sessionInsertionOrder.push(skeys[i]);
       }
       sessionCount = Object.keys(sessions).length;
     }
@@ -549,6 +610,14 @@ function createFraudRingDetector(options) {
       var rkeys = Object.keys(data.rings);
       for (var j = 0; j < rkeys.length; j++) {
         rings[rkeys[j]] = data.rings[rkeys[j]];
+        // Rebuild reverse index
+        var members = data.rings[rkeys[j]].members;
+        if (members) {
+          for (var m = 0; m < members.length; m++) {
+            if (!sessionToRings[members[m]]) sessionToRings[members[m]] = [];
+            sessionToRings[members[m]].push(rkeys[j]);
+          }
+        }
       }
       ringCount = Object.keys(rings).length;
     }

@@ -65,6 +65,68 @@ function createCaptchaTrafficAnalyzer(options) {
     return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
   }
 
+  // ── Welford's Online Statistics Tracker ─────────────────────
+  // Computes mean, variance, and stddev in O(1) memory per window
+  // instead of storing every raw response time value (O(n) memory).
+  // Also tracks min/max and an approximate median via reservoir.
+  function _createOnlineStats() {
+    return {
+      n: 0,
+      mean: 0,
+      m2: 0,       // sum of squared deviations (for variance)
+      min: Infinity,
+      max: -Infinity,
+      // Small reservoir for approximate median (fixed O(1) memory)
+      _reservoir: [],
+      _reservoirCap: 128,
+      _seen: 0
+    };
+  }
+
+  /**
+   * Add a value to the online stats tracker using Welford's algorithm.
+   * Mean and variance are computed incrementally — no array storage needed.
+   * Approximate median uses reservoir sampling (128 slots).
+   */
+  function _onlineStatsAdd(stats, value) {
+    stats.n++;
+    var delta = value - stats.mean;
+    stats.mean += delta / stats.n;
+    var delta2 = value - stats.mean;
+    stats.m2 += delta * delta2;
+
+    if (value < stats.min) stats.min = value;
+    if (value > stats.max) stats.max = value;
+
+    // Reservoir sampling for approximate median
+    stats._seen++;
+    if (stats._reservoir.length < stats._reservoirCap) {
+      stats._reservoir.push(value);
+    } else {
+      // Replace with decreasing probability to maintain uniform sample
+      var j = Math.floor(Math.random() * stats._seen);
+      if (j < stats._reservoirCap) {
+        stats._reservoir[j] = value;
+      }
+    }
+  }
+
+  function _onlineStatsMean(stats) {
+    return stats.n === 0 ? 0 : stats.mean;
+  }
+
+  function _onlineStatsStddev(stats) {
+    if (stats.n < 2) return 0;
+    return Math.sqrt(stats.m2 / (stats.n - 1));
+  }
+
+  function _onlineStatsMedian(stats) {
+    if (stats._reservoir.length === 0) return 0;
+    var s = stats._reservoir.slice().sort(function (a, b) { return a - b; });
+    var m = Math.floor(s.length / 2);
+    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+  }
+
   function _zScore(value, mean, stddev) {
     if (stddev === 0) return 0;
     return (value - mean) / stddev;
@@ -82,7 +144,7 @@ function createCaptchaTrafficAnalyzer(options) {
       count: 0,
       solved: 0,
       failed: 0,
-      responseTimes: [],
+      rtStats: _createOnlineStats(),  // Welford's online stats — O(1) memory vs O(n) for raw array
       regions: Object.create(null),
       hours: Object.create(null),
       challengeTypes: Object.create(null)
@@ -90,8 +152,9 @@ function createCaptchaTrafficAnalyzer(options) {
   }
 
   function _summarizeWindow(w) {
-    var avgRt = _mean(w.responseTimes);
-    var medRt = _median(w.responseTimes);
+    var avgRt = _onlineStatsMean(w.rtStats);
+    var medRt = _onlineStatsMedian(w.rtStats);
+    var stdRt = _onlineStatsStddev(w.rtStats);
     var regionKeys = Object.keys(w.regions);
     var maxRegionCount = 0;
     var dominantRegion = null;
@@ -112,7 +175,7 @@ function createCaptchaTrafficAnalyzer(options) {
       failed: w.failed,
       meanResponseMs: _r(avgRt),
       medianResponseMs: _r(medRt),
-      stddevResponseMs: _r(_stddev(w.responseTimes, avgRt)),
+      stddevResponseMs: _r(stdRt),
       uniqueRegions: regionKeys.length,
       dominantRegion: dominantRegion,
       regionConcentration: _r(regionConcentration, 3),
@@ -191,7 +254,7 @@ function createCaptchaTrafficAnalyzer(options) {
     }
 
     if (event.responseTimeMs != null && typeof event.responseTimeMs === 'number' && event.responseTimeMs >= 0) {
-      w.responseTimes.push(event.responseTimeMs);
+      _onlineStatsAdd(w.rtStats, event.responseTimeMs);
     }
 
     var region = event.region || 'unknown';

@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; img-src https: data:; script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'self'; form-action 'none';">
+    <meta name="referrer" content="no-referrer">
+    <title>GIF CAPTCHA — Cost Calculator</title>
+    <link rel="stylesheet" href="shared.css">
+    <style>
+        .container { max-width: 900px; }
+
+        .intro { text-align: center; padding: 2.5rem 1rem 1.5rem; }
+        .intro h2 { font-size: 1.5rem; margin-bottom: 0.8rem; }
+        .intro p { color: var(--muted); max-width: 550px; margin: 0 auto 1rem; }
+
+        .calc-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        @media (max-width: 700px) { .calc-grid { grid-template-columns: 1fr; } }
+
+        .input-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+        }
+        .input-card h3 { font-size: 1rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem; }
+        .input-card h3 .icon { font-size: 1.2rem; }
+
+        .field { margin-bottom: 1rem; }
+        .field label { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 0.3rem; }
+        .field input, .field select {
+            width: 100%;
+            padding: 0.6rem 0.8rem;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text);
+            font-size: 0.95rem;
+            font-family: inherit;
+        }
+        .field input:focus, .field select:focus { outline: none; border-color: var(--accent); }
+        .field .hint { font-size: 0.78rem; color: var(--muted); margin-top: 0.2rem; }
+
+        .range-field input[type="range"] {
+            width: 100%;
+            accent-color: var(--accent);
+            background: transparent;
+            border: none;
+            padding: 0;
+        }
+        .range-label { display: flex; justify-content: space-between; font-size: 0.85rem; color: var(--muted); margin-bottom: 0.3rem; }
+
+        /* Results */
+        .results-panel {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+        }
+        .results-panel h3 { font-size: 1.1rem; margin-bottom: 1.5rem; text-align: center; }
+
+        .cost-summary {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        @media (max-width: 600px) { .cost-summary { grid-template-columns: 1fr; } }
+
+        .cost-card {
+            text-align: center;
+            padding: 1.2rem;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+        }
+        .cost-card .amount { font-size: 1.8rem; font-weight: 700; margin-bottom: 0.3rem; }
+        .cost-card .label { font-size: 0.82rem; color: var(--muted); }
+        .cost-card.total { border-color: var(--accent); background: rgba(88, 166, 255, 0.08); }
+        .cost-card.total .amount { color: var(--accent); }
+
+        /* Breakdown table */
+        .breakdown { width: 100%; border-collapse: collapse; margin-top: 1.5rem; }
+        .breakdown th, .breakdown td {
+            text-align: left;
+            padding: 0.6rem 0.8rem;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.9rem;
+        }
+        .breakdown th { color: var(--muted); font-weight: 500; font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.04em; }
+        .breakdown td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+        .breakdown th:last-child { text-align: right; }
+        .breakdown tr:last-child td { border-bottom: none; }
+        .breakdown .subtotal td { font-weight: 600; border-top: 2px solid var(--border); }
+
+        /* Comparison bar */
+        .comparison { margin-top: 2rem; }
+        .comparison h4 { font-size: 0.95rem; margin-bottom: 1rem; }
+        .compare-row { display: flex; align-items: center; margin-bottom: 0.7rem; gap: 0.8rem; }
+        .compare-row .name { width: 120px; font-size: 0.85rem; color: var(--muted); flex-shrink: 0; }
+        .compare-bar-bg { flex: 1; height: 24px; background: var(--bg); border-radius: 6px; overflow: hidden; position: relative; }
+        .compare-bar { height: 100%; border-radius: 6px; transition: width 0.5s ease; min-width: 2px; }
+        .compare-price { width: 80px; text-align: right; font-size: 0.85rem; font-weight: 600; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+
+        /* Presets */
+        .presets { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1.5rem; justify-content: center; }
+        .preset-btn {
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            color: var(--text);
+            font-size: 0.82rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+        .preset-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+        /* Export */
+        .export-row { display: flex; gap: 0.5rem; justify-content: center; margin-top: 1.5rem; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🧮 GIF CAPTCHA Cost Calculator</h1>
+        <p class="subtitle">Estimate deployment costs at any scale</p>
+        <div class="nav-links">
+            <a href="index.html">Home</a>
+            <a href="demo.html">Demo</a>
+            <a href="dashboard.html">Dashboard</a>
+            <a href="benchmark.html">Benchmark</a>
+            <a href="analysis.html">Analysis</a>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="intro">
+            <h2>What will it cost to run GIF CAPTCHA?</h2>
+            <p>Model your infrastructure costs based on traffic volume, configuration choices, and hosting provider. Compare against traditional CAPTCHA services.</p>
+        </div>
+
+        <div class="presets">
+            <button class="preset-btn" onclick="applyPreset('hobby')">🏠 Hobby Site</button>
+            <button class="preset-btn" onclick="applyPreset('startup')">🚀 Startup</button>
+            <button class="preset-btn" onclick="applyPreset('business')">🏢 Business</button>
+            <button class="preset-btn" onclick="applyPreset('enterprise')">🏗️ Enterprise</button>
+        </div>
+
+        <div class="calc-grid">
+            <div class="input-card">
+                <h3><span class="icon">📊</span> Traffic</h3>
+                <div class="field">
+                    <label for="dailyChallenges">Daily CAPTCHA challenges</label>
+                    <input type="number" id="dailyChallenges" value="10000" min="1" max="100000000" oninput="recalc()">
+                    <div class="hint">Total challenges served per day</div>
+                </div>
+                <div class="field">
+                    <label for="solveRate">Solve rate (%)</label>
+                    <input type="number" id="solveRate" value="85" min="1" max="100" oninput="recalc()">
+                    <div class="hint">% of challenges that get solved (affects verification load)</div>
+                </div>
+                <div class="field">
+                    <label for="retryRate">Average retries per challenge</label>
+                    <input type="number" id="retryRate" value="1.3" min="1" max="5" step="0.1" oninput="recalc()">
+                    <div class="hint">Includes initial attempt + retries</div>
+                </div>
+            </div>
+
+            <div class="input-card">
+                <h3><span class="icon">⚙️</span> Configuration</h3>
+                <div class="field">
+                    <label for="gifFrames">Frames per GIF</label>
+                    <input type="number" id="gifFrames" value="12" min="3" max="60" oninput="recalc()">
+                </div>
+                <div class="field">
+                    <label for="gifSize">Average GIF size (KB)</label>
+                    <input type="number" id="gifSize" value="85" min="10" max="500" oninput="recalc()">
+                </div>
+                <div class="field">
+                    <label for="poolSize">Pre-generated pool size</label>
+                    <input type="number" id="poolSize" value="1000" min="10" max="100000" oninput="recalc()">
+                    <div class="hint">CAPTCHAs pre-generated and cached</div>
+                </div>
+            </div>
+
+            <div class="input-card">
+                <h3><span class="icon">☁️</span> Infrastructure</h3>
+                <div class="field">
+                    <label for="provider">Cloud provider pricing tier</label>
+                    <select id="provider" onchange="recalc()">
+                        <option value="budget">Budget (Hetzner/OVH)</option>
+                        <option value="mid" selected>Mid-tier (DigitalOcean/Linode)</option>
+                        <option value="premium">Premium (AWS/GCP/Azure)</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="cdn">CDN for GIF delivery</label>
+                    <select id="cdn" onchange="recalc()">
+                        <option value="none">None (serve from origin)</option>
+                        <option value="cloudflare" selected>Cloudflare (free tier)</option>
+                        <option value="paid-cdn">Paid CDN (CloudFront/Fastly)</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="storage">Storage backend</label>
+                    <select id="storage" onchange="recalc()">
+                        <option value="disk" selected>Local disk</option>
+                        <option value="s3">Object storage (S3/R2)</option>
+                        <option value="redis">Redis (in-memory)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="input-card">
+                <h3><span class="icon">🔧</span> Operations</h3>
+                <div class="field">
+                    <label for="redundancy">Redundancy</label>
+                    <select id="redundancy" onchange="recalc()">
+                        <option value="single">Single server</option>
+                        <option value="ha" selected>HA (2 servers + LB)</option>
+                        <option value="multi">Multi-region (3+ nodes)</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="monitoring">Monitoring</label>
+                    <select id="monitoring" onchange="recalc()">
+                        <option value="none">None</option>
+                        <option value="basic" selected>Basic (uptime checks)</option>
+                        <option value="full">Full observability (APM + logs)</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="rotation">Pool rotation frequency</label>
+                    <select id="rotation" onchange="recalc()">
+                        <option value="daily">Daily</option>
+                        <option value="hourly" selected>Hourly</option>
+                        <option value="continuous">Continuous</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="results-panel" id="resultsPanel">
+            <h3>💰 Monthly Cost Estimate</h3>
+            <div class="cost-summary" id="costSummary"></div>
+            <table class="breakdown" id="breakdownTable"></table>
+            <div class="comparison" id="comparison"></div>
+            <div class="export-row">
+                <button class="btn btn-primary" onclick="exportCSV()">📄 Export CSV</button>
+                <button class="btn btn-outline" onclick="exportJSON()">{ } Export JSON</button>
+                <button class="btn btn-outline" onclick="shareLink()">🔗 Share Config</button>
+            </div>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <p>GIF CAPTCHA Cost Calculator — Estimates only. Actual costs vary by provider and usage patterns.</p>
+    </footer>
+
+    <script src="shared.js"></script>
+    <script>
+    // Pricing constants (monthly)
+    const PRICING = {
+        compute: {
+            budget:  { base: 4,   perMillion: 1.5  },
+            mid:     { base: 12,  perMillion: 3    },
+            premium: { base: 35,  perMillion: 6    }
+        },
+        bandwidth: {
+            budget:  0.005,  // per GB
+            mid:     0.01,
+            premium: 0.085
+        },
+        cdn: {
+            none:       { fixed: 0, perGB: 0 },
+            cloudflare: { fixed: 0, perGB: 0 },       // free tier
+            'paid-cdn': { fixed: 0, perGB: 0.02 }
+        },
+        storage: {
+            disk:  { fixed: 0, perGB: 0.10  },
+            s3:    { fixed: 0, perGB: 0.023 },
+            redis: { fixed: 6, perGB: 3.00  }
+        },
+        redundancy: { single: 1.0, ha: 2.2, multi: 3.5 },
+        monitoring: { none: 0, basic: 0, full: 25 },
+        rotation: { daily: 1, hourly: 24, continuous: 100 }  // generation cycles per day
+    };
+
+    // Competitor pricing per 1000 verifications
+    const COMPETITORS = {
+        'reCAPTCHA Enterprise': 1.00,
+        'hCaptcha Pro':         1.50,
+        'Turnstile (paid)':     0.50,
+        'Arkose Labs':          2.00
+    };
+
+    const PRESETS = {
+        hobby:      { dailyChallenges: 500,      solveRate: 90, retryRate: 1.1, gifFrames: 8,  gifSize: 50,  poolSize: 100,    provider: 'budget',  cdn: 'none',       storage: 'disk',  redundancy: 'single', monitoring: 'none',  rotation: 'daily' },
+        startup:    { dailyChallenges: 25000,     solveRate: 85, retryRate: 1.3, gifFrames: 12, gifSize: 85,  poolSize: 1000,   provider: 'mid',     cdn: 'cloudflare', storage: 'disk',  redundancy: 'ha',     monitoring: 'basic', rotation: 'hourly' },
+        business:   { dailyChallenges: 500000,    solveRate: 82, retryRate: 1.4, gifFrames: 15, gifSize: 100, poolSize: 5000,   provider: 'mid',     cdn: 'cloudflare', storage: 's3',    redundancy: 'ha',     monitoring: 'full',  rotation: 'hourly' },
+        enterprise: { dailyChallenges: 10000000,  solveRate: 80, retryRate: 1.5, gifFrames: 20, gifSize: 120, poolSize: 50000,  provider: 'premium', cdn: 'paid-cdn',   storage: 's3',    redundancy: 'multi',  monitoring: 'full',  rotation: 'continuous' }
+    };
+
+    function applyPreset(name) {
+        const p = PRESETS[name];
+        if (!p) return;
+        document.getElementById('dailyChallenges').value = p.dailyChallenges;
+        document.getElementById('solveRate').value = p.solveRate;
+        document.getElementById('retryRate').value = p.retryRate;
+        document.getElementById('gifFrames').value = p.gifFrames;
+        document.getElementById('gifSize').value = p.gifSize;
+        document.getElementById('poolSize').value = p.poolSize;
+        document.getElementById('provider').value = p.provider;
+        document.getElementById('cdn').value = p.cdn;
+        document.getElementById('storage').value = p.storage;
+        document.getElementById('redundancy').value = p.redundancy;
+        document.getElementById('monitoring').value = p.monitoring;
+        document.getElementById('rotation').value = p.rotation;
+        recalc();
+    }
+
+    function getInputs() {
+        return {
+            dailyChallenges: Math.max(1, +document.getElementById('dailyChallenges').value || 0),
+            solveRate:       Math.min(100, Math.max(1, +document.getElementById('solveRate').value || 85)) / 100,
+            retryRate:       Math.max(1, +document.getElementById('retryRate').value || 1.3),
+            gifFrames:       Math.max(3, +document.getElementById('gifFrames').value || 12),
+            gifSize:         Math.max(10, +document.getElementById('gifSize').value || 85),
+            poolSize:        Math.max(10, +document.getElementById('poolSize').value || 1000),
+            provider:        document.getElementById('provider').value,
+            cdn:             document.getElementById('cdn').value,
+            storage:         document.getElementById('storage').value,
+            redundancy:      document.getElementById('redundancy').value,
+            monitoring:      document.getElementById('monitoring').value,
+            rotation:        document.getElementById('rotation').value
+        };
+    }
+
+    function calculate(inp) {
+        const monthlyChalls = inp.dailyChallenges * 30;
+        const monthlyServes = monthlyChalls * inp.retryRate;
+        const millionServes = monthlyServes / 1_000_000;
+
+        // Compute: base server + per-million scaling
+        const cp = PRICING.compute[inp.provider];
+        let compute = (cp.base + cp.perMillion * millionServes) * PRICING.redundancy[inp.redundancy];
+
+        // Bandwidth: GIF delivery
+        const totalGB = (monthlyServes * inp.gifSize) / (1024 * 1024); // KB to GB
+        let bandwidthOrigin = 0;
+        const cdnP = PRICING.cdn[inp.cdn];
+        let bandwidthCDN = cdnP.fixed + cdnP.perGB * totalGB;
+        if (inp.cdn === 'none') {
+            bandwidthOrigin = totalGB * PRICING.bandwidth[inp.provider];
+        } else {
+            // Origin still serves cache misses (~5-15%)
+            const missRate = inp.cdn === 'cloudflare' ? 0.05 : 0.10;
+            bandwidthOrigin = totalGB * missRate * PRICING.bandwidth[inp.provider];
+        }
+
+        // Storage: pool size × gif size
+        const poolGB = (inp.poolSize * inp.gifSize) / (1024 * 1024);
+        const stP = PRICING.storage[inp.storage];
+        let storageCost = stP.fixed + stP.perGB * poolGB;
+
+        // Generation compute: CPU time for generating GIFs
+        const cyclesPerDay = PRICING.rotation[inp.rotation];
+        const gifsGenPerMonth = inp.poolSize * cyclesPerDay * 30;
+        // ~2ms CPU per frame, convert to vCPU-hours
+        const cpuHoursGen = (gifsGenPerMonth * inp.gifFrames * 0.002) / 3600;
+        const cpuRate = inp.provider === 'budget' ? 0.005 : inp.provider === 'mid' ? 0.012 : 0.034;
+        let generationCost = cpuHoursGen * cpuRate;
+
+        // Monitoring
+        let monitoringCost = PRICING.monitoring[inp.monitoring];
+
+        // Build breakdown
+        const items = [
+            { name: 'Compute (servers)',    cost: compute,         note: PRICING.redundancy[inp.redundancy] + 'x redundancy' },
+            { name: 'Bandwidth (origin)',   cost: bandwidthOrigin, note: totalGB.toFixed(1) + ' GB total' },
+            { name: 'CDN delivery',         cost: bandwidthCDN,    note: inp.cdn },
+            { name: 'Storage',              cost: storageCost,     note: inp.storage + ' — ' + poolGB.toFixed(2) + ' GB pool' },
+            { name: 'GIF generation',       cost: generationCost,  note: (gifsGenPerMonth/1000).toFixed(0) + 'k GIFs/mo' },
+            { name: 'Monitoring',           cost: monitoringCost,  note: inp.monitoring }
+        ];
+
+        const total = items.reduce((s, i) => s + i.cost, 0);
+        const perThousand = monthlyChalls > 0 ? (total / monthlyChalls) * 1000 : 0;
+
+        return { items, total, perThousand, monthlyChalls, monthlyServes };
+    }
+
+    function fmt(n) {
+        if (n < 0.01) return '$0.00';
+        if (n < 1) return '$' + n.toFixed(3);
+        if (n < 100) return '$' + n.toFixed(2);
+        return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function recalc() {
+        const inp = getInputs();
+        const r = calculate(inp);
+
+        // Summary cards
+        document.getElementById('costSummary').innerHTML =
+            '<div class="cost-card total"><div class="amount">' + fmt(r.total) + '</div><div class="label">Monthly total</div></div>' +
+            '<div class="cost-card"><div class="amount">' + fmt(r.perThousand) + '</div><div class="label">Per 1,000 challenges</div></div>' +
+            '<div class="cost-card"><div class="amount">' + fmt(r.total / 365 * 12) + '</div><div class="label">Daily average</div></div>';
+
+        // Breakdown
+        let rows = '<thead><tr><th>Line item</th><th>Detail</th><th>Cost / mo</th></tr></thead><tbody>';
+        r.items.forEach(function(item) {
+            rows += '<tr><td>' + sanitize(item.name) + '</td><td style="color:var(--muted);font-size:0.83rem">' + sanitize(item.note) + '</td><td>' + fmt(item.cost) + '</td></tr>';
+        });
+        rows += '<tr class="subtotal"><td colspan="2">Total</td><td>' + fmt(r.total) + '</td></tr></tbody>';
+        document.getElementById('breakdownTable').innerHTML = rows;
+
+        // Comparison
+        const allPrices = Object.values(COMPETITORS).map(function(p) { return p; });
+        allPrices.push(r.perThousand);
+        const maxPrice = Math.max.apply(null, allPrices) || 1;
+
+        let comp = '<h4>Cost per 1,000 verifications — vs. alternatives</h4>';
+        // GIF CAPTCHA first
+        comp += compBar('GIF CAPTCHA', r.perThousand, maxPrice, 'var(--green)');
+        Object.keys(COMPETITORS).forEach(function(name) {
+            comp += compBar(name, COMPETITORS[name], maxPrice, 'var(--muted)');
+        });
+        document.getElementById('comparison').innerHTML = comp;
+
+        // Save to URL hash for sharing
+        try {
+            var params = new URLSearchParams();
+            Object.keys(inp).forEach(function(k) { params.set(k, inp[k]); });
+            history.replaceState(null, '', '#' + params.toString());
+        } catch(e) {}
+    }
+
+    function compBar(name, price, max, color) {
+        var pct = Math.max(1, (price / max) * 100);
+        return '<div class="compare-row">' +
+            '<span class="name">' + sanitize(name) + '</span>' +
+            '<div class="compare-bar-bg"><div class="compare-bar" style="width:' + pct + '%;background:' + color + '"></div></div>' +
+            '<span class="compare-price">' + fmt(price) + '</span></div>';
+    }
+
+    // Export
+    function exportCSV() {
+        var r = calculate(getInputs());
+        var csv = 'Line Item,Detail,Monthly Cost\n';
+        r.items.forEach(function(i) { csv += '"' + i.name + '","' + i.note + '",' + i.cost.toFixed(4) + '\n'; });
+        csv += 'Total,,' + r.total.toFixed(4) + '\n';
+        csv += '\nPer 1000 challenges,,' + r.perThousand.toFixed(4) + '\n';
+        downloadFile('gif-captcha-costs.csv', csv, 'text/csv');
+    }
+
+    function exportJSON() {
+        var inp = getInputs();
+        var r = calculate(inp);
+        var obj = { inputs: inp, breakdown: r.items.map(function(i) { return { name: i.name, note: i.note, monthlyCost: +i.cost.toFixed(4) }; }), monthlyTotal: +r.total.toFixed(4), perThousandChallenges: +r.perThousand.toFixed(4) };
+        downloadFile('gif-captcha-costs.json', JSON.stringify(obj, null, 2), 'application/json');
+    }
+
+    function downloadFile(name, content, type) {
+        var blob = new Blob([content], { type: type });
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = name;
+        a.click();
+        URL.revokeObjectURL(a.href);
+    }
+
+    function shareLink() {
+        var url = location.href;
+        if (navigator.clipboard) {
+            navigator.clipboard.writeText(url).then(function() { alert('Link copied to clipboard!'); });
+        } else {
+            prompt('Copy this link:', url);
+        }
+    }
+
+    // Load from URL hash
+    function loadFromHash() {
+        if (!location.hash || location.hash.length < 2) return;
+        try {
+            var params = new URLSearchParams(location.hash.slice(1));
+            var fields = ['dailyChallenges','solveRate','retryRate','gifFrames','gifSize','poolSize','provider','cdn','storage','redundancy','monitoring','rotation'];
+            fields.forEach(function(f) {
+                var v = params.get(f);
+                if (v !== null) {
+                    var el = document.getElementById(f);
+                    if (el) el.value = v;
+                }
+            });
+        } catch(e) {}
+    }
+
+    loadFromHash();
+    recalc();
+    </script>
+</body>
+</html>

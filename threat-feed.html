@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'unsafe-inline'; img-src https:; frame-ancestors 'none'; base-uri 'self'; form-action 'none';">
+    <meta name="referrer" content="no-referrer">
+    <title>Threat Intelligence Feed — GIF CAPTCHA</title>
+    <link rel="stylesheet" href="shared.css">
+    <style>
+        .container { max-width: 1100px; }
+        .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 2rem; }
+        .stat-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.2rem;
+            text-align: center;
+        }
+        .stat-card .value { font-size: 1.8rem; font-weight: 700; }
+        .stat-card .label { font-size: 0.8rem; color: var(--muted); margin-top: 0.3rem; }
+        .stat-card.critical .value { color: var(--red); }
+        .stat-card.warning .value { color: var(--yellow); }
+        .stat-card.ok .value { color: var(--green); }
+        .stat-card.info .value { color: var(--accent); }
+
+        .feed-controls {
+            display: flex; gap: 0.8rem; margin-bottom: 1.5rem; flex-wrap: wrap; align-items: center;
+        }
+        .feed-controls select, .feed-controls input {
+            background: var(--surface); color: var(--text); border: 1px solid var(--border);
+            border-radius: 6px; padding: 0.5rem 0.8rem; font-size: 0.85rem; font-family: inherit;
+        }
+        .live-dot {
+            width: 8px; height: 8px; border-radius: 50%; background: var(--green);
+            display: inline-block; animation: pulse 1.5s infinite; margin-right: 0.4rem;
+        }
+        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+        .threat-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        .threat-table th {
+            text-align: left; padding: 0.7rem 0.8rem; background: var(--surface);
+            border-bottom: 2px solid var(--border); color: var(--muted); font-weight: 600;
+            cursor: pointer; user-select: none;
+        }
+        .threat-table th:hover { color: var(--text); }
+        .threat-table td {
+            padding: 0.65rem 0.8rem; border-bottom: 1px solid var(--border);
+        }
+        .threat-table tr:hover td { background: var(--surface-hover); }
+        .severity {
+            display: inline-block; padding: 0.15rem 0.55rem; border-radius: 10px;
+            font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
+        }
+        .severity-critical { background: var(--red-bg); color: var(--red); }
+        .severity-high { background: var(--orange-bg); color: var(--orange); }
+        .severity-medium { background: var(--yellow-bg); color: var(--yellow); }
+        .severity-low { background: var(--green-bg); color: var(--green); }
+
+        .vector-bar { display: flex; align-items: center; gap: 0.5rem; }
+        .vector-fill {
+            height: 6px; border-radius: 3px; min-width: 4px; transition: width 0.5s;
+        }
+        .vector-pct { font-size: 0.75rem; color: var(--muted); min-width: 35px; }
+
+        .two-panels { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-top: 2rem; }
+        .panel {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 10px; padding: 1.2rem;
+        }
+        .panel h3 { font-size: 0.95rem; margin-bottom: 1rem; color: var(--accent); }
+        .geo-row {
+            display: flex; justify-content: space-between; padding: 0.4rem 0;
+            border-bottom: 1px solid var(--border); font-size: 0.85rem;
+        }
+        .geo-row:last-child { border: none; }
+        .timeline-entry {
+            padding: 0.6rem 0; border-bottom: 1px solid var(--border); font-size: 0.83rem;
+        }
+        .timeline-entry:last-child { border: none; }
+        .timeline-time { color: var(--muted); font-size: 0.75rem; }
+        .timeline-msg { margin-top: 0.2rem; }
+
+        @media (max-width: 768px) {
+            .stats-row { grid-template-columns: repeat(2, 1fr); }
+            .two-panels { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 500px) {
+            .stats-row { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🛡️ Threat Intelligence Feed</h1>
+        <p class="subtitle">Real-time bot attack patterns, threat vectors, and severity analysis</p>
+        <div class="nav-links">
+            <a href="index.html">Case Study</a>
+            <a href="dashboard.html">Dashboard</a>
+            <a href="bot-signatures.html">Bot Signatures</a>
+            <a href="geo-risk-map.html">Geo Risk</a>
+            <a href="fraud-rings.html">Fraud Rings</a>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="stats-row" id="statsRow"></div>
+
+        <div class="feed-controls">
+            <span><span class="live-dot"></span><strong>Live Feed</strong></span>
+            <select id="severityFilter">
+                <option value="all">All Severities</option>
+                <option value="critical">Critical</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+            </select>
+            <select id="vectorFilter">
+                <option value="all">All Vectors</option>
+                <option value="headless-browser">Headless Browser</option>
+                <option value="credential-stuffing">Credential Stuffing</option>
+                <option value="captcha-farm">CAPTCHA Farm</option>
+                <option value="ml-solver">ML Solver</option>
+                <option value="replay-attack">Replay Attack</option>
+                <option value="timing-exploit">Timing Exploit</option>
+            </select>
+            <input type="text" id="ipSearch" placeholder="Search IP or fingerprint…" style="flex:1;min-width:140px;">
+            <button class="btn btn-small btn-secondary" onclick="exportCSV()">Export CSV</button>
+        </div>
+
+        <table class="threat-table">
+            <thead>
+                <tr>
+                    <th onclick="sortTable(0)">Time ↕</th>
+                    <th onclick="sortTable(1)">Severity ↕</th>
+                    <th onclick="sortTable(2)">Vector ↕</th>
+                    <th onclick="sortTable(3)">Source IP ↕</th>
+                    <th>Fingerprint</th>
+                    <th onclick="sortTable(5)">Attempts ↕</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody id="feedBody"></tbody>
+        </table>
+
+        <div class="two-panels">
+            <div class="panel">
+                <h3>🌍 Top Attack Origins</h3>
+                <div id="geoPanel"></div>
+            </div>
+            <div class="panel">
+                <h3>⚡ Attack Vector Distribution</h3>
+                <div id="vectorPanel"></div>
+            </div>
+        </div>
+
+        <div class="two-panels" style="margin-top:1rem;">
+            <div class="panel">
+                <h3>🔔 Recent Alerts</h3>
+                <div id="alertTimeline"></div>
+            </div>
+            <div class="panel">
+                <h3>📊 Threat Trend (24h)</h3>
+                <div id="trendPanel"></div>
+            </div>
+        </div>
+
+        <footer>
+            <p>GIF CAPTCHA Research Study — <a href="index.html">Back to Case Study</a></p>
+        </footer>
+    </div>
+
+    <script>
+    (function() {
+        const VECTORS = ['headless-browser','credential-stuffing','captcha-farm','ml-solver','replay-attack','timing-exploit'];
+        const SEVERITIES = ['critical','high','medium','low'];
+        const COUNTRIES = ['CN','RU','US','BR','IN','NG','UA','DE','VN','ID','IR','KR','PK','PH','TR'];
+        const ACTIONS = ['Blocked','Rate-limited','Challenged','Flagged','Quarantined'];
+        const LABELS = {
+            'headless-browser':'Headless Browser','credential-stuffing':'Credential Stuffing',
+            'captcha-farm':'CAPTCHA Farm','ml-solver':'ML Solver',
+            'replay-attack':'Replay Attack','timing-exploit':'Timing Exploit'
+        };
+
+        function rng(min,max){return Math.floor(Math.random()*(max-min+1))+min;}
+        function rItem(a){return a[rng(0,a.length-1)];}
+        function fakeIP(){return `${rng(1,223)}.${rng(0,255)}.${rng(0,255)}.${rng(1,254)}`;}
+        function fakeFP(){return 'fp_'+Math.random().toString(36).slice(2,10);}
+
+        // Generate threat events
+        let threats = [];
+        const now = Date.now();
+        for(let i=0;i<80;i++){
+            const ago = rng(0,86400000);
+            const sev = rItem(SEVERITIES);
+            threats.push({
+                time: now - ago,
+                severity: sev,
+                vector: rItem(VECTORS),
+                ip: fakeIP(),
+                fingerprint: fakeFP(),
+                attempts: sev==='critical'?rng(50,500):sev==='high'?rng(20,80):sev==='medium'?rng(5,25):rng(1,8),
+                action: sev==='critical'?'Blocked':sev==='high'?rItem(['Blocked','Rate-limited']):rItem(ACTIONS),
+                country: rItem(COUNTRIES)
+            });
+        }
+        threats.sort((a,b)=>b.time-a.time);
+
+        // Stats
+        const critical = threats.filter(t=>t.severity==='critical').length;
+        const high = threats.filter(t=>t.severity==='high').length;
+        const blocked = threats.filter(t=>t.action==='Blocked').length;
+        const totalAttempts = threats.reduce((s,t)=>s+t.attempts,0);
+        document.getElementById('statsRow').innerHTML = `
+            <div class="stat-card critical"><div class="value">${critical}</div><div class="label">Critical Threats</div></div>
+            <div class="stat-card warning"><div class="value">${high}</div><div class="label">High Severity</div></div>
+            <div class="stat-card ok"><div class="value">${blocked}</div><div class="label">Blocked</div></div>
+            <div class="stat-card info"><div class="value">${totalAttempts.toLocaleString()}</div><div class="label">Total Attempts (24h)</div></div>
+        `;
+
+        // Render table
+        function fmtTime(ts){
+            const d=new Date(ts);
+            const diff=Math.floor((now-ts)/60000);
+            if(diff<1)return 'Just now';
+            if(diff<60)return diff+'m ago';
+            if(diff<1440)return Math.floor(diff/60)+'h ago';
+            return d.toLocaleTimeString();
+        }
+        function renderTable(){
+            const sevF=document.getElementById('severityFilter').value;
+            const vecF=document.getElementById('vectorFilter').value;
+            const search=document.getElementById('ipSearch').value.toLowerCase();
+            const filtered=threats.filter(t=>{
+                if(sevF!=='all'&&t.severity!==sevF)return false;
+                if(vecF!=='all'&&t.vector!==vecF)return false;
+                if(search&&!t.ip.includes(search)&&!t.fingerprint.includes(search))return false;
+                return true;
+            });
+            document.getElementById('feedBody').innerHTML=filtered.map(t=>`<tr>
+                <td>${fmtTime(t.time)}</td>
+                <td><span class="severity severity-${t.severity}">${t.severity}</span></td>
+                <td>${LABELS[t.vector]}</td>
+                <td><code>${t.ip}</code></td>
+                <td><code>${t.fingerprint}</code></td>
+                <td>${t.attempts}</td>
+                <td>${t.action}</td>
+            </tr>`).join('');
+        }
+        renderTable();
+        document.getElementById('severityFilter').onchange=renderTable;
+        document.getElementById('vectorFilter').onchange=renderTable;
+        document.getElementById('ipSearch').oninput=renderTable;
+
+        // Sorting
+        let sortDir=[1,1,1,1,1,1];
+        window.sortTable=function(col){
+            sortDir[col]*=-1;
+            const keys=['time','severity','vector','ip','fingerprint','attempts'];
+            const key=keys[col];
+            if(key==='severity'){
+                const ord={critical:0,high:1,medium:2,low:3};
+                threats.sort((a,b)=>sortDir[col]*(ord[a.severity]-ord[b.severity]));
+            } else if(typeof threats[0][key]==='number'){
+                threats.sort((a,b)=>sortDir[col]*(a[key]-b[key]));
+            } else {
+                threats.sort((a,b)=>sortDir[col]*String(a[key]).localeCompare(String(b[key])));
+            }
+            renderTable();
+        };
+
+        // Geo panel
+        const geoCount={};
+        threats.forEach(t=>{geoCount[t.country]=(geoCount[t.country]||0)+t.attempts;});
+        const geoSorted=Object.entries(geoCount).sort((a,b)=>b[1]-a[1]).slice(0,8);
+        document.getElementById('geoPanel').innerHTML=geoSorted.map(([c,n])=>
+            `<div class="geo-row"><span>${c}</span><span style="color:var(--accent);font-weight:600">${n.toLocaleString()} attempts</span></div>`
+        ).join('');
+
+        // Vector distribution
+        const vecCount={};
+        VECTORS.forEach(v=>{vecCount[v]=threats.filter(t=>t.vector===v).length;});
+        const maxVec=Math.max(...Object.values(vecCount));
+        const colors={
+            'headless-browser':'var(--red)','credential-stuffing':'var(--orange)',
+            'captcha-farm':'var(--yellow)','ml-solver':'var(--purple)',
+            'replay-attack':'var(--cyan)','timing-exploit':'var(--accent)'
+        };
+        document.getElementById('vectorPanel').innerHTML=Object.entries(vecCount)
+            .sort((a,b)=>b[1]-a[1])
+            .map(([v,n])=>{
+                const pct=Math.round(n/threats.length*100);
+                return `<div style="margin-bottom:0.6rem">
+                    <div style="font-size:0.82rem;margin-bottom:0.25rem">${LABELS[v]}</div>
+                    <div class="vector-bar">
+                        <div class="vector-fill" style="width:${(n/maxVec*100).toFixed(0)}%;background:${colors[v]}"></div>
+                        <span class="vector-pct">${pct}%</span>
+                    </div>
+                </div>`;
+            }).join('');
+
+        // Alert timeline
+        const alerts=threats.filter(t=>t.severity==='critical'||t.severity==='high').slice(0,6);
+        document.getElementById('alertTimeline').innerHTML=alerts.map(t=>
+            `<div class="timeline-entry">
+                <div class="timeline-time">${fmtTime(t.time)}</div>
+                <div class="timeline-msg"><span class="severity severity-${t.severity}">${t.severity}</span> ${LABELS[t.vector]} from <code>${t.ip}</code> — ${t.action}</div>
+            </div>`
+        ).join('');
+
+        // Trend panel (simple ASCII-style hourly bars)
+        const hourBuckets=new Array(24).fill(0);
+        threats.forEach(t=>{
+            const h=Math.floor((now-t.time)/3600000);
+            if(h<24)hourBuckets[23-h]+=t.attempts;
+        });
+        const maxH=Math.max(...hourBuckets,1);
+        document.getElementById('trendPanel').innerHTML=`
+            <div style="display:flex;align-items:flex-end;gap:3px;height:100px;margin-top:0.5rem;">
+                ${hourBuckets.map((v,i)=>{
+                    const h=Math.max(2,v/maxH*90);
+                    const label=i===0?'24h ago':i===23?'Now':'';
+                    return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;">
+                        <div style="width:100%;height:${h}px;background:var(--accent);border-radius:2px;opacity:${0.3+0.7*v/maxH}" title="${v} attempts"></div>
+                    </div>`;
+                }).join('')}
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:0.7rem;color:var(--muted);margin-top:0.3rem;">
+                <span>24h ago</span><span>12h</span><span>Now</span>
+            </div>
+        `;
+
+        // Export CSV
+        window.exportCSV=function(){
+            const header='Time,Severity,Vector,IP,Fingerprint,Attempts,Action,Country\n';
+            const rows=threats.map(t=>
+                `${new Date(t.time).toISOString()},${t.severity},${t.vector},${t.ip},${t.fingerprint},${t.attempts},${t.action},${t.country}`
+            ).join('\n');
+            const blob=new Blob([header+rows],{type:'text/csv'});
+            const a=document.createElement('a');
+            a.href=URL.createObjectURL(blob);
+            a.download='threat-feed-export.csv';
+            a.click();
+        };
+
+        // Live simulation: add new threat every 15s
+        setInterval(()=>{
+            const sev=rItem(SEVERITIES);
+            const t={
+                time:Date.now(),severity:sev,vector:rItem(VECTORS),
+                ip:fakeIP(),fingerprint:fakeFP(),
+                attempts:sev==='critical'?rng(50,200):rng(1,40),
+                action:sev==='critical'?'Blocked':rItem(ACTIONS),
+                country:rItem(COUNTRIES)
+            };
+            threats.unshift(t);
+            if(threats.length>200)threats.pop();
+            renderTable();
+        },15000);
+    })();
+    </script>
+</body>
+</html>

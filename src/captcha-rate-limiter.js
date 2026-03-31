@@ -713,18 +713,9 @@ function createCaptchaRateLimiter(options) {
    * Reset all state for all keys.
    */
   function resetAll() {
-    var keys = Object.keys(store);
-    for (var i = 0; i < keys.length; i++) {
-      delete store[keys[i]];
-    }
-    var banKeys = Object.keys(bans);
-    for (var j = 0; j < banKeys.length; j++) {
-      delete bans[banKeys[j]];
-    }
-    var strikeKeys = Object.keys(strikes);
-    for (var k = 0; k < strikeKeys.length; k++) {
-      delete strikes[strikeKeys[k]];
-    }
+    store = Object.create(null);
+    bans = Object.create(null);
+    strikes = Object.create(null);
     totalAllowed = 0;
     totalRejected = 0;
     totalBanned = 0;
@@ -762,6 +753,10 @@ function createCaptchaRateLimiter(options) {
   /**
    * Get per-key status for monitoring / debug.
    *
+   * Uses partial selection (O(n)) instead of sorting all entries
+   * (O(n log n)) when limit < total keys — maintains a small
+   * sorted result set and only inserts when an entry qualifies.
+   *
    * @param {number} [limit=20] - Max keys to return
    * @param {string} [sortBy='recent'] - Sort: 'recent' | 'active' | 'strikes'
    * @returns {Array} Top keys with their current state
@@ -771,13 +766,12 @@ function createCaptchaRateLimiter(options) {
     sortBy = sortBy || "recent";
 
     var keys = Object.keys(store);
-    var entries = [];
-    for (var i = 0; i < keys.length; i++) {
-      var k = keys[i];
+
+    function _buildInfo(k) {
       var e = store[k];
       var info = { key: k, lastSeen: e.lastSeen || 0 };
       if (algorithm === "sliding-window") {
-        info.requestCount = e.timestamps ? e.timestamps.length : 0;
+        info.requestCount = e.timestamps ? e.timestamps.length - (e.startIdx || 0) : 0;
       } else if (algorithm === "token-bucket") {
         info.tokens = Math.floor(e.tokens || 0);
       } else {
@@ -785,22 +779,65 @@ function createCaptchaRateLimiter(options) {
       }
       info.strikes = strikes[k] || 0;
       info.banned = !!bans[k];
-      entries.push(info);
+      return info;
     }
 
-    if (sortBy === "active") {
-      entries.sort(function (a, b) {
-        var aVal = a.requestCount || a.queueLevel || (capacity - (a.tokens || 0));
-        var bVal = b.requestCount || b.queueLevel || (capacity - (b.tokens || 0));
-        return bVal - aVal;
-      });
-    } else if (sortBy === "strikes") {
-      entries.sort(function (a, b) { return b.strikes - a.strikes; });
-    } else {
-      entries.sort(function (a, b) { return b.lastSeen - a.lastSeen; });
+    function _sortValue(info) {
+      if (sortBy === "active") {
+        return info.requestCount || info.queueLevel || (capacity - (info.tokens || 0));
+      } else if (sortBy === "strikes") {
+        return info.strikes;
+      }
+      return info.lastSeen;
     }
 
-    return entries.slice(0, limit);
+    // When limit >= total keys, just build, sort, return (no benefit
+    // from partial selection when we need everything).
+    if (keys.length <= limit) {
+      var all = [];
+      for (var a = 0; a < keys.length; a++) {
+        all.push(_buildInfo(keys[a]));
+      }
+      all.sort(function (x, y) { return _sortValue(y) - _sortValue(x); });
+      return all;
+    }
+
+    // Partial selection: maintain a result array of `limit` entries,
+    // tracking the minimum sort value so we can skip entries that
+    // can't possibly make the top-N.
+    var result = [];
+    var minVal = -Infinity;
+
+    for (var i = 0; i < keys.length; i++) {
+      var info = _buildInfo(keys[i]);
+      var val = _sortValue(info);
+
+      if (result.length < limit) {
+        result.push({ info: info, val: val });
+        if (result.length === limit) {
+          // Sort and set minVal
+          result.sort(function (x, y) { return y.val - x.val; });
+          minVal = result[result.length - 1].val;
+        }
+      } else if (val > minVal) {
+        // Replace the last (smallest) entry
+        result[result.length - 1] = { info: info, val: val };
+        // Re-sort to maintain order (small array, fast)
+        result.sort(function (x, y) { return y.val - x.val; });
+        minVal = result[result.length - 1].val;
+      }
+    }
+
+    // If we didn't fill up to limit, sort what we have
+    if (result.length < limit) {
+      result.sort(function (x, y) { return y.val - x.val; });
+    }
+
+    var out = [];
+    for (var j = 0; j < result.length; j++) {
+      out.push(result[j].info);
+    }
+    return out;
   }
 
   /**

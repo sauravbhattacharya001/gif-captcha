@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; img-src https: data:; script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'self'; form-action 'none';">
+    <meta name="referrer" content="no-referrer">
+    <title>GIF CAPTCHA — My Stats</title>
+    <link rel="stylesheet" href="shared.css">
+    <style>
+        .container { max-width: 800px; }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        .stat-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.2rem;
+            text-align: center;
+        }
+        .stat-card .value {
+            font-size: 2rem;
+            font-weight: 700;
+            line-height: 1.2;
+        }
+        .stat-card .label {
+            color: var(--muted);
+            font-size: 0.8rem;
+            margin-top: 0.3rem;
+        }
+        .stat-card .value.green { color: var(--green); }
+        .stat-card .value.accent { color: var(--accent); }
+        .stat-card .value.yellow { color: var(--yellow); }
+        .stat-card .value.purple { color: var(--purple); }
+
+        /* Chart area */
+        .chart-section {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .chart-section h3 { margin-bottom: 1rem; font-size: 1rem; }
+        .chart-bar-container {
+            display: flex;
+            align-items: flex-end;
+            gap: 3px;
+            height: 120px;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 4px;
+        }
+        .chart-bar {
+            flex: 1;
+            min-width: 6px;
+            max-width: 24px;
+            border-radius: 3px 3px 0 0;
+            transition: height 0.3s ease;
+            cursor: default;
+            position: relative;
+        }
+        .chart-bar.pass { background: var(--green); }
+        .chart-bar.fail { background: var(--red); opacity: 0.8; }
+        .chart-bar:hover { opacity: 0.7; }
+        .chart-labels {
+            display: flex;
+            gap: 3px;
+            margin-top: 4px;
+        }
+        .chart-labels span {
+            flex: 1;
+            min-width: 6px;
+            max-width: 24px;
+            text-align: center;
+            font-size: 0.55rem;
+            color: var(--muted);
+        }
+        .empty-state {
+            text-align: center;
+            color: var(--muted);
+            padding: 3rem 1rem;
+        }
+        .empty-state .icon { font-size: 3rem; margin-bottom: 1rem; }
+
+        /* History table */
+        .history-section { margin-bottom: 2rem; }
+        .history-section h3 { margin-bottom: 1rem; font-size: 1rem; }
+        .history-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .history-table th,
+        .history-table td {
+            padding: 0.6rem 0.8rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.85rem;
+        }
+        .history-table th {
+            color: var(--muted);
+            font-weight: 600;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+        }
+        .badge {
+            display: inline-block;
+            padding: 0.15rem 0.5rem;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .badge.pass { background: var(--green-bg); color: var(--green); }
+        .badge.fail { background: var(--red-bg); color: var(--red); }
+
+        /* Record form */
+        .record-section {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .record-section h3 { margin-bottom: 1rem; font-size: 1rem; }
+        .form-row {
+            display: flex;
+            gap: 1rem;
+            align-items: flex-end;
+            flex-wrap: wrap;
+        }
+        .form-group { flex: 1; min-width: 120px; }
+        .form-group label {
+            display: block;
+            font-size: 0.8rem;
+            color: var(--muted);
+            margin-bottom: 0.3rem;
+        }
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 0.5rem 0.7rem;
+            background: var(--bg);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-family: inherit;
+            font-size: 0.9rem;
+        }
+        .form-group input:focus, .form-group select:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+        .btn-sm {
+            padding: 0.5rem 1.2rem;
+            font-size: 0.85rem;
+        }
+        .actions-row {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 1rem;
+            justify-content: flex-end;
+        }
+        .btn-danger {
+            background: var(--red-bg);
+            color: var(--red);
+            border: 1px solid var(--red);
+        }
+        .btn-danger:hover { background: var(--red); color: #fff; }
+        .btn-export {
+            background: var(--purple-bg);
+            color: var(--purple);
+            border: 1px solid var(--purple);
+        }
+        .btn-export:hover { background: var(--purple); color: #fff; }
+    </style>
+</head>
+<body>
+<div class="header">
+    <h1>📈 My Stats</h1>
+    <p class="subtitle">Track your personal CAPTCHA-solving performance over time</p>
+    <div class="nav-links">
+        <a href="index.html">Home</a>
+        <a href="demo.html">Demo</a>
+        <a href="dashboard.html">Dashboard</a>
+        <a href="analysis.html">Analysis</a>
+    </div>
+</div>
+
+<div class="container">
+    <!-- Stat cards -->
+    <div class="stats-grid" id="statsGrid">
+        <div class="stat-card">
+            <div class="value accent" id="totalAttempts">0</div>
+            <div class="label">Total Attempts</div>
+        </div>
+        <div class="stat-card">
+            <div class="value green" id="accuracy">—</div>
+            <div class="label">Accuracy</div>
+        </div>
+        <div class="stat-card">
+            <div class="value yellow" id="avgTime">—</div>
+            <div class="label">Avg Solve Time</div>
+        </div>
+        <div class="stat-card">
+            <div class="value purple" id="bestStreak">0</div>
+            <div class="label">Best Streak</div>
+        </div>
+    </div>
+
+    <!-- Chart -->
+    <div class="chart-section">
+        <h3>📊 Recent Attempts</h3>
+        <div id="chartArea">
+            <div class="empty-state">
+                <div class="icon">🎯</div>
+                <p>No attempts recorded yet. Log your first solve below!</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Record a solve -->
+    <div class="record-section">
+        <h3>➕ Record a Solve</h3>
+        <div class="form-row">
+            <div class="form-group">
+                <label for="solveResult">Result</label>
+                <select id="solveResult">
+                    <option value="pass">✅ Passed</option>
+                    <option value="fail">❌ Failed</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="solveTime">Solve Time (seconds)</label>
+                <input type="number" id="solveTime" min="0.1" max="300" step="0.1" placeholder="e.g. 4.2">
+            </div>
+            <div class="form-group">
+                <label for="solveNote">Note (optional)</label>
+                <input type="text" id="solveNote" placeholder="e.g. tricky GIF" maxlength="80">
+            </div>
+            <button class="btn btn-primary btn-sm" id="recordBtn">Record</button>
+        </div>
+    </div>
+
+    <!-- History -->
+    <div class="history-section">
+        <h3>🕒 History</h3>
+        <div id="historyArea">
+            <div class="empty-state">
+                <p>No history yet.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="actions-row">
+        <button class="btn btn-export btn-sm" id="exportBtn" title="Export as JSON">📋 Export</button>
+        <button class="btn btn-danger btn-sm" id="clearBtn" title="Clear all data">🗑️ Clear All</button>
+    </div>
+</div>
+
+<script>
+(function() {
+    'use strict';
+
+    var STORAGE_KEY = 'gifcaptcha_mystats';
+
+    function loadData() {
+        try {
+            var raw = localStorage.getItem(STORAGE_KEY);
+            if (raw) return JSON.parse(raw);
+        } catch (e) { /* ignore */ }
+        return { attempts: [] };
+    }
+
+    function saveData(data) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    }
+
+    function formatTime(seconds) {
+        if (seconds == null) return '—';
+        return seconds < 60 ? seconds.toFixed(1) + 's' : (seconds / 60).toFixed(1) + 'm';
+    }
+
+    function formatDate(ts) {
+        var d = new Date(ts);
+        var mon = d.toLocaleString('en-US', { month: 'short' });
+        var day = d.getDate();
+        var h = d.getHours();
+        var m = String(d.getMinutes()).padStart(2, '0');
+        var ampm = h >= 12 ? 'PM' : 'AM';
+        h = h % 12 || 12;
+        return mon + ' ' + day + ', ' + h + ':' + m + ' ' + ampm;
+    }
+
+    function computeStats(attempts) {
+        if (!attempts.length) return { total: 0, passed: 0, accuracy: null, avgTime: null, bestStreak: 0 };
+        var passed = 0, totalTime = 0, timeCount = 0, streak = 0, bestStreak = 0;
+        for (var i = 0; i < attempts.length; i++) {
+            var a = attempts[i];
+            if (a.result === 'pass') {
+                passed++;
+                streak++;
+                if (streak > bestStreak) bestStreak = streak;
+            } else {
+                streak = 0;
+            }
+            if (a.time != null) { totalTime += a.time; timeCount++; }
+        }
+        return {
+            total: attempts.length,
+            passed: passed,
+            accuracy: (passed / attempts.length * 100).toFixed(1),
+            avgTime: timeCount > 0 ? (totalTime / timeCount) : null,
+            bestStreak: bestStreak
+        };
+    }
+
+    function render() {
+        var data = loadData();
+        var attempts = data.attempts || [];
+        var stats = computeStats(attempts);
+
+        // Stat cards
+        document.getElementById('totalAttempts').textContent = stats.total;
+        document.getElementById('accuracy').textContent = stats.accuracy != null ? stats.accuracy + '%' : '—';
+        document.getElementById('avgTime').textContent = formatTime(stats.avgTime);
+        document.getElementById('bestStreak').textContent = stats.bestStreak;
+
+        // Chart (last 50)
+        var chartArea = document.getElementById('chartArea');
+        if (attempts.length === 0) {
+            chartArea.innerHTML = '<div class="empty-state"><div class="icon">🎯</div><p>No attempts recorded yet. Log your first solve below!</p></div>';
+        } else {
+            var recent = attempts.slice(-50);
+            var maxTime = 1;
+            for (var i = 0; i < recent.length; i++) {
+                if (recent[i].time != null && recent[i].time > maxTime) maxTime = recent[i].time;
+            }
+            var barsHtml = '<div class="chart-bar-container">';
+            var labelsHtml = '<div class="chart-labels">';
+            for (var j = 0; j < recent.length; j++) {
+                var a = recent[j];
+                var h = a.time != null ? Math.max(8, (a.time / maxTime) * 110) : 30;
+                var cls = a.result === 'pass' ? 'pass' : 'fail';
+                var tip = (a.result === 'pass' ? 'Pass' : 'Fail') + (a.time != null ? ' · ' + a.time.toFixed(1) + 's' : '');
+                barsHtml += '<div class="chart-bar ' + cls + '" style="height:' + h + 'px" title="' + tip + '"></div>';
+                labelsHtml += '<span>' + (j + 1) + '</span>';
+            }
+            barsHtml += '</div>';
+            labelsHtml += '</div>';
+            chartArea.innerHTML = barsHtml + labelsHtml;
+        }
+
+        // History (last 20, newest first)
+        var historyArea = document.getElementById('historyArea');
+        if (attempts.length === 0) {
+            historyArea.innerHTML = '<div class="empty-state"><p>No history yet.</p></div>';
+        } else {
+            var rows = '';
+            var showing = attempts.slice().reverse().slice(0, 20);
+            for (var k = 0; k < showing.length; k++) {
+                var r = showing[k];
+                var badge = r.result === 'pass'
+                    ? '<span class="badge pass">PASS</span>'
+                    : '<span class="badge fail">FAIL</span>';
+                rows += '<tr><td>' + formatDate(r.timestamp) + '</td><td>' + badge + '</td><td>' + formatTime(r.time) + '</td><td>' + (r.note || '—') + '</td></tr>';
+            }
+            historyArea.innerHTML = '<table class="history-table"><thead><tr><th>When</th><th>Result</th><th>Time</th><th>Note</th></tr></thead><tbody>' + rows + '</tbody></table>';
+        }
+    }
+
+    // Record button
+    document.getElementById('recordBtn').addEventListener('click', function() {
+        var result = document.getElementById('solveResult').value;
+        var timeVal = document.getElementById('solveTime').value;
+        var note = document.getElementById('solveNote').value.trim();
+        var time = timeVal ? parseFloat(timeVal) : null;
+        if (time != null && (isNaN(time) || time <= 0 || time > 300)) {
+            alert('Please enter a valid solve time (0.1–300 seconds).');
+            return;
+        }
+        var data = loadData();
+        data.attempts.push({
+            timestamp: Date.now(),
+            result: result,
+            time: time,
+            note: note || null
+        });
+        saveData(data);
+        document.getElementById('solveTime').value = '';
+        document.getElementById('solveNote').value = '';
+        render();
+    });
+
+    // Export
+    document.getElementById('exportBtn').addEventListener('click', function() {
+        var data = loadData();
+        var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = 'gifcaptcha-stats-' + new Date().toISOString().slice(0, 10) + '.json';
+        a.click();
+        URL.revokeObjectURL(url);
+    });
+
+    // Clear
+    document.getElementById('clearBtn').addEventListener('click', function() {
+        if (confirm('Clear all your stats? This cannot be undone.')) {
+            localStorage.removeItem(STORAGE_KEY);
+            render();
+        }
+    });
+
+    render();
+})();
+</script>
+</body>
+</html>

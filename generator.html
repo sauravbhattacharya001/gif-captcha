@@ -978,7 +978,8 @@
                 container.appendChild(img);
             };
             img.onerror = function() {
-                container.innerHTML = '<span class="gif-loading">⚠️ GIF failed to load. <a href="' + sanitize(c.gifUrl) + '" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">Open in new tab →</a></span>';
+                var safeHref = sanitizeUrl(c.gifUrl);
+                container.innerHTML = '<span class="gif-loading">⚠️ GIF failed to load.' + (safeHref ? ' <a href="' + sanitize(safeHref) + '" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">Open in new tab →</a>' : '') + '</span>';
             };
             img.src = c.gifUrl;
 

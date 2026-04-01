@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; img-src https: data:; script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'self'; form-action 'none';">
+    <meta name="referrer" content="no-referrer">
+    <title>GIF CAPTCHA — Bot or Human?</title>
+    <link rel="stylesheet" href="shared.css">
+    <style>
+        .container { max-width: 860px; }
+
+        .quiz-header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        .quiz-header h2 { font-size: 1.6rem; margin-bottom: 0.5rem; }
+        .quiz-header p { color: var(--muted); }
+
+        .scoreboard {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+        }
+        .score-pill {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 0.5rem 1.2rem;
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+        .score-pill.correct { border-color: var(--green); color: var(--green); }
+        .score-pill.wrong { border-color: var(--red); color: var(--red); }
+        .score-pill.streak { border-color: var(--yellow); color: var(--yellow); }
+
+        .scenario-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 1.5rem;
+        }
+        .scenario-card h3 {
+            font-size: 1.1rem;
+            margin-bottom: 1.2rem;
+            color: var(--accent);
+        }
+
+        .signals-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        .signal {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem;
+        }
+        .signal .label {
+            font-size: 0.8rem;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.3rem;
+        }
+        .signal .value {
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+
+        .mouse-trail {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        .mouse-trail canvas {
+            width: 100%;
+            height: 120px;
+            border-radius: 6px;
+        }
+        .mouse-trail .label {
+            font-size: 0.8rem;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.5rem;
+        }
+
+        .choice-buttons {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+        }
+        .choice-btn {
+            padding: 0.8rem 2.5rem;
+            border-radius: 8px;
+            border: 2px solid var(--border);
+            background: var(--surface);
+            color: var(--text);
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .choice-btn:hover { border-color: var(--accent); background: var(--surface-hover); }
+        .choice-btn.bot-btn:hover { border-color: var(--red); }
+        .choice-btn.human-btn:hover { border-color: var(--green); }
+        .choice-btn:disabled { opacity: 0.5; cursor: default; }
+
+        .result-banner {
+            text-align: center;
+            padding: 1.2rem;
+            border-radius: 8px;
+            margin-top: 1rem;
+            font-weight: 600;
+            display: none;
+        }
+        .result-banner.correct { background: var(--green-bg); color: var(--green); }
+        .result-banner.wrong { background: var(--red-bg); color: var(--red); }
+        .result-banner .explain {
+            font-weight: 400;
+            font-size: 0.9rem;
+            margin-top: 0.5rem;
+            color: var(--muted);
+            line-height: 1.5;
+        }
+
+        .next-btn {
+            display: none;
+            margin: 1.5rem auto 0;
+            padding: 0.6rem 2rem;
+            border-radius: 8px;
+            border: 1px solid var(--accent);
+            background: transparent;
+            color: var(--accent);
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .next-btn:hover { background: rgba(88, 166, 255, 0.1); }
+
+        .progress-bar {
+            height: 4px;
+            background: var(--border);
+            border-radius: 2px;
+            margin-bottom: 1.5rem;
+            overflow: hidden;
+        }
+        .progress-bar .fill {
+            height: 100%;
+            background: var(--accent);
+            transition: width 0.4s ease;
+            border-radius: 2px;
+        }
+
+        .final-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 2.5rem;
+            text-align: center;
+            display: none;
+        }
+        .final-card h2 { font-size: 1.8rem; margin-bottom: 0.5rem; }
+        .final-card .big-score { font-size: 3.5rem; font-weight: 800; margin: 1rem 0; }
+        .final-card .grade { font-size: 1.2rem; color: var(--muted); margin-bottom: 1.5rem; }
+        .final-card .breakdown { text-align: left; max-width: 400px; margin: 0 auto 1.5rem; }
+        .final-card .breakdown div {
+            display: flex; justify-content: space-between;
+            padding: 0.4rem 0;
+            border-bottom: 1px solid var(--border);
+        }
+        .replay-btn {
+            padding: 0.7rem 2rem;
+            border-radius: 8px;
+            border: 1px solid var(--accent);
+            background: transparent;
+            color: var(--accent);
+            font-size: 1rem;
+            cursor: pointer;
+        }
+        .replay-btn:hover { background: rgba(88, 166, 255, 0.1); }
+
+        .tip-box {
+            background: var(--yellow-bg);
+            border: 1px solid var(--yellow);
+            border-radius: 8px;
+            padding: 0.8rem 1rem;
+            font-size: 0.85rem;
+            color: var(--yellow);
+            margin-top: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🤖 Bot or Human?</h1>
+        <p class="subtitle">Can you spot the bots? Analyze CAPTCHA interaction data and decide.</p>
+        <nav class="nav"><a href="index.html">← Back to Home</a></nav>
+    </div>
+    <div class="container">
+        <div class="quiz-header">
+            <h2>Examine the behavioral signals, then make your call</h2>
+            <p>Each scenario shows real-world interaction patterns from CAPTCHA sessions. 15 rounds.</p>
+        </div>
+
+        <div class="progress-bar"><div class="fill" id="progress" style="width:0%"></div></div>
+
+        <div class="scoreboard">
+            <span class="score-pill correct" id="correctPill">✓ 0</span>
+            <span class="score-pill wrong" id="wrongPill">✗ 0</span>
+            <span class="score-pill streak" id="streakPill">🔥 0</span>
+            <span class="score-pill" id="roundPill">Round 1 / 15</span>
+        </div>
+
+        <div id="quizArea"></div>
+        <div class="final-card" id="finalCard">
+            <h2>Quiz Complete!</h2>
+            <div class="big-score" id="finalScore"></div>
+            <div class="grade" id="finalGrade"></div>
+            <div class="breakdown" id="breakdown"></div>
+            <button class="replay-btn" onclick="startQuiz()">Play Again</button>
+        </div>
+    </div>
+    <footer class="footer">
+        <p>GIF CAPTCHA Research Project — Bot or Human? Quiz</p>
+    </footer>
+    <script src="shared.js"></script>
+    <script>
+    (function() {
+        // Scenario templates — each produces randomized signal values
+        var templates = [
+            // === BOTS ===
+            {
+                type: 'bot', name: 'Headless Automation',
+                gen: function() {
+                    return {
+                        signals: {
+                            'Response Time': (50 + Math.random()*100).toFixed(0) + ' ms',
+                            'Mouse Events': '0',
+                            'Keystrokes': '0',
+                            'GIF Frames Viewed': (1 + Math.floor(Math.random()*2)).toString(),
+                            'Browser JS Engine': 'PhantomJS / Headless',
+                            'User-Agent': 'Mozilla/5.0 (compatible)'
+                        },
+                        trail: 'none',
+                        explain: 'Zero mouse movement and instant response are hallmarks of headless browser automation. Real users always produce mouse/touch events when interacting with a page.'
+                    };
+                }
+            },
+            {
+                type: 'bot', name: 'Timing-Perfect Bot',
+                gen: function() {
+                    var base = 200 + Math.floor(Math.random()*20);
+                    return {
+                        signals: {
+                            'Response Time': base + ' ms (σ = 2ms over 50 requests)',
+                            'Click Precision': 'Exact center pixel every time',
+                            'Mouse Speed': 'Constant 450 px/s',
+                            'Session Count': (200 + Math.floor(Math.random()*300)).toString() + ' in 1 hour',
+                            'Scroll Events': '0',
+                            'Cookie Age': '< 1 second'
+                        },
+                        trail: 'straight',
+                        explain: 'Unnaturally consistent timing (σ=2ms) and perfect click accuracy are impossible for humans. Real users have variable response times and imprecise clicks.'
+                    };
+                }
+            },
+            {
+                type: 'bot', name: 'CAPTCHA Farm Relay',
+                gen: function() {
+                    return {
+                        signals: {
+                            'Response Time': (3000 + Math.floor(Math.random()*4000)).toString() + ' ms',
+                            'IP Geolocation': 'Dhaka, BD',
+                            'Session Origin IP': 'Ashburn, VA',
+                            'Mouse Trail': 'Normal-looking',
+                            'Concurrent Sessions': (8 + Math.floor(Math.random()*12)).toString() + ' from same IP',
+                            'CAPTCHA Accuracy': '94%'
+                        },
+                        trail: 'human-like',
+                        explain: 'Geographic mismatch (session from Virginia, solve from Bangladesh) plus many concurrent sessions from one IP indicate a human CAPTCHA-solving farm. The mouse looks normal because a real person solved it — just not the real user.'
+                    };
+                }
+            },
+            {
+                type: 'bot', name: 'Replay Attack',
+                gen: function() {
+                    return {
+                        signals: {
+                            'Response Time': (800 + Math.floor(Math.random()*400)).toString() + ' ms',
+                            'Mouse Event Hash': 'SHA-256: 7a3f…e912 (seen 47 times)',
+                            'Click Coordinates': '(312, 187) — identical to prior sessions',
+                            'Viewport Size': '1920×1080 (identical each time)',
+                            'Canvas Fingerprint': 'Matches 47 prior sessions exactly',
+                            'Touch Events': '0'
+                        },
+                        trail: 'replay',
+                        explain: 'Identical mouse event hashes and coordinates across 47 sessions means pre-recorded interactions are being replayed. Real users never produce exactly the same event stream twice.'
+                    };
+                }
+            },
+            {
+                type: 'bot', name: 'ML Vision Solver',
+                gen: function() {
+                    return {
+                        signals: {
+                            'Response Time': (350 + Math.floor(Math.random()*200)).toString() + ' ms',
+                            'GIF Download': 'Fetched via API, no page render',
+                            'Page Resources Loaded': '1 of 14 (GIF only)',
+                            'JavaScript Execution': 'None detected',
+                            'Referrer Header': 'Empty',
+                            'TLS Fingerprint': 'python-requests/2.31'
+                        },
+                        trail: 'none',
+                        explain: 'Only the GIF was fetched — no CSS, JS, or other page resources loaded. The TLS fingerprint matches python-requests, not a real browser. This is a script using ML to solve the CAPTCHA image directly.'
+                    };
+                }
+            },
+            {
+                type: 'bot', name: 'Credential Stuffing Bot',
+                gen: function() {
+                    return {
+                        signals: {
+                            'Response Time': (120 + Math.floor(Math.random()*80)).toString() + ' ms',
+                            'Requests in Last Hour': (2000 + Math.floor(Math.random()*3000)).toString(),
+                            'Unique User-Agents': (15 + Math.floor(Math.random()*10)).toString() + ' (rotating)',
+                            'IP Type': 'Residential Proxy (rotating)',
+                            'Form Fill Order': 'password → email (reversed)',
+                            'Tab Visibility': 'Hidden the entire session'
+                        },
+                        trail: 'straight',
+                        explain: 'Thousands of requests per hour with rotating user-agents and residential proxies is classic credential stuffing. Filling password before email and hidden tab visibility confirm automation.'
+                    };
+                }
+            },
+            {
+                type: 'bot', name: 'Browser Extension Bot',
+                gen: function() {
+                    return {
+                        signals: {
+                            'Response Time': (600 + Math.floor(Math.random()*300)).toString() + ' ms',
+                            'Mouse Events': (5 + Math.floor(Math.random()*3)).toString() + ' (all synthetic)',
+                            'Event.isTrusted': 'false on all events',
+                            'DOM Mutations': '3 injected script tags',
+                            'WebDriver Flag': 'navigator.webdriver = true',
+                            'Browser Extensions': '2 unknown extensions detected'
+                        },
+                        trail: 'jittery',
+                        explain: 'Event.isTrusted=false means all interactions were programmatically dispatched, not from real user input. The webdriver flag and injected scripts confirm browser automation via extension.'
+                    };
+                }
+            },
+            // === HUMANS ===
+            {
+                type: 'human', name: 'Casual Desktop User',
+                gen: function() {
+                    return {
+                        signals: {
+                            'Response Time': (2500 + Math.floor(Math.random()*4000)).toString() + ' ms',
+                            'Mouse Events': (40 + Math.floor(Math.random()*80)).toString(),
+                            'Click Precision': '±' + (3 + Math.floor(Math.random()*8)) + ' px from target center',
+                            'GIF Frames Viewed': (8 + Math.floor(Math.random()*20)).toString(),
+                            'Scroll Events': (2 + Math.floor(Math.random()*5)).toString(),
+                            'Browser': 'Chrome 120 / Windows 11'
+                        },
+                        trail: 'human',
+                        explain: 'Multi-second response time with dozens of mouse events and imprecise clicks are typical human behavior. The user scrolled, watched multiple GIF frames, and used a standard browser.'
+                    };
+                }
+            },
+            {
+                type: 'human', name: 'Mobile Touch User',
+                gen: function() {
+                    return {
+                        signals: {
+                            'Response Time': (3000 + Math.floor(Math.random()*5000)).toString() + ' ms',
+                            'Touch Events': (4 + Math.floor(Math.random()*8)).toString(),
+                            'Touch Pressure': (0.3 + Math.random()*0.5).toFixed(2),
+                            'Device Orientation Changes': (1 + Math.floor(Math.random()*3)).toString(),
+                            'Viewport': '390×844 (iPhone 14)',
+                            'Accelerometer Noise': 'Present (±0.02g)'
+                        },
+                        trail: 'touch',
+                        explain: 'Variable touch pressure, orientation changes, and accelerometer noise are impossible to fake without physical device access. This is a real person on a phone.'
+                    };
+                }
+            },
+            {
+                type: 'human', name: 'Slow Elderly User',
+                gen: function() {
+                    return {
+                        signals: {
+                            'Response Time': (12000 + Math.floor(Math.random()*8000)).toString() + ' ms',
+                            'Mouse Events': (150 + Math.floor(Math.random()*100)).toString(),
+                            'Click Attempts': (2 + Math.floor(Math.random()*3)).toString() + ' (some missed)',
+                            'GIF Replays': (3 + Math.floor(Math.random()*4)).toString(),
+                            'Mouse Speed': 'Slow, unsteady (avg 80 px/s)',
+                            'Zoom Level': '125%'
+                        },
+                        trail: 'shaky',
+                        explain: 'Very long response time, multiple click attempts with misses, slow mouse speed, and zoomed-in browser suggest an older or less tech-savvy user. Many mouse events from uncertain movements.'
+                    };
+                }
+            },
+            {
+                type: 'human', name: 'Frustrated Returning User',
+                gen: function() {
+                    return {
+                        signals: {
+                            'Response Time': (1800 + Math.floor(Math.random()*2000)).toString() + ' ms',
+                            'Previous Failures': (2 + Math.floor(Math.random()*3)).toString(),
+                            'Rage Clicks': (3 + Math.floor(Math.random()*5)).toString() + ' rapid clicks detected',
+                            'Mouse Velocity Spikes': 'Yes (3 sudden fast movements)',
+                            'Session Duration': (45 + Math.floor(Math.random()*30)).toString() + ' seconds',
+                            'Cookie Age': (4 + Math.floor(Math.random()*10)).toString() + ' days'
+                        },
+                        trail: 'erratic',
+                        explain: 'Rage clicks, velocity spikes, and multiple failures indicate a frustrated real user. Bots don\'t get frustrated — they either succeed or retry mechanically. The aged cookie shows a returning visitor.'
+                    };
+                }
+            },
+            {
+                type: 'human', name: 'Power User',
+                gen: function() {
+                    return {
+                        signals: {
+                            'Response Time': (900 + Math.floor(Math.random()*600)).toString() + ' ms',
+                            'Mouse Events': (12 + Math.floor(Math.random()*8)).toString() + ' (efficient)',
+                            'Keyboard Shortcut Used': 'Tab + Enter',
+                            'GIF Frames Viewed': (3 + Math.floor(Math.random()*4)).toString(),
+                            'Cookie Age': (30 + Math.floor(Math.random()*60)).toString() + ' days',
+                            'Past CAPTCHAs Solved': (50 + Math.floor(Math.random()*100)).toString()
+                        },
+                        trail: 'efficient',
+                        explain: 'Fast but not suspiciously fast. Efficient mouse path, keyboard shortcuts, and long history of solved CAPTCHAs indicate an experienced human user who knows the flow well.'
+                    };
+                }
+            },
+            {
+                type: 'human', name: 'VPN / Privacy User',
+                gen: function() {
+                    return {
+                        signals: {
+                            'Response Time': (3500 + Math.floor(Math.random()*3000)).toString() + ' ms',
+                            'IP Type': 'Commercial VPN (Mullvad)',
+                            'Browser': 'Firefox 121 / Linux',
+                            'Canvas Fingerprint': 'Randomized (anti-fingerprint)',
+                            'Mouse Events': (30 + Math.floor(Math.random()*40)).toString(),
+                            'JavaScript': 'Enabled, some APIs blocked'
+                        },
+                        trail: 'human',
+                        explain: 'VPN and anti-fingerprinting look suspicious, but the mouse trail, response time, and event count are clearly human. Privacy-conscious users often trigger false positives — behavioral signals help distinguish them from bots.'
+                    };
+                }
+            },
+            {
+                type: 'human', name: 'Distracted User',
+                gen: function() {
+                    return {
+                        signals: {
+                            'Response Time': (15000 + Math.floor(Math.random()*20000)).toString() + ' ms',
+                            'Tab Visibility': 'Hidden for ' + (8 + Math.floor(Math.random()*15)).toString() + 's mid-session',
+                            'Mouse Idle Gaps': '2 pauses > 5 seconds',
+                            'Mouse Events': (25 + Math.floor(Math.random()*30)).toString(),
+                            'Focus/Blur Events': (3 + Math.floor(Math.random()*4)).toString(),
+                            'Audio Playing': 'YouTube in another tab'
+                        },
+                        trail: 'human',
+                        explain: 'Long idle gaps, tab switches, and a very long total response time suggest a distracted but real user. The mouse events during active periods look natural. Bots don\'t tab away to watch YouTube.'
+                    };
+                }
+            },
+            {
+                type: 'bot', name: 'API Abuse Script',
+                gen: function() {
+                    return {
+                        signals: {
+                            'Response Time': (80 + Math.floor(Math.random()*40)).toString() + ' ms',
+                            'HTTP Method': 'POST directly to /verify',
+                            'Page Load': 'Never loaded HTML page',
+                            'Session Token': 'Reused across 500+ requests',
+                            'Request Headers': 'Accept: */* only',
+                            'Rate': (30 + Math.floor(Math.random()*20)).toString() + ' req/sec'
+                        },
+                        trail: 'none',
+                        explain: 'Direct POST to the verification endpoint without ever loading the page. Reused session tokens and minimal headers confirm a script bypassing the UI entirely.'
+                    };
+                }
+            }
+        ];
+
+        var state, scenarios;
+
+        function shuffle(arr) {
+            for (var i = arr.length - 1; i > 0; i--) {
+                var j = Math.floor(Math.random() * (i + 1));
+                var t = arr[i]; arr[i] = arr[j]; arr[j] = t;
+            }
+            return arr;
+        }
+
+        function drawTrail(canvas, type) {
+            var ctx = canvas.getContext('2d');
+            var w = canvas.width = canvas.offsetWidth;
+            var h = canvas.height = 120;
+            ctx.clearRect(0, 0, w, h);
+            ctx.strokeStyle = 'rgba(88,166,255,0.6)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+
+            var points = [];
+            var n = 40 + Math.floor(Math.random() * 20);
+
+            if (type === 'none') {
+                ctx.fillStyle = 'rgba(139,148,158,0.4)';
+                ctx.font = '14px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('No mouse movement detected', w/2, h/2);
+                return;
+            }
+            if (type === 'straight') {
+                points.push({x: 20, y: h/2 + (Math.random()-0.5)*10});
+                points.push({x: w - 20, y: h/2 + (Math.random()-0.5)*10});
+                n = 2;
+            } else if (type === 'replay') {
+                for (var i = 0; i < n; i++) {
+                    points.push({x: 20 + (w-40)*i/n, y: h/2 + Math.sin(i*0.3)*20});
+                }
+            } else if (type === 'human' || type === 'human-like' || type === 'touch' || type === 'efficient') {
+                var y = h * 0.3 + Math.random() * h * 0.4;
+                for (var i = 0; i < n; i++) {
+                    y += (Math.random() - 0.5) * 15;
+                    y = Math.max(10, Math.min(h-10, y));
+                    points.push({x: 20 + (w-40)*i/n, y: y});
+                }
+            } else if (type === 'shaky') {
+                var y = h/2;
+                for (var i = 0; i < n; i++) {
+                    y += (Math.random() - 0.5) * 25;
+                    y = Math.max(10, Math.min(h-10, y));
+                    points.push({x: 20 + (w-40)*i/n + (Math.random()-0.5)*8, y: y});
+                }
+            } else if (type === 'erratic') {
+                var y = h/2;
+                for (var i = 0; i < n; i++) {
+                    if (Math.random() < 0.15) y += (Math.random()-0.5)*60;
+                    else y += (Math.random()-0.5)*12;
+                    y = Math.max(5, Math.min(h-5, y));
+                    points.push({x: 20 + (w-40)*i/n, y: y});
+                }
+            } else if (type === 'jittery') {
+                for (var i = 0; i < n; i++) {
+                    points.push({
+                        x: 20 + (w-40)*i/n + (Math.random()-0.5)*4,
+                        y: h/2 + (Math.random()-0.5)*6
+                    });
+                }
+            }
+
+            if (points.length > 0) {
+                ctx.moveTo(points[0].x, points[0].y);
+                for (var i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y);
+                ctx.stroke();
+                // dots
+                ctx.fillStyle = 'rgba(88,166,255,0.8)';
+                for (var i = 0; i < points.length; i += Math.max(1, Math.floor(points.length/12))) {
+                    ctx.beginPath();
+                    ctx.arc(points[i].x, points[i].y, 3, 0, Math.PI*2);
+                    ctx.fill();
+                }
+            }
+        }
+
+        function renderScenario(idx) {
+            var s = scenarios[idx];
+            var data = s.gen();
+            scenarios[idx]._data = data;
+
+            var html = '<div class="scenario-card">';
+            html += '<h3>Scenario ' + (idx+1) + ' — Session #' + (1000 + Math.floor(Math.random()*9000)) + '</h3>';
+            html += '<div class="signals-grid">';
+            var keys = Object.keys(data.signals);
+            for (var i = 0; i < keys.length; i++) {
+                html += '<div class="signal"><div class="label">' + sanitize(keys[i]) + '</div>';
+                html += '<div class="value">' + sanitize(data.signals[keys[i]]) + '</div></div>';
+            }
+            html += '</div>';
+            html += '<div class="mouse-trail"><div class="label">Mouse / Touch Trail</div><canvas id="trailCanvas"></canvas></div>';
+            html += '<div class="choice-buttons">';
+            html += '<button class="choice-btn bot-btn" onclick="window._quiz.choose(\'bot\')">🤖 Bot</button>';
+            html += '<button class="choice-btn human-btn" onclick="window._quiz.choose(\'human\')">🧑 Human</button>';
+            html += '</div>';
+            html += '<div class="result-banner" id="resultBanner"></div>';
+            html += '</div>';
+            html += '<button class="next-btn" id="nextBtn" onclick="window._quiz.next()">Next Scenario →</button>';
+
+            document.getElementById('quizArea').innerHTML = html;
+            var c = document.getElementById('trailCanvas');
+            if (c) setTimeout(function() { drawTrail(c, data.trail); }, 50);
+        }
+
+        function updateScore() {
+            document.getElementById('correctPill').textContent = '✓ ' + state.correct;
+            document.getElementById('wrongPill').textContent = '✗ ' + state.wrong;
+            document.getElementById('streakPill').textContent = '🔥 ' + state.streak;
+            document.getElementById('roundPill').textContent = 'Round ' + Math.min(state.round + 1, scenarios.length) + ' / ' + scenarios.length;
+            document.getElementById('progress').style.width = (state.round / scenarios.length * 100) + '%';
+        }
+
+        window._quiz = {
+            choose: function(choice) {
+                var s = scenarios[state.round];
+                var correct = choice === s.type;
+                var banner = document.getElementById('resultBanner');
+                var data = s._data;
+
+                if (correct) {
+                    state.correct++;
+                    state.streak++;
+                    if (state.streak > state.bestStreak) state.bestStreak = state.streak;
+                    banner.className = 'result-banner correct';
+                    banner.innerHTML = '✓ Correct! This was a <strong>' + (s.type === 'bot' ? 'Bot' : 'Human') + '</strong> (' + sanitize(s.name) + ')<div class="explain">' + sanitize(data.explain) + '</div>';
+                } else {
+                    state.wrong++;
+                    state.streak = 0;
+                    banner.className = 'result-banner wrong';
+                    banner.innerHTML = '✗ Wrong — this was a <strong>' + (s.type === 'bot' ? 'Bot' : 'Human') + '</strong> (' + sanitize(s.name) + ')<div class="explain">' + sanitize(data.explain) + '</div>';
+                }
+                banner.style.display = 'block';
+                state.answers.push({scenario: s.name, type: s.type, guess: choice, correct: correct});
+
+                // disable buttons
+                var btns = document.querySelectorAll('.choice-btn');
+                for (var i = 0; i < btns.length; i++) btns[i].disabled = true;
+
+                document.getElementById('nextBtn').style.display = 'block';
+                updateScore();
+            },
+            next: function() {
+                state.round++;
+                if (state.round >= scenarios.length) {
+                    showFinal();
+                } else {
+                    renderScenario(state.round);
+                    updateScore();
+                }
+            }
+        };
+
+        function showFinal() {
+            document.getElementById('quizArea').innerHTML = '';
+            document.getElementById('progress').style.width = '100%';
+            var pct = Math.round(state.correct / scenarios.length * 100);
+            var grade;
+            if (pct >= 93) grade = 'Security Expert — You can spot bots blindfolded!';
+            else if (pct >= 80) grade = 'Bot Hunter — Solid detection instincts.';
+            else if (pct >= 60) grade = 'Alert Analyst — Good eye, room to improve.';
+            else if (pct >= 40) grade = 'Trainee — Keep studying behavioral signals!';
+            else grade = 'Bot Sympathizer — The bots fooled you this time.';
+
+            var fc = document.getElementById('finalCard');
+            document.getElementById('finalScore').textContent = state.correct + ' / ' + scenarios.length;
+            document.getElementById('finalScore').style.color = pct >= 60 ? 'var(--green)' : pct >= 40 ? 'var(--yellow)' : 'var(--red)';
+            document.getElementById('finalGrade').textContent = grade;
+
+            var bhtml = '';
+            bhtml += '<div><span>Correct</span><span style="color:var(--green)">' + state.correct + '</span></div>';
+            bhtml += '<div><span>Wrong</span><span style="color:var(--red)">' + state.wrong + '</span></div>';
+            bhtml += '<div><span>Best Streak</span><span style="color:var(--yellow)">' + state.bestStreak + '</span></div>';
+            bhtml += '<div><span>Accuracy</span><span>' + pct + '%</span></div>';
+            document.getElementById('breakdown').innerHTML = bhtml;
+            fc.style.display = 'block';
+        }
+
+        function startQuiz() {
+            state = {round: 0, correct: 0, wrong: 0, streak: 0, bestStreak: 0, answers: []};
+            scenarios = shuffle(templates.slice()).slice(0, 15);
+            document.getElementById('finalCard').style.display = 'none';
+            renderScenario(0);
+            updateScore();
+        }
+        window.startQuiz = startQuiz;
+        startQuiz();
+    })();
+    </script>
+</body>
+</html>

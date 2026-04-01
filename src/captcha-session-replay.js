@@ -27,6 +27,8 @@
 
 "use strict";
 
+const { secureRandomHex } = require("./crypto-utils");
+
 // ── Event Types ─────────────────────────────────────────────────────
 
 const VALID_EVENT_TYPES = new Set([
@@ -56,7 +58,10 @@ const VALID_EVENT_TYPES = new Set([
 
 let _idCounter = 0;
 function _genId() {
-  return "sess_" + Date.now().toString(36) + "_" + (++_idCounter).toString(36);
+  // Use cryptographic randomness for session IDs to prevent enumeration
+  // attacks. Predictable IDs (Date.now + counter) let attackers iterate
+  // through valid session IDs and access replay data (CWE-330/CWE-340).
+  return "sess_" + secureRandomHex(16) + "_" + (++_idCounter).toString(36);
 }
 
 function _now() {

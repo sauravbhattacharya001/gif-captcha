@@ -1,0 +1,988 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; img-src https: data:; script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'self'; form-action 'none';">
+    <meta name="referrer" content="no-referrer">
+    <title>GIF CAPTCHA — Integration Wizard</title>
+    <link rel="stylesheet" href="shared.css">
+    <style>
+        .container { max-width: 960px; }
+        .intro { text-align: center; padding: 2.5rem 1rem 1.5rem; }
+        .intro h2 { font-size: 1.5rem; margin-bottom: 0.8rem; }
+        .intro p { color: var(--muted); max-width: 600px; margin: 0 auto; }
+
+        .wizard { display: grid; gap: 2rem; margin-top: 2rem; }
+
+        .step-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+        }
+        .step-card h3 {
+            font-size: 1.1rem;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+        }
+        .step-num {
+            width: 28px; height: 28px;
+            border-radius: 50%;
+            background: var(--accent);
+            color: #fff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.85rem;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+
+        .option-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 0.75rem;
+        }
+        .option-btn {
+            background: var(--bg);
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            padding: 0.8rem;
+            color: var(--text);
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.15s;
+            font-size: 0.9rem;
+        }
+        .option-btn:hover { border-color: var(--accent); background: var(--surface-hover); }
+        .option-btn.selected { border-color: var(--accent); background: rgba(88,166,255,0.12); }
+        .option-btn .icon { font-size: 1.5rem; display: block; margin-bottom: 0.3rem; }
+
+        .config-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+        @media (max-width: 600px) { .config-grid { grid-template-columns: 1fr; } }
+
+        .config-field label {
+            display: block;
+            font-size: 0.8rem;
+            color: var(--muted);
+            margin-bottom: 0.3rem;
+        }
+        .config-field input, .config-field select {
+            width: 100%;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.5rem 0.7rem;
+            color: var(--text);
+            font-size: 0.85rem;
+        }
+        .config-field input:focus, .config-field select:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .code-block {
+            position: relative;
+            background: #0d1117;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+            margin-top: 0.5rem;
+        }
+        .code-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.5rem 1rem;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            font-size: 0.8rem;
+            color: var(--muted);
+        }
+        .copy-btn {
+            background: var(--accent);
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            padding: 0.25rem 0.6rem;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        .copy-btn:hover { background: var(--accent-hover); }
+        .code-body {
+            padding: 1rem;
+            overflow-x: auto;
+            font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace;
+            font-size: 0.82rem;
+            line-height: 1.6;
+            white-space: pre;
+            tab-size: 2;
+        }
+
+        .output-tabs {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            margin-bottom: 1rem;
+        }
+        .tab-btn {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.35rem 0.8rem;
+            color: var(--muted);
+            cursor: pointer;
+            font-size: 0.8rem;
+            transition: all 0.15s;
+        }
+        .tab-btn:hover { color: var(--text); border-color: var(--accent); }
+        .tab-btn.active { color: var(--accent); border-color: var(--accent); background: rgba(88,166,255,0.08); }
+
+        .checklist { list-style: none; padding: 0; }
+        .checklist li {
+            padding: 0.4rem 0;
+            font-size: 0.85rem;
+            color: var(--muted);
+        }
+        .checklist li::before { content: '✓ '; color: var(--green); font-weight: 700; }
+
+        .preview-badge {
+            display: inline-block;
+            padding: 0.2rem 0.6rem;
+            border-radius: 20px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .badge-easy { background: var(--green-bg); color: var(--green); }
+        .badge-medium { background: var(--yellow-bg); color: var(--yellow); }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🧩 GIF CAPTCHA</h1>
+            <p>Integration Wizard</p>
+        </div>
+
+        <div class="intro">
+            <h2>Generate Integration Code</h2>
+            <p>Pick your framework, configure settings, and get ready-to-paste code for both client and server sides.</p>
+        </div>
+
+        <div class="wizard">
+            <!-- Step 1: Framework -->
+            <div class="step-card">
+                <h3><span class="step-num">1</span> Choose Your Backend</h3>
+                <div class="option-grid" id="backendGrid">
+                    <button class="option-btn selected" data-val="express" onclick="selectBackend(this)">
+                        <span class="icon">🟢</span>Node / Express
+                    </button>
+                    <button class="option-btn" data-val="flask" onclick="selectBackend(this)">
+                        <span class="icon">🐍</span>Python / Flask
+                    </button>
+                    <button class="option-btn" data-val="django" onclick="selectBackend(this)">
+                        <span class="icon">🎸</span>Django
+                    </button>
+                    <button class="option-btn" data-val="php" onclick="selectBackend(this)">
+                        <span class="icon">🐘</span>PHP
+                    </button>
+                    <button class="option-btn" data-val="rails" onclick="selectBackend(this)">
+                        <span class="icon">💎</span>Ruby / Rails
+                    </button>
+                    <button class="option-btn" data-val="go" onclick="selectBackend(this)">
+                        <span class="icon">🔵</span>Go
+                    </button>
+                </div>
+            </div>
+
+            <!-- Step 2: Frontend -->
+            <div class="step-card">
+                <h3><span class="step-num">2</span> Choose Your Frontend</h3>
+                <div class="option-grid" id="frontendGrid">
+                    <button class="option-btn selected" data-val="vanilla" onclick="selectFrontend(this)">
+                        <span class="icon">📄</span>Vanilla JS
+                    </button>
+                    <button class="option-btn" data-val="react" onclick="selectFrontend(this)">
+                        <span class="icon">⚛️</span>React
+                    </button>
+                    <button class="option-btn" data-val="vue" onclick="selectFrontend(this)">
+                        <span class="icon">💚</span>Vue.js
+                    </button>
+                    <button class="option-btn" data-val="svelte" onclick="selectFrontend(this)">
+                        <span class="icon">🔥</span>Svelte
+                    </button>
+                </div>
+            </div>
+
+            <!-- Step 3: Config -->
+            <div class="step-card">
+                <h3><span class="step-num">3</span> Configure</h3>
+                <div class="config-grid">
+                    <div class="config-field">
+                        <label>GIF Count (per challenge)</label>
+                        <input type="number" id="cfgGifCount" value="6" min="3" max="12" onchange="generate()">
+                    </div>
+                    <div class="config-field">
+                        <label>Correct Answers Required</label>
+                        <input type="number" id="cfgCorrect" value="1" min="1" max="4" onchange="generate()">
+                    </div>
+                    <div class="config-field">
+                        <label>Timeout (seconds)</label>
+                        <input type="number" id="cfgTimeout" value="30" min="5" max="120" onchange="generate()">
+                    </div>
+                    <div class="config-field">
+                        <label>Max Attempts</label>
+                        <input type="number" id="cfgAttempts" value="3" min="1" max="10" onchange="generate()">
+                    </div>
+                    <div class="config-field">
+                        <label>Difficulty</label>
+                        <select id="cfgDifficulty" onchange="generate()">
+                            <option value="easy">Easy — obvious targets</option>
+                            <option value="medium" selected>Medium — moderate similarity</option>
+                            <option value="hard">Hard — very similar distractors</option>
+                        </select>
+                    </div>
+                    <div class="config-field">
+                        <label>Theme</label>
+                        <select id="cfgTheme" onchange="generate()">
+                            <option value="auto">Auto (match page)</option>
+                            <option value="light">Light</option>
+                            <option value="dark">Dark</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 4: Output -->
+            <div class="step-card">
+                <h3><span class="step-num">4</span> Your Integration Code</h3>
+                <div class="output-tabs" id="outputTabs">
+                    <!-- filled by JS -->
+                </div>
+                <div id="codeOutput">
+                    <!-- filled by JS -->
+                </div>
+
+                <div style="margin-top: 1.5rem;">
+                    <h4 style="font-size: 0.9rem; margin-bottom: 0.6rem;">Integration Checklist</h4>
+                    <ul class="checklist" id="checklist"></ul>
+                </div>
+            </div>
+        </div>
+
+        <footer class="footer">
+            <a href="index.html">← Home</a>
+            <span>GIF CAPTCHA Integration Wizard</span>
+        </footer>
+    </div>
+
+    <script src="shared.js"></script>
+    <script>
+    var state = { backend: 'express', frontend: 'vanilla' };
+
+    function selectBackend(btn) {
+        document.querySelectorAll('#backendGrid .option-btn').forEach(function(b) { b.classList.remove('selected'); });
+        btn.classList.add('selected');
+        state.backend = btn.dataset.val;
+        generate();
+    }
+    function selectFrontend(btn) {
+        document.querySelectorAll('#frontendGrid .option-btn').forEach(function(b) { b.classList.remove('selected'); });
+        btn.classList.add('selected');
+        state.frontend = btn.dataset.val;
+        generate();
+    }
+
+    function cfg() {
+        return {
+            gifCount: parseInt(document.getElementById('cfgGifCount').value) || 6,
+            correct: parseInt(document.getElementById('cfgCorrect').value) || 1,
+            timeout: parseInt(document.getElementById('cfgTimeout').value) || 30,
+            attempts: parseInt(document.getElementById('cfgAttempts').value) || 3,
+            difficulty: document.getElementById('cfgDifficulty').value,
+            theme: document.getElementById('cfgTheme').value
+        };
+    }
+
+    // ---- Code generators ----
+    var generators = {
+        backend: {
+            express: function(c) {
+                return {
+                    file: 'captcha-routes.js',
+                    lang: 'JavaScript',
+                    code:
+'const express = require("express");\n' +
+'const crypto = require("crypto");\n' +
+'const router = express.Router();\n\n' +
+'// In-memory session store (use Redis in production)\n' +
+'const sessions = new Map();\n\n' +
+'const CAPTCHA_CONFIG = {\n' +
+'  gifCount: ' + c.gifCount + ',\n' +
+'  correctCount: ' + c.correct + ',\n' +
+'  timeoutMs: ' + (c.timeout * 1000) + ',\n' +
+'  maxAttempts: ' + c.attempts + ',\n' +
+'  difficulty: "' + c.difficulty + '"\n' +
+'};\n\n' +
+'// Generate a new CAPTCHA challenge\n' +
+'router.get("/api/captcha/challenge", (req, res) => {\n' +
+'  const id = crypto.randomBytes(16).toString("hex");\n' +
+'  const challenge = createChallenge(CAPTCHA_CONFIG);\n' +
+'  sessions.set(id, {\n' +
+'    answer: challenge.correctIndices,\n' +
+'    attempts: 0,\n' +
+'    expires: Date.now() + CAPTCHA_CONFIG.timeoutMs\n' +
+'  });\n' +
+'  // Auto-cleanup after timeout\n' +
+'  setTimeout(() => sessions.delete(id), CAPTCHA_CONFIG.timeoutMs + 5000);\n' +
+'  res.json({ id, prompt: challenge.prompt, gifs: challenge.gifs,\n' +
+'    gifCount: CAPTCHA_CONFIG.gifCount, timeout: ' + c.timeout + ' });\n' +
+'});\n\n' +
+'// Verify user selection\n' +
+'router.post("/api/captcha/verify", (req, res) => {\n' +
+'  const { id, selected } = req.body;\n' +
+'  const session = sessions.get(id);\n' +
+'  if (!session) return res.status(410).json({ ok: false, error: "expired" });\n' +
+'  if (Date.now() > session.expires) {\n' +
+'    sessions.delete(id);\n' +
+'    return res.status(410).json({ ok: false, error: "timeout" });\n' +
+'  }\n' +
+'  session.attempts++;\n' +
+'  if (session.attempts > CAPTCHA_CONFIG.maxAttempts) {\n' +
+'    sessions.delete(id);\n' +
+'    return res.status(429).json({ ok: false, error: "too_many_attempts" });\n' +
+'  }\n' +
+'  const correct = arraysEqual(selected.sort(), session.answer.sort());\n' +
+'  if (correct) sessions.delete(id);\n' +
+'  res.json({ ok: correct, attemptsLeft: CAPTCHA_CONFIG.maxAttempts - session.attempts });\n' +
+'});\n\n' +
+'function arraysEqual(a, b) {\n' +
+'  return a.length === b.length && a.every((v, i) => v === b[i]);\n' +
+'}\n\n' +
+'function createChallenge(config) {\n' +
+'  // Replace with your GIF selection logic\n' +
+'  const categories = ["cat", "dog", "car", "flower", "bird", "fish"];\n' +
+'  const target = categories[Math.floor(Math.random() * categories.length)];\n' +
+'  const gifs = []; const correctIndices = [];\n' +
+'  for (let i = 0; i < config.gifCount; i++) {\n' +
+'    const isCorrect = correctIndices.length < config.correctCount && Math.random() > 0.5;\n' +
+'    if (isCorrect || (i === config.gifCount - 1 && correctIndices.length < config.correctCount)) {\n' +
+'      correctIndices.push(i);\n' +
+'      gifs.push({ url: `/gifs/${target}_${i}.gif`, category: target });\n' +
+'    } else {\n' +
+'      const other = categories.filter(c => c !== target)[Math.floor(Math.random() * (categories.length - 1))];\n' +
+'      gifs.push({ url: `/gifs/${other}_${i}.gif`, category: other });\n' +
+'    }\n' +
+'  }\n' +
+'  return { prompt: `Select all GIFs showing: ${target}`, gifs, correctIndices };\n' +
+'}\n\n' +
+'module.exports = router;\n' +
+'// Usage: app.use(require("./captcha-routes"));'
+                };
+            },
+            flask: function(c) {
+                return {
+                    file: 'captcha_routes.py',
+                    lang: 'Python',
+                    code:
+'import secrets\nimport time\nfrom flask import Flask, jsonify, request\n\napp = Flask(__name__)\n\n' +
+'# In-memory store (use Redis in production)\ncaptcha_sessions = {}\n\n' +
+'CONFIG = {\n' +
+'    "gif_count": ' + c.gifCount + ',\n' +
+'    "correct_count": ' + c.correct + ',\n' +
+'    "timeout_sec": ' + c.timeout + ',\n' +
+'    "max_attempts": ' + c.attempts + ',\n' +
+'    "difficulty": "' + c.difficulty + '",\n' +
+'}\n\n' +
+'@app.route("/api/captcha/challenge")\n' +
+'def get_challenge():\n' +
+'    cid = secrets.token_hex(16)\n' +
+'    challenge = create_challenge(CONFIG)\n' +
+'    captcha_sessions[cid] = {\n' +
+'        "answer": challenge["correct_indices"],\n' +
+'        "attempts": 0,\n' +
+'        "expires": time.time() + CONFIG["timeout_sec"],\n' +
+'    }\n' +
+'    return jsonify(id=cid, prompt=challenge["prompt"],\n' +
+'                   gifs=challenge["gifs"], timeout=CONFIG["timeout_sec"])\n\n' +
+'@app.route("/api/captcha/verify", methods=["POST"])\n' +
+'def verify():\n' +
+'    data = request.get_json()\n' +
+'    cid, selected = data.get("id"), data.get("selected", [])\n' +
+'    session = captcha_sessions.get(cid)\n' +
+'    if not session:\n' +
+'        return jsonify(ok=False, error="expired"), 410\n' +
+'    if time.time() > session["expires"]:\n' +
+'        captcha_sessions.pop(cid, None)\n' +
+'        return jsonify(ok=False, error="timeout"), 410\n' +
+'    session["attempts"] += 1\n' +
+'    if session["attempts"] > CONFIG["max_attempts"]:\n' +
+'        captcha_sessions.pop(cid, None)\n' +
+'        return jsonify(ok=False, error="too_many_attempts"), 429\n' +
+'    correct = sorted(selected) == sorted(session["answer"])\n' +
+'    if correct:\n' +
+'        captcha_sessions.pop(cid, None)\n' +
+'    return jsonify(ok=correct,\n' +
+'                   attempts_left=CONFIG["max_attempts"] - session["attempts"])\n\n' +
+'def create_challenge(config):\n' +
+'    import random\n' +
+'    categories = ["cat", "dog", "car", "flower", "bird", "fish"]\n' +
+'    target = random.choice(categories)\n' +
+'    gifs, correct_indices = [], []\n' +
+'    for i in range(config["gif_count"]):\n' +
+'        need = config["correct_count"] - len(correct_indices)\n' +
+'        remaining = config["gif_count"] - i\n' +
+'        if random.random() < 0.4 or need >= remaining:\n' +
+'            correct_indices.append(i)\n' +
+'            gifs.append({"url": f"/gifs/{target}_{i}.gif"})\n' +
+'        else:\n' +
+'            other = random.choice([c for c in categories if c != target])\n' +
+'            gifs.append({"url": f"/gifs/{other}_{i}.gif"})\n' +
+'    return {"prompt": f"Select all GIFs showing: {target}",\n' +
+'            "gifs": gifs, "correct_indices": correct_indices}'
+                };
+            },
+            django: function(c) {
+                return {
+                    file: 'captcha_views.py',
+                    lang: 'Python',
+                    code:
+'import secrets, time, json, random\nfrom django.http import JsonResponse\nfrom django.views.decorators.csrf import csrf_exempt\nfrom django.views.decorators.http import require_GET, require_POST\n\n' +
+'captcha_sessions = {}  # Use Django cache/Redis in production\n\n' +
+'CONFIG = {"gif_count": ' + c.gifCount + ', "correct_count": ' + c.correct +
+', "timeout": ' + c.timeout + ', "max_attempts": ' + c.attempts + ', "difficulty": "' + c.difficulty + '"}\n\n' +
+'@require_GET\ndef challenge(request):\n' +
+'    cid = secrets.token_hex(16)\n' +
+'    data = _create_challenge(CONFIG)\n' +
+'    captcha_sessions[cid] = {"answer": data["correct"], "attempts": 0,\n' +
+'                              "expires": time.time() + CONFIG["timeout"]}\n' +
+'    return JsonResponse({"id": cid, "prompt": data["prompt"],\n' +
+'                         "gifs": data["gifs"], "timeout": CONFIG["timeout"]})\n\n' +
+'@csrf_exempt\n@require_POST\ndef verify(request):\n' +
+'    body = json.loads(request.body)\n' +
+'    cid, selected = body.get("id"), body.get("selected", [])\n' +
+'    s = captcha_sessions.get(cid)\n' +
+'    if not s or time.time() > s["expires"]:\n' +
+'        captcha_sessions.pop(cid, None)\n' +
+'        return JsonResponse({"ok": False, "error": "expired"}, status=410)\n' +
+'    s["attempts"] += 1\n' +
+'    if s["attempts"] > CONFIG["max_attempts"]:\n' +
+'        captcha_sessions.pop(cid, None)\n' +
+'        return JsonResponse({"ok": False, "error": "too_many_attempts"}, status=429)\n' +
+'    ok = sorted(selected) == sorted(s["answer"])\n' +
+'    if ok: captcha_sessions.pop(cid, None)\n' +
+'    return JsonResponse({"ok": ok, "attempts_left": CONFIG["max_attempts"] - s["attempts"]})\n\n' +
+'def _create_challenge(cfg):\n' +
+'    cats = ["cat", "dog", "car", "flower", "bird", "fish"]\n' +
+'    target = random.choice(cats)\n' +
+'    gifs, correct = [], []\n' +
+'    for i in range(cfg["gif_count"]):\n' +
+'        need = cfg["correct_count"] - len(correct)\n' +
+'        if random.random() < 0.4 or need >= cfg["gif_count"] - i:\n' +
+'            correct.append(i); gifs.append({"url": f"/gifs/{target}_{i}.gif"})\n' +
+'        else:\n' +
+'            o = random.choice([c for c in cats if c != target])\n' +
+'            gifs.append({"url": f"/gifs/{o}_{i}.gif"})\n' +
+'    return {"prompt": f"Select GIFs showing: {target}", "gifs": gifs, "correct": correct}\n\n' +
+'# urls.py: path("api/captcha/challenge", challenge), path("api/captcha/verify", verify)'
+                };
+            },
+            php: function(c) {
+                return {
+                    file: 'captcha.php',
+                    lang: 'PHP',
+                    code:
+'<?php\nsession_start();\nheader("Content-Type: application/json");\n\n' +
+'$CONFIG = [\n' +
+'    "gif_count" => ' + c.gifCount + ',\n' +
+'    "correct_count" => ' + c.correct + ',\n' +
+'    "timeout" => ' + c.timeout + ',\n' +
+'    "max_attempts" => ' + c.attempts + ',\n' +
+'    "difficulty" => "' + c.difficulty + '"\n' +
+'];\n\n' +
+'$action = $_GET["action"] ?? "";\n\n' +
+'if ($action === "challenge") {\n' +
+'    $id = bin2hex(random_bytes(16));\n' +
+'    $challenge = createChallenge($CONFIG);\n' +
+'    $_SESSION["captcha_$id"] = [\n' +
+'        "answer" => $challenge["correct"],\n' +
+'        "attempts" => 0,\n' +
+'        "expires" => time() + $CONFIG["timeout"]\n' +
+'    ];\n' +
+'    echo json_encode(["id" => $id, "prompt" => $challenge["prompt"],\n' +
+'        "gifs" => $challenge["gifs"], "timeout" => $CONFIG["timeout"]]);\n\n' +
+'} elseif ($action === "verify") {\n' +
+'    $data = json_decode(file_get_contents("php://input"), true);\n' +
+'    $id = $data["id"] ?? ""; $selected = $data["selected"] ?? [];\n' +
+'    $key = "captcha_$id";\n' +
+'    $s = $_SESSION[$key] ?? null;\n' +
+'    if (!$s || time() > $s["expires"]) {\n' +
+'        unset($_SESSION[$key]);\n' +
+'        http_response_code(410);\n' +
+'        echo json_encode(["ok" => false, "error" => "expired"]); exit;\n' +
+'    }\n' +
+'    $_SESSION[$key]["attempts"]++;\n' +
+'    if ($_SESSION[$key]["attempts"] > $CONFIG["max_attempts"]) {\n' +
+'        unset($_SESSION[$key]);\n' +
+'        http_response_code(429);\n' +
+'        echo json_encode(["ok" => false, "error" => "too_many_attempts"]); exit;\n' +
+'    }\n' +
+'    sort($selected); $answer = $s["answer"]; sort($answer);\n' +
+'    $ok = $selected === $answer;\n' +
+'    if ($ok) unset($_SESSION[$key]);\n' +
+'    echo json_encode(["ok" => $ok,\n' +
+'        "attempts_left" => $CONFIG["max_attempts"] - $_SESSION[$key]["attempts"] ?? 0]);\n' +
+'}\n\n' +
+'function createChallenge($cfg) {\n' +
+'    $cats = ["cat", "dog", "car", "flower", "bird", "fish"];\n' +
+'    $target = $cats[array_rand($cats)];\n' +
+'    $gifs = []; $correct = [];\n' +
+'    for ($i = 0; $i < $cfg["gif_count"]; $i++) {\n' +
+'        $need = $cfg["correct_count"] - count($correct);\n' +
+'        if (mt_rand(0, 100) < 40 || $need >= $cfg["gif_count"] - $i) {\n' +
+'            $correct[] = $i;\n' +
+'            $gifs[] = ["url" => "/gifs/{$target}_{$i}.gif"];\n' +
+'        } else {\n' +
+'            $others = array_values(array_diff($cats, [$target]));\n' +
+'            $o = $others[array_rand($others)];\n' +
+'            $gifs[] = ["url" => "/gifs/{$o}_{$i}.gif"];\n' +
+'        }\n' +
+'    }\n' +
+'    return ["prompt" => "Select GIFs showing: $target", "gifs" => $gifs, "correct" => $correct];\n' +
+'}\n?>'
+                };
+            },
+            rails: function(c) {
+                return {
+                    file: 'captcha_controller.rb',
+                    lang: 'Ruby',
+                    code:
+'# app/controllers/captcha_controller.rb\nclass CaptchaController < ApplicationController\n' +
+'  skip_before_action :verify_authenticity_token, only: [:verify]\n\n' +
+'  CONFIG = { gif_count: ' + c.gifCount + ', correct_count: ' + c.correct +
+', timeout: ' + c.timeout + ', max_attempts: ' + c.attempts + ', difficulty: "' + c.difficulty + '" }\n\n' +
+'  def challenge\n' +
+'    id = SecureRandom.hex(16)\n' +
+'    data = create_challenge(CONFIG)\n' +
+'    session["captcha_#{id}"] = { answer: data[:correct], attempts: 0,\n' +
+'                                  expires: Time.now.to_i + CONFIG[:timeout] }\n' +
+'    render json: { id: id, prompt: data[:prompt], gifs: data[:gifs], timeout: CONFIG[:timeout] }\n' +
+'  end\n\n' +
+'  def verify\n' +
+'    id = params[:id]; selected = params[:selected] || []\n' +
+'    s = session["captcha_#{id}"]\n' +
+'    unless s && Time.now.to_i <= s["expires"]\n' +
+'      session.delete("captcha_#{id}")\n' +
+'      return render json: { ok: false, error: "expired" }, status: 410\n' +
+'    end\n' +
+'    s["attempts"] += 1\n' +
+'    if s["attempts"] > CONFIG[:max_attempts]\n' +
+'      session.delete("captcha_#{id}")\n' +
+'      return render json: { ok: false, error: "too_many_attempts" }, status: 429\n' +
+'    end\n' +
+'    ok = selected.map(&:to_i).sort == s["answer"].sort\n' +
+'    session.delete("captcha_#{id}") if ok\n' +
+'    render json: { ok: ok, attempts_left: CONFIG[:max_attempts] - s["attempts"] }\n' +
+'  end\n\n' +
+'  private\n\n' +
+'  def create_challenge(cfg)\n' +
+'    cats = %w[cat dog car flower bird fish]\n' +
+'    target = cats.sample\n' +
+'    gifs = []; correct = []\n' +
+'    cfg[:gif_count].times do |i|\n' +
+'      need = cfg[:correct_count] - correct.size\n' +
+'      if rand < 0.4 || need >= cfg[:gif_count] - i\n' +
+'        correct << i\n' +
+'        gifs << { url: "/gifs/#{target}_#{i}.gif" }\n' +
+'      else\n' +
+'        o = (cats - [target]).sample\n' +
+'        gifs << { url: "/gifs/#{o}_#{i}.gif" }\n' +
+'      end\n' +
+'    end\n' +
+'    { prompt: "Select GIFs showing: #{target}", gifs: gifs, correct: correct }\n' +
+'  end\n' +
+'end\n\n' +
+'# routes.rb:\n# get  "api/captcha/challenge", to: "captcha#challenge"\n# post "api/captcha/verify",    to: "captcha#verify"'
+                };
+            },
+            go: function(c) {
+                return {
+                    file: 'captcha.go',
+                    lang: 'Go',
+                    code:
+'package main\n\nimport (\n\t"crypto/rand"\n\t"encoding/hex"\n\t"encoding/json"\n\t"math/big"\n\t"net/http"\n\t"sync"\n\t"time"\n)\n\n' +
+'var (\n\tsessions = struct {\n\t\tsync.RWMutex\n\t\tm map[string]*captchaSession\n\t}{m: make(map[string]*captchaSession)}\n)\n\n' +
+'type captchaSession struct {\n\tAnswer   []int     `json:"-"`\n\tAttempts int       `json:"-"`\n\tExpires  time.Time `json:"-"`\n}\n\n' +
+'type challengeResp struct {\n\tID      string   `json:"id"`\n\tPrompt  string   `json:"prompt"`\n\tGifs    []gifRef `json:"gifs"`\n\tTimeout int      `json:"timeout"`\n}\n\n' +
+'type gifRef struct {\n\tURL string `json:"url"`\n}\n\n' +
+'const (\n\tgifCount   = ' + c.gifCount + '\n\tcorrectCnt = ' + c.correct + '\n\ttimeoutSec = ' + c.timeout + '\n\tmaxAttempt = ' + c.attempts + '\n)\n\n' +
+'func challengeHandler(w http.ResponseWriter, r *http.Request) {\n' +
+'\tb := make([]byte, 16)\n\trand.Read(b)\n\tid := hex.EncodeToString(b)\n\t// TODO: build real challenge with GIF assets\n' +
+'\tanswer := []int{0} // placeholder\n' +
+'\tsessions.Lock()\n\tsessions.m[id] = &captchaSession{Answer: answer, Expires: time.Now().Add(timeoutSec * time.Second)}\n' +
+'\tsessions.Unlock()\n' +
+'\tjson.NewEncoder(w).Encode(challengeResp{ID: id, Prompt: "Select the matching GIF", Timeout: timeoutSec})\n}\n\n' +
+'func verifyHandler(w http.ResponseWriter, r *http.Request) {\n' +
+'\tvar req struct {\n\t\tID       string `json:"id"`\n\t\tSelected []int  `json:"selected"`\n\t}\n' +
+'\tjson.NewDecoder(r.Body).Decode(&req)\n' +
+'\tsessions.RLock()\n\ts, ok := sessions.m[req.ID]\n\tsessions.RUnlock()\n' +
+'\tif !ok || time.Now().After(s.Expires) {\n\t\tw.WriteHeader(410)\n\t\tjson.NewEncoder(w).Encode(map[string]any{"ok": false, "error": "expired"})\n\t\treturn\n\t}\n' +
+'\ts.Attempts++\n' +
+'\tif s.Attempts > maxAttempt {\n\t\tw.WriteHeader(429)\n\t\tjson.NewEncoder(w).Encode(map[string]any{"ok": false, "error": "too_many_attempts"})\n\t\treturn\n\t}\n' +
+'\t// Compare sorted slices\n\tcorrect := equalSorted(req.Selected, s.Answer)\n' +
+'\tjson.NewEncoder(w).Encode(map[string]any{"ok": correct})\n}\n\n' +
+'func equalSorted(a, b []int) bool {\n\tif len(a) != len(b) { return false }\n\t// simple comparison for small slices\n\tfor i := range a { if a[i] != b[i] { return false } }\n\treturn true\n}\n\n' +
+'func randInt(max int) int {\n\tn, _ := rand.Int(rand.Reader, big.NewInt(int64(max)))\n\treturn int(n.Int64())\n}\n\n' +
+'// Register: http.HandleFunc("/api/captcha/challenge", challengeHandler)\n' +
+'// Register: http.HandleFunc("/api/captcha/verify", verifyHandler)'
+                };
+            }
+        },
+        frontend: {
+            vanilla: function(c) {
+                return {
+                    file: 'gif-captcha-widget.js',
+                    lang: 'JavaScript',
+                    code:
+'/**\n * GIF CAPTCHA Widget — Vanilla JS\n * Drop into any page. Call GifCaptcha.init("#captcha-container")\n */\n' +
+'const GifCaptcha = {\n' +
+'  config: {\n' +
+'    apiBase: "/api/captcha",\n' +
+'    theme: "' + c.theme + '",\n' +
+'    timeout: ' + c.timeout + ',\n' +
+'    onSuccess: null,\n' +
+'    onFailure: null\n' +
+'  },\n\n' +
+'  init(selector, opts = {}) {\n' +
+'    Object.assign(this.config, opts);\n' +
+'    this.container = document.querySelector(selector);\n' +
+'    this.container.innerHTML = `<div class="gc-widget">\n' +
+'      <div class="gc-prompt"></div>\n' +
+'      <div class="gc-grid"></div>\n' +
+'      <div class="gc-timer"></div>\n' +
+'      <button class="gc-submit" disabled>Verify</button>\n' +
+'      <div class="gc-status"></div>\n' +
+'    </div>`;\n' +
+'    this.injectStyles();\n' +
+'    this.load();\n' +
+'  },\n\n' +
+'  async load() {\n' +
+'    const res = await fetch(`${this.config.apiBase}/challenge`);\n' +
+'    this.challenge = await res.json();\n' +
+'    this.selected = new Set();\n' +
+'    this.renderGrid();\n' +
+'    this.startTimer();\n' +
+'  },\n\n' +
+'  renderGrid() {\n' +
+'    const prompt = this.container.querySelector(".gc-prompt");\n' +
+'    const grid = this.container.querySelector(".gc-grid");\n' +
+'    prompt.textContent = this.challenge.prompt;\n' +
+'    grid.innerHTML = "";\n' +
+'    this.challenge.gifs.forEach((gif, i) => {\n' +
+'      const cell = document.createElement("div");\n' +
+'      cell.className = "gc-cell";\n' +
+'      cell.innerHTML = `<img src="${gif.url}" alt="CAPTCHA option ${i + 1}">`;\n' +
+'      cell.addEventListener("click", () => this.toggle(cell, i));\n' +
+'      grid.appendChild(cell);\n' +
+'    });\n' +
+'    this.container.querySelector(".gc-submit").onclick = () => this.verify();\n' +
+'  },\n\n' +
+'  toggle(cell, idx) {\n' +
+'    if (this.selected.has(idx)) { this.selected.delete(idx); cell.classList.remove("gc-selected"); }\n' +
+'    else { this.selected.add(idx); cell.classList.add("gc-selected"); }\n' +
+'    this.container.querySelector(".gc-submit").disabled = this.selected.size === 0;\n' +
+'  },\n\n' +
+'  startTimer() {\n' +
+'    let left = this.config.timeout;\n' +
+'    const el = this.container.querySelector(".gc-timer");\n' +
+'    this.timer = setInterval(() => {\n' +
+'      left--; el.textContent = `${left}s remaining`;\n' +
+'      if (left <= 0) { clearInterval(this.timer); this.load(); }\n' +
+'    }, 1000);\n' +
+'  },\n\n' +
+'  async verify() {\n' +
+'    clearInterval(this.timer);\n' +
+'    const res = await fetch(`${this.config.apiBase}/verify`, {\n' +
+'      method: "POST",\n' +
+'      headers: { "Content-Type": "application/json" },\n' +
+'      body: JSON.stringify({ id: this.challenge.id, selected: [...this.selected] })\n' +
+'    });\n' +
+'    const result = await res.json();\n' +
+'    const status = this.container.querySelector(".gc-status");\n' +
+'    if (result.ok) {\n' +
+'      status.textContent = "✓ Verified!"; status.style.color = "#3fb950";\n' +
+'      if (this.config.onSuccess) this.config.onSuccess();\n' +
+'    } else {\n' +
+'      status.textContent = result.error === "expired" ? "Expired — loading new challenge..." :\n' +
+'        `✗ Incorrect (${result.attemptsLeft} attempts left)`;\n' +
+'      status.style.color = "#f85149";\n' +
+'      if (result.attemptsLeft <= 0 || result.error) setTimeout(() => this.load(), 1500);\n' +
+'      if (this.config.onFailure) this.config.onFailure(result);\n' +
+'    }\n' +
+'  },\n\n' +
+'  injectStyles() {\n' +
+'    if (document.getElementById("gc-styles")) return;\n' +
+'    const s = document.createElement("style"); s.id = "gc-styles";\n' +
+'    s.textContent = `.gc-widget{font-family:sans-serif;max-width:360px;border:1px solid #30363d;border-radius:12px;padding:1rem;background:#161b22;color:#e6edf3}.gc-prompt{font-weight:600;margin-bottom:.8rem;text-align:center}.gc-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem;margin-bottom:.8rem}.gc-cell{border:2px solid transparent;border-radius:8px;overflow:hidden;cursor:pointer;transition:border-color .15s}.gc-cell img{width:100%;display:block}.gc-selected{border-color:#58a6ff}.gc-timer{text-align:center;font-size:.8rem;color:#8b949e;margin-bottom:.5rem}.gc-submit{width:100%;padding:.6rem;border:none;border-radius:6px;background:#58a6ff;color:#fff;font-weight:600;cursor:pointer}.gc-submit:disabled{opacity:.4;cursor:not-allowed}.gc-status{text-align:center;margin-top:.5rem;font-size:.85rem}`;\n' +
+'    document.head.appendChild(s);\n' +
+'  }\n};\n\n' +
+'// Usage:\n// <div id="captcha"></div>\n// <script src="gif-captcha-widget.js"></' + 'script>\n// <script>GifCaptcha.init("#captcha", { onSuccess: () => document.getElementById("myForm").submit() });</' + 'script>'
+                };
+            },
+            react: function(c) {
+                return {
+                    file: 'GifCaptcha.jsx',
+                    lang: 'JSX',
+                    code:
+'import { useState, useEffect, useCallback } from "react";\n\n' +
+'const API_BASE = "/api/captcha";\n\n' +
+'export default function GifCaptcha({ onSuccess, onFailure, timeout = ' + c.timeout + ' }) {\n' +
+'  const [challenge, setChallenge] = useState(null);\n' +
+'  const [selected, setSelected] = useState(new Set());\n' +
+'  const [timeLeft, setTimeLeft] = useState(timeout);\n' +
+'  const [status, setStatus] = useState("");\n\n' +
+'  const loadChallenge = useCallback(async () => {\n' +
+'    const res = await fetch(`${API_BASE}/challenge`);\n' +
+'    const data = await res.json();\n' +
+'    setChallenge(data);\n' +
+'    setSelected(new Set());\n' +
+'    setTimeLeft(data.timeout || timeout);\n' +
+'    setStatus("");\n' +
+'  }, [timeout]);\n\n' +
+'  useEffect(() => { loadChallenge(); }, [loadChallenge]);\n\n' +
+'  useEffect(() => {\n' +
+'    if (!challenge) return;\n' +
+'    const id = setInterval(() => setTimeLeft(t => {\n' +
+'      if (t <= 1) { clearInterval(id); loadChallenge(); return 0; }\n' +
+'      return t - 1;\n' +
+'    }), 1000);\n' +
+'    return () => clearInterval(id);\n' +
+'  }, [challenge, loadChallenge]);\n\n' +
+'  const toggle = (idx) => setSelected(prev => {\n' +
+'    const next = new Set(prev);\n' +
+'    next.has(idx) ? next.delete(idx) : next.add(idx);\n' +
+'    return next;\n' +
+'  });\n\n' +
+'  const verify = async () => {\n' +
+'    const res = await fetch(`${API_BASE}/verify`, {\n' +
+'      method: "POST", headers: { "Content-Type": "application/json" },\n' +
+'      body: JSON.stringify({ id: challenge.id, selected: [...selected] })\n' +
+'    });\n' +
+'    const result = await res.json();\n' +
+'    if (result.ok) { setStatus("✓ Verified!"); onSuccess?.(); }\n' +
+'    else {\n' +
+'      setStatus(result.error === "expired" ? "Expired..." : `✗ Wrong (${result.attemptsLeft} left)`);\n' +
+'      onFailure?.(result);\n' +
+'      if (result.attemptsLeft <= 0 || result.error) setTimeout(loadChallenge, 1500);\n' +
+'    }\n' +
+'  };\n\n' +
+'  if (!challenge) return <div>Loading CAPTCHA...</div>;\n\n' +
+'  return (\n' +
+'    <div style={{maxWidth:360,border:"1px solid #30363d",borderRadius:12,padding:"1rem",background:"#161b22",color:"#e6edf3",fontFamily:"sans-serif"}}>\n' +
+'      <p style={{fontWeight:600,textAlign:"center",marginBottom:"0.8rem"}}>{challenge.prompt}</p>\n' +
+'      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:"0.5rem",marginBottom:"0.8rem"}}>\n' +
+'        {challenge.gifs.map((gif, i) => (\n' +
+'          <div key={i} onClick={() => toggle(i)}\n' +
+'            style={{border:`2px solid ${selected.has(i)?"#58a6ff":"transparent"}`,borderRadius:8,overflow:"hidden",cursor:"pointer"}}>\n' +
+'            <img src={gif.url} alt={`Option ${i+1}`} style={{width:"100%",display:"block"}} />\n' +
+'          </div>\n' +
+'        ))}\n' +
+'      </div>\n' +
+'      <div style={{textAlign:"center",fontSize:"0.8rem",color:"#8b949e",marginBottom:"0.5rem"}}>{timeLeft}s</div>\n' +
+'      <button onClick={verify} disabled={selected.size===0}\n' +
+'        style={{width:"100%",padding:"0.6rem",border:"none",borderRadius:6,background:selected.size?"#58a6ff":"#30363d",color:"#fff",fontWeight:600,cursor:selected.size?"pointer":"not-allowed"}}>Verify</button>\n' +
+'      {status && <p style={{textAlign:"center",marginTop:"0.5rem",fontSize:"0.85rem",color:status.includes("✓")?"#3fb950":"#f85149"}}>{status}</p>}\n' +
+'    </div>\n  );\n}\n\n' +
+'// Usage: <GifCaptcha onSuccess={() => console.log("passed!")} />'
+                };
+            },
+            vue: function(c) {
+                return {
+                    file: 'GifCaptcha.vue',
+                    lang: 'Vue',
+                    code:
+'<template>\n  <div class="gc-widget">\n' +
+'    <p class="gc-prompt">{{ challenge?.prompt }}</p>\n' +
+'    <div class="gc-grid">\n' +
+'      <div v-for="(gif, i) in challenge?.gifs" :key="i"\n' +
+'        class="gc-cell" :class="{ selected: selected.has(i) }" @click="toggle(i)">\n' +
+'        <img :src="gif.url" :alt="`Option ${i+1}`" />\n' +
+'      </div>\n' +
+'    </div>\n' +
+'    <div class="gc-timer">{{ timeLeft }}s remaining</div>\n' +
+'    <button class="gc-submit" :disabled="selected.size === 0" @click="verify">Verify</button>\n' +
+'    <p v-if="status" class="gc-status" :class="statusClass">{{ status }}</p>\n' +
+'  </div>\n</template>\n\n' +
+'<script setup>\nimport { ref, onMounted, onUnmounted, computed } from "vue";\n\n' +
+'const props = defineProps({ apiBase: { type: String, default: "/api/captcha" }, timeout: { type: Number, default: ' + c.timeout + ' } });\n' +
+'const emit = defineEmits(["success", "failure"]);\n\n' +
+'const challenge = ref(null), selected = ref(new Set()), timeLeft = ref(props.timeout), status = ref("");\n' +
+'let timer = null;\n\n' +
+'const statusClass = computed(() => status.value.includes("✓") ? "success" : "error");\n\n' +
+'async function load() {\n' +
+'  const res = await fetch(`${props.apiBase}/challenge`);\n' +
+'  challenge.value = await res.json();\n' +
+'  selected.value = new Set();\n' +
+'  timeLeft.value = challenge.value.timeout || props.timeout;\n' +
+'  status.value = "";\n' +
+'  clearInterval(timer);\n' +
+'  timer = setInterval(() => { timeLeft.value--; if (timeLeft.value <= 0) load(); }, 1000);\n' +
+'}\n\n' +
+'function toggle(i) {\n' +
+'  const s = new Set(selected.value);\n' +
+'  s.has(i) ? s.delete(i) : s.add(i);\n' +
+'  selected.value = s;\n' +
+'}\n\n' +
+'async function verify() {\n' +
+'  clearInterval(timer);\n' +
+'  const res = await fetch(`${props.apiBase}/verify`, {\n' +
+'    method: "POST", headers: { "Content-Type": "application/json" },\n' +
+'    body: JSON.stringify({ id: challenge.value.id, selected: [...selected.value] })\n' +
+'  });\n' +
+'  const r = await res.json();\n' +
+'  if (r.ok) { status.value = "✓ Verified!"; emit("success"); }\n' +
+'  else {\n' +
+'    status.value = r.error === "expired" ? "Expired..." : `✗ Wrong (${r.attemptsLeft} left)`;\n' +
+'    emit("failure", r);\n' +
+'    if (r.attemptsLeft <= 0 || r.error) setTimeout(load, 1500);\n' +
+'  }\n' +
+'}\n\n' +
+'onMounted(load);\nonUnmounted(() => clearInterval(timer));\n</script>\n\n' +
+'<style scoped>\n.gc-widget{max-width:360px;border:1px solid #30363d;border-radius:12px;padding:1rem;background:#161b22;color:#e6edf3;font-family:sans-serif}\n.gc-prompt{font-weight:600;text-align:center;margin-bottom:.8rem}\n.gc-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem;margin-bottom:.8rem}\n.gc-cell{border:2px solid transparent;border-radius:8px;overflow:hidden;cursor:pointer}\n.gc-cell.selected{border-color:#58a6ff}\n.gc-cell img{width:100%;display:block}\n.gc-timer{text-align:center;font-size:.8rem;color:#8b949e;margin-bottom:.5rem}\n.gc-submit{width:100%;padding:.6rem;border:none;border-radius:6px;background:#58a6ff;color:#fff;font-weight:600;cursor:pointer}\n.gc-submit:disabled{opacity:.4;cursor:not-allowed}\n.gc-status{text-align:center;margin-top:.5rem;font-size:.85rem}\n.success{color:#3fb950}\n.error{color:#f85149}\n</style>'
+                };
+            },
+            svelte: function(c) {
+                return {
+                    file: 'GifCaptcha.svelte',
+                    lang: 'Svelte',
+                    code:
+'<script>\n  export let apiBase = "/api/captcha";\n  export let timeout = ' + c.timeout + ';\n' +
+'  export let onSuccess = null;\n  export let onFailure = null;\n\n' +
+'  let challenge = null, selected = new Set(), timeLeft = timeout, status = "", timer;\n\n' +
+'  async function load() {\n' +
+'    const res = await fetch(`${apiBase}/challenge`);\n' +
+'    challenge = await res.json();\n' +
+'    selected = new Set(); timeLeft = challenge.timeout || timeout; status = "";\n' +
+'    clearInterval(timer);\n' +
+'    timer = setInterval(() => { timeLeft--; if (timeLeft <= 0) load(); }, 1000);\n' +
+'  }\n\n' +
+'  function toggle(i) {\n' +
+'    selected.has(i) ? selected.delete(i) : selected.add(i);\n' +
+'    selected = selected; // trigger reactivity\n' +
+'  }\n\n' +
+'  async function verify() {\n' +
+'    clearInterval(timer);\n' +
+'    const res = await fetch(`${apiBase}/verify`, {\n' +
+'      method: "POST", headers: { "Content-Type": "application/json" },\n' +
+'      body: JSON.stringify({ id: challenge.id, selected: [...selected] })\n' +
+'    });\n' +
+'    const r = await res.json();\n' +
+'    if (r.ok) { status = "✓ Verified!"; onSuccess?.(); }\n' +
+'    else {\n' +
+'      status = r.error === "expired" ? "Expired..." : `✗ Wrong (${r.attemptsLeft} left)`;\n' +
+'      onFailure?.(r);\n' +
+'      if (r.attemptsLeft <= 0 || r.error) setTimeout(load, 1500);\n' +
+'    }\n' +
+'  }\n\n' +
+'  import { onMount, onDestroy } from "svelte";\n' +
+'  onMount(load);\n  onDestroy(() => clearInterval(timer));\n</script>\n\n' +
+'{#if challenge}\n<div class="gc-widget">\n' +
+'  <p class="gc-prompt">{challenge.prompt}</p>\n' +
+'  <div class="gc-grid">\n' +
+'    {#each challenge.gifs as gif, i}\n' +
+'      <div class="gc-cell" class:selected={selected.has(i)} on:click={() => toggle(i)}>\n' +
+'        <img src={gif.url} alt={`Option ${i+1}`} />\n' +
+'      </div>\n' +
+'    {/each}\n' +
+'  </div>\n' +
+'  <div class="gc-timer">{timeLeft}s remaining</div>\n' +
+'  <button class="gc-submit" disabled={selected.size===0} on:click={verify}>Verify</button>\n' +
+'  {#if status}<p class="gc-status" class:success={status.includes("✓")} class:error={!status.includes("✓")}>{status}</p>{/if}\n' +
+'</div>\n{:else}\n<div>Loading CAPTCHA...</div>\n{/if}\n\n' +
+'<style>\n.gc-widget{max-width:360px;border:1px solid #30363d;border-radius:12px;padding:1rem;background:#161b22;color:#e6edf3;font-family:sans-serif}\n.gc-prompt{font-weight:600;text-align:center;margin-bottom:.8rem}\n.gc-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem;margin-bottom:.8rem}\n.gc-cell{border:2px solid transparent;border-radius:8px;overflow:hidden;cursor:pointer}\n.selected{border-color:#58a6ff}\n.gc-cell img{width:100%;display:block}\n.gc-timer{text-align:center;font-size:.8rem;color:#8b949e;margin-bottom:.5rem}\n.gc-submit{width:100%;padding:.6rem;border:none;border-radius:6px;background:#58a6ff;color:#fff;font-weight:600;cursor:pointer}\n.gc-submit:disabled{opacity:.4;cursor:not-allowed}\n.gc-status{text-align:center;margin-top:.5rem;font-size:.85rem}\n.success{color:#3fb950}\n.error{color:#f85149}\n</style>'
+                };
+            }
+        }
+    };
+
+    var activeTabs = [];
+
+    function generate() {
+        var c = cfg();
+        var backendGen = generators.backend[state.backend];
+        var frontendGen = generators.frontend[state.frontend];
+
+        var files = [];
+        if (backendGen) files.push({ type: 'server', data: backendGen(c) });
+        if (frontendGen) files.push({ type: 'client', data: frontendGen(c) });
+
+        // Build tabs
+        var tabsEl = document.getElementById('outputTabs');
+        var codeEl = document.getElementById('codeOutput');
+        tabsEl.innerHTML = '';
+        codeEl.innerHTML = '';
+
+        files.forEach(function(f, i) {
+            var tab = document.createElement('button');
+            tab.className = 'tab-btn' + (i === 0 ? ' active' : '');
+            tab.textContent = (f.type === 'server' ? '🖥 ' : '🌐 ') + f.data.file;
+            tab.onclick = function() { showTab(i); };
+            tabsEl.appendChild(tab);
+
+            var block = document.createElement('div');
+            block.className = 'code-block';
+            block.id = 'code-tab-' + i;
+            block.style.display = i === 0 ? 'block' : 'none';
+            block.innerHTML =
+                '<div class="code-header"><span>' + sanitize(f.data.lang) + ' — ' + sanitize(f.data.file) + '</span>' +
+                '<button class="copy-btn" onclick="copyCode(' + i + ')">Copy</button></div>' +
+                '<div class="code-body" id="code-body-' + i + '"></div>';
+            codeEl.appendChild(block);
+
+            // Set code as textContent to avoid HTML issues
+            document.getElementById('code-body-' + i).textContent = f.data.code;
+        });
+
+        // Checklist
+        var checks = [
+            'Install gif-captcha: <code>npm i gif-captcha</code> (or equivalent)',
+            'Set up GIF asset directory with categorized images',
+            'Configure ' + state.backend + ' routes for /api/captcha/*',
+            'Add the ' + state.frontend + ' widget to your form page',
+            'Replace in-memory store with Redis/database for production',
+            'Add rate limiting to prevent brute-force attempts',
+            'Set CORS headers if frontend and backend are on different origins',
+            'Test with actual GIF assets before deploying'
+        ];
+        var cl = document.getElementById('checklist');
+        cl.innerHTML = checks.map(function(t) { return '<li>' + t + '</li>'; }).join('');
+    }
+
+    function showTab(idx) {
+        document.querySelectorAll('.tab-btn').forEach(function(b, i) { b.classList.toggle('active', i === idx); });
+        document.querySelectorAll('.code-block').forEach(function(b, i) { b.style.display = i === idx ? 'block' : 'none'; });
+    }
+
+    function copyCode(idx) {
+        var body = document.getElementById('code-body-' + idx);
+        navigator.clipboard.writeText(body.textContent).then(function() {
+            var btn = body.parentElement.querySelector('.copy-btn');
+            btn.textContent = 'Copied!';
+            setTimeout(function() { btn.textContent = 'Copy'; }, 1500);
+        });
+    }
+
+    // Initial render
+    generate();
+    </script>
+</body>
+</html>

@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="GIF CAPTCHA Security Guide — hardening, threat model, and deployment best practices">
+    <title>GIF CAPTCHA — Security Guide</title>
+    <link rel="stylesheet" href="../shared.css">
+    <style>
+        body { padding: 2rem; max-width: 960px; margin: 0 auto; }
+        h1 { font-size: 2rem; margin-bottom: 0.3rem; }
+        h2 { font-size: 1.5rem; margin: 2.5rem 0 1rem; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 0.3rem; }
+        h3 { font-size: 1.15rem; margin: 1.8rem 0 0.5rem; }
+        p, li { color: var(--muted); line-height: 1.65; }
+        .subtitle { color: var(--muted); font-size: 1rem; margin-bottom: 1.5rem; }
+        code { background: var(--surface); padding: 0.15rem 0.4rem; border-radius: 3px; font-size: 0.88em; color: var(--accent); }
+        pre { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 1rem; overflow-x: auto; margin: 1rem 0; }
+        pre code { background: none; padding: 0; color: var(--text); }
+        .nav { display: flex; gap: 1.5rem; margin-bottom: 2rem; flex-wrap: wrap; }
+        .nav a { color: var(--accent); text-decoration: none; font-size: 0.9rem; }
+        .nav a:hover { text-decoration: underline; }
+        .callout { background: var(--surface); border-left: 3px solid var(--accent); padding: 1rem 1.2rem; border-radius: 0 6px 6px 0; margin: 1.5rem 0; }
+        .callout p { margin: 0; }
+        .callout-warn { border-left-color: #f59e0b; }
+        .callout-danger { border-left-color: #ef4444; }
+        .threat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.2rem; margin: 1rem 0; }
+        .threat-card h3 { margin-top: 0; }
+        .badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 3px; font-size: 0.75rem; font-weight: 600; margin-left: 0.5rem; }
+        .badge-high { background: #3a1a1a; color: #f87171; }
+        .badge-medium { background: #3a2a1a; color: #fbbf24; }
+        .badge-low { background: #1a3a2a; color: #4ade80; }
+        .checklist { list-style: none; padding: 0; }
+        .checklist li { padding: 0.4rem 0; padding-left: 1.5rem; position: relative; }
+        .checklist li::before { content: "☐"; position: absolute; left: 0; color: var(--accent); }
+        table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.9rem; }
+        th, td { padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border); }
+        th { color: var(--text); font-weight: 600; }
+        td { color: var(--muted); }
+    </style>
+</head>
+<body>
+    <div class="nav">
+        <a href="../index.html">← Case Study</a>
+        <a href="getting-started.html">Getting Started</a>
+        <a href="index.html">API Reference</a>
+        <a href="architecture.html">Architecture</a>
+        <a href="security-guide.html"><strong>Security Guide</strong></a>
+    </div>
+
+    <h1>🔒 Security Guide</h1>
+    <p class="subtitle">Threat model, hardening checklist, and production deployment best practices</p>
+
+    <h2>Threat Model</h2>
+    <p>GIF CAPTCHA is designed to distinguish humans from bots by testing visual comprehension of animated GIF content. Understanding the attack surface helps you deploy it securely.</p>
+
+    <div class="threat-card">
+        <h3>Automated Solving <span class="badge badge-high">HIGH</span></h3>
+        <p>Bots may attempt to solve CAPTCHAs using image recognition, OCR, or multimodal AI models that can describe GIF content.</p>
+        <p><strong>Mitigations:</strong></p>
+        <ul>
+            <li>Use challenges that require understanding <em>temporal</em> context (what happens over time in the GIF), not just static frame analysis</li>
+            <li>Rotate challenge pools frequently — stale pools are vulnerable to lookup tables</li>
+            <li>Combine with behavioral signals (mouse movement, solve timing) via <code>createAttemptTracker()</code></li>
+            <li>Set strict <code>requiredKeywords</code> in <code>validateAnswer()</code> to require specific vocabulary</li>
+        </ul>
+    </div>
+
+    <div class="threat-card">
+        <h3>CAPTCHA Farming <span class="badge badge-medium">MEDIUM</span></h3>
+        <p>Attackers relay challenges to human workers who solve them in real-time.</p>
+        <p><strong>Mitigations:</strong></p>
+        <ul>
+            <li>Enforce tight solve-time windows — legitimate users solve within 5–30 seconds</li>
+            <li>Use the rate limiter (<code>captcha-rate-limiter.js</code>) to limit attempts per IP/session</li>
+            <li>Monitor for suspiciously consistent solve times across sessions</li>
+            <li>Bind challenge tokens to the originating session/IP to prevent relay</li>
+        </ul>
+    </div>
+
+    <div class="threat-card">
+        <h3>Cross-Site Scripting (XSS) <span class="badge badge-high">HIGH</span></h3>
+        <p>User input (CAPTCHA answers) could be injected into the DOM if not sanitized.</p>
+        <p><strong>Mitigations:</strong></p>
+        <ul>
+            <li>Always use <code>sanitize()</code> before inserting any user input into HTML</li>
+            <li>The library uses DOM-based escaping in browsers and regex-based escaping server-side</li>
+            <li>Deploy the provided Content-Security-Policy headers (see <a href="#csp">CSP section</a>)</li>
+            <li>Never use <code>innerHTML</code> with unsanitized content — the library handles this internally</li>
+        </ul>
+    </div>
+
+    <div class="threat-card">
+        <h3>Replay Attacks <span class="badge badge-medium">MEDIUM</span></h3>
+        <p>An attacker captures a valid challenge-response pair and replays it.</p>
+        <p><strong>Mitigations:</strong></p>
+        <ul>
+            <li>Generate unique challenge tokens per session with short TTLs (2–5 minutes)</li>
+            <li>Invalidate tokens server-side after first use</li>
+            <li>Bind tokens to IP address or session cookie</li>
+        </ul>
+    </div>
+
+    <h2 id="csp">Content Security Policy</h2>
+    <p>The included <code>nginx-security.conf</code> provides production-grade security headers. At minimum, deploy these CSP directives:</p>
+
+    <pre><code># Recommended Content-Security-Policy
+Content-Security-Policy:
+  default-src 'self';
+  script-src 'self';
+  style-src 'self' 'unsafe-inline';
+  img-src 'self' https://media.tenor.com https://i.giphy.com data:;
+  connect-src 'self';
+  frame-ancestors 'none';
+  base-uri 'self';
+  form-action 'self';</code></pre>
+
+    <div class="callout callout-warn">
+        <p>⚠️ <strong>img-src allowlist:</strong> Add only the GIF hosting domains you actually use. The example includes Tenor and Giphy — remove any you don't need.</p>
+    </div>
+
+    <h2>Server-Side Validation</h2>
+    <p>Never trust client-side validation alone. Always verify CAPTCHA responses server-side:</p>
+
+    <pre><code>const { validateAnswer } = require("gif-captcha");
+
+app.post("/verify-captcha", (req, res) => {
+  const { answer, challengeToken } = req.body;
+
+  // 1. Verify token is valid and not expired
+  const challenge = tokenStore.consume(challengeToken);
+  if (!challenge) {
+    return res.status(400).json({ error: "Invalid or expired token" });
+  }
+
+  // 2. Verify token is bound to this session
+  if (challenge.sessionId !== req.session.id) {
+    return res.status(403).json({ error: "Token/session mismatch" });
+  }
+
+  // 3. Validate the answer with strict keywords
+  const result = validateAnswer(answer, challenge.expectedAnswer, {
+    threshold: 0.4,
+    requiredKeywords: challenge.keywords
+  });
+
+  if (!result.passed) {
+    return res.status(403).json({ error: "CAPTCHA failed" });
+  }
+
+  // 4. Proceed with protected action
+  req.session.captchaVerified = true;
+  res.json({ success: true });
+});</code></pre>
+
+    <h2>Rate Limiting</h2>
+    <p>The built-in rate limiter prevents brute-force solving attempts:</p>
+
+    <pre><code>const { createRateLimiter } = require("gif-captcha/src/captcha-rate-limiter");
+
+const limiter = createRateLimiter({
+  maxAttempts: 5,      // Max attempts per window
+  windowMs: 60000,     // 1-minute window
+  blockDurationMs: 300000  // 5-minute block after exceeding
+});
+
+app.use("/verify-captcha", (req, res, next) => {
+  const clientId = req.ip;
+  if (limiter.isBlocked(clientId)) {
+    return res.status(429).json({ error: "Too many attempts" });
+  }
+  limiter.record(clientId);
+  next();
+});</code></pre>
+
+    <h2>Production Deployment Checklist</h2>
+    <ul class="checklist">
+        <li>Deploy behind HTTPS — never serve CAPTCHAs over plain HTTP</li>
+        <li>Apply <code>nginx-security.conf</code> headers (CSP, X-Frame-Options, HSTS)</li>
+        <li>Enable server-side answer validation with <code>validateAnswer()</code></li>
+        <li>Implement session-bound challenge tokens with short TTLs</li>
+        <li>Configure rate limiting per IP and per session</li>
+        <li>Use <code>sanitize()</code> on all user input before DOM insertion</li>
+        <li>Rotate challenge pools regularly (weekly minimum)</li>
+        <li>Monitor solve-time distributions for anomalies</li>
+        <li>Set <code>frame-ancestors 'none'</code> to prevent clickjacking</li>
+        <li>Log failed attempts for abuse detection (without storing answers)</li>
+        <li>Keep dependencies updated — enable Dependabot for automated alerts</li>
+        <li>Review <code>SECURITY.md</code> for vulnerability reporting procedures</li>
+    </ul>
+
+    <h2>Behavioral Analysis</h2>
+    <p>Combine CAPTCHA verification with behavioral signals for stronger bot detection:</p>
+
+    <table>
+        <tr><th>Signal</th><th>Human Pattern</th><th>Bot Pattern</th></tr>
+        <tr><td>Solve time</td><td>5–30 seconds, variable</td><td>&lt;2s or extremely consistent</td></tr>
+        <tr><td>Mouse movement</td><td>Natural curves, micro-corrections</td><td>Linear paths or absent</td></tr>
+        <tr><td>Typing cadence</td><td>Variable inter-key timing</td><td>Uniform or instant paste</td></tr>
+        <tr><td>Session behavior</td><td>Page navigation, scrolling</td><td>Direct POST to endpoint</td></tr>
+        <tr><td>Answer style</td><td>Informal, typos, varied phrasing</td><td>"I cannot view animated images"</td></tr>
+    </table>
+
+    <p>Use <code>createAttemptTracker()</code> to collect these signals and feed them into your trust scoring pipeline.</p>
+
+    <hr style="margin: 3rem 0 1.5rem; border-color: var(--border);">
+    <p style="text-align: center; font-size: 0.85rem;">
+        <a href="https://github.com/sauravbhattacharya001/gif-captcha" style="color: var(--accent);">GitHub</a> ·
+        <a href="https://www.npmjs.com/package/gif-captcha" style="color: var(--accent);">npm</a> ·
+        <a href="../SECURITY.md" style="color: var(--accent);">Report a Vulnerability</a> ·
+        MIT License
+    </p>
+</body>
+</html>

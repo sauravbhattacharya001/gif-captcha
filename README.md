@@ -350,36 +350,122 @@ Or use via CDN in the browser:
 ```
 gif-captcha/
 ├── src/
-│   └── index.js          # Core library (UMD — browser + Node.js)
+│   ├── index.js                    # Core library (UMD — browser + Node.js)
+│   ├── shared-utils.js             # Shared utility functions (sanitize, LRU, etc.)
+│   ├── challenge-pool-manager.js   # Challenge pool lifecycle management
+│   ├── challenge-decay-manager.js  # Time-based challenge expiration
+│   ├── challenge-diversity-analyzer.js  # Pool diversity scoring
+│   ├── challenge-rotation-scheduler.js  # Automated rotation scheduling
+│   ├── challenge-template-engine.js     # Challenge template system
+│   ├── ab-experiment-runner.js     # A/B experiment runner
+│   ├── adaptive-difficulty-tuner.js # Dynamic difficulty adjustment
+│   ├── behavioral-biometrics.js    # Mouse/keyboard behavioral analysis
+│   ├── bot-signature-database.js   # Known bot signature matching
+│   ├── captcha-accessibility-analyzer.js # WCAG compliance analysis
+│   ├── captcha-anomaly-detector.js # Anomaly detection in solve patterns
+│   ├── captcha-audit-log.js        # Tamper-evident audit logging
+│   ├── captcha-capacity-planner.js # Load capacity planning
+│   ├── captcha-export-formatter.js # Multi-format data export
+│   ├── captcha-fatigue-detector.js # User fatigue detection
+│   ├── captcha-health-monitor.js   # System health monitoring
+│   ├── captcha-incident-manager.js # Security incident management
+│   ├── captcha-load-tester.js      # Load/stress testing
+│   ├── captcha-localization-manager.js # i18n locale management
+│   ├── captcha-rate-limiter.js     # Rate limiting
+│   ├── captcha-session-replay.js   # Session recording/replay
+│   ├── captcha-stats-collector.js  # Statistics collection
+│   ├── captcha-strength-scorer.js  # Challenge strength scoring
+│   ├── captcha-traffic-analyzer.js # Traffic pattern analysis
+│   ├── compliance-reporter.js      # Regulatory compliance reporting
+│   ├── config-validator.js         # Configuration validation
+│   ├── crypto-utils.js             # Cryptographic utilities
+│   ├── csv-utils.js                # CSV import/export
+│   ├── fraud-ring-detector.js      # Coordinated fraud detection
+│   ├── geo-risk-scorer.js          # Geographic risk scoring
+│   ├── honeypot-injector.js        # Honeypot field injection
+│   ├── i18n.js                     # Internationalization
+│   ├── response-time-profiler.js   # Response time analysis
+│   ├── session-risk-aggregator.js  # Session risk aggregation
+│   ├── solve-funnel-analyzer.js    # Solve funnel analysis
+│   ├── solve-pattern-fingerprinter.js # Solve pattern fingerprinting
+│   ├── trust-score-engine.js       # Trust score computation
+│   └── webhook-dispatcher.js       # Webhook event dispatch
+├── docs/
+│   ├── index.html                  # API reference (HTML)
+│   ├── getting-started.html        # Getting started guide
+│   └── architecture.html           # Architecture documentation
+├── tests/                          # Test suite (Node.js built-in test runner)
+│
+│   ── Interactive Pages ──
 ├── index.html            # Interactive case study page
 ├── demo.html             # Interactive CAPTCHA demo
 ├── analysis.html         # Research analysis dashboard
 ├── generator.html        # CAPTCHA Workshop — create challenge sets
 ├── simulator.html        # AI Response Simulator
 ├── temporal.html         # Temporal Sequence Challenge
+│
+│   ── Tools & Configurators ──
 ├── abtest.html           # A/B Testing Configurator
+├── config.html           # Configuration editor
+├── designer.html         # CAPTCHA visual designer
+├── difficulty-planner.html # Difficulty planning tool
+├── embed.html            # Embed Widget Generator
+├── integration-wizard.html # Integration setup wizard
+├── playground.html       # Challenge Playground
+├── rotation-scheduler.html # Challenge rotation scheduler
+├── theme-builder.html    # Visual theme builder
+│
+│   ── Analytics & Dashboards ──
+├── dashboard.html        # Main analytics dashboard
+├── trust-dashboard.html  # Trust score dashboard
+├── effectiveness.html    # Effectiveness Dashboard
+├── cognitive-load.html   # Cognitive Load Analyzer
+├── comparison.html       # Multi-Model Comparison
+├── diversity-analyzer.html # Challenge diversity analysis
+├── heatmap.html          # Interaction Heatmap
+├── solve-histogram.html  # Solve time histogram
+├── timing.html           # Response Time Analyzer
+├── funnel.html           # Solve funnel visualization
+├── my-stats.html         # Personal statistics
+│
+│   ── Security & Monitoring ──
+├── audit-log.html        # Audit Log — browse, search & export records
+├── bot-or-human.html     # Bot-or-human classifier
+├── bot-signatures.html   # Bot signature database browser
+├── compliance.html       # Compliance reporting
+├── entropy.html          # Entropy/randomness analysis
+├── fleet.html            # Fleet management overview
+├── fraud-rings.html      # Fraud ring detection
+├── geo-risk-map.html     # Geographic risk visualization
+├── incident-timeline.html # Security incident timeline
+├── load-tester.html      # Load testing interface
+├── queue-manager.html    # Challenge queue management
+├── rate-limiter.html     # Rate limiter configuration
+├── resistance.html       # AI resistance scoring
+├── threat-feed.html      # Threat intelligence feed
+│
+│   ── User-Facing Features ──
 ├── accessibility.html    # Accessibility Audit (WCAG 2.1)
 ├── batch.html            # Batch Validator — bulk response analysis
 ├── benchmark.html        # Response Time Benchmark
-├── cognitive-load.html   # Cognitive Load Analyzer
-├── comparison.html       # Multi-Model Comparison
+├── competitive.html      # Competitive mode
+├── cost-calculator.html  # Cost estimation calculator
 ├── daily.html            # Daily Challenge mode
-├── effectiveness.html    # Effectiveness Dashboard
-├── embed.html            # Embed Widget Generator
+├── feedback.html         # User feedback collection
+├── fingerprint-explorer.html # Fingerprint Explorer
 ├── frame-inspector.html  # GIF Frame Inspector
-├── geo-risk-map.html     # Geo Risk Map — interactive geographic risk visualization
-├── heatmap.html          # Interaction Heatmap
+├── gallery.html          # GIF gallery browser
+├── journey-map.html      # User journey visualization
 ├── leaderboard.html      # Performance Leaderboard
-├── playground.html       # Challenge Playground
-├── fingerprint-explorer.html # Fingerprint Explorer — visualize & compare solve-pattern fingerprints
+├── performance-profiler.html # Performance Profiler
 ├── streak.html           # Streak Mode
-├── timing.html           # Response Time Analyzer
-├── performance-profiler.html  # Performance Profiler — benchmark generation configs
-├── audit-log.html        # Audit Log — browse, search & export challenge records
+│
+│   ── Shared Assets ──
 ├── shared.js             # Browser-specific shared utilities
 ├── shared.css            # Shared dark theme styles
-├── tests/                # Test suite (Node.js built-in test runner, 43 test files)
-├── API.md                # API reference
+├── API.md                # API reference (Markdown)
+├── SECURITY.md           # Security policy
+├── CONTRIBUTING.md       # Contribution guidelines
 ├── README.md             # This file
 └── LICENSE               # MIT License
 ```

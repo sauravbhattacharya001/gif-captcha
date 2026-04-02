@@ -186,9 +186,13 @@ function createChallengeDecayManager(options) {
 
   /**
    * Build stats object for a challenge entry.
+   * @param {string} challengeId
+   * @param {object} entry
+   * @param {number} [precomputedFreshness] - If provided, skip recomputation.
    */
-  function _buildStats(challengeId, entry) {
-    var freshness = entry.retired ? 0 : _computeFreshness(entry);
+  function _buildStats(challengeId, entry, precomputedFreshness) {
+    var freshness = precomputedFreshness !== undefined ? precomputedFreshness
+      : (entry.retired ? 0 : _computeFreshness(entry));
     return {
       challengeId: challengeId,
       addedAt: entry.addedAt,
@@ -230,21 +234,58 @@ function createChallengeDecayManager(options) {
   /**
    * Run a sweep: check all active challenges and retire any below threshold.
    * Returns a list of newly retired challenge IDs.
+   *
+   * Computes freshness once per challenge and reuses the values for both
+   * retirement decisions and the pool health summary, avoiding the O(2n)
+   * double-computation that would occur from calling getPoolHealth() separately.
    * @returns {{ retired: string[], poolHealth: object }}
    */
   function sweep() {
     var newlyRetired = [];
     var keys = Object.keys(challenges);
+
+    // Single-pass: compute freshness, retire stale entries, and aggregate
+    // pool health stats simultaneously.
+    var active = 0;
+    var totalFreshness = 0;
+    var fresh = 0;
+    var stale = 0;
+    var critical = 0;
+    var oldest = null;
+    var mostSolved = null;
+
     for (var i = 0; i < keys.length; i++) {
       var entry = challenges[keys[i]];
       if (entry.retired) continue;
-      var freshness = _computeFreshness(entry);
-      if (freshness < freshnessThreshold) {
+      var f = _computeFreshness(entry);
+      if (f < freshnessThreshold) {
         _retire(keys[i], entry);
         newlyRetired.push(keys[i]);
+        continue; // no longer active
       }
+      active++;
+      totalFreshness += f;
+      if (f >= 0.7) fresh++;
+      else if (f >= freshnessThreshold) stale++;
+      else critical++;
+      if (!oldest || entry.addedAt < challenges[oldest].addedAt) oldest = keys[i];
+      if (!mostSolved || entry.solves > challenges[mostSolved].solves) mostSolved = keys[i];
     }
-    return { retired: newlyRetired, poolHealth: getPoolHealth() };
+
+    var poolHealth = {
+      totalChallenges: challengeCount,
+      activeChallenges: active,
+      retiredChallenges: retiredCount,
+      averageFreshness: active > 0 ? Math.round((totalFreshness / active) * 10000) / 10000 : 0,
+      freshCount: fresh,
+      staleCount: stale,
+      criticalCount: critical,
+      needsRefresh: fresh === 0 && active > 0,
+      oldestActive: oldest,
+      mostSolvedActive: mostSolved
+    };
+
+    return { retired: newlyRetired, poolHealth: poolHealth };
   }
 
   /**
@@ -311,7 +352,7 @@ function createChallengeDecayManager(options) {
     );
     var result = [];
     for (var j = 0; j < Math.min(n, scored.length); j++) {
-      result.push(_buildStats(scored[j].id, challenges[scored[j].id]));
+      result.push(_buildStats(scored[j].id, challenges[scored[j].id], scored[j].freshness));
     }
     return result;
   }

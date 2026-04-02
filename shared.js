@@ -19,7 +19,13 @@ var _sanitizeEl = document.createElement("div");
  */
 function sanitize(str) {
     _sanitizeEl.textContent = str;
-    return _sanitizeEl.innerHTML;
+    // textContent→innerHTML escapes <, >, & but NOT quotes.
+    // When the result is used inside HTML attributes (e.g. href="..."),
+    // unescaped quotes allow attribute injection (XSS).
+    // Escape both quote styles for safe use in any HTML context.
+    return _sanitizeEl.innerHTML
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
 }
 
 // ===== URL Sanitizer =====

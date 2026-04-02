@@ -332,7 +332,12 @@ function createSanitizer() {
     return {
       sanitize: function (str) {
         el.textContent = str;
-        return el.innerHTML;
+        // textContent→innerHTML escapes <, >, & but NOT quotes.
+        // Unescaped quotes allow attribute injection (XSS) when the
+        // result is used inside HTML attributes (e.g. href="...").
+        return el.innerHTML
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
       },
     };
   }

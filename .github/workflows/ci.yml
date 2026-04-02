@@ -43,6 +43,16 @@ jobs:
           path: coverage/
           retention-days: 30
 
+      - name: Upload coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v5
+        with:
+          files: coverage/lcov.info
+          flags: unittests
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
       - name: Enforce coverage thresholds
         run: npm run coverage:check
 

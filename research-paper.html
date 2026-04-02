@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src data: blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'none';">
+    <meta name="referrer" content="no-referrer">
+    <title>Research Paper Generator — GIF CAPTCHA</title>
+    <link rel="stylesheet" href="shared.css">
+    <style>
+        .container { max-width: 1100px; margin: 0 auto; padding: 1.5rem; }
+        .wizard { display: flex; gap: 0.5rem; margin-bottom: 2rem; flex-wrap: wrap; }
+        .wizard-step { padding: 0.5rem 1rem; border-radius: 6px; background: var(--surface); border: 1px solid var(--border); color: var(--muted); font-size: 0.85rem; cursor: pointer; transition: all 0.2s; }
+        .wizard-step.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+        .wizard-step.done { background: var(--green-bg); color: var(--green); border-color: var(--green); }
+        .section { display: none; }
+        .section.visible { display: block; }
+        .form-group { margin-bottom: 1.25rem; }
+        .form-group label { display: block; margin-bottom: 0.4rem; font-weight: 600; font-size: 0.9rem; }
+        .form-group input, .form-group textarea, .form-group select {
+            width: 100%; padding: 0.6rem 0.8rem; background: var(--surface); border: 1px solid var(--border);
+            border-radius: 6px; color: var(--text); font-size: 0.9rem; font-family: inherit;
+        }
+        .form-group textarea { min-height: 100px; resize: vertical; }
+        .form-group input:focus, .form-group textarea:focus, .form-group select:focus { outline: none; border-color: var(--accent); }
+        .btn-row { display: flex; gap: 0.75rem; margin-top: 1.5rem; flex-wrap: wrap; }
+        .btn { padding: 0.6rem 1.2rem; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; font-size: 0.9rem; transition: all 0.2s; }
+        .btn:hover { background: var(--surface-hover); }
+        .btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+        .btn-primary:hover { background: var(--accent-hover); }
+        .btn-success { background: var(--green); color: #fff; border-color: var(--green); }
+        .data-table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.85rem; }
+        .data-table th, .data-table td { padding: 0.5rem 0.75rem; border: 1px solid var(--border); text-align: left; }
+        .data-table th { background: var(--surface); font-weight: 600; }
+        .data-table td { color: var(--muted); }
+        .data-table input { width: 100%; background: transparent; border: none; color: var(--text); font-size: 0.85rem; padding: 0.2rem; }
+        .data-table input:focus { outline: 1px solid var(--accent); border-radius: 3px; }
+        .add-row-btn { margin-top: 0.5rem; font-size: 0.8rem; padding: 0.3rem 0.8rem; }
+        .preset-chips { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
+        .chip { padding: 0.3rem 0.7rem; border-radius: 20px; background: var(--surface); border: 1px solid var(--border); color: var(--muted); font-size: 0.8rem; cursor: pointer; transition: all 0.2s; }
+        .chip:hover { border-color: var(--accent); color: var(--accent); }
+        .chip.selected { background: var(--accent); color: #fff; border-color: var(--accent); }
+        .preview-frame { background: #fff; color: #111; padding: 2rem 2.5rem; border-radius: 8px; font-family: 'Times New Roman', Times, serif; line-height: 1.8; max-height: 70vh; overflow-y: auto; }
+        .preview-frame h1 { font-size: 1.5rem; text-align: center; margin-bottom: 0.25rem; color: #111; }
+        .preview-frame h2 { font-size: 1.15rem; margin: 1.5rem 0 0.5rem; border-bottom: 1px solid #ccc; padding-bottom: 0.25rem; color: #111; }
+        .preview-frame h3 { font-size: 1rem; margin: 1rem 0 0.4rem; color: #333; }
+        .preview-frame p { margin-bottom: 0.75rem; text-align: justify; color: #222; }
+        .preview-frame .authors { text-align: center; color: #555; font-style: italic; margin-bottom: 0.5rem; }
+        .preview-frame .abstract { background: #f5f5f5; padding: 1rem; border-left: 3px solid #333; margin: 1rem 0; font-size: 0.95rem; }
+        .preview-frame .keywords { font-size: 0.85rem; color: #666; margin-bottom: 1.5rem; }
+        .preview-frame table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.9rem; }
+        .preview-frame table th, .preview-frame table td { padding: 0.4rem 0.6rem; border: 1px solid #ccc; text-align: left; }
+        .preview-frame table th { background: #f0f0f0; font-weight: bold; }
+        .preview-frame .figure { text-align: center; margin: 1.5rem 0; }
+        .preview-frame .figure canvas { border: 1px solid #ddd; }
+        .preview-frame .figure .caption { font-size: 0.85rem; color: #555; margin-top: 0.5rem; font-style: italic; }
+        .preview-frame .ref-list { font-size: 0.85rem; }
+        .preview-frame .ref-list p { margin-bottom: 0.3rem; }
+        .stat-box { display: inline-block; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.5rem; margin: 0.5rem; text-align: center; }
+        .stat-box .val { font-size: 1.5rem; font-weight: 700; color: var(--accent); }
+        .stat-box .lbl { font-size: 0.8rem; color: var(--muted); }
+        .hint { font-size: 0.8rem; color: var(--muted); margin-top: 0.3rem; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📄 Research Paper Generator</h1>
+        <p class="subtitle">Generate formatted academic research reports from your CAPTCHA experiment data</p>
+        <a href="index.html" class="back-link">← Back to Case Study</a>
+    </div>
+
+    <div class="container">
+        <div class="wizard" id="wizard">
+            <div class="wizard-step active" data-step="0">1. Metadata</div>
+            <div class="wizard-step" data-step="1">2. Experiment</div>
+            <div class="wizard-step" data-step="2">3. Results Data</div>
+            <div class="wizard-step" data-step="3">4. Discussion</div>
+            <div class="wizard-step" data-step="4">5. Preview &amp; Export</div>
+        </div>
+
+        <!-- Step 0: Metadata -->
+        <div class="section visible" id="step-0">
+            <h2 style="color:var(--accent);margin-bottom:1rem;">Paper Metadata</h2>
+            <div class="preset-chips">
+                <span class="chip" data-preset="gif">GIF CAPTCHA Study</span>
+                <span class="chip" data-preset="compare">Comparative Analysis</span>
+                <span class="chip" data-preset="usability">Usability Study</span>
+            </div>
+            <div class="form-group">
+                <label>Paper Title</label>
+                <input type="text" id="title" placeholder="e.g., Evaluating GIF-Based CAPTCHA Effectiveness Against Automated Attacks">
+            </div>
+            <div class="form-group">
+                <label>Authors (comma-separated)</label>
+                <input type="text" id="authors" placeholder="e.g., Jane Smith, John Doe">
+            </div>
+            <div class="form-group">
+                <label>Affiliation</label>
+                <input type="text" id="affiliation" placeholder="e.g., Department of Computer Science, University X">
+            </div>
+            <div class="form-group">
+                <label>Keywords (comma-separated)</label>
+                <input type="text" id="keywords" placeholder="e.g., CAPTCHA, GIF, security, usability, bot detection">
+            </div>
+            <div class="form-group">
+                <label>Abstract</label>
+                <textarea id="abstract" placeholder="A brief summary of your research objectives, methodology, key findings, and conclusions..."></textarea>
+            </div>
+            <div class="btn-row">
+                <button class="btn btn-primary" onclick="goStep(1)">Next: Experiment →</button>
+            </div>
+        </div>
+
+        <!-- Step 1: Experiment Setup -->
+        <div class="section" id="step-1">
+            <h2 style="color:var(--accent);margin-bottom:1rem;">Experiment Design</h2>
+            <div class="form-group">
+                <label>Study Type</label>
+                <select id="studyType">
+                    <option value="between">Between-subjects</option>
+                    <option value="within">Within-subjects</option>
+                    <option value="mixed">Mixed design</option>
+                    <option value="observational">Observational</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Sample Size</label>
+                <input type="number" id="sampleSize" placeholder="e.g., 150" min="1">
+            </div>
+            <div class="form-group">
+                <label>CAPTCHA Types Tested (comma-separated)</label>
+                <input type="text" id="captchaTypes" placeholder="e.g., GIF CAPTCHA, reCAPTCHA v2, hCaptcha, Text CAPTCHA">
+            </div>
+            <div class="form-group">
+                <label>Methodology</label>
+                <textarea id="methodology" placeholder="Describe your experimental procedure, independent/dependent variables, controls, and data collection method..."></textarea>
+            </div>
+            <div class="form-group">
+                <label>Participant Demographics</label>
+                <textarea id="demographics" placeholder="Age range, technical proficiency distribution, recruitment method..."></textarea>
+            </div>
+            <div class="form-group">
+                <label>Duration of Study</label>
+                <input type="text" id="duration" placeholder="e.g., 4 weeks (March 1 - March 28, 2026)">
+            </div>
+            <div class="btn-row">
+                <button class="btn" onclick="goStep(0)">← Back</button>
+                <button class="btn btn-primary" onclick="goStep(2)">Next: Results Data →</button>
+            </div>
+        </div>
+
+        <!-- Step 2: Results Data -->
+        <div class="section" id="step-2">
+            <h2 style="color:var(--accent);margin-bottom:1rem;">Results Data</h2>
+            <p style="color:var(--muted);margin-bottom:1rem;">Enter performance metrics for each CAPTCHA type. Charts will be auto-generated.</p>
+            <table class="data-table" id="resultsTable">
+                <thead>
+                    <tr>
+                        <th>CAPTCHA Type</th>
+                        <th>Solve Rate (%)</th>
+                        <th>Avg Time (s)</th>
+                        <th>Bot Resist (%)</th>
+                        <th>User Satisfaction (1-5)</th>
+                        <th>Error Rate (%)</th>
+                    </tr>
+                </thead>
+                <tbody id="resultsBody">
+                </tbody>
+            </table>
+            <button class="btn add-row-btn" onclick="addResultRow()">+ Add Row</button>
+            <div class="hint">Tip: Fill in CAPTCHA types from Step 2, or add custom rows.</div>
+
+            <h3 style="color:var(--accent);margin-top:2rem;">Statistical Tests</h3>
+            <div class="form-group">
+                <label>Statistical Methods Used</label>
+                <select id="statMethod" multiple style="height:100px;">
+                    <option value="anova" selected>One-way ANOVA</option>
+                    <option value="ttest">Independent t-test</option>
+                    <option value="chi2">Chi-square test</option>
+                    <option value="mann-whitney">Mann-Whitney U</option>
+                    <option value="kruskal">Kruskal-Wallis</option>
+                    <option value="tukey">Tukey HSD post-hoc</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Significance Level (α)</label>
+                <select id="alpha">
+                    <option value="0.05" selected>0.05</option>
+                    <option value="0.01">0.01</option>
+                    <option value="0.001">0.001</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Additional Findings / Notes</label>
+                <textarea id="findings" placeholder="Any notable patterns, outliers, or observations from the data..."></textarea>
+            </div>
+            <div class="btn-row">
+                <button class="btn" onclick="goStep(1)">← Back</button>
+                <button class="btn btn-primary" onclick="goStep(3)">Next: Discussion →</button>
+            </div>
+        </div>
+
+        <!-- Step 3: Discussion -->
+        <div class="section" id="step-3">
+            <h2 style="color:var(--accent);margin-bottom:1rem;">Discussion &amp; Conclusions</h2>
+            <div class="form-group">
+                <label>Key Findings</label>
+                <textarea id="keyFindings" placeholder="Summarize the most important results and what they mean..."></textarea>
+            </div>
+            <div class="form-group">
+                <label>Limitations</label>
+                <textarea id="limitations" placeholder="Study limitations, potential biases, generalizability concerns..."></textarea>
+            </div>
+            <div class="form-group">
+                <label>Future Work</label>
+                <textarea id="futureWork" placeholder="Suggested directions for future research..."></textarea>
+            </div>
+            <div class="form-group">
+                <label>Conclusion</label>
+                <textarea id="conclusion" placeholder="Final concluding paragraph summarizing the contribution..."></textarea>
+            </div>
+            <div class="btn-row">
+                <button class="btn" onclick="goStep(2)">← Back</button>
+                <button class="btn btn-primary" onclick="goStep(4)">Generate Paper →</button>
+            </div>
+        </div>
+
+        <!-- Step 4: Preview & Export -->
+        <div class="section" id="step-4">
+            <h2 style="color:var(--accent);margin-bottom:1rem;">Paper Preview</h2>
+            <div class="btn-row" style="margin-bottom:1rem;">
+                <button class="btn btn-success" onclick="exportHTML()">📥 Export HTML</button>
+                <button class="btn btn-primary" onclick="window.print()">🖨️ Print / PDF</button>
+                <button class="btn" onclick="copyText()">📋 Copy Plain Text</button>
+                <button class="btn" onclick="exportLaTeX()">📄 Export LaTeX</button>
+            </div>
+            <div id="paperPreview" class="preview-frame"></div>
+            <div class="btn-row">
+                <button class="btn" onclick="goStep(3)">← Back to Edit</button>
+            </div>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <p>GIF CAPTCHA Research Paper Generator · Academic Report Tool</p>
+    </footer>
+
+    <script src="shared.js"></script>
+    <script>
+    (function() {
+        'use strict';
+
+        var currentStep = 0;
+        var steps = document.querySelectorAll('.wizard-step');
+        var sections = [];
+        for (var i = 0; i < 5; i++) sections.push(document.getElementById('step-' + i));
+
+        // Preset data
+        var presets = {
+            gif: {
+                title: 'Evaluating GIF-Based CAPTCHA: Security Effectiveness and User Experience Analysis',
+                keywords: 'CAPTCHA, GIF, animated challenge, bot detection, usability, human verification',
+                abstract: 'This study evaluates the effectiveness of GIF-based CAPTCHA challenges as an alternative to traditional verification methods. We conducted a controlled experiment comparing GIF CAPTCHAs against established solutions including reCAPTCHA v2, hCaptcha, and text-based CAPTCHAs. Our analysis examines both security resilience against automated attacks and user experience metrics including solve time, success rate, and subjective satisfaction. Results indicate that GIF-based CAPTCHAs achieve competitive bot resistance while offering improved user engagement and reduced cognitive load compared to conventional approaches.',
+                captchaTypes: 'GIF CAPTCHA, reCAPTCHA v2, hCaptcha, Text CAPTCHA',
+                rows: [
+                    ['GIF CAPTCHA', '94.2', '3.8', '96.5', '4.2', '5.8'],
+                    ['reCAPTCHA v2', '91.7', '5.2', '94.1', '3.5', '8.3'],
+                    ['hCaptcha', '89.3', '6.1', '95.8', '3.2', '10.7'],
+                    ['Text CAPTCHA', '78.4', '8.9', '72.3', '2.1', '21.6']
+                ]
+            },
+            compare: {
+                title: 'A Comparative Analysis of Modern CAPTCHA Systems: Security, Usability, and Accessibility',
+                keywords: 'CAPTCHA comparison, web security, accessibility, human-computer interaction, bot mitigation',
+                abstract: 'We present a comprehensive comparative analysis of five modern CAPTCHA implementations across security, usability, and accessibility dimensions. Our study employs a mixed-methods approach combining quantitative performance metrics with qualitative user feedback from 200 participants spanning diverse demographics and ability levels.',
+                captchaTypes: 'GIF CAPTCHA, reCAPTCHA v3, hCaptcha, FunCAPTCHA, Audio CAPTCHA',
+                rows: [
+                    ['GIF CAPTCHA', '93.1', '4.1', '95.2', '4.0', '6.9'],
+                    ['reCAPTCHA v3', '97.8', '1.2', '89.5', '4.3', '2.2'],
+                    ['hCaptcha', '88.6', '6.4', '94.9', '3.1', '11.4'],
+                    ['FunCAPTCHA', '91.2', '7.8', '91.3', '3.8', '8.8'],
+                    ['Audio CAPTCHA', '72.1', '12.3', '83.7', '2.4', '27.9']
+                ]
+            },
+            usability: {
+                title: 'User Experience Evaluation of GIF-Based CAPTCHA: A Cognitive Load Perspective',
+                keywords: 'usability, cognitive load, user experience, CAPTCHA, GIF animation, NASA-TLX',
+                abstract: 'This paper investigates the user experience implications of GIF-based CAPTCHAs through the lens of cognitive load theory. Using NASA-TLX workload assessments and think-aloud protocols, we analyze how animated GIF challenges compare to static alternatives in terms of mental demand, temporal demand, and frustration levels across 120 participants.',
+                captchaTypes: 'GIF CAPTCHA, Image Grid, Slider CAPTCHA, Math CAPTCHA',
+                rows: [
+                    ['GIF CAPTCHA', '95.8', '3.2', '93.7', '4.4', '4.2'],
+                    ['Image Grid', '90.1', '5.9', '92.5', '3.3', '9.9'],
+                    ['Slider CAPTCHA', '97.2', '2.1', '78.4', '3.9', '2.8'],
+                    ['Math CAPTCHA', '82.5', '7.4', '85.1', '2.7', '17.5']
+                ]
+            }
+        };
+
+        // Initialize
+        window.goStep = function(n) {
+            if (n === 4) generatePaper();
+            if (n === 2) syncResultRows();
+            steps[currentStep].classList.remove('active');
+            if (currentStep < n) steps[currentStep].classList.add('done');
+            sections[currentStep].classList.remove('visible');
+            currentStep = n;
+            steps[currentStep].classList.add('active');
+            steps[currentStep].classList.remove('done');
+            sections[currentStep].classList.add('visible');
+        };
+
+        // Preset chips
+        document.querySelectorAll('.chip[data-preset]').forEach(function(chip) {
+            chip.addEventListener('click', function() {
+                document.querySelectorAll('.chip').forEach(function(c) { c.classList.remove('selected'); });
+                chip.classList.add('selected');
+                var p = presets[chip.dataset.preset];
+                if (!p) return;
+                document.getElementById('title').value = p.title;
+                document.getElementById('keywords').value = p.keywords;
+                document.getElementById('abstract').value = p.abstract;
+                document.getElementById('captchaTypes').value = p.captchaTypes;
+                // populate results table
+                var body = document.getElementById('resultsBody');
+                body.innerHTML = '';
+                p.rows.forEach(function(r) { addResultRow(r); });
+            });
+        });
+
+        function syncResultRows() {
+            var types = document.getElementById('captchaTypes').value.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+            var body = document.getElementById('resultsBody');
+            var existing = body.querySelectorAll('tr');
+            var existingTypes = [];
+            existing.forEach(function(tr) {
+                var inp = tr.querySelector('input');
+                if (inp) existingTypes.push(inp.value.trim());
+            });
+            types.forEach(function(t) {
+                if (existingTypes.indexOf(t) === -1) addResultRow([t, '', '', '', '', '']);
+            });
+        }
+
+        window.addResultRow = function(vals) {
+            vals = vals || ['', '', '', '', '', ''];
+            var tr = document.createElement('tr');
+            for (var i = 0; i < 6; i++) {
+                var td = document.createElement('td');
+                var inp = document.createElement('input');
+                inp.type = i === 0 ? 'text' : 'number';
+                inp.value = vals[i] || '';
+                if (i === 0) inp.placeholder = 'Type name';
+                if (i === 1) inp.placeholder = '0-100';
+                if (i === 2) inp.placeholder = 'seconds';
+                if (i === 3) inp.placeholder = '0-100';
+                if (i === 4) { inp.placeholder = '1-5'; inp.min = '1'; inp.max = '5'; inp.step = '0.1'; }
+                if (i === 5) inp.placeholder = '0-100';
+                td.appendChild(inp);
+                tr.appendChild(td);
+            }
+            var delTd = document.createElement('td');
+            delTd.style.border = 'none';
+            var delBtn = document.createElement('button');
+            delBtn.textContent = '✕';
+            delBtn.className = 'btn';
+            delBtn.style.padding = '0.2rem 0.5rem';
+            delBtn.style.fontSize = '0.75rem';
+            delBtn.addEventListener('click', function() { tr.remove(); });
+            delTd.appendChild(delBtn);
+            tr.appendChild(delTd);
+            document.getElementById('resultsBody').appendChild(tr);
+        };
+
+        // Add 3 empty rows by default
+        for (var r = 0; r < 3; r++) addResultRow();
+
+        function getResultsData() {
+            var rows = document.getElementById('resultsBody').querySelectorAll('tr');
+            var data = [];
+            rows.forEach(function(tr) {
+                var inputs = tr.querySelectorAll('input');
+                if (inputs[0].value.trim()) {
+                    data.push({
+                        type: inputs[0].value.trim(),
+                        solveRate: parseFloat(inputs[1].value) || 0,
+                        avgTime: parseFloat(inputs[2].value) || 0,
+                        botResist: parseFloat(inputs[3].value) || 0,
+                        satisfaction: parseFloat(inputs[4].value) || 0,
+                        errorRate: parseFloat(inputs[5].value) || 0
+                    });
+                }
+            });
+            return data;
+        }
+
+        function generatePaper() {
+            var data = getResultsData();
+            var title = document.getElementById('title').value || 'Untitled Research Paper';
+            var authors = document.getElementById('authors').value || 'Anonymous';
+            var affiliation = document.getElementById('affiliation').value;
+            var keywords = document.getElementById('keywords').value;
+            var abstract = document.getElementById('abstract').value;
+            var studyType = document.getElementById('studyType').value;
+            var sampleSize = document.getElementById('sampleSize').value || 'N/A';
+            var methodology = document.getElementById('methodology').value;
+            var demographics = document.getElementById('demographics').value;
+            var duration = document.getElementById('duration').value;
+            var alpha = document.getElementById('alpha').value;
+            var findings = document.getElementById('findings').value;
+            var keyFindings = document.getElementById('keyFindings').value;
+            var limitations = document.getElementById('limitations').value;
+            var futureWork = document.getElementById('futureWork').value;
+            var conclusion = document.getElementById('conclusion').value;
+
+            var statMethods = [];
+            var sel = document.getElementById('statMethod');
+            for (var i = 0; i < sel.options.length; i++) {
+                if (sel.options[i].selected) statMethods.push(sel.options[i].text);
+            }
+
+            var studyTypeLabels = { between: 'between-subjects', within: 'within-subjects', mixed: 'mixed', observational: 'observational' };
+
+            var html = '';
+            html += '<h1>' + esc(title) + '</h1>';
+            html += '<p class="authors">' + esc(authors) + '</p>';
+            if (affiliation) html += '<p class="authors" style="font-size:0.85rem;">' + esc(affiliation) + '</p>';
+
+            if (abstract) {
+                html += '<h2>Abstract</h2>';
+                html += '<div class="abstract">' + esc(abstract) + '</div>';
+            }
+            if (keywords) {
+                html += '<p class="keywords"><strong>Keywords:</strong> ' + esc(keywords) + '</p>';
+            }
+
+            // 1. Introduction (auto-generated)
+            html += '<h2>1. Introduction</h2>';
+            html += '<p>CAPTCHA systems remain a critical defense mechanism for distinguishing human users from automated bots on the web. ';
+            html += 'As bot sophistication increases, traditional CAPTCHA approaches face growing challenges in maintaining security ';
+            html += 'without degrading user experience. This study investigates ';
+            if (data.length > 0) {
+                html += 'the comparative performance of ' + data.length + ' CAPTCHA implementations';
+            } else {
+                html += 'CAPTCHA system performance';
+            }
+            html += ' using a ' + (studyTypeLabels[studyType] || studyType) + ' experimental design';
+            html += sampleSize !== 'N/A' ? ' with ' + esc(sampleSize) + ' participants.' : '.';
+            html += '</p>';
+
+            // 2. Methodology
+            html += '<h2>2. Methodology</h2>';
+            html += '<h3>2.1 Study Design</h3>';
+            html += '<p>A ' + (studyTypeLabels[studyType] || studyType) + ' design was employed';
+            if (duration) html += ' over a period of ' + esc(duration);
+            html += '. ';
+            if (sampleSize !== 'N/A') html += 'A total of ' + esc(sampleSize) + ' participants were recruited for the study. ';
+            html += '</p>';
+            if (methodology) {
+                html += '<h3>2.2 Procedure</h3>';
+                html += '<p>' + esc(methodology) + '</p>';
+            }
+            if (demographics) {
+                html += '<h3>2.3 Participants</h3>';
+                html += '<p>' + esc(demographics) + '</p>';
+            }
+            if (data.length > 0) {
+                html += '<h3>2.4 Conditions</h3>';
+                html += '<p>The following CAPTCHA types were evaluated: ' + data.map(function(d) { return esc(d.type); }).join(', ') + '.</p>';
+            }
+
+            // 3. Results
+            html += '<h2>3. Results</h2>';
+            if (statMethods.length > 0) {
+                html += '<p>Statistical analysis was performed using ' + statMethods.join(', ') + ' with significance level α = ' + alpha + '.</p>';
+            }
+
+            if (data.length > 0) {
+                // Results table
+                html += '<h3>3.1 Performance Metrics</h3>';
+                html += '<table><thead><tr><th>CAPTCHA Type</th><th>Solve Rate (%)</th><th>Avg. Time (s)</th><th>Bot Resistance (%)</th><th>Satisfaction (1–5)</th><th>Error Rate (%)</th></tr></thead><tbody>';
+                data.forEach(function(d) {
+                    html += '<tr><td>' + esc(d.type) + '</td><td>' + d.solveRate.toFixed(1) + '</td><td>' + d.avgTime.toFixed(1) + '</td><td>' + d.botResist.toFixed(1) + '</td><td>' + d.satisfaction.toFixed(1) + '</td><td>' + d.errorRate.toFixed(1) + '</td></tr>';
+                });
+                html += '</tbody></table>';
+                html += '<p style="font-size:0.85rem;color:#666;text-align:center;"><em>Table 1: Summary of performance metrics across CAPTCHA types.</em></p>';
+
+                // Bar chart: Solve Rate
+                html += '<div class="figure"><canvas id="chartSolveRate" width="500" height="250"></canvas>';
+                html += '<p class="caption">Figure 1: Human solve rates by CAPTCHA type.</p></div>';
+
+                // Bar chart: Bot Resistance vs Solve Rate
+                html += '<div class="figure"><canvas id="chartComparison" width="500" height="250"></canvas>';
+                html += '<p class="caption">Figure 2: Bot resistance vs. human solve rate comparison.</p></div>';
+
+                // Bar chart: User Satisfaction
+                html += '<div class="figure"><canvas id="chartSatisfaction" width="500" height="250"></canvas>';
+                html += '<p class="caption">Figure 3: Mean user satisfaction ratings (1–5 scale).</p></div>';
+
+                // Compute some stats
+                var bestSolve = data.reduce(function(a, b) { return a.solveRate > b.solveRate ? a : b; });
+                var bestResist = data.reduce(function(a, b) { return a.botResist > b.botResist ? a : b; });
+                var bestSat = data.reduce(function(a, b) { return a.satisfaction > b.satisfaction ? a : b; });
+                var fastestTime = data.reduce(function(a, b) { return a.avgTime < b.avgTime ? a : b; });
+
+                html += '<h3>3.2 Key Observations</h3>';
+                html += '<p>' + esc(bestSolve.type) + ' achieved the highest human solve rate at ' + bestSolve.solveRate.toFixed(1) + '%, ';
+                html += 'while ' + esc(bestResist.type) + ' demonstrated the strongest bot resistance at ' + bestResist.botResist.toFixed(1) + '%. ';
+                html += esc(fastestTime.type) + ' had the fastest average solve time of ' + fastestTime.avgTime.toFixed(1) + ' seconds. ';
+                html += esc(bestSat.type) + ' received the highest user satisfaction rating of ' + bestSat.satisfaction.toFixed(1) + '/5.</p>';
+            }
+
+            if (findings) {
+                html += '<h3>3.3 Additional Findings</h3>';
+                html += '<p>' + esc(findings) + '</p>';
+            }
+
+            // 4. Discussion
+            html += '<h2>4. Discussion</h2>';
+            if (keyFindings) {
+                html += '<p>' + esc(keyFindings) + '</p>';
+            }
+            if (data.length > 0) {
+                var avgSolve = data.reduce(function(s, d) { return s + d.solveRate; }, 0) / data.length;
+                var avgResist = data.reduce(function(s, d) { return s + d.botResist; }, 0) / data.length;
+                html += '<p>Across all ' + data.length + ' conditions, the mean solve rate was ' + avgSolve.toFixed(1) + '% ';
+                html += 'with a mean bot resistance of ' + avgResist.toFixed(1) + '%. ';
+                html += 'These results suggest a generally inverse relationship between security strictness and user accessibility, ';
+                html += 'consistent with prior literature on the security-usability tradeoff in CAPTCHA design.</p>';
+            }
+
+            if (limitations) {
+                html += '<h3>4.1 Limitations</h3>';
+                html += '<p>' + esc(limitations) + '</p>';
+            }
+            if (futureWork) {
+                html += '<h3>4.2 Future Work</h3>';
+                html += '<p>' + esc(futureWork) + '</p>';
+            }
+
+            // 5. Conclusion
+            html += '<h2>5. Conclusion</h2>';
+            if (conclusion) {
+                html += '<p>' + esc(conclusion) + '</p>';
+            } else if (data.length > 0) {
+                html += '<p>This study evaluated ' + data.length + ' CAPTCHA implementations across security and usability dimensions. ';
+                html += 'The findings highlight the importance of balancing bot resistance with user experience when selecting CAPTCHA solutions for web applications.</p>';
+            }
+
+            // 6. References (template)
+            html += '<h2>References</h2>';
+            html += '<div class="ref-list">';
+            html += '<p>[1] von Ahn, L., Blum, M., Hopper, N.J., & Langford, J. (2003). CAPTCHA: Using Hard AI Problems for Security. <em>EUROCRYPT 2003</em>.</p>';
+            html += '<p>[2] Bursztein, E., Martin, M., & Mitchell, J. (2011). Text-based CAPTCHA Strengths and Weaknesses. <em>ACM CCS 2011</em>.</p>';
+            html += '<p>[3] Sivakorn, S., Polakis, I., & Keromytis, A.D. (2016). I am Robot: (Deep) Learning to Break Semantic Image CAPTCHAs. <em>IEEE Euro S&P</em>.</p>';
+            html += '<p>[4] Gao, H., et al. (2017). Research on the Security of Visual Reasoning CAPTCHA. <em>Computers & Security</em>, 68, 185-199.</p>';
+            html += '</div>';
+
+            document.getElementById('paperPreview').innerHTML = html;
+
+            // Draw charts after DOM update
+            setTimeout(function() { drawCharts(data); }, 100);
+        }
+
+        function esc(s) { return sanitize(s || ''); }
+
+        function drawCharts(data) {
+            if (!data.length) return;
+            var colors = ['#58a6ff', '#3fb950', '#f0883e', '#bc8cff', '#f85149', '#39d2c0', '#d29922'];
+
+            // Chart 1: Solve Rate bar chart
+            drawBarChart('chartSolveRate', data.map(function(d) { return d.type; }),
+                [{ label: 'Solve Rate (%)', values: data.map(function(d) { return d.solveRate; }), color: '#58a6ff' }], 100);
+
+            // Chart 2: Bot Resistance vs Solve Rate grouped bar
+            drawBarChart('chartComparison', data.map(function(d) { return d.type; }),
+                [
+                    { label: 'Solve Rate (%)', values: data.map(function(d) { return d.solveRate; }), color: '#58a6ff' },
+                    { label: 'Bot Resistance (%)', values: data.map(function(d) { return d.botResist; }), color: '#3fb950' }
+                ], 100);
+
+            // Chart 3: Satisfaction bar chart
+            drawBarChart('chartSatisfaction', data.map(function(d) { return d.type; }),
+                [{ label: 'Satisfaction', values: data.map(function(d) { return d.satisfaction; }), color: '#f0883e' }], 5);
+        }
+
+        function drawBarChart(canvasId, labels, series, maxVal) {
+            var canvas = document.getElementById(canvasId);
+            if (!canvas) return;
+            var ctx = canvas.getContext('2d');
+            var W = canvas.width, H = canvas.height;
+            var pad = { top: 30, right: 20, bottom: 60, left: 50 };
+            var chartW = W - pad.left - pad.right;
+            var chartH = H - pad.top - pad.bottom;
+
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(0, 0, W, H);
+
+            // Y axis
+            ctx.strokeStyle = '#ccc';
+            ctx.fillStyle = '#666';
+            ctx.font = '11px sans-serif';
+            ctx.textAlign = 'right';
+            for (var i = 0; i <= 5; i++) {
+                var y = pad.top + chartH - (i / 5) * chartH;
+                var val = (maxVal * i / 5).toFixed(maxVal <= 5 ? 1 : 0);
+                ctx.beginPath();
+                ctx.moveTo(pad.left, y);
+                ctx.lineTo(W - pad.right, y);
+                ctx.stroke();
+                ctx.fillText(val, pad.left - 5, y + 4);
+            }
+
+            // Bars
+            var groupCount = labels.length;
+            var barCount = series.length;
+            var groupWidth = chartW / groupCount;
+            var barWidth = Math.min(groupWidth * 0.7 / barCount, 40);
+            var totalBarWidth = barWidth * barCount;
+
+            series.forEach(function(s, si) {
+                ctx.fillStyle = s.color;
+                s.values.forEach(function(v, vi) {
+                    var x = pad.left + vi * groupWidth + (groupWidth - totalBarWidth) / 2 + si * barWidth;
+                    var barH = (v / maxVal) * chartH;
+                    var y = pad.top + chartH - barH;
+                    ctx.fillRect(x, y, barWidth - 2, barH);
+
+                    // Value label
+                    ctx.fillStyle = '#333';
+                    ctx.font = '10px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(v.toFixed(maxVal <= 5 ? 1 : 0), x + (barWidth - 2) / 2, y - 4);
+                    ctx.fillStyle = s.color;
+                });
+            });
+
+            // X labels
+            ctx.fillStyle = '#333';
+            ctx.font = '11px sans-serif';
+            ctx.textAlign = 'center';
+            labels.forEach(function(lbl, i) {
+                var x = pad.left + i * groupWidth + groupWidth / 2;
+                // Wrap long labels
+                var words = lbl.split(' ');
+                var line1 = words.slice(0, Math.ceil(words.length / 2)).join(' ');
+                var line2 = words.slice(Math.ceil(words.length / 2)).join(' ');
+                ctx.fillText(line1, x, pad.top + chartH + 15);
+                if (line2) ctx.fillText(line2, x, pad.top + chartH + 27);
+            });
+
+            // Legend
+            if (series.length > 1) {
+                var lx = pad.left + 10;
+                var ly = 10;
+                series.forEach(function(s, si) {
+                    ctx.fillStyle = s.color;
+                    ctx.fillRect(lx, ly, 12, 12);
+                    ctx.fillStyle = '#333';
+                    ctx.font = '11px sans-serif';
+                    ctx.textAlign = 'left';
+                    ctx.fillText(s.label, lx + 16, ly + 10);
+                    lx += ctx.measureText(s.label).width + 32;
+                });
+            }
+        }
+
+        // Export functions
+        window.exportHTML = function() {
+            var preview = document.getElementById('paperPreview');
+            var blob = new Blob(['<!DOCTYPE html><html><head><meta charset="UTF-8"><title>' + esc(document.getElementById('title').value) + '</title><style>body{font-family:"Times New Roman",serif;max-width:800px;margin:2rem auto;padding:0 1rem;line-height:1.8;color:#111;}h1{text-align:center;font-size:1.5rem;}h2{border-bottom:1px solid #ccc;padding-bottom:0.25rem;margin-top:1.5rem;}table{width:100%;border-collapse:collapse;margin:1rem 0;}th,td{padding:0.4rem 0.6rem;border:1px solid #ccc;text-align:left;}th{background:#f0f0f0;}.authors{text-align:center;color:#555;font-style:italic;}.abstract{background:#f5f5f5;padding:1rem;border-left:3px solid #333;margin:1rem 0;}.keywords{font-size:0.85rem;color:#666;}.ref-list p{margin:0.3rem 0;font-size:0.9rem;}.figure{text-align:center;margin:1.5rem 0;}.caption{font-size:0.85rem;color:#555;font-style:italic;}</style></head><body>' + preview.innerHTML + '</body></html>'], { type: 'text/html' });
+            var a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'research-paper.html';
+            a.click();
+            URL.revokeObjectURL(a.href);
+        };
+
+        window.copyText = function() {
+            var preview = document.getElementById('paperPreview');
+            var text = preview.innerText || preview.textContent;
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(text);
+            } else {
+                var ta = document.createElement('textarea');
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+            }
+            alert('Plain text copied to clipboard!');
+        };
+
+        window.exportLaTeX = function() {
+            var data = getResultsData();
+            var title = document.getElementById('title').value || 'Untitled';
+            var authors = document.getElementById('authors').value || 'Anonymous';
+            var abstract = document.getElementById('abstract').value || '';
+            var keywords = document.getElementById('keywords').value || '';
+
+            var tex = '\\documentclass{article}\n\\usepackage{booktabs}\n\\usepackage{graphicx}\n\n';
+            tex += '\\title{' + texEsc(title) + '}\n';
+            tex += '\\author{' + texEsc(authors) + '}\n';
+            tex += '\\date{\\today}\n\n\\begin{document}\n\\maketitle\n\n';
+
+            if (abstract) {
+                tex += '\\begin{abstract}\n' + texEsc(abstract) + '\n\\end{abstract}\n\n';
+                if (keywords) tex += '\\textbf{Keywords:} ' + texEsc(keywords) + '\n\n';
+            }
+
+            tex += '\\section{Introduction}\n% TODO: Write introduction\n\n';
+            tex += '\\section{Methodology}\n% TODO: Describe methodology\n\n';
+            tex += '\\section{Results}\n\n';
+
+            if (data.length > 0) {
+                tex += '\\begin{table}[h]\n\\centering\n\\caption{Performance metrics across CAPTCHA types.}\n';
+                tex += '\\begin{tabular}{lccccc}\n\\toprule\n';
+                tex += 'Type & Solve (\\%) & Time (s) & Bot Resist (\\%) & Satisfaction & Error (\\%) \\\\\n\\midrule\n';
+                data.forEach(function(d) {
+                    tex += texEsc(d.type) + ' & ' + d.solveRate.toFixed(1) + ' & ' + d.avgTime.toFixed(1) + ' & ' + d.botResist.toFixed(1) + ' & ' + d.satisfaction.toFixed(1) + ' & ' + d.errorRate.toFixed(1) + ' \\\\\n';
+                });
+                tex += '\\bottomrule\n\\end{tabular}\n\\end{table}\n\n';
+            }
+
+            tex += '\\section{Discussion}\n% TODO: Discuss findings\n\n';
+            tex += '\\section{Conclusion}\n% TODO: Write conclusion\n\n';
+            tex += '\\bibliographystyle{plain}\n\\bibliography{references}\n\n\\end{document}\n';
+
+            var blob = new Blob([tex], { type: 'text/x-latex' });
+            var a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'research-paper.tex';
+            a.click();
+            URL.revokeObjectURL(a.href);
+        };
+
+        function texEsc(s) {
+            return (s || '').replace(/[\\{}$&#^_%~]/g, function(c) { return '\\' + c; });
+        }
+
+        // Wizard step click
+        steps.forEach(function(step) {
+            step.addEventListener('click', function() {
+                goStep(parseInt(step.dataset.step));
+            });
+        });
+    })();
+    </script>
+</body>
+</html>

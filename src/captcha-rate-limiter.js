@@ -344,9 +344,10 @@ function createCaptchaRateLimiter(options) {
     entry.lastLeak = now;
     entry.lastSeen = now;
 
-    if (entry.water >= queueSize) {
-      // Queue full — reject
-      var excess = entry.water - queueSize + 1;
+    if (entry.water + 1 > queueSize) {
+      // Queue full — reject (use +1 to prevent fractional water overflow,
+      // consistent with consume()'s batch check: water + count > queueSize)
+      var excess = entry.water + 1 - queueSize;
       var retryAfterMs = Math.ceil((excess / leakRate) * 1000);
       return {
         allowed: false,

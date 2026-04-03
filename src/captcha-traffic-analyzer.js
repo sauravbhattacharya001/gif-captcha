@@ -1,5 +1,8 @@
 'use strict';
 
+var _cryptoUtils = require('./crypto-utils');
+var secureRandomInt = _cryptoUtils.secureRandomInt;
+
 /**
  * Captcha Traffic Analyzer — monitors aggregate CAPTCHA traffic patterns
  * over sliding time windows to detect system-level anomalies.
@@ -104,7 +107,7 @@ function createCaptchaTrafficAnalyzer(options) {
       stats._reservoir.push(value);
     } else {
       // Replace with decreasing probability to maintain uniform sample
-      var j = Math.floor(Math.random() * stats._seen);
+      var j = secureRandomInt(stats._seen);
       if (j < stats._reservoirCap) {
         stats._reservoir[j] = value;
       }

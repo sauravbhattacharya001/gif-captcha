@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'unsafe-inline'; img-src https: data:; frame-ancestors 'none'; base-uri 'self'; form-action 'none';">
+    <meta name="referrer" content="no-referrer">
+    <title>GIF CAPTCHA — Speed Challenge Arena</title>
+    <link rel="stylesheet" href="shared.css">
+    <style>
+        .container { max-width: 750px; }
+
+        .arena-header { text-align: center; margin-bottom: 2rem; }
+        .arena-header h1 { font-size: 2rem; margin-bottom: 0.3rem; }
+        .arena-header p { color: var(--muted); }
+
+        /* HUD */
+        .hud {
+            display: flex; justify-content: space-between; align-items: center;
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 10px; padding: 1rem 1.5rem; margin-bottom: 1.5rem;
+        }
+        .hud-item { text-align: center; }
+        .hud-label { font-size: 0.7rem; text-transform: uppercase; color: var(--muted); letter-spacing: 0.05em; }
+        .hud-value { font-size: 1.8rem; font-weight: 700; color: var(--text); margin-top: 0.1rem; }
+        .hud-value.timer { color: var(--accent); }
+        .hud-value.timer.warning { color: var(--yellow); }
+        .hud-value.timer.critical { color: var(--red); animation: pulse 0.5s ease-in-out infinite alternate; }
+        .hud-value.score { color: var(--green); }
+        .hud-value.streak { color: var(--purple); }
+        .hud-value.combo { color: var(--orange); }
+
+        @keyframes pulse { to { opacity: 0.5; } }
+
+        /* Challenge area */
+        .challenge-area {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 12px; padding: 2rem; text-align: center;
+            min-height: 300px; display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+        }
+
+        /* GIF display */
+        .gif-frame {
+            width: 200px; height: 200px; border-radius: 10px;
+            border: 2px solid var(--border); margin-bottom: 1.5rem;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 4rem; background: var(--bg); position: relative;
+            overflow: hidden;
+        }
+        .gif-frame canvas { width: 100%; height: 100%; }
+
+        /* Difficulty badge */
+        .diff-badge {
+            display: inline-block; padding: 0.2rem 0.7rem; border-radius: 12px;
+            font-size: 0.7rem; font-weight: 600; margin-bottom: 1rem;
+        }
+        .diff-easy { background: var(--green-bg); color: var(--green); }
+        .diff-medium { background: var(--yellow-bg); color: var(--yellow); }
+        .diff-hard { background: var(--red-bg); color: var(--red); }
+        .diff-insane { background: var(--purple-bg); color: var(--purple); }
+
+        /* Answer options */
+        .options { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; width: 100%; max-width: 400px; }
+        .option-btn {
+            padding: 0.7rem 1rem; background: var(--bg); border: 1px solid var(--border);
+            border-radius: 8px; color: var(--text); font-size: 0.95rem;
+            cursor: pointer; transition: all 0.15s;
+        }
+        .option-btn:hover { border-color: var(--accent); background: rgba(88,166,255,0.08); }
+        .option-btn.correct { border-color: var(--green); background: var(--green-bg); }
+        .option-btn.wrong { border-color: var(--red); background: var(--red-bg); }
+
+        /* Mode select */
+        .mode-select { display: flex; gap: 1rem; margin: 1.5rem 0; flex-wrap: wrap; justify-content: center; }
+        .mode-card {
+            background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+            padding: 1.2rem 1.5rem; cursor: pointer; transition: all 0.2s; text-align: center; width: 140px;
+        }
+        .mode-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+        .mode-card .mode-icon { font-size: 2rem; margin-bottom: 0.5rem; }
+        .mode-card .mode-name { font-weight: 600; font-size: 0.95rem; }
+        .mode-card .mode-desc { font-size: 0.7rem; color: var(--muted); margin-top: 0.3rem; }
+
+        /* Feedback flash */
+        .feedback {
+            position: fixed; top: 20%; left: 50%; transform: translateX(-50%);
+            font-size: 3rem; font-weight: 800; pointer-events: none;
+            opacity: 0; transition: opacity 0.3s;
+            text-shadow: 0 0 20px rgba(0,0,0,0.8);
+        }
+        .feedback.show { opacity: 1; }
+        .feedback.correct-fb { color: var(--green); }
+        .feedback.wrong-fb { color: var(--red); }
+
+        /* Results */
+        .results { text-align: center; }
+        .results h2 { font-size: 1.5rem; margin-bottom: 1rem; }
+        .final-score { font-size: 4rem; font-weight: 800; color: var(--green); margin: 0.5rem 0; }
+        .stat-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 1rem; margin: 1.5rem 0; }
+        .stat-box {
+            background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 1rem;
+        }
+        .stat-box .stat-val { font-size: 1.5rem; font-weight: 700; color: var(--text); }
+        .stat-box .stat-lbl { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; margin-top: 0.2rem; }
+
+        .rank-badge {
+            display: inline-block; padding: 0.4rem 1.2rem; border-radius: 20px;
+            font-size: 1rem; font-weight: 700; margin: 1rem 0;
+        }
+        .rank-bronze { background: rgba(205,127,50,0.2); color: #cd7f32; }
+        .rank-silver { background: rgba(192,192,192,0.2); color: #c0c0c0; }
+        .rank-gold { background: rgba(255,215,0,0.2); color: #ffd700; }
+        .rank-diamond { background: var(--purple-bg); color: var(--purple); }
+        .rank-legend { background: var(--red-bg); color: var(--red); }
+
+        .history-table { width: 100%; border-collapse: collapse; margin-top: 1rem; font-size: 0.85rem; }
+        .history-table th, .history-table td { padding: 0.5rem; text-align: center; border-bottom: 1px solid var(--border); }
+        .history-table th { color: var(--muted); font-weight: 600; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <header>
+        <a href="index.html" class="home-link">← Back to Case Study</a>
+    </header>
+    <main>
+        <div class="arena-header">
+            <h1>⚡ Speed Challenge Arena</h1>
+            <p>Solve as many CAPTCHAs as possible before time runs out. Streaks earn combo multipliers!</p>
+        </div>
+        <div id="app"></div>
+    </main>
+    <footer>
+        <p>GIF CAPTCHA Research Study — Speed Challenge Arena</p>
+    </footer>
+</div>
+
+<div class="feedback" id="feedback"></div>
+
+<script>
+const APP = document.getElementById('app');
+const FEEDBACK = document.getElementById('feedback');
+
+// --- Shape & pattern generator ---
+const SHAPES = ['circle','square','triangle','star','diamond','hexagon','cross','arrow','heart','moon'];
+const COLORS = ['#f85149','#58a6ff','#3fb950','#d29922','#bc8cff','#f0883e','#39d2c0','#ff7eb6','#79b8ff','#e6edf3'];
+
+function drawShape(ctx, shape, cx, cy, size, color, angle) {
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(angle);
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    switch(shape) {
+        case 'circle':
+            ctx.arc(0,0,size,0,Math.PI*2); break;
+        case 'square':
+            ctx.rect(-size,-size,size*2,size*2); break;
+        case 'triangle':
+            ctx.moveTo(0,-size); ctx.lineTo(size,size); ctx.lineTo(-size,size); ctx.closePath(); break;
+        case 'star':
+            for(let i=0;i<5;i++){const a=Math.PI*2*i/5-Math.PI/2;const b=a+Math.PI/5;ctx.lineTo(Math.cos(a)*size,Math.sin(a)*size);ctx.lineTo(Math.cos(b)*size*0.4,Math.sin(b)*size*0.4);}ctx.closePath();break;
+        case 'diamond':
+            ctx.moveTo(0,-size);ctx.lineTo(size,0);ctx.lineTo(0,size);ctx.lineTo(-size,0);ctx.closePath();break;
+        case 'hexagon':
+            for(let i=0;i<6;i++){const a=Math.PI*2*i/6;ctx.lineTo(Math.cos(a)*size,Math.sin(a)*size);}ctx.closePath();break;
+        case 'cross':
+            const w=size*0.35;ctx.rect(-w,-size,w*2,size*2);ctx.rect(-size,-w,size*2,w*2);break;
+        case 'arrow':
+            ctx.moveTo(0,-size);ctx.lineTo(size,size*0.3);ctx.lineTo(size*0.3,size*0.3);ctx.lineTo(size*0.3,size);ctx.lineTo(-size*0.3,size);ctx.lineTo(-size*0.3,size*0.3);ctx.lineTo(-size,size*0.3);ctx.closePath();break;
+        case 'heart':
+            ctx.moveTo(0,size*0.7);ctx.bezierCurveTo(-size,0,-size,-size*0.7,0,-size*0.3);ctx.bezierCurveTo(size,-size*0.7,size,0,0,size*0.7);break;
+        case 'moon':
+            ctx.arc(0,0,size,0,Math.PI*2);ctx.fill();ctx.globalCompositeOperation='destination-out';ctx.beginPath();ctx.arc(size*0.4,-size*0.2,size*0.8,0,Math.PI*2);break;
+    }
+    ctx.fill();
+    ctx.restore();
+}
+
+// Difficulty settings
+const DIFFICULTIES = {
+    easy:   { numShapes: 3, numDistractors: 2, animSpeed: 0.3, optionCount: 3, label: 'Easy',   cls: 'diff-easy' },
+    medium: { numShapes: 4, numDistractors: 4, animSpeed: 0.5, optionCount: 4, label: 'Medium', cls: 'diff-medium' },
+    hard:   { numShapes: 5, numDistractors: 6, animSpeed: 0.8, optionCount: 4, label: 'Hard',   cls: 'diff-hard' },
+    insane: { numShapes: 6, numDistractors: 8, animSpeed: 1.2, optionCount: 5, label: 'Insane', cls: 'diff-insane' },
+};
+
+// Game modes
+const MODES = [
+    { id:'blitz60', icon:'⏱️', name:'Blitz 60', desc:'60 seconds', time:60 },
+    { id:'sprint30', icon:'🏃', name:'Sprint 30', desc:'30 seconds', time:30 },
+    { id:'marathon', icon:'🏔️', name:'Marathon', desc:'120 seconds', time:120 },
+    { id:'sudden',  icon:'💀', name:'Sudden Death', desc:'1 mistake = over', time:90 },
+];
+
+// State
+let state = {
+    screen: 'menu', mode: null, timeLeft: 0, score: 0, streak: 0, bestStreak: 0,
+    combo: 1, solved: 0, wrong: 0, challenge: null, timerInterval: null, animFrame: null,
+    history: JSON.parse(localStorage.getItem('arena-history')||'[]'),
+};
+
+function pick(arr) { return arr[Math.floor(Math.random()*arr.length)]; }
+function shuffle(a) { for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a; }
+
+// Determine difficulty based on score
+function getDifficulty(score) {
+    if (score >= 800) return 'insane';
+    if (score >= 400) return 'hard';
+    if (score >= 150) return 'medium';
+    return 'easy';
+}
+
+// Generate a challenge
+function generateChallenge() {
+    const diff = DIFFICULTIES[getDifficulty(state.score)];
+    // Pick target shape + color
+    const targetShape = pick(SHAPES);
+    const targetColor = pick(COLORS);
+    // Create scene objects
+    const objects = [];
+    // Target (multiple copies)
+    const targetCount = 1 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < targetCount; i++) {
+        objects.push({ shape: targetShape, color: targetColor, isTarget: true,
+            x: 30 + Math.random()*140, y: 30 + Math.random()*140,
+            size: 12 + Math.random()*10, angle: Math.random()*Math.PI*2,
+            vx: (Math.random()-0.5)*diff.animSpeed*2, vy: (Math.random()-0.5)*diff.animSpeed*2,
+            va: (Math.random()-0.5)*0.03
+        });
+    }
+    // Distractors
+    for (let i = 0; i < diff.numDistractors; i++) {
+        let s,c;
+        do { s = pick(SHAPES); c = pick(COLORS); } while(s === targetShape && c === targetColor);
+        objects.push({ shape: s, color: c, isTarget: false,
+            x: 30 + Math.random()*140, y: 30 + Math.random()*140,
+            size: 12 + Math.random()*10, angle: Math.random()*Math.PI*2,
+            vx: (Math.random()-0.5)*diff.animSpeed*2, vy: (Math.random()-0.5)*diff.animSpeed*2,
+            va: (Math.random()-0.5)*0.03
+        });
+    }
+
+    // Question: "How many [color] [shape]s?"
+    const question = `How many ${targetColor === '#f85149' ? 'red' : targetColor === '#58a6ff' ? 'blue' : targetColor === '#3fb950' ? 'green' : targetColor === '#d29922' ? 'yellow' : targetColor === '#bc8cff' ? 'purple' : targetColor === '#f0883e' ? 'orange' : targetColor === '#39d2c0' ? 'teal' : targetColor === '#ff7eb6' ? 'pink' : targetColor === '#79b8ff' ? 'sky blue' : 'white'} ${targetShape}s?`;
+    const answer = targetCount;
+
+    // Generate options
+    const opts = new Set([answer]);
+    while (opts.size < diff.optionCount) { opts.add(Math.max(0, answer + Math.floor(Math.random()*5) - 2)); }
+    const options = shuffle([...opts]);
+
+    return { objects, question, answer, options, difficulty: getDifficulty(state.score), diff };
+}
+
+// Render
+function render() {
+    switch(state.screen) {
+        case 'menu': renderMenu(); break;
+        case 'playing': renderPlaying(); break;
+        case 'results': renderResults(); break;
+    }
+}
+
+function renderMenu() {
+    APP.innerHTML = `
+        <div style="text-align:center;margin-bottom:2rem;">
+            <p style="color:var(--muted);margin-bottom:1.5rem;">Choose your challenge mode</p>
+            <div class="mode-select">
+                ${MODES.map(m => `
+                    <div class="mode-card" onclick="startGame('${m.id}')">
+                        <div class="mode-icon">${m.icon}</div>
+                        <div class="mode-name">${m.name}</div>
+                        <div class="mode-desc">${m.desc}</div>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+        ${state.history.length ? `
+        <div style="margin-top:1rem;">
+            <h3 style="font-size:1rem;margin-bottom:0.5rem;">📜 Recent Runs</h3>
+            <table class="history-table">
+                <tr><th>Mode</th><th>Score</th><th>Solved</th><th>Streak</th><th>Rank</th></tr>
+                ${state.history.slice(0,8).map(h => `
+                    <tr><td>${h.mode}</td><td>${h.score}</td><td>${h.solved}</td><td>${h.streak}</td><td>${h.rank}</td></tr>
+                `).join('')}
+            </table>
+        </div>` : ''}
+    `;
+}
+
+function renderPlaying() {
+    const ch = state.challenge;
+    const timerCls = state.timeLeft <= 5 ? 'critical' : state.timeLeft <= 15 ? 'warning' : '';
+    APP.innerHTML = `
+        <div class="hud">
+            <div class="hud-item"><div class="hud-label">Time</div><div class="hud-value timer ${timerCls}">${state.timeLeft}s</div></div>
+            <div class="hud-item"><div class="hud-label">Score</div><div class="hud-value score">${state.score}</div></div>
+            <div class="hud-item"><div class="hud-label">Streak</div><div class="hud-value streak">🔥 ${state.streak}</div></div>
+            <div class="hud-item"><div class="hud-label">Combo</div><div class="hud-value combo">${state.combo}x</div></div>
+        </div>
+        <div class="challenge-area">
+            <span class="diff-badge ${ch.diff.cls}">${ch.diff.label}</span>
+            <div class="gif-frame"><canvas id="scene" width="200" height="200"></canvas></div>
+            <p style="margin-bottom:1rem;font-weight:600;">${ch.question}</p>
+            <div class="options">
+                ${ch.options.map(o => `<button class="option-btn" onclick="answer(${o})">${o}</button>`).join('')}
+            </div>
+        </div>
+    `;
+    startAnimation();
+}
+
+function renderResults() {
+    const accuracy = state.solved + state.wrong > 0 ? Math.round(state.solved / (state.solved + state.wrong) * 100) : 0;
+    const rank = getRank(state.score);
+    APP.innerHTML = `
+        <div class="results">
+            <h2>⏰ Time's Up!</h2>
+            <div class="final-score">${state.score}</div>
+            <div class="rank-badge ${rank.cls}">${rank.label}</div>
+            <div class="stat-grid">
+                <div class="stat-box"><div class="stat-val">${state.solved}</div><div class="stat-lbl">Solved</div></div>
+                <div class="stat-box"><div class="stat-val">${accuracy}%</div><div class="stat-lbl">Accuracy</div></div>
+                <div class="stat-box"><div class="stat-val">🔥 ${state.bestStreak}</div><div class="stat-lbl">Best Streak</div></div>
+            </div>
+            <button class="btn btn-primary" onclick="showMenu()" style="margin-top:1rem;">Play Again</button>
+        </div>
+    `;
+}
+
+function getRank(score) {
+    if (score >= 2000) return { label: '🏆 Legend', cls: 'rank-legend' };
+    if (score >= 1000) return { label: '💎 Diamond', cls: 'rank-diamond' };
+    if (score >= 500)  return { label: '🥇 Gold', cls: 'rank-gold' };
+    if (score >= 200)  return { label: '🥈 Silver', cls: 'rank-silver' };
+    return { label: '🥉 Bronze', cls: 'rank-bronze' };
+}
+
+// Animation
+function startAnimation() {
+    const canvas = document.getElementById('scene');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const objects = state.challenge.objects;
+
+    function frame() {
+        ctx.clearRect(0, 0, 200, 200);
+        // Noise dots
+        for (let i = 0; i < 15; i++) {
+            ctx.fillStyle = 'rgba(255,255,255,0.05)';
+            ctx.fillRect(Math.random()*200, Math.random()*200, 2, 2);
+        }
+        objects.forEach(o => {
+            o.x += o.vx; o.y += o.vy; o.angle += o.va;
+            if (o.x < 15 || o.x > 185) o.vx *= -1;
+            if (o.y < 15 || o.y > 185) o.vy *= -1;
+            drawShape(ctx, o.shape, o.x, o.y, o.size, o.color, o.angle);
+        });
+        state.animFrame = requestAnimationFrame(frame);
+    }
+    frame();
+}
+
+// Game logic
+window.startGame = function(modeId) {
+    const mode = MODES.find(m => m.id === modeId);
+    state.mode = mode;
+    state.timeLeft = mode.time;
+    state.score = 0; state.streak = 0; state.bestStreak = 0;
+    state.combo = 1; state.solved = 0; state.wrong = 0;
+    state.screen = 'playing';
+    state.challenge = generateChallenge();
+    render();
+    state.timerInterval = setInterval(() => {
+        state.timeLeft--;
+        const timerEl = document.querySelector('.hud-value.timer');
+        if (timerEl) {
+            timerEl.textContent = state.timeLeft + 's';
+            timerEl.className = 'hud-value timer ' + (state.timeLeft <= 5 ? 'critical' : state.timeLeft <= 15 ? 'warning' : '');
+        }
+        if (state.timeLeft <= 0) endGame();
+    }, 1000);
+};
+
+window.answer = function(val) {
+    const correct = val === state.challenge.answer;
+    // Flash feedback
+    FEEDBACK.textContent = correct ? '✓' : '✗';
+    FEEDBACK.className = 'feedback show ' + (correct ? 'correct-fb' : 'wrong-fb');
+    setTimeout(() => FEEDBACK.className = 'feedback', 400);
+
+    // Highlight button
+    document.querySelectorAll('.option-btn').forEach(b => {
+        if (parseInt(b.textContent) === state.challenge.answer) b.classList.add('correct');
+        else if (parseInt(b.textContent) === val && !correct) b.classList.add('wrong');
+        b.style.pointerEvents = 'none';
+    });
+
+    if (correct) {
+        state.streak++;
+        if (state.streak > state.bestStreak) state.bestStreak = state.streak;
+        state.combo = Math.min(5, 1 + Math.floor(state.streak / 3));
+        const base = state.challenge.difficulty === 'insane' ? 40 : state.challenge.difficulty === 'hard' ? 25 : state.challenge.difficulty === 'medium' ? 15 : 10;
+        state.score += base * state.combo;
+        state.solved++;
+    } else {
+        state.streak = 0;
+        state.combo = 1;
+        state.wrong++;
+        if (state.mode.id === 'sudden') { endGame(); return; }
+    }
+
+    setTimeout(() => {
+        if (state.animFrame) cancelAnimationFrame(state.animFrame);
+        state.challenge = generateChallenge();
+        render();
+    }, 350);
+};
+
+function endGame() {
+    clearInterval(state.timerInterval);
+    if (state.animFrame) cancelAnimationFrame(state.animFrame);
+    const rank = getRank(state.score);
+    state.history.unshift({ mode: state.mode.name, score: state.score, solved: state.solved, streak: state.bestStreak, rank: rank.label });
+    if (state.history.length > 20) state.history = state.history.slice(0, 20);
+    localStorage.setItem('arena-history', JSON.stringify(state.history));
+    state.screen = 'results';
+    render();
+}
+
+window.showMenu = function() {
+    state.screen = 'menu';
+    render();
+};
+
+// Init
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,1050 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'unsafe-inline'; img-src https: data:; frame-ancestors 'none'; base-uri 'self'; form-action 'none';">
+    <meta name="referrer" content="no-referrer">
+    <title>GIF CAPTCHA — Escape Room</title>
+    <link rel="stylesheet" href="shared.css">
+    <style>
+        .container { max-width: 800px; }
+
+        .room-header { text-align: center; margin-bottom: 1.5rem; }
+        .room-header h1 { font-size: 2rem; margin-bottom: 0.3rem; }
+        .room-header p { color: var(--muted); }
+
+        /* HUD */
+        .hud {
+            display: flex; justify-content: space-between; align-items: center;
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 10px; padding: 1rem 1.5rem; margin-bottom: 1.5rem;
+        }
+        .hud-item { text-align: center; }
+        .hud-label { font-size: 0.7rem; text-transform: uppercase; color: var(--muted); letter-spacing: 0.05em; }
+        .hud-value { font-size: 1.6rem; font-weight: 700; color: var(--text); margin-top: 0.1rem; }
+
+        /* Room canvas */
+        .room-view {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 12px; overflow: hidden; margin-bottom: 1.5rem;
+            position: relative;
+        }
+        .room-view canvas { display: block; width: 100%; height: 350px; }
+
+        /* Challenge panel */
+        .challenge-panel {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 12px; padding: 1.5rem; margin-bottom: 1.5rem;
+        }
+        .challenge-panel h3 { margin: 0 0 0.8rem; color: var(--accent); }
+        .challenge-desc { color: var(--muted); margin-bottom: 1rem; font-size: 0.9rem; }
+
+        /* Puzzle types */
+        .grid-puzzle {
+            display: grid; gap: 6px; margin: 0 auto 1rem;
+            justify-content: center;
+        }
+        .grid-cell {
+            width: 60px; height: 60px; border-radius: 8px;
+            border: 2px solid var(--border); cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.5rem; background: var(--bg);
+            transition: all 0.15s;
+        }
+        .grid-cell:hover { border-color: var(--accent); transform: scale(1.05); }
+        .grid-cell.selected { border-color: var(--green); background: var(--green-bg); }
+        .grid-cell.wrong { border-color: var(--red); background: var(--red-bg); animation: shake 0.3s; }
+        .grid-cell.correct { border-color: var(--green); background: var(--green-bg); }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-4px); }
+            75% { transform: translateX(4px); }
+        }
+
+        .text-input-row {
+            display: flex; gap: 0.5rem; justify-content: center; margin-bottom: 1rem;
+        }
+        .text-input-row input {
+            background: var(--bg); border: 1px solid var(--border); color: var(--text);
+            padding: 0.6rem 1rem; border-radius: 8px; font-size: 1.1rem;
+            text-align: center; width: 200px;
+        }
+        .text-input-row input:focus { border-color: var(--accent); outline: none; }
+
+        .sequence-display {
+            display: flex; gap: 8px; justify-content: center; margin-bottom: 1rem;
+            flex-wrap: wrap;
+        }
+        .seq-item {
+            width: 50px; height: 50px; border-radius: 8px;
+            border: 2px solid var(--border); display: flex;
+            align-items: center; justify-content: center;
+            font-size: 1.3rem; background: var(--bg);
+        }
+        .seq-item.highlight { border-color: var(--accent); background: rgba(88,166,255,0.15); }
+        .seq-item.placeholder { border-style: dashed; color: var(--muted); }
+
+        .option-btns {
+            display: flex; gap: 0.5rem; justify-content: center; flex-wrap: wrap;
+            margin-bottom: 1rem;
+        }
+        .option-btn {
+            padding: 0.5rem 1.2rem; border-radius: 8px; border: 1px solid var(--border);
+            background: var(--bg); color: var(--text); cursor: pointer; font-size: 1rem;
+            transition: all 0.15s;
+        }
+        .option-btn:hover { border-color: var(--accent); background: rgba(88,166,255,0.1); }
+
+        /* Inventory */
+        .inventory {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 12px; padding: 1rem 1.5rem;
+        }
+        .inventory h4 { margin: 0 0 0.5rem; color: var(--muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; }
+        .inv-items { display: flex; gap: 8px; flex-wrap: wrap; min-height: 40px; }
+        .inv-item {
+            background: var(--bg); border: 1px solid var(--border);
+            border-radius: 8px; padding: 0.4rem 0.8rem; font-size: 0.85rem;
+            display: flex; align-items: center; gap: 0.3rem;
+        }
+        .inv-item .emoji { font-size: 1.1rem; }
+
+        /* Timer */
+        .room-timer { color: var(--accent); font-family: monospace; }
+        .room-timer.warning { color: var(--yellow); }
+        .room-timer.critical { color: var(--red); animation: pulse 0.5s ease-in-out infinite alternate; }
+        @keyframes pulse { to { opacity: 0.5; } }
+
+        /* Progress bar */
+        .progress-bar { height: 4px; background: var(--border); border-radius: 2px; margin-bottom: 1.5rem; overflow: hidden; }
+        .progress-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--green)); transition: width 0.5s; border-radius: 2px; }
+
+        /* Door animation */
+        .door-open { text-align: center; padding: 3rem; }
+        .door-open .big-emoji { font-size: 5rem; animation: doorSwing 0.8s ease-out; }
+        @keyframes doorSwing { from { transform: rotateY(90deg); opacity: 0; } to { transform: rotateY(0); opacity: 1; } }
+
+        /* Results */
+        .results { text-align: center; }
+        .results h2 { font-size: 2rem; margin-bottom: 0.5rem; }
+        .results .final-time { font-size: 3rem; font-weight: 700; color: var(--green); }
+        .results .stats-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin: 1.5rem 0; }
+        .stat-card { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 1rem; }
+        .stat-card .stat-val { font-size: 1.5rem; font-weight: 700; color: var(--accent); }
+        .stat-card .stat-label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; margin-top: 0.2rem; }
+        .star-rating { font-size: 2rem; margin: 1rem 0; }
+
+        .btn-row { display: flex; gap: 0.5rem; justify-content: center; margin-top: 1rem; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="room-header">
+            <h1>🚪 CAPTCHA Escape Room</h1>
+            <p>Solve CAPTCHA-style puzzles to unlock doors and escape 5 themed rooms</p>
+        </div>
+
+        <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+
+        <div class="hud">
+            <div class="hud-item"><div class="hud-label">Room</div><div class="hud-value" id="hudRoom">1 / 5</div></div>
+            <div class="hud-item"><div class="hud-label">Time</div><div class="hud-value room-timer" id="hudTimer">0:00</div></div>
+            <div class="hud-item"><div class="hud-label">Hints</div><div class="hud-value" id="hudHints" style="color:var(--yellow)">3</div></div>
+            <div class="hud-item"><div class="hud-label">Score</div><div class="hud-value" id="hudScore" style="color:var(--green)">0</div></div>
+        </div>
+
+        <div class="room-view"><canvas id="roomCanvas"></canvas></div>
+
+        <div class="challenge-panel" id="challengePanel">
+            <h3 id="challengeTitle">Loading...</h3>
+            <div class="challenge-desc" id="challengeDesc"></div>
+            <div id="challengeBody"></div>
+            <div class="btn-row">
+                <button class="btn btn-secondary" id="hintBtn" onclick="useHint()">💡 Hint</button>
+                <button class="btn btn-primary" id="submitBtn" onclick="submitAnswer()" style="display:none">Submit</button>
+            </div>
+        </div>
+
+        <div class="inventory">
+            <h4>🎒 Keys Collected</h4>
+            <div class="inv-items" id="invItems"></div>
+        </div>
+    </div>
+
+    <script>
+    // ===== Rooms & Puzzles =====
+    const ROOMS = [
+        {
+            name: "The Server Room",
+            emoji: "🖥️",
+            color: "#58a6ff",
+            bgColor: "#0a1929",
+            desc: "Cold blue light hums from racks of servers. A digital lock blocks the exit.",
+            keyEmoji: "🔑",
+            keyName: "Digital Key",
+            puzzles: [
+                {
+                    type: "pattern-grid",
+                    title: "🔢 Pattern Lock",
+                    desc: "Select cells to match the hidden pattern. The grid shows a sequence — find the next 3 cells.",
+                    generate() {
+                        // Light up cells in a pattern, player picks next 3
+                        const shown = [0,4,8,12]; // diagonal
+                        const answer = [1,5,9]; // parallel diagonal
+                        return { gridSize: 4, shown, answer, selected: [] };
+                    }
+                },
+                {
+                    type: "sequence",
+                    title: "📡 Signal Decode",
+                    desc: "Complete the sequence to unlock the frequency.",
+                    generate() {
+                        const symbols = ["🔴","🔵","🟢","🔴","🔵","🟢","🔴"];
+                        const answer = ["🔵","🟢"];
+                        return { symbols, answer, current: 0 };
+                    }
+                }
+            ]
+        },
+        {
+            name: "The Vault",
+            emoji: "🏦",
+            color: "#d29922",
+            bgColor: "#1a1400",
+            desc: "Gold bars gleam behind reinforced glass. A combination puzzle guards the door.",
+            keyEmoji: "🗝️",
+            keyName: "Vault Key",
+            puzzles: [
+                {
+                    type: "math-captcha",
+                    title: "🔐 Combination Lock",
+                    desc: "Solve each equation to get the 3-digit combination.",
+                    generate() {
+                        const a = rand(10,50), b = rand(10,50);
+                        const c = rand(2,9), d = rand(2,9);
+                        const e = rand(100,200), f = rand(50,100);
+                        return {
+                            equations: [`${a} + ${b} = ?`, `${c} × ${d} = ?`, `${e} - ${f} = ?`],
+                            answers: [a+b, c*d, e-f],
+                            current: 0, userAnswers: []
+                        };
+                    }
+                },
+                {
+                    type: "word-scramble",
+                    title: "🏷️ Word Lock",
+                    desc: "Unscramble the security word to open the vault.",
+                    generate() {
+                        const words = ["CAPTCHA","SECURITY","ENCRYPT","PROTECT","VERIFY"];
+                        const word = words[rand(0, words.length-1)];
+                        const scrambled = word.split('').sort(() => Math.random()-0.5).join('');
+                        return { word, scrambled, guess: "" };
+                    }
+                }
+            ]
+        },
+        {
+            name: "The Lab",
+            emoji: "🧪",
+            color: "#3fb950",
+            bgColor: "#0a1a0e",
+            desc: "Bubbling beakers and flickering screens. The biometric scanner needs calibration.",
+            keyEmoji: "🧬",
+            keyName: "Bio Key",
+            puzzles: [
+                {
+                    type: "color-match",
+                    title: "🧫 Color Calibration",
+                    desc: "Match the target color by selecting the correct RGB mix.",
+                    generate() {
+                        const r = rand(0,2)*85, g = rand(0,2)*85, b = rand(0,2)*85;
+                        return { target: [r,g,b], selected: [0,0,0] };
+                    }
+                },
+                {
+                    type: "odd-one-out",
+                    title: "🔬 Anomaly Detection",
+                    desc: "Find the odd one out in each row.",
+                    generate() {
+                        const rows = [];
+                        const sets = [
+                            { items: ["🧪","🧪","🧪","🧫","🧪"], answer: 3 },
+                            { items: ["🔬","🔬","🔭","🔬","🔬"], answer: 2 },
+                            { items: ["⚗️","⚗️","⚗️","⚗️","🧲"], answer: 4 }
+                        ];
+                        return { rows: sets, currentRow: 0, answers: [] };
+                    }
+                }
+            ]
+        },
+        {
+            name: "The Library",
+            emoji: "📚",
+            color: "#bc8cff",
+            bgColor: "#140a1f",
+            desc: "Ancient books line the walls. A cipher puzzle is etched into the stone floor.",
+            keyEmoji: "📜",
+            keyName: "Scroll Key",
+            puzzles: [
+                {
+                    type: "caesar-cipher",
+                    title: "📖 Cipher Decode",
+                    desc: "Decode the message using a Caesar shift. The shift amount is shown.",
+                    generate() {
+                        const words = ["UNLOCK","ESCAPE","PORTAL","CIPHER","DECODE"];
+                        const word = words[rand(0, words.length-1)];
+                        const shift = rand(1,5);
+                        const encoded = word.split('').map(c =>
+                            String.fromCharCode(((c.charCodeAt(0) - 65 + shift) % 26) + 65)
+                        ).join('');
+                        return { encoded, shift, word, guess: "" };
+                    }
+                },
+                {
+                    type: "memory-tiles",
+                    title: "🃏 Memory Lock",
+                    desc: "Memorize the symbols, then recreate the pattern.",
+                    generate() {
+                        const pool = ["📕","📗","📘","📙"];
+                        const pattern = Array.from({length: 4}, () => pool[rand(0,3)]);
+                        return { pattern, phase: "show", showTime: 3, userPattern: [], options: pool };
+                    }
+                }
+            ]
+        },
+        {
+            name: "The Exit",
+            emoji: "🌅",
+            color: "#f0883e",
+            bgColor: "#1a0f00",
+            desc: "Daylight streams through the final door. One last challenge stands between you and freedom.",
+            keyEmoji: "🏆",
+            keyName: "Freedom",
+            puzzles: [
+                {
+                    type: "simon-says",
+                    title: "🎵 Simon's Lock",
+                    desc: "Watch the sequence, then repeat it. Gets longer each round.",
+                    generate() {
+                        const colors = ["🔴","🟡","🟢","🔵"];
+                        const seq = [rand(0,3), rand(0,3), rand(0,3)];
+                        return { colors, sequence: seq, phase: "show", showIdx: 0, userSeq: [], round: 1 };
+                    }
+                },
+                {
+                    type: "typing-race",
+                    title: "⌨️ Speed Unlock",
+                    desc: "Type the passphrase as fast as you can!",
+                    generate() {
+                        const phrases = [
+                            "i am not a robot",
+                            "humans only beyond",
+                            "verify to escape",
+                            "captcha defeated"
+                        ];
+                        return { phrase: phrases[rand(0, phrases.length-1)], typed: "", started: false };
+                    }
+                }
+            ]
+        }
+    ];
+
+    // ===== State =====
+    let currentRoom = 0;
+    let currentPuzzle = 0;
+    let puzzleData = null;
+    let score = 0;
+    let hintsLeft = 3;
+    let totalTime = 0;
+    let timerInterval = null;
+    let roomStartTime = 0;
+    let roomTimes = [];
+    let wrongAttempts = 0;
+    let keysCollected = [];
+    let gameOver = false;
+
+    function rand(a, b) { return Math.floor(Math.random() * (b - a + 1)) + a; }
+
+    // ===== Timer =====
+    function startTimer() {
+        roomStartTime = Date.now();
+        timerInterval = setInterval(() => {
+            totalTime = Math.floor((Date.now() - roomStartTime) / 1000) + roomTimes.reduce((s, t) => s + t, 0);
+            const m = Math.floor(totalTime / 60);
+            const s = totalTime % 60;
+            const el = document.getElementById('hudTimer');
+            el.textContent = `${m}:${s.toString().padStart(2, '0')}`;
+        }, 200);
+    }
+
+    function pauseTimer() {
+        if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+        roomTimes.push(Math.floor((Date.now() - roomStartTime) / 1000));
+    }
+
+    // ===== Room Rendering =====
+    function drawRoom() {
+        const canvas = document.getElementById('roomCanvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = canvas.offsetWidth;
+        canvas.height = 350;
+        const w = canvas.width, h = canvas.height;
+        const room = ROOMS[currentRoom];
+
+        // Background
+        ctx.fillStyle = room.bgColor;
+        ctx.fillRect(0, 0, w, h);
+
+        // Floor
+        ctx.fillStyle = 'rgba(255,255,255,0.03)';
+        ctx.fillRect(0, h * 0.7, w, h * 0.3);
+        for (let i = 0; i < w; i += 40) {
+            ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+            ctx.beginPath();
+            ctx.moveTo(i, h * 0.7);
+            ctx.lineTo(i - 20, h);
+            ctx.stroke();
+        }
+
+        // Walls
+        ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+        ctx.lineWidth = 1;
+        for (let y = 0; y < h * 0.7; y += 30) {
+            ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+        }
+
+        // Door
+        const doorX = w * 0.75, doorY = h * 0.2, doorW = 80, doorH = h * 0.5;
+        ctx.fillStyle = 'rgba(255,255,255,0.05)';
+        ctx.fillRect(doorX, doorY, doorW, doorH);
+        ctx.strokeStyle = room.color;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(doorX, doorY, doorW, doorH);
+
+        // Lock glow
+        ctx.beginPath();
+        ctx.arc(doorX + doorW / 2, doorY + doorH * 0.55, 12, 0, Math.PI * 2);
+        ctx.fillStyle = room.color;
+        ctx.shadowColor = room.color;
+        ctx.shadowBlur = 20;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        // Room emoji
+        ctx.font = '60px serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(room.emoji, w * 0.3, h * 0.5);
+
+        // Room name
+        ctx.font = 'bold 18px system-ui, sans-serif';
+        ctx.fillStyle = room.color;
+        ctx.fillText(room.name, w * 0.3, h * 0.65);
+
+        // Description
+        ctx.font = '12px system-ui, sans-serif';
+        ctx.fillStyle = 'rgba(255,255,255,0.4)';
+        const words = room.desc.split(' ');
+        let line = '', ly = h * 0.72;
+        for (const word of words) {
+            const test = line + word + ' ';
+            if (ctx.measureText(test).width > w * 0.5) {
+                ctx.fillText(line.trim(), w * 0.3, ly);
+                line = word + ' '; ly += 16;
+            } else { line = test; }
+        }
+        if (line) ctx.fillText(line.trim(), w * 0.3, ly);
+
+        // Particles
+        for (let i = 0; i < 15; i++) {
+            ctx.beginPath();
+            const px = Math.random() * w, py = Math.random() * h * 0.7;
+            ctx.arc(px, py, Math.random() * 2, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(${hexToRgb(room.color)}, ${Math.random() * 0.3})`;
+            ctx.fill();
+        }
+    }
+
+    function hexToRgb(hex) {
+        const r = parseInt(hex.slice(1,3),16);
+        const g = parseInt(hex.slice(3,5),16);
+        const b = parseInt(hex.slice(5,7),16);
+        return `${r},${g},${b}`;
+    }
+
+    // ===== Puzzle Rendering =====
+    function loadPuzzle() {
+        const room = ROOMS[currentRoom];
+        // Pick a random puzzle from the room
+        const puzzleDef = room.puzzles[rand(0, room.puzzles.length - 1)];
+        currentPuzzle = puzzleDef;
+        puzzleData = puzzleDef.generate();
+
+        document.getElementById('challengeTitle').textContent = puzzleDef.title;
+        document.getElementById('challengeDesc').textContent = puzzleDef.desc;
+        document.getElementById('hudRoom').textContent = `${currentRoom + 1} / 5`;
+        document.getElementById('progressFill').style.width = `${(currentRoom / 5) * 100}%`;
+
+        const body = document.getElementById('challengeBody');
+        body.innerHTML = '';
+        document.getElementById('submitBtn').style.display = 'none';
+
+        switch (puzzleDef.type) {
+            case 'pattern-grid': renderPatternGrid(body); break;
+            case 'sequence': renderSequence(body); break;
+            case 'math-captcha': renderMathCaptcha(body); break;
+            case 'word-scramble': renderWordScramble(body); break;
+            case 'color-match': renderColorMatch(body); break;
+            case 'odd-one-out': renderOddOneOut(body); break;
+            case 'caesar-cipher': renderCaesarCipher(body); break;
+            case 'memory-tiles': renderMemoryTiles(body); break;
+            case 'simon-says': renderSimonSays(body); break;
+            case 'typing-race': renderTypingRace(body); break;
+        }
+
+        drawRoom();
+    }
+
+    // --- Pattern Grid ---
+    function renderPatternGrid(body) {
+        const d = puzzleData;
+        const grid = document.createElement('div');
+        grid.className = 'grid-puzzle';
+        grid.style.gridTemplateColumns = `repeat(${d.gridSize}, 60px)`;
+        for (let i = 0; i < d.gridSize * d.gridSize; i++) {
+            const cell = document.createElement('div');
+            cell.className = 'grid-cell';
+            if (d.shown.includes(i)) {
+                cell.style.background = 'var(--accent)';
+                cell.style.borderColor = 'var(--accent)';
+                cell.textContent = '✦';
+            }
+            cell.onclick = () => {
+                if (d.shown.includes(i)) return;
+                cell.classList.toggle('selected');
+                const idx = d.selected.indexOf(i);
+                if (idx >= 0) d.selected.splice(idx, 1);
+                else d.selected.push(i);
+                if (d.selected.length === d.answer.length) checkPatternGrid();
+            };
+            grid.appendChild(cell);
+        }
+        body.appendChild(grid);
+    }
+
+    function checkPatternGrid() {
+        const d = puzzleData;
+        const correct = d.answer.every(a => d.selected.includes(a)) && d.selected.length === d.answer.length;
+        if (correct) puzzleSolved();
+        else puzzleFailed();
+    }
+
+    // --- Sequence ---
+    function renderSequence(body) {
+        const d = puzzleData;
+        const display = document.createElement('div');
+        display.className = 'sequence-display';
+        d.symbols.forEach(s => {
+            const item = document.createElement('div');
+            item.className = 'seq-item highlight';
+            item.textContent = s;
+            display.appendChild(item);
+        });
+        d.answer.forEach(() => {
+            const item = document.createElement('div');
+            item.className = 'seq-item placeholder';
+            item.textContent = '?';
+            display.appendChild(item);
+        });
+        body.appendChild(display);
+
+        const opts = document.createElement('div');
+        opts.className = 'option-btns';
+        const unique = [...new Set([...d.symbols, ...d.answer])];
+        unique.forEach(s => {
+            const btn = document.createElement('button');
+            btn.className = 'option-btn';
+            btn.textContent = s;
+            btn.onclick = () => {
+                const placeholders = display.querySelectorAll('.placeholder');
+                if (d.current < d.answer.length) {
+                    placeholders[d.current].textContent = s;
+                    placeholders[d.current].classList.remove('placeholder');
+                    placeholders[d.current].classList.add('highlight');
+                    if (s === d.answer[d.current]) {
+                        d.current++;
+                        if (d.current === d.answer.length) puzzleSolved();
+                    } else {
+                        d.current = 0;
+                        puzzleFailed();
+                        setTimeout(() => {
+                            placeholders.forEach(p => { p.textContent = '?'; p.className = 'seq-item placeholder'; });
+                        }, 500);
+                    }
+                }
+            };
+            opts.appendChild(btn);
+        });
+        body.appendChild(opts);
+    }
+
+    // --- Math CAPTCHA ---
+    function renderMathCaptcha(body) {
+        const d = puzzleData;
+        const eq = document.createElement('div');
+        eq.style.cssText = 'font-size:1.5rem;font-weight:700;margin-bottom:1rem;color:var(--text);text-align:center;';
+        eq.textContent = d.equations[d.current];
+        body.appendChild(eq);
+
+        const row = document.createElement('div');
+        row.className = 'text-input-row';
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.placeholder = 'Answer';
+        input.id = 'mathInput';
+        input.onkeydown = (e) => { if (e.key === 'Enter') checkMath(); };
+        row.appendChild(input);
+        const btn = document.createElement('button');
+        btn.className = 'btn btn-primary';
+        btn.textContent = '→';
+        btn.onclick = checkMath;
+        row.appendChild(btn);
+        body.appendChild(row);
+
+        const progress = document.createElement('div');
+        progress.style.cssText = 'text-align:center;color:var(--muted);font-size:0.8rem;';
+        progress.textContent = `Digit ${d.current + 1} of ${d.answers.length}`;
+        progress.id = 'mathProgress';
+        body.appendChild(progress);
+
+        setTimeout(() => input.focus(), 100);
+    }
+
+    function checkMath() {
+        const d = puzzleData;
+        const input = document.getElementById('mathInput');
+        const val = parseInt(input.value);
+        if (val === d.answers[d.current]) {
+            d.current++;
+            d.userAnswers.push(val);
+            if (d.current >= d.answers.length) { puzzleSolved(); return; }
+            input.value = '';
+            input.parentElement.previousSibling.textContent = d.equations[d.current];
+            document.getElementById('mathProgress').textContent = `Digit ${d.current + 1} of ${d.answers.length}`;
+        } else {
+            input.style.borderColor = 'var(--red)';
+            wrongAttempts++;
+            setTimeout(() => { input.style.borderColor = 'var(--border)'; input.value = ''; }, 500);
+        }
+    }
+
+    // --- Word Scramble ---
+    function renderWordScramble(body) {
+        const d = puzzleData;
+        const display = document.createElement('div');
+        display.style.cssText = 'font-size:2.5rem;font-weight:700;letter-spacing:0.3em;text-align:center;margin-bottom:1rem;color:var(--yellow);';
+        display.textContent = d.scrambled;
+        body.appendChild(display);
+
+        const row = document.createElement('div');
+        row.className = 'text-input-row';
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.placeholder = 'Unscramble...';
+        input.style.textTransform = 'uppercase';
+        input.onkeydown = (e) => {
+            if (e.key === 'Enter') {
+                if (input.value.toUpperCase() === d.word) puzzleSolved();
+                else { puzzleFailed(); input.value = ''; }
+            }
+        };
+        row.appendChild(input);
+        body.appendChild(row);
+        setTimeout(() => input.focus(), 100);
+    }
+
+    // --- Color Match ---
+    function renderColorMatch(body) {
+        const d = puzzleData;
+        const preview = document.createElement('div');
+        preview.style.cssText = 'display:flex;gap:1rem;justify-content:center;align-items:center;margin-bottom:1rem;';
+
+        const target = document.createElement('div');
+        target.style.cssText = `width:80px;height:80px;border-radius:12px;background:rgb(${d.target[0]},${d.target[1]},${d.target[2]});border:2px solid var(--border);`;
+        const label1 = document.createElement('div');
+        label1.style.cssText = 'color:var(--muted);font-size:0.75rem;text-align:center;';
+        label1.textContent = 'TARGET';
+
+        const yours = document.createElement('div');
+        yours.id = 'colorYours';
+        yours.style.cssText = `width:80px;height:80px;border-radius:12px;background:rgb(0,0,0);border:2px solid var(--border);`;
+        const label2 = document.createElement('div');
+        label2.style.cssText = 'color:var(--muted);font-size:0.75rem;text-align:center;';
+        label2.textContent = 'YOURS';
+
+        const t1 = document.createElement('div');
+        t1.appendChild(target); t1.appendChild(label1);
+        const t2 = document.createElement('div');
+        t2.appendChild(yours); t2.appendChild(label2);
+        preview.appendChild(t1);
+        preview.appendChild(document.createTextNode('→'));
+        preview.appendChild(t2);
+        body.appendChild(preview);
+
+        const labels = ['R', 'G', 'B'];
+        const colors = ['var(--red)', 'var(--green)', 'var(--accent)'];
+        labels.forEach((l, i) => {
+            const row = document.createElement('div');
+            row.style.cssText = 'display:flex;align-items:center;gap:0.5rem;justify-content:center;margin-bottom:0.5rem;';
+            const lb = document.createElement('span');
+            lb.style.cssText = `color:${colors[i]};font-weight:700;width:20px;`;
+            lb.textContent = l;
+            const slider = document.createElement('input');
+            slider.type = 'range';
+            slider.min = 0; slider.max = 255; slider.step = 85; slider.value = 0;
+            slider.style.width = '200px';
+            slider.oninput = () => {
+                d.selected[i] = parseInt(slider.value);
+                document.getElementById('colorYours').style.background = `rgb(${d.selected[0]},${d.selected[1]},${d.selected[2]})`;
+                if (d.selected[0]===d.target[0] && d.selected[1]===d.target[1] && d.selected[2]===d.target[2]) {
+                    puzzleSolved();
+                }
+            };
+            row.appendChild(lb);
+            row.appendChild(slider);
+            body.appendChild(row);
+        });
+    }
+
+    // --- Odd One Out ---
+    function renderOddOneOut(body) {
+        const d = puzzleData;
+        renderOddRow(body, d);
+    }
+
+    function renderOddRow(body, d) {
+        body.innerHTML = '';
+        const row = d.rows[d.currentRow];
+        const info = document.createElement('div');
+        info.style.cssText = 'text-align:center;color:var(--muted);font-size:0.8rem;margin-bottom:0.5rem;';
+        info.textContent = `Row ${d.currentRow + 1} of ${d.rows.length}`;
+        body.appendChild(info);
+
+        const grid = document.createElement('div');
+        grid.className = 'option-btns';
+        row.items.forEach((item, i) => {
+            const btn = document.createElement('button');
+            btn.className = 'option-btn';
+            btn.style.fontSize = '2rem';
+            btn.textContent = item;
+            btn.onclick = () => {
+                if (i === row.answer) {
+                    btn.style.borderColor = 'var(--green)';
+                    d.currentRow++;
+                    if (d.currentRow >= d.rows.length) { puzzleSolved(); return; }
+                    setTimeout(() => renderOddRow(body, d), 400);
+                } else {
+                    btn.classList.add('wrong');
+                    wrongAttempts++;
+                    setTimeout(() => btn.classList.remove('wrong'), 300);
+                }
+            };
+            grid.appendChild(btn);
+        });
+        body.appendChild(grid);
+    }
+
+    // --- Caesar Cipher ---
+    function renderCaesarCipher(body) {
+        const d = puzzleData;
+        const info = document.createElement('div');
+        info.style.cssText = 'text-align:center;margin-bottom:1rem;';
+        info.innerHTML = `<div style="font-size:2rem;font-weight:700;letter-spacing:0.3em;color:var(--purple)">${d.encoded}</div>
+            <div style="color:var(--muted);margin-top:0.3rem;">Shift: <strong style="color:var(--accent)">${d.shift}</strong> (each letter shifted ${d.shift} forward)</div>`;
+        body.appendChild(info);
+
+        const row = document.createElement('div');
+        row.className = 'text-input-row';
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.placeholder = 'Decoded word...';
+        input.style.textTransform = 'uppercase';
+        input.onkeydown = (e) => {
+            if (e.key === 'Enter') {
+                if (input.value.toUpperCase() === d.word) puzzleSolved();
+                else { puzzleFailed(); input.value = ''; }
+            }
+        };
+        row.appendChild(input);
+        body.appendChild(row);
+        setTimeout(() => input.focus(), 100);
+    }
+
+    // --- Memory Tiles ---
+    function renderMemoryTiles(body) {
+        const d = puzzleData;
+        if (d.phase === 'show') {
+            const info = document.createElement('div');
+            info.style.cssText = 'text-align:center;color:var(--accent);font-size:1rem;margin-bottom:0.5rem;';
+            info.textContent = 'Memorize this pattern!';
+            body.appendChild(info);
+
+            const display = document.createElement('div');
+            display.className = 'sequence-display';
+            d.pattern.forEach(s => {
+                const item = document.createElement('div');
+                item.className = 'seq-item highlight';
+                item.textContent = s;
+                display.appendChild(item);
+            });
+            body.appendChild(display);
+
+            setTimeout(() => {
+                d.phase = 'input';
+                renderMemoryTiles(body);
+            }, d.showTime * 1000);
+        } else {
+            body.innerHTML = '';
+            const info = document.createElement('div');
+            info.style.cssText = 'text-align:center;color:var(--yellow);font-size:1rem;margin-bottom:0.5rem;';
+            info.textContent = `Recreate the pattern! (${d.userPattern.length}/${d.pattern.length})`;
+            body.appendChild(info);
+
+            const display = document.createElement('div');
+            display.className = 'sequence-display';
+            d.userPattern.forEach(s => {
+                const item = document.createElement('div');
+                item.className = 'seq-item highlight';
+                item.textContent = s;
+                display.appendChild(item);
+            });
+            for (let i = d.userPattern.length; i < d.pattern.length; i++) {
+                const item = document.createElement('div');
+                item.className = 'seq-item placeholder';
+                item.textContent = '?';
+                display.appendChild(item);
+            }
+            body.appendChild(display);
+
+            const opts = document.createElement('div');
+            opts.className = 'option-btns';
+            d.options.forEach(s => {
+                const btn = document.createElement('button');
+                btn.className = 'option-btn';
+                btn.style.fontSize = '1.5rem';
+                btn.textContent = s;
+                btn.onclick = () => {
+                    d.userPattern.push(s);
+                    if (d.userPattern.length === d.pattern.length) {
+                        const correct = d.userPattern.every((v, i) => v === d.pattern[i]);
+                        if (correct) puzzleSolved();
+                        else { d.userPattern = []; puzzleFailed(); setTimeout(() => renderMemoryTiles(body), 500); }
+                    } else {
+                        renderMemoryTiles(body);
+                    }
+                };
+                opts.appendChild(btn);
+            });
+            body.appendChild(opts);
+        }
+    }
+
+    // --- Simon Says ---
+    function renderSimonSays(body) {
+        const d = puzzleData;
+        body.innerHTML = '';
+        const info = document.createElement('div');
+        info.style.cssText = 'text-align:center;color:var(--muted);font-size:0.85rem;margin-bottom:0.5rem;';
+        info.textContent = d.phase === 'show' ? 'Watch the sequence...' : 'Your turn! Repeat the sequence.';
+        body.appendChild(info);
+
+        const grid = document.createElement('div');
+        grid.className = 'option-btns';
+        d.colors.forEach((c, i) => {
+            const btn = document.createElement('button');
+            btn.className = 'option-btn';
+            btn.style.fontSize = '2.5rem';
+            btn.style.width = '70px';
+            btn.style.height = '70px';
+            btn.id = `simon-${i}`;
+            btn.textContent = c;
+            btn.style.opacity = '0.5';
+            if (d.phase === 'input') {
+                btn.style.opacity = '1';
+                btn.style.cursor = 'pointer';
+                btn.onclick = () => {
+                    d.userSeq.push(i);
+                    btn.style.transform = 'scale(1.2)';
+                    setTimeout(() => btn.style.transform = '', 150);
+                    const idx = d.userSeq.length - 1;
+                    if (d.userSeq[idx] !== d.sequence[idx]) {
+                        d.userSeq = [];
+                        puzzleFailed();
+                        d.phase = 'show';
+                        d.showIdx = 0;
+                        setTimeout(() => renderSimonSays(body), 500);
+                    } else if (d.userSeq.length === d.sequence.length) {
+                        puzzleSolved();
+                    }
+                };
+            }
+            grid.appendChild(btn);
+        });
+        body.appendChild(grid);
+
+        if (d.phase === 'show') {
+            let i = 0;
+            const interval = setInterval(() => {
+                if (i > 0) document.getElementById(`simon-${d.sequence[i-1]}`).style.opacity = '0.5';
+                if (i < d.sequence.length) {
+                    document.getElementById(`simon-${d.sequence[i]}`).style.opacity = '1';
+                    i++;
+                } else {
+                    clearInterval(interval);
+                    d.phase = 'input';
+                    d.userSeq = [];
+                    setTimeout(() => renderSimonSays(body), 300);
+                }
+            }, 600);
+        }
+    }
+
+    // --- Typing Race ---
+    function renderTypingRace(body) {
+        const d = puzzleData;
+        const display = document.createElement('div');
+        display.style.cssText = 'font-size:1.5rem;font-weight:600;text-align:center;margin-bottom:1rem;letter-spacing:0.1em;color:var(--orange);font-family:monospace;';
+        display.id = 'typeTarget';
+        display.textContent = d.phrase;
+        body.appendChild(display);
+
+        const row = document.createElement('div');
+        row.className = 'text-input-row';
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.placeholder = 'Type here...';
+        input.style.width = '300px';
+        input.oninput = () => {
+            if (input.value.toLowerCase() === d.phrase) puzzleSolved();
+        };
+        row.appendChild(input);
+        body.appendChild(row);
+        setTimeout(() => input.focus(), 100);
+    }
+
+    // ===== Puzzle Outcomes =====
+    function puzzleSolved() {
+        const room = ROOMS[currentRoom];
+        score += Math.max(100 - wrongAttempts * 10, 50);
+        keysCollected.push({ emoji: room.keyEmoji, name: room.keyName });
+        updateHUD();
+        updateInventory();
+
+        const panel = document.getElementById('challengePanel');
+        panel.innerHTML = `<div class="door-open">
+            <div class="big-emoji">🚪➡️</div>
+            <h3 style="color:var(--green);margin:1rem 0 0.3rem;">Room Unlocked!</h3>
+            <p style="color:var(--muted);">Collected: ${room.keyEmoji} ${room.keyName}</p>
+        </div>`;
+
+        currentRoom++;
+        if (currentRoom >= ROOMS.length) {
+            pauseTimer();
+            setTimeout(showResults, 1500);
+        } else {
+            setTimeout(() => {
+                panel.innerHTML = `<h3 id="challengeTitle"></h3><div class="challenge-desc" id="challengeDesc"></div><div id="challengeBody"></div>
+                    <div class="btn-row"><button class="btn btn-secondary" id="hintBtn" onclick="useHint()">💡 Hint</button></div>`;
+                wrongAttempts = 0;
+                loadPuzzle();
+            }, 1500);
+        }
+    }
+
+    function puzzleFailed() {
+        wrongAttempts++;
+        const panel = document.getElementById('challengePanel');
+        panel.style.borderColor = 'var(--red)';
+        setTimeout(() => panel.style.borderColor = 'var(--border)', 400);
+    }
+
+    // ===== Hints =====
+    function useHint() {
+        if (hintsLeft <= 0) return;
+        hintsLeft--;
+        document.getElementById('hudHints').textContent = hintsLeft;
+        score = Math.max(score - 25, 0);
+        updateHUD();
+
+        const type = currentPuzzle.type;
+        let hint = "Look carefully at the pattern.";
+        if (type === 'pattern-grid') hint = `The answer cells form a parallel diagonal (positions: ${puzzleData.answer.join(', ')}).`;
+        else if (type === 'sequence') hint = `The sequence repeats every 3 items. Next: ${puzzleData.answer[0]}`;
+        else if (type === 'math-captcha') hint = `The answer is ${puzzleData.answers[puzzleData.current]}.`;
+        else if (type === 'word-scramble') hint = `It starts with "${puzzleData.word[0]}" and ends with "${puzzleData.word[puzzleData.word.length-1]}".`;
+        else if (type === 'color-match') hint = `Target RGB: (${puzzleData.target.join(', ')}). Use the slider steps.`;
+        else if (type === 'odd-one-out') hint = `The odd one is at position ${puzzleData.rows[puzzleData.currentRow].answer + 1}.`;
+        else if (type === 'caesar-cipher') hint = `Decoded word starts with "${puzzleData.word[0]}".`;
+        else if (type === 'memory-tiles') hint = `Pattern: ${puzzleData.pattern.join(' ')}`;
+        else if (type === 'simon-says') hint = `Sequence: ${puzzleData.sequence.map(i => puzzleData.colors[i]).join(' ')}`;
+        else if (type === 'typing-race') hint = `Just type: "${puzzleData.phrase}"`;
+
+        const body = document.getElementById('challengeBody');
+        const hintEl = document.createElement('div');
+        hintEl.style.cssText = 'background:var(--yellow-bg);border:1px solid var(--yellow);border-radius:8px;padding:0.6rem 1rem;margin-top:0.5rem;color:var(--yellow);font-size:0.85rem;text-align:center;';
+        hintEl.textContent = `💡 ${hint}`;
+        body.appendChild(hintEl);
+    }
+
+    // ===== HUD =====
+    function updateHUD() {
+        document.getElementById('hudScore').textContent = score;
+        document.getElementById('hudHints').textContent = hintsLeft;
+    }
+
+    function updateInventory() {
+        const el = document.getElementById('invItems');
+        el.innerHTML = keysCollected.map(k =>
+            `<div class="inv-item"><span class="emoji">${k.emoji}</span> ${k.name}</div>`
+        ).join('');
+    }
+
+    // ===== Results =====
+    function showResults() {
+        gameOver = true;
+        const m = Math.floor(totalTime / 60);
+        const s = totalTime % 60;
+        const stars = totalTime < 120 ? '⭐⭐⭐' : totalTime < 240 ? '⭐⭐' : '⭐';
+
+        document.getElementById('progressFill').style.width = '100%';
+        document.querySelector('.room-view').innerHTML = '';
+        document.querySelector('.room-view').style.display = 'none';
+
+        document.getElementById('challengePanel').innerHTML = `<div class="results">
+            <h2>🎉 You Escaped!</h2>
+            <div class="star-rating">${stars}</div>
+            <div class="final-time">${m}:${s.toString().padStart(2, '0')}</div>
+            <p style="color:var(--muted)">Total Escape Time</p>
+            <div class="stats-grid">
+                <div class="stat-card"><div class="stat-val">${score}</div><div class="stat-label">Score</div></div>
+                <div class="stat-card"><div class="stat-val">${5 - keysCollected.length + keysCollected.length}</div><div class="stat-label">Rooms Cleared</div></div>
+                <div class="stat-card"><div class="stat-val">${3 - hintsLeft}</div><div class="stat-label">Hints Used</div></div>
+            </div>
+            <div class="inv-items" style="justify-content:center;margin-bottom:1rem;">
+                ${keysCollected.map(k => `<div class="inv-item"><span class="emoji">${k.emoji}</span> ${k.name}</div>`).join('')}
+            </div>
+            <div class="btn-row">
+                <button class="btn btn-primary" onclick="location.reload()">🔄 Play Again</button>
+                <button class="btn btn-secondary" onclick="window.location.href='index.html'">🏠 Home</button>
+            </div>
+        </div>`;
+    }
+
+    // ===== Init =====
+    window.addEventListener('resize', () => { if (!gameOver) drawRoom(); });
+    startTimer();
+    loadPuzzle();
+    </script>
+</body>
+</html>

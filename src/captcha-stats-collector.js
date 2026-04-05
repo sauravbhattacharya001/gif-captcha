@@ -108,9 +108,10 @@ function createStatsCollector(options = {}) {
     };
     windows.push(bucket);
     // Evict old windows
+    // Evict old windows — splice is fine here since maxWindows
+    // is typically small (e.g. 60) and eviction only removes 1 entry.
     if (windows.length > maxWindows) {
-      var excess = windows.length - maxWindows;
-      windows.splice(0, excess);
+      windows.splice(0, windows.length - maxWindows);
     }
     return bucket;
   }
@@ -159,10 +160,14 @@ function createStatsCollector(options = {}) {
     }
 
     rawRecords.push({ ...entry, timestamp: ts });
-    // Cap raw records at 10x maxWindows to bound memory
-    if (rawRecords.length > maxWindows * 100) {
-      var excess = rawRecords.length - maxWindows * 100;
-      rawRecords.splice(0, excess);
+    // Cap raw records at 10x maxWindows to bound memory.
+    // Use slice instead of splice to avoid O(n) element shifting.
+    var rawCap = maxWindows * 100;
+    if (rawRecords.length > rawCap + (rawCap >>> 2)) {
+      // Only compact when 25% over capacity to amortize cost
+      var trimmed = rawRecords.slice(rawRecords.length - rawCap);
+      rawRecords.length = 0;
+      for (var ri = 0; ri < trimmed.length; ri++) rawRecords.push(trimmed[ri]);
     }
   }
 
@@ -232,7 +237,11 @@ function createStatsCollector(options = {}) {
     for (const w of windows) {
       totalAttempts += w.total;
       totalSolved += w.solved;
-      allTimes.push(...w.solveTimes);
+      // Use Array.prototype.concat or loop instead of push(...spread)
+      // to avoid stack overflow when solveTimes arrays are large.
+      for (var si = 0; si < w.solveTimes.length; si++) {
+        allTimes.push(w.solveTimes[si]);
+      }
 
       for (const [type, data] of Object.entries(w.byType)) {
         if (!typeAgg[type]) {
@@ -241,7 +250,9 @@ function createStatsCollector(options = {}) {
         typeAgg[type].total += data.total;
         typeAgg[type].solved += data.solved;
         typeAgg[type].failed += data.failed;
-        typeAgg[type].solveTimes.push(...data.solveTimes);
+        for (var ti = 0; ti < data.solveTimes.length; ti++) {
+          typeAgg[type].solveTimes.push(data.solveTimes[ti]);
+        }
       }
     }
 

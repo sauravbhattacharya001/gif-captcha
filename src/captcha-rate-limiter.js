@@ -567,9 +567,11 @@ function createCaptchaRateLimiter(options) {
     }
 
     // ── Sliding window: loop (each request needs its own timestamp) ──
+    // Use _originalCheck to avoid double-counting checkCount (consume
+    // already incremented it once for this batch).
     var lastResult;
     for (var i = 0; i < count; i++) {
-      lastResult = check(key, now);
+      lastResult = _originalCheck(key, now);
       if (!lastResult.allowed) {
         lastResult.consumed = i;
         lastResult.requested = count;
@@ -641,8 +643,8 @@ function createCaptchaRateLimiter(options) {
       var elapsedL = (now - entry.lastLeak) / 1000;
       var water = Math.max(0, entry.water - elapsedL * leakRate);
       return {
-        allowed: water < queueSize,
-        remaining: Math.floor(queueSize - water),
+        allowed: water + 1 <= queueSize,
+        remaining: Math.max(0, Math.floor(queueSize - water)),
         queueLevel: Math.floor(water),
         queueSize: queueSize
       };

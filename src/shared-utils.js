@@ -148,42 +148,19 @@ LruTracker.prototype.fromArray = function (arr) {
 };
 
 // ── Crypto-secure Randomness ────────────────────────────────────────
+// Delegates to crypto-utils.js which has the most robust implementation
+// (including crypto.randomBytes fallback and RangeError on invalid input).
+// This eliminates the duplicated secureRandomInt that previously lived here
+// and in crypto-utils.js — see issue #91.
 
+var _cryptoUtils = require('./crypto-utils');
+var secureRandomInt = _cryptoUtils.secureRandomInt;
+
+// Keep _crypto reference for other shared-utils consumers (_constantTimeEqual)
 var _crypto = null;
 try {
   if (typeof require !== 'undefined') _crypto = require('crypto');
 } catch (e) { /* not available */ }
-
-/**
- * Generate a cryptographically secure random integer in [0, max).
- * Throws if no cryptographic RNG is available — a CAPTCHA library
- * must never fall back to Math.random() as it is predictable and
- * would allow attackers to forecast challenges.
- *
- * @param {number} max - Exclusive upper bound (must be > 0)
- * @returns {number} Random integer in [0, max)
- * @throws {Error} If no cryptographic random source is available
- */
-function secureRandomInt(max) {
-  if (_crypto && typeof _crypto.randomInt === 'function') {
-    return _crypto.randomInt(max);
-  }
-  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
-    // Rejection sampling to eliminate modulo bias
-    var arr = new Uint32Array(1);
-    var limit = Math.floor(0x100000000 / max) * max; // largest multiple of max that fits in uint32
-    do {
-      crypto.getRandomValues(arr);
-    } while (arr[0] >= limit);
-    return arr[0] % max;
-  }
-  throw new Error(
-    'gif-captcha: no cryptographic random source available. ' +
-    'CAPTCHA security requires crypto.randomInt (Node.js) or ' +
-    'crypto.getRandomValues (browser). Math.random() is predictable ' +
-    'and must not be used for challenge generation.'
-  );
-}
 
 // ── Shared Helpers ──────────────────────────────────────────────────
 

@@ -106,13 +106,12 @@ function createSetAnalyzer(challenges) {
     var keysB = Object.keys(setB);
     if (keysA.length === 0 || keysB.length === 0) return 0;
     var intersection = 0;
-    var union = Object.create(null);
-    keysA.forEach(function (w) { union[w] = true; });
-    keysB.forEach(function (w) {
-      if (setA[w]) intersection++;
-      union[w] = true;
-    });
-    return intersection / Object.keys(union).length;
+    for (var k = 0; k < keysB.length; k++) {
+      if (setA[keysB[k]]) intersection++;
+    }
+    // |A ∪ B| = |A| + |B| - |A ∩ B| (inclusion-exclusion)
+    var unionSize = keysA.length + keysB.length - intersection;
+    return unionSize > 0 ? intersection / unionSize : 0;
   }
 
   /**
@@ -906,21 +905,18 @@ function createSecurityScorer(challenges) {
 
   function scoreAnswerDiversity() {
     var answers = _challenges.map(function (c) { return c.humanAnswer; });
-    var allWords = [];
+    var uniqueSet = Object.create(null);
+    var totalWords = 0;
     var lengths = [];
     for (var i = 0; i < answers.length; i++) {
       var words = getWords(answers[i]);
       lengths.push(words.length);
+      totalWords += words.length;
       for (var j = 0; j < words.length; j++) {
-        allWords.push(words[j]);
+        uniqueSet[words[j]] = true;
       }
     }
 
-    var totalWords = allWords.length;
-    var uniqueSet = Object.create(null);
-    for (var i = 0; i < allWords.length; i++) {
-      uniqueSet[allWords[i]] = true;
-    }
     var uniqueCount = Object.keys(uniqueSet).length;
     var uniqueWordRatio = totalWords > 0 ? uniqueCount / totalWords : 0;
 

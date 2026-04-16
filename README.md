@@ -17,6 +17,10 @@ A research case study exploring GIF-based CAPTCHAs as a human-verification mecha
 ![GitHub repo size](https://img.shields.io/github/repo-size/sauravbhattacharya001/gif-captcha)
 ![GitHub last commit](https://img.shields.io/github/last-commit/sauravbhattacharya001/gif-captcha)
 ![GitHub issues](https://img.shields.io/github/issues/sauravbhattacharya001/gif-captcha)
+![GitHub stars](https://img.shields.io/github/stars/sauravbhattacharya001/gif-captcha)
+[![npm downloads](https://img.shields.io/npm/dm/gif-captcha)](https://www.npmjs.com/package/gif-captcha)
+![Node.js](https://img.shields.io/badge/node-%3E%3D18-brightgreen)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
 [**View Live Demo →**](https://sauravbhattacharya001.github.io/gif-captcha/) · [**API Docs →**](https://sauravbhattacharya001.github.io/gif-captcha/docs/)
 

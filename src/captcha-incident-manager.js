@@ -263,6 +263,13 @@ function createIncidentManager(opts) {
       action: 'state-change',
       detail: oldState + ' → ' + newState + (extras && extras.reason ? ' — ' + extras.reason : '')
     });
+    // Clear any pending escalation timer when leaving 'open' state.
+    // Previously only acknowledge() cleared this, so transitions that
+    // skip acknowledge (e.g. open → resolved) leaked the timer handle.
+    if (oldState === 'open' && escalationTimers[id]) {
+      clearTimeout(escalationTimers[id]);
+      delete escalationTimers[id];
+    }
     if (onStateChange) onStateChange(inc, oldState, newState);
     return inc;
   }

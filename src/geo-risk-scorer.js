@@ -58,6 +58,7 @@ function createGeoRiskScorer(options) {
   var suspiciousSpeedKmh = options.suspiciousTravelSpeedKmh || SUSPICIOUS_TRAVEL_SPEED_KMH;
   var velocityWindowMs = options.velocityWindowMs || VELOCITY_WINDOW_MS;
   var maxHistory = options.maxHistory || 500;
+  var maxKeys = options.maxKeys || 10000; // Cap unique IPs/sessions to prevent memory exhaustion (CWE-400)
 
   var thresholds = options.thresholds || {};
   var blockThreshold = thresholds.block || 0.8;
@@ -65,7 +66,9 @@ function createGeoRiskScorer(options) {
   var warnThreshold = thresholds.warn || 0.3;
 
   var _ipHistory = Object.create(null);
+  var _ipHistoryKeys = [];   // track insertion order for eviction
   var _sessionGeo = Object.create(null);
+  var _sessionGeoKeys = [];  // track insertion order for eviction
   var _regionStats = Object.create(null);
   var _blockedIPs = Object.create(null);
   var _allowedIPs = Object.create(null);
@@ -82,6 +85,23 @@ function createGeoRiskScorer(options) {
     arr.push(item);
     if (arr.length > cap) {
       arr.splice(0, arr.length - cap);
+    }
+  }
+
+  /**
+   * Evict oldest entries from a keyed store when it exceeds maxKeys.
+   * Prevents unbounded memory growth from unique IPs/sessions (CWE-400).
+   */
+  function _evictIfNeeded(store, keys, key) {
+    if (!(key in store)) {
+      keys.push(key);
+      if (keys.length > maxKeys) {
+        var evictCount = Math.max(1, Math.floor(maxKeys * 0.1));
+        var evicted = keys.splice(0, evictCount);
+        for (var i = 0; i < evicted.length; i++) {
+          delete store[evicted[i]];
+        }
+      }
     }
   }
 
@@ -215,10 +235,12 @@ function createGeoRiskScorer(options) {
     var level = _toLevel(composite);
 
     if (meta.ip && meta.lat != null && meta.lon != null) {
+      _evictIfNeeded(_ipHistory, _ipHistoryKeys, meta.ip);
       if (!_ipHistory[meta.ip]) _ipHistory[meta.ip] = [];
       _pushCapped(_ipHistory[meta.ip], { lat: meta.lat, lon: meta.lon, ts: ts, country: (meta.country || "").toUpperCase() }, maxHistory);
     }
     if (meta.sessionId && meta.country) {
+      _evictIfNeeded(_sessionGeo, _sessionGeoKeys, meta.sessionId);
       if (!_sessionGeo[meta.sessionId]) _sessionGeo[meta.sessionId] = [];
       _pushCapped(_sessionGeo[meta.sessionId], { country: meta.country.toUpperCase(), ts: ts }, maxHistory);
     }
@@ -296,7 +318,9 @@ function createGeoRiskScorer(options) {
 
   function reset() {
     _ipHistory = Object.create(null);
+    _ipHistoryKeys.length = 0;
     _sessionGeo = Object.create(null);
+    _sessionGeoKeys.length = 0;
     _regionStats = Object.create(null);
     _blockedIPs = Object.create(null);
     _allowedIPs = Object.create(null);

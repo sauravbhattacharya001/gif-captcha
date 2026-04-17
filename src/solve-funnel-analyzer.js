@@ -150,26 +150,57 @@ function createFunnelAnalyzer(opts) {
   }
 
   function compareCohorts() {
-    // Find all cohorts
-    var cohortSet = new Set();
-    sessions.forEach(function (s) { cohortSet.add(s.cohort); });
+    // Single-pass: aggregate counts, time sums, and session counts per cohort.
+    // Previously this called _countByStage + _avgTimeByStage + a session count
+    // loop per cohort, iterating all sessions 3× per cohort — O(cohorts × sessions).
+    // Now it's O(sessions) total regardless of cohort count.
+    var cohortData = Object.create(null); // cohort -> { counts, timeSums, timeCounts, sessionCount }
+
+    sessions.forEach(function (session) {
+      var c = session.cohort;
+      if (!cohortData[c]) {
+        var d = { counts: {}, timeSums: {}, timeCounts: {}, sessionCount: 0 };
+        for (var si = 0; si < STAGES.length; si++) {
+          d.counts[STAGES[si]] = 0;
+          d.timeSums[STAGES[si]] = 0;
+          d.timeCounts[STAGES[si]] = 0;
+        }
+        cohortData[c] = d;
+      }
+      var cd = cohortData[c];
+      cd.sessionCount++;
+      for (var si2 = 0; si2 < STAGES.length; si2++) {
+        var st = STAGES[si2];
+        if (session.stages[st]) {
+          cd.counts[st]++;
+          if (session.stages[st].timeMs != null) {
+            cd.timeSums[st] += session.stages[st].timeMs;
+            cd.timeCounts[st]++;
+          }
+        }
+      }
+    });
 
     var result = {};
-    cohortSet.forEach(function (cohort) {
-      var counts = _countByStage(function (s) { return s.cohort === cohort; });
-      var funnel = _buildFunnel(counts);
-      var avgTimes = _avgTimeByStage(function (s) { return s.cohort === cohort; });
-      var sessionCount = 0;
-      sessions.forEach(function (s) { if (s.cohort === cohort) sessionCount++; });
+    var cohorts = Object.keys(cohortData);
+    for (var ci = 0; ci < cohorts.length; ci++) {
+      var cohort = cohorts[ci];
+      var cd = cohortData[cohort];
+      var funnel = _buildFunnel(cd.counts);
+      var avgTimes = {};
+      for (var si3 = 0; si3 < STAGES.length; si3++) {
+        var s = STAGES[si3];
+        avgTimes[s] = cd.timeCounts[s] > 0 ? Math.round(cd.timeSums[s] / cd.timeCounts[s]) : null;
+      }
       result[cohort] = {
-        totalSessions: sessionCount,
+        totalSessions: cd.sessionCount,
         funnel: funnel,
         averageTimeMs: avgTimes,
-        overallConversion: counts[STAGES[0]] > 0
-          ? Math.round((counts[STAGES[STAGES.length - 1]] / counts[STAGES[0]]) * 10000) / 10000
+        overallConversion: cd.counts[STAGES[0]] > 0
+          ? Math.round((cd.counts[STAGES[STAGES.length - 1]] / cd.counts[STAGES[0]]) * 10000) / 10000
           : 0,
       };
-    });
+    }
     return result;
   }
 

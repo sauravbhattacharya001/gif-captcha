@@ -24,6 +24,8 @@
 
 "use strict";
 
+var { csvEscape } = require("./csv-utils");
+
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
@@ -59,6 +61,20 @@ function escapeLatex(str) {
   return String(str)
     .replace(/\\/g, '\\textbackslash{}')
     .replace(/[&%$#_{}~^]/g, m => '\\' + m);
+}
+
+/**
+ * Escape a string for safe inclusion in R string literals.
+ * Prevents R code injection when exported data is sourced.
+ * @param {string} str
+ * @returns {string}
+ */
+function escapeR(str) {
+  return String(str)
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r');
 }
 
 function round(n, dp = 2) {
@@ -212,10 +228,10 @@ function createExportFormatter(opts = {}) {
     lines.push(`# Generated ${new Date(createdAt).toISOString()}`);
     lines.push('');
 
-    const participant = trials.map(t => `"${t.participant}"`);
+    const participant = trials.map(t => `"${escapeR(t.participant)}"`);
     const solved = trials.map(t => t.solved ? 'TRUE' : 'FALSE');
     const timeMs = trials.map(t => t.timeMs);
-    const type = trials.map(t => `"${t.challengeType}"`);
+    const type = trials.map(t => `"${escapeR(t.challengeType)}"`);
     const attempts = trials.map(t => t.attempts);
 
     lines.push(`${varName} <- data.frame(`);
@@ -234,12 +250,12 @@ function createExportFormatter(opts = {}) {
     // Add difficulty/device if present
     if (trials.some(t => t.difficulty)) {
       lines.push('');
-      const diff = trials.map(t => t.difficulty ? `"${t.difficulty}"` : 'NA');
+      const diff = trials.map(t => t.difficulty ? `"${escapeR(t.difficulty)}"` : 'NA');
       lines.push(`${varName}$difficulty <- factor(c(${diff.join(', ')}), levels = c("easy", "medium", "hard"), ordered = TRUE)`);
     }
     if (trials.some(t => t.device)) {
       lines.push('');
-      const dev = trials.map(t => t.device ? `"${t.device}"` : 'NA');
+      const dev = trials.map(t => t.device ? `"${escapeR(t.device)}"` : 'NA');
       lines.push(`${varName}$device <- factor(c(${dev.join(', ')}))`);
     }
 
@@ -257,13 +273,13 @@ function createExportFormatter(opts = {}) {
 
     for (const t of trials) {
       csvLines.push([
-        `"${t.participant}"`,
+        csvEscape(t.participant),
         t.solved ? 1 : 0,
         t.timeMs,
-        `"${t.challengeType}"`,
+        csvEscape(t.challengeType),
         t.attempts,
-        t.difficulty ? `"${t.difficulty}"` : '',
-        t.device ? `"${t.device}"` : '',
+        t.difficulty ? csvEscape(t.difficulty) : '',
+        t.device ? csvEscape(t.device) : '',
         t.timestamp,
       ].join(','));
     }

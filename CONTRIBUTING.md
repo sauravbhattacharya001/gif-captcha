@@ -53,13 +53,31 @@ Thanks for your interest in contributing to GIF CAPTCHA! This project explores w
 git clone https://github.com/sauravbhattacharya001/gif-captcha.git
 cd gif-captcha
 
+# Install dev dependencies (for tests and coverage)
+npm install
+
 # Open directly in your browser
 start index.html     # Windows
 open index.html      # macOS
 xdg-open index.html  # Linux
 ```
 
-No build step required — the project is pure HTML/CSS/JS.
+No build step required for the front-end — the project is pure HTML/CSS/JS. The npm dependencies are only needed for running tests and code coverage.
+
+### Running Tests
+
+```bash
+# Run the test suite
+npm test
+
+# Run tests with coverage report
+npm run test:coverage
+
+# Check coverage thresholds (80% lines, 70% functions, 90% branches)
+npm run coverage:check
+```
+
+Tests use Node.js built-in test runner with `jsdom` for DOM simulation. Coverage is powered by [c8](https://github.com/bcoe/c8).
 
 ### Validation
 
@@ -160,8 +178,9 @@ Don't add external script or stylesheet sources — they'll be blocked.
 1. **Fork** the repository
 2. **Create a branch** from `main`: `git checkout -b your-feature`
 3. **Make your changes** following the coding standards above
-4. **Validate**: `npx htmlhint index.html demo.html analysis.html`
-5. **Test visually**: Open all three pages, check responsive layouts
+4. **Run tests**: `npm test` — all tests must pass
+5. **Validate HTML**: `npx htmlhint index.html demo.html analysis.html`
+6. **Test visually**: Open all three pages, check responsive layouts
 6. **Commit** with a clear message: `git commit -m "Add temporal analysis chart to analysis dashboard"`
 7. **Push** and open a Pull Request
 

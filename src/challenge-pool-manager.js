@@ -36,6 +36,11 @@ var _cryptoUtils = require("./crypto-utils");
 var _secureRandom = _cryptoUtils.secureRandom;
 var _secureRandomHex = _cryptoUtils.secureRandomHex;
 
+// -- Shared option helpers (from shared-utils.js — issue #91) --
+var _sharedUtils = require("./shared-utils");
+var _posOpt = _sharedUtils._posOpt;
+var _nnOpt = _sharedUtils._nnOpt;
+
 // ── Defaults ────────────────────────────────────────────────────────
 
 var DEFAULT_TARGET_SIZE = 50;       // per tier
@@ -76,13 +81,7 @@ function _validateOptions(opts) {
   }
 }
 
-function _posOpt(val, fallback) {
-  return val != null && val > 0 ? val : fallback;
-}
-
-function _nnOpt(val, fallback) {
-  return val != null && val >= 0 ? val : fallback;
-}
+// _posOpt and _nnOpt imported from shared-utils above
 
 // ── Pool Entry ──────────────────────────────────────────────────────
 

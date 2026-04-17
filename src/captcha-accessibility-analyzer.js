@@ -34,17 +34,19 @@
     colorContrast: 10, screenReader: 12, motorSkill: 10, instructions: 7, errorRecovery: 7
   };
 
+  // -- Shared crypto utilities (CWE-330 mitigation) --
+  var _cryptoUtils;
+  try { if (typeof require !== "undefined") _cryptoUtils = require("./crypto-utils"); } catch (e) { /* browser */ }
+
   function _clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
   function _grade(s) { if (s >= 90) return "A"; if (s >= 80) return "B"; if (s >= 65) return "C"; if (s >= 50) return "D"; return "F"; }
   function _now() { return new Date().toISOString(); }
   function _uid() {
-    // Use crypto for unpredictable IDs when available (CWE-330 mitigation).
-    // Falls back to timestamp-based hash only in browser contexts without
-    // Web Crypto, which is acceptable for internal finding IDs.
-    var _cr;
-    try { if (typeof require !== "undefined") _cr = require("crypto"); } catch (e) { /* browser */ }
-    if (_cr && typeof _cr.randomBytes === "function") {
-      return "f-" + _cr.randomBytes(6).toString("hex");
+    // Use crypto-utils.secureRandomHex when available (Node.js).
+    // Falls back to Web Crypto, then to timestamp hash in browsers
+    // without crypto (acceptable for internal finding IDs).
+    if (_cryptoUtils && typeof _cryptoUtils.secureRandomHex === "function") {
+      return "f-" + _cryptoUtils.secureRandomHex(12);
     }
     if (typeof crypto !== "undefined" && crypto.getRandomValues) {
       var bytes = new Uint8Array(6);

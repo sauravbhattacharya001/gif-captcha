@@ -1,38 +1,9 @@
 'use strict';
 
-// ── O(1) LRU Tracker (doubly-linked list) ───────────────────────────
-function LruTracker() {
-  this._map = Object.create(null);
-  this._head = null;
-  this._tail = null;
-  this.length = 0;
-}
-LruTracker.prototype.push = function (key) {
-  if (this._map[key]) { this.touch(key); return; }
-  var node = { key: key, prev: this._tail, next: null };
-  if (this._tail) this._tail.next = node; else this._head = node;
-  this._tail = node;
-  this._map[key] = node;
-  this.length++;
-};
-LruTracker.prototype.touch = function (key) {
-  var node = this._map[key];
-  if (!node || node === this._tail) return;
-  if (node.prev) node.prev.next = node.next; else this._head = node.next;
-  if (node.next) node.next.prev = node.prev;
-  node.prev = this._tail; node.next = null;
-  this._tail.next = node; this._tail = node;
-};
-LruTracker.prototype.evictOldest = function () {
-  if (!this._head) return undefined;
-  var node = this._head;
-  this._head = node.next;
-  if (this._head) this._head.prev = null; else this._tail = null;
-  delete this._map[node.key];
-  this.length--;
-  return node.key;
-};
-LruTracker.prototype.has = function (key) { return !!this._map[key]; };
+// ── Shared utilities (from shared-utils.js — issue #91) ──────────────
+var _sharedUtils = require("./shared-utils");
+var LruTracker = _sharedUtils.LruTracker;
+var _posOpt = _sharedUtils._posOpt;
 
 /**
  * Response Time Profiler for CAPTCHA systems.
@@ -57,9 +28,7 @@ LruTracker.prototype.has = function (key) { return !!this._map[key]; };
  * @param {Function} [options.now] - Clock function; defaults to Date.now
  * @returns {Object} Profiler instance
  */
-function _posOpt(val, fallback) {
-  return val != null && val > 0 ? val : fallback;
-}
+// _posOpt imported from shared-utils above
 
 function createResponseTimeProfiler(options) {
   options = options || {};

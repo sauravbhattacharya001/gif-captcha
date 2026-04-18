@@ -9569,6 +9569,40 @@ var createSessionReplay = require("./captcha-session-replay").createSessionRepla
 var createComplianceReporter = require("./compliance-reporter").createComplianceReporter;
 var createABExperimentRunner = require("./ab-experiment-runner").createABExperimentRunner;
 var createTrustScoreEngine = require("./trust-score-engine").createTrustScoreEngine;
+
+// ── Previously orphaned modules — now wired into public API ─────────
+var createAdaptiveDifficultyTuner = require("./adaptive-difficulty-tuner").createAdaptiveDifficultyTuner;
+var createBehavioralBiometrics = require("./behavioral-biometrics").createBehavioralBiometrics;
+var createBotSignatureDatabase = require("./bot-signature-database").createBotSignatureDatabase;
+var createAccessibilityAnalyzer = require("./captcha-accessibility-analyzer").createAccessibilityAnalyzer;
+var createAnomalyDetector = require("./captcha-anomaly-detector").createAnomalyDetector;
+var _auditLogModule = require("./captcha-audit-log");
+var createAuditLog = _auditLogModule.createAuditLog;
+var createCapacityPlanner = require("./captcha-capacity-planner").createCapacityPlanner;
+var createExportFormatter = require("./captcha-export-formatter").createExportFormatter;
+var _fatigueModule = require("./captcha-fatigue-detector");
+var createCaptchaFatigueDetector = _fatigueModule.createCaptchaFatigueDetector;
+var createCaptchaHealthMonitor = require("./captcha-health-monitor").createCaptchaHealthMonitor;
+var createIncidentManager = require("./captcha-incident-manager").createIncidentManager;
+var createCaptchaLoadTester = require("./captcha-load-tester").createCaptchaLoadTester;
+var createCaptchaLocalizationManager = require("./captcha-localization-manager").createCaptchaLocalizationManager;
+var createCaptchaRateLimiter = require("./captcha-rate-limiter").createCaptchaRateLimiter;
+var _statsModule = require("./captcha-stats-collector");
+var createStatsCollector = _statsModule.createStatsCollector;
+var createCaptchaStrengthScorer = require("./captcha-strength-scorer").createCaptchaStrengthScorer;
+var createCaptchaTrafficAnalyzer = require("./captcha-traffic-analyzer").createCaptchaTrafficAnalyzer;
+var createChallengeDecayManager = require("./challenge-decay-manager").createChallengeDecayManager;
+var _diversityModule = require("./challenge-diversity-analyzer");
+var createChallengeTemplateEngine = require("./challenge-template-engine").createChallengeTemplateEngine;
+var _csvUtils = require("./csv-utils");
+var createFraudRingDetectorStandalone = require("./fraud-ring-detector").createFraudRingDetector;
+var createResponseTimeProfiler = require("./response-time-profiler").createResponseTimeProfiler;
+var createSessionRiskAggregator = require("./session-risk-aggregator").createSessionRiskAggregator;
+var _funnelModule = require("./solve-funnel-analyzer");
+var createFunnelAnalyzer = _funnelModule.createFunnelAnalyzer;
+var createSolvePatternFingerprinter = require("./solve-pattern-fingerprinter").createSolvePatternFingerprinter;
+var _webhookModule = require("./webhook-dispatcher");
+var WebhookDispatcher = _webhookModule.WebhookDispatcher;
 var gifCaptcha = {
   sanitize: sanitize,
   createSanitizer: createSanitizer,
@@ -9617,6 +9651,37 @@ var gifCaptcha = {
   createChallengeRotationScheduler: createChallengeRotationScheduler,
   createChallengePoolManager: createChallengePoolManager,
   createSessionReplay: createSessionReplay,
+  // ── Previously orphaned modules ────────────────────────────────
+  createAdaptiveDifficultyTuner: createAdaptiveDifficultyTuner,
+  createBehavioralBiometrics: createBehavioralBiometrics,
+  createBotSignatureDatabase: createBotSignatureDatabase,
+  createAccessibilityAnalyzer: createAccessibilityAnalyzer,
+  createAnomalyDetector: createAnomalyDetector,
+  createAuditLog: createAuditLog,
+  createCapacityPlanner: createCapacityPlanner,
+  createExportFormatter: createExportFormatter,
+  createCaptchaFatigueDetector: createCaptchaFatigueDetector,
+  createCaptchaHealthMonitor: createCaptchaHealthMonitor,
+  createIncidentManager: createIncidentManager,
+  createCaptchaLoadTester: createCaptchaLoadTester,
+  createCaptchaLocalizationManager: createCaptchaLocalizationManager,
+  createCaptchaRateLimiter: createCaptchaRateLimiter,
+  createStatsCollector: createStatsCollector,
+  createCaptchaStrengthScorer: createCaptchaStrengthScorer,
+  createCaptchaTrafficAnalyzer: createCaptchaTrafficAnalyzer,
+  createChallengeDecayManager: createChallengeDecayManager,
+  analyzeDiversity: _diversityModule.analyzeDiversity,
+  shannonEntropy: _diversityModule.shannonEntropy,
+  simpsonsIndex: _diversityModule.simpsonsIndex,
+  giniSimpson: _diversityModule.giniSimpson,
+  createChallengeTemplateEngine: createChallengeTemplateEngine,
+  csvEscape: _csvUtils.csvEscape,
+  csvRow: _csvUtils.csvRow,
+  createResponseTimeProfiler: createResponseTimeProfiler,
+  createSessionRiskAggregator: createSessionRiskAggregator,
+  createFunnelAnalyzer: createFunnelAnalyzer,
+  createSolvePatternFingerprinter: createSolvePatternFingerprinter,
+  WebhookDispatcher: WebhookDispatcher,
 };
 
 // UMD export — works in Node.js, AMD, and browser globals

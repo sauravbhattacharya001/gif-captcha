@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Adaptive Difficulty Engine — GIF CAPTCHA</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+.engine-grid{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-bottom:2rem}
+@media(max-width:900px){.engine-grid{grid-template-columns:1fr}}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:1.5rem}
+.panel h3{margin:0 0 1rem;color:var(--accent);font-size:1.1rem}
+.metric-row{display:flex;justify-content:space-between;align-items:center;padding:.6rem 0;border-bottom:1px solid var(--border)}
+.metric-row:last-child{border-bottom:none}
+.metric-label{color:var(--muted);font-size:.9rem}
+.metric-value{font-weight:600;font-size:1.1rem;font-variant-numeric:tabular-nums}
+.difficulty-bar{height:24px;border-radius:12px;background:var(--border);overflow:hidden;margin-top:.5rem;position:relative}
+.difficulty-fill{height:100%;border-radius:12px;transition:width .6s ease,background .6s ease}
+.difficulty-label{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:.75rem;font-weight:700;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.5)}
+canvas{border-radius:8px;background:#0d1117;display:block;width:100%}
+.controls{display:flex;gap:.75rem;flex-wrap:wrap;margin-bottom:1.5rem}
+.btn-sm{padding:.5rem 1rem;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer;font-size:.85rem;transition:all .2s}
+.btn-sm:hover{border-color:var(--accent);color:var(--accent)}
+.btn-sm.active{background:var(--accent);color:#0d1117;border-color:var(--accent)}
+.sim-area{display:flex;gap:1rem;align-items:center;flex-wrap:wrap;padding:1rem;background:var(--surface);border:1px solid var(--border);border-radius:12px;margin-bottom:1.5rem}
+.captcha-sim{width:120px;height:80px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:2rem;font-weight:900;letter-spacing:4px;user-select:none;transition:all .4s}
+.captcha-input{background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.5rem .75rem;border-radius:8px;font-size:1rem;width:140px}
+.captcha-input:focus{outline:none;border-color:var(--accent)}
+.result-flash{padding:.4rem .8rem;border-radius:8px;font-weight:600;font-size:.85rem;opacity:0;transition:opacity .3s}
+.result-flash.show{opacity:1}
+.recommendations{list-style:none;padding:0;margin:0}
+.recommendations li{padding:.6rem .8rem;margin-bottom:.5rem;border-radius:8px;background:var(--bg);border-left:3px solid var(--accent);font-size:.9rem;color:var(--text)}
+.recommendations li.warn{border-left-color:var(--yellow)}
+.recommendations li.danger{border-left-color:var(--red)}
+.recommendations li.success{border-left-color:var(--green)}
+.zone-indicator{display:inline-block;padding:.25rem .6rem;border-radius:6px;font-size:.8rem;font-weight:700}
+.zone-easy{background:var(--green-bg);color:var(--green)}
+.zone-medium{background:var(--yellow-bg);color:var(--yellow)}
+.zone-hard{background:var(--red-bg);color:var(--red)}
+.zone-extreme{background:var(--purple-bg);color:var(--purple)}
+.history-table{width:100%;border-collapse:collapse;font-size:.85rem}
+.history-table th{text-align:left;color:var(--muted);padding:.5rem;border-bottom:1px solid var(--border);font-weight:500}
+.history-table td{padding:.5rem;border-bottom:1px solid var(--border)}
+.trend-up{color:var(--red)}
+.trend-down{color:var(--green)}
+.trend-flat{color:var(--muted)}
+.stat-card{text-align:center;padding:1rem;background:var(--bg);border-radius:8px;min-width:100px}
+.stat-card .num{font-size:1.8rem;font-weight:700}
+.stat-card .lbl{font-size:.75rem;color:var(--muted);margin-top:.25rem}
+.stat-row{display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1.5rem}
+.algo-tag{display:inline-block;padding:.15rem .5rem;border-radius:4px;font-size:.75rem;background:var(--purple-bg);color:var(--purple);margin-left:.5rem}
+</style>
+</head>
+<body>
+<header>
+    <h1>🎯 Adaptive Difficulty Engine</h1>
+    <p>Real-time CAPTCHA difficulty auto-tuning that learns from solve patterns</p>
+</header>
+<main>
+    <!-- Summary Stats -->
+    <div class="stat-row" id="statRow">
+        <div class="stat-card"><div class="num" id="sTotalSolves">0</div><div class="lbl">Total Attempts</div></div>
+        <div class="stat-card"><div class="num" id="sSuccessRate">—</div><div class="lbl">Success Rate</div></div>
+        <div class="stat-card"><div class="num" id="sCurrentDiff">1</div><div class="lbl">Current Difficulty</div></div>
+        <div class="stat-card"><div class="num" id="sAvgTime">—</div><div class="lbl">Avg Solve Time</div></div>
+        <div class="stat-card"><div class="num" id="sZone">—</div><div class="lbl">User Zone</div></div>
+    </div>
+
+    <!-- CAPTCHA Simulator -->
+    <h2>Interactive CAPTCHA Simulator</h2>
+    <p style="color:var(--muted);font-size:.9rem">Solve simulated CAPTCHAs. The engine adapts difficulty based on your performance.</p>
+    <div class="sim-area">
+        <div class="captcha-sim" id="captchaSim"></div>
+        <div>
+            <input type="text" class="captcha-input" id="captchaInput" placeholder="Type the text..." autocomplete="off">
+            <div style="margin-top:.4rem;font-size:.75rem;color:var(--muted)" id="captchaHint"></div>
+        </div>
+        <button class="btn-sm active" id="submitBtn" onclick="submitAnswer()">Submit</button>
+        <button class="btn-sm" onclick="skipCaptcha()">Skip</button>
+        <div class="result-flash" id="resultFlash"></div>
+    </div>
+
+    <!-- Difficulty Bar -->
+    <div style="margin-bottom:1.5rem">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.4rem">
+            <span style="font-weight:600">Difficulty Level</span>
+            <span id="diffZone" class="zone-indicator zone-easy">Easy</span>
+        </div>
+        <div class="difficulty-bar">
+            <div class="difficulty-fill" id="diffFill" style="width:10%;background:var(--green)"></div>
+            <div class="difficulty-label" id="diffLabel">1 / 10</div>
+        </div>
+    </div>
+
+    <!-- Controls -->
+    <div class="controls">
+        <button class="btn-sm active" data-algo="ema" onclick="setAlgo(this)">EMA Algorithm</button>
+        <button class="btn-sm" data-algo="pid" onclick="setAlgo(this)">PID Controller</button>
+        <button class="btn-sm" data-algo="bayesian" onclick="setAlgo(this)">Bayesian</button>
+        <button class="btn-sm" onclick="runBotSimulation()">🤖 Simulate Bot</button>
+        <button class="btn-sm" onclick="runHumanSimulation()">👤 Simulate Human</button>
+        <button class="btn-sm" onclick="resetEngine()">🔄 Reset</button>
+        <button class="btn-sm" onclick="exportData()">📥 Export JSON</button>
+    </div>
+
+    <div class="engine-grid">
+        <!-- Difficulty Trend Chart -->
+        <div class="panel">
+            <h3>📈 Difficulty Trend</h3>
+            <canvas id="trendCanvas" height="200"></canvas>
+        </div>
+
+        <!-- Success Rate Over Time -->
+        <div class="panel">
+            <h3>📊 Rolling Success Rate</h3>
+            <canvas id="successCanvas" height="200"></canvas>
+        </div>
+
+        <!-- Engine Internals -->
+        <div class="panel">
+            <h3>⚙️ Engine Internals <span class="algo-tag" id="algoTag">EMA</span></h3>
+            <div class="metric-row"><span class="metric-label">Target Success Rate</span><span class="metric-value">70%</span></div>
+            <div class="metric-row"><span class="metric-label">Current Success Rate (rolling)</span><span class="metric-value" id="mRolling">—</span></div>
+            <div class="metric-row"><span class="metric-label">Error Signal</span><span class="metric-value" id="mError">0.00</span></div>
+            <div class="metric-row"><span class="metric-label">Smoothed Adjustment</span><span class="metric-value" id="mAdj">0.00</span></div>
+            <div class="metric-row"><span class="metric-label">Solve Speed Factor</span><span class="metric-value" id="mSpeed">1.00</span></div>
+            <div class="metric-row"><span class="metric-label">Consecutive Successes</span><span class="metric-value" id="mStreak">0</span></div>
+            <div class="metric-row"><span class="metric-label">Consecutive Failures</span><span class="metric-value" id="mFStreak">0</span></div>
+            <div class="metric-row"><span class="metric-label">Adjustments Made</span><span class="metric-value" id="mAdjCount">0</span></div>
+        </div>
+
+        <!-- Proactive Recommendations -->
+        <div class="panel">
+            <h3>💡 Proactive Recommendations</h3>
+            <ul class="recommendations" id="recoList">
+                <li class="success">Waiting for solve data...</li>
+            </ul>
+        </div>
+
+        <!-- Solve Time Distribution -->
+        <div class="panel">
+            <h3>⏱️ Solve Time Distribution</h3>
+            <canvas id="timeCanvas" height="200"></canvas>
+        </div>
+
+        <!-- Recent History -->
+        <div class="panel">
+            <h3>📋 Recent Attempts</h3>
+            <div style="max-height:250px;overflow-y:auto">
+                <table class="history-table" id="historyTable">
+                    <thead><tr><th>#</th><th>Answer</th><th>Result</th><th>Time</th><th>Difficulty</th><th>Trend</th></tr></thead>
+                    <tbody id="historyBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</main>
+<footer>
+    <p>Part of the <a href="index.html">GIF CAPTCHA</a> research project</p>
+</footer>
+<script src="shared.js"></script>
+<script>
+/* ===== Engine State ===== */
+const TARGET_RATE=.7,MIN_DIFF=1,MAX_DIFF=10;
+let state={difficulty:1,algo:'ema',attempts:[],adjustments:0,ema:{alpha:.3,value:0},pid:{kp:1.2,ki:.05,kd:.3,integral:0,prevError:0},bayesian:{alpha:2,beta:2}};
+let currentCaptcha=null,captchaStart=0;
+
+/* ===== CAPTCHA Generation ===== */
+const CHARS='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+function genCaptcha(){
+    const d=state.difficulty;
+    const len=Math.min(3+Math.floor(d/2),8);
+    let txt='';for(let i=0;i<len;i++)txt+=CHARS[Math.floor(Math.random()*CHARS.length)];
+    currentCaptcha=txt;captchaStart=Date.now();
+    const sim=document.getElementById('captchaSim');
+    // Visual distortion scales with difficulty
+    const blur=Math.min(d*.3,2.5);
+    const rotate=(Math.random()-.5)*d*3;
+    const noise=d>5?'contrast(1.'+Math.floor(d*8)+')':'';
+    const spacing=Math.max(4-d*.3,0);
+    const colors=['var(--green)','var(--accent)','var(--yellow)','var(--orange)','var(--red)','var(--purple)'];
+    const c=colors[Math.min(Math.floor(d/2),colors.length-1)];
+    sim.style.background=`linear-gradient(135deg,var(--bg),${c}22)`;
+    sim.style.border=`2px solid ${c}`;
+    sim.style.color=c;
+    sim.style.filter=`blur(${blur}px) ${noise}`;
+    sim.style.transform=`rotate(${rotate}deg)`;
+    sim.style.letterSpacing=spacing+'px';
+    sim.style.fontSize=Math.max(2-d*.08,1.2)+'rem';
+    sim.textContent=txt;
+    document.getElementById('captchaInput').value='';
+    document.getElementById('captchaHint').textContent=`${len} characters · Difficulty ${d}/10`;
+    document.getElementById('resultFlash').className='result-flash';
+}
+
+/* ===== Submit / Skip ===== */
+function submitAnswer(){
+    if(!currentCaptcha)return;
+    const input=document.getElementById('captchaInput').value.trim().toUpperCase();
+    if(!input)return;
+    const elapsed=(Date.now()-captchaStart)/1000;
+    const success=input===currentCaptcha;
+    recordAttempt(success,elapsed);
+    const flash=document.getElementById('resultFlash');
+    flash.textContent=success?'✓ Correct!':'✗ Wrong — was '+currentCaptcha;
+    flash.style.color=success?'var(--green)':'var(--red)';
+    flash.className='result-flash show';
+    setTimeout(genCaptcha,800);
+}
+function skipCaptcha(){
+    if(!currentCaptcha)return;
+    recordAttempt(false,(Date.now()-captchaStart)/1000);
+    genCaptcha();
+}
+document.getElementById('captchaInput').addEventListener('keydown',e=>{if(e.key==='Enter')submitAnswer()});
+
+/* ===== Core Engine ===== */
+function recordAttempt(success,time){
+    const a={success,time:Math.round(time*100)/100,difficulty:state.difficulty,ts:Date.now()};
+    state.attempts.push(a);
+    adjustDifficulty(a);
+    updateUI();
+}
+
+function rollingRate(n=10){
+    const recent=state.attempts.slice(-n);
+    if(!recent.length)return null;
+    return recent.filter(a=>a.success).length/recent.length;
+}
+
+function adjustDifficulty(attempt){
+    const rate=rollingRate(10);
+    if(rate===null)return;
+    const error=rate-TARGET_RATE; // positive = too easy
+    let delta=0;
+    if(state.algo==='ema'){
+        state.ema.value=state.ema.alpha*error+(1-state.ema.alpha)*state.ema.value;
+        delta=state.ema.value*3;
+    }else if(state.algo==='pid'){
+        const p=state.pid;
+        p.integral+=error;
+        p.integral=Math.max(-5,Math.min(5,p.integral));
+        const deriv=error-p.prevError;
+        delta=p.kp*error+p.ki*p.integral+p.kd*deriv;
+        p.prevError=error;
+    }else{// bayesian
+        const b=state.bayesian;
+        if(attempt.success)b.alpha++;else b.beta++;
+        const mean=b.alpha/(b.alpha+b.beta);
+        delta=(mean-TARGET_RATE)*4;
+    }
+    // Speed factor: fast solves = harder, slow = easier
+    const avgTime=state.attempts.slice(-5).reduce((s,a)=>s+a.time,0)/Math.min(state.attempts.length,5);
+    const expectedTime=state.difficulty*1.5+2;
+    const speedFactor=expectedTime/(avgTime||expectedTime);
+    delta+=((speedFactor-1)*.5);
+    document.getElementById('mSpeed').textContent=speedFactor.toFixed(2);
+    document.getElementById('mError').textContent=error.toFixed(3);
+    document.getElementById('mAdj').textContent=delta.toFixed(3);
+
+    if(Math.abs(delta)>.15){
+        state.difficulty=Math.max(MIN_DIFF,Math.min(MAX_DIFF,Math.round((state.difficulty+delta)*10)/10));
+        state.adjustments++;
+    }
+}
+
+/* ===== Simulations ===== */
+function runBotSimulation(){
+    let i=0;const run=()=>{if(i>=30)return;const d=state.difficulty;const success=Math.random()>.15;// bots succeed ~85%
+    const time=.2+Math.random()*.5;// very fast
+    recordAttempt(success,time);i++;setTimeout(run,100)};run();
+}
+function runHumanSimulation(){
+    let i=0;const run=()=>{if(i>=30)return;const d=state.difficulty;
+    const baseRate=Math.max(.3,1-d*.08);const success=Math.random()<baseRate;
+    const time=1.5+d*.8+Math.random()*3;
+    recordAttempt(success,time);i++;setTimeout(run,100)};run();
+}
+
+/* ===== Algorithm Switch ===== */
+function setAlgo(btn){
+    document.querySelectorAll('[data-algo]').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    state.algo=btn.dataset.algo;
+    document.getElementById('algoTag').textContent={ema:'EMA',pid:'PID',bayesian:'Bayesian'}[state.algo];
+    // Reset algo state
+    state.ema.value=0;state.pid.integral=0;state.pid.prevError=0;state.bayesian.alpha=2;state.bayesian.beta=2;
+}
+function resetEngine(){state.difficulty=1;state.attempts=[];state.adjustments=0;state.ema.value=0;state.pid.integral=0;state.pid.prevError=0;state.bayesian={alpha:2,beta:2};updateUI();genCaptcha()}
+
+/* ===== Export ===== */
+function exportData(){
+    const d={difficulty:state.difficulty,algo:state.algo,attempts:state.attempts,adjustments:state.adjustments,exported:new Date().toISOString()};
+    const b=new Blob([JSON.stringify(d,null,2)],{type:'application/json'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='adaptive-difficulty-export.json';a.click();
+}
+
+/* ===== UI Update ===== */
+function updateUI(){
+    const atts=state.attempts,d=state.difficulty;
+    document.getElementById('sTotalSolves').textContent=atts.length;
+    const rate=atts.length?atts.filter(a=>a.success).length/atts.length:null;
+    document.getElementById('sSuccessRate').textContent=rate!==null?Math.round(rate*100)+'%':'—';
+    document.getElementById('sCurrentDiff').textContent=Math.round(d*10)/10;
+    const avg=atts.length?atts.reduce((s,a)=>s+a.time,0)/atts.length:null;
+    document.getElementById('sAvgTime').textContent=avg!==null?avg.toFixed(1)+'s':'—';
+
+    // Zone
+    const zone=d<=3?'Easy':d<=5?'Medium':d<=7?'Hard':'Extreme';
+    const zCls=d<=3?'zone-easy':d<=5?'zone-medium':d<=7?'zone-hard':'zone-extreme';
+    document.getElementById('sZone').textContent=zone;
+    document.getElementById('diffZone').textContent=zone;
+    document.getElementById('diffZone').className='zone-indicator '+zCls;
+    document.getElementById('diffFill').style.width=d*10+'%';
+    document.getElementById('diffFill').style.background=d<=3?'var(--green)':d<=5?'var(--yellow)':d<=7?'var(--orange)':'var(--red)';
+    document.getElementById('diffLabel').textContent=Math.round(d*10)/10+' / 10';
+
+    const rr=rollingRate(10);
+    document.getElementById('mRolling').textContent=rr!==null?Math.round(rr*100)+'%':'—';
+    // Streaks
+    let ss=0,fs=0;
+    for(let i=atts.length-1;i>=0;i--){if(atts[i].success){if(fs)break;ss++}else{if(ss)break;fs++}}
+    document.getElementById('mStreak').textContent=ss;
+    document.getElementById('mFStreak').textContent=fs;
+    document.getElementById('mAdjCount').textContent=state.adjustments;
+
+    drawTrend();drawSuccess();drawTimeDist();updateHistory();updateRecommendations();
+}
+
+/* ===== Charts ===== */
+function drawTrend(){
+    const c=document.getElementById('trendCanvas'),ctx=c.getContext('2d');
+    c.width=c.offsetWidth*2;c.height=400;ctx.scale(2,2);
+    const w=c.offsetWidth,h=200;ctx.clearRect(0,0,w,h);
+    const pts=state.attempts.map(a=>a.difficulty);
+    if(pts.length<2)return;
+    ctx.strokeStyle='#30363d';ctx.lineWidth=.5;
+    for(let i=0;i<=10;i+=2){const y=h-i/10*h;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();
+        ctx.fillStyle='#8b949e';ctx.font='10px sans-serif';ctx.fillText(i,2,y-3)}
+    ctx.beginPath();ctx.strokeStyle='#58a6ff';ctx.lineWidth=2;
+    const step=Math.max(1,Math.floor(pts.length/w));
+    for(let i=0;i<pts.length;i+=step){const x=i/(pts.length-1)*w,y=h-pts[i]/10*h;i===0?ctx.moveTo(x,y):ctx.lineTo(x,y)}
+    ctx.stroke();
+}
+function drawSuccess(){
+    const c=document.getElementById('successCanvas'),ctx=c.getContext('2d');
+    c.width=c.offsetWidth*2;c.height=400;ctx.scale(2,2);
+    const w=c.offsetWidth,h=200;ctx.clearRect(0,0,w,h);
+    if(state.attempts.length<5)return;
+    // Rolling 10-window
+    const pts=[];for(let i=4;i<state.attempts.length;i++){
+        const win=state.attempts.slice(Math.max(0,i-9),i+1);
+        pts.push(win.filter(a=>a.success).length/win.length)}
+    // Target line
+    ctx.strokeStyle='#3fb95055';ctx.lineWidth=1;ctx.setLineDash([4,4]);
+    const ty=h-TARGET_RATE*h;ctx.beginPath();ctx.moveTo(0,ty);ctx.lineTo(w,ty);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle='#3fb950';ctx.font='10px sans-serif';ctx.fillText('Target 70%',w-65,ty-4);
+    ctx.beginPath();ctx.strokeStyle='#f0883e';ctx.lineWidth=2;
+    for(let i=0;i<pts.length;i++){const x=i/(pts.length-1)*w,y=h-pts[i]*h;i===0?ctx.moveTo(x,y):ctx.lineTo(x,y)}
+    ctx.stroke();
+}
+function drawTimeDist(){
+    const c=document.getElementById('timeCanvas'),ctx=c.getContext('2d');
+    c.width=c.offsetWidth*2;c.height=400;ctx.scale(2,2);
+    const w=c.offsetWidth,h=200;ctx.clearRect(0,0,w,h);
+    const times=state.attempts.map(a=>a.time);
+    if(!times.length)return;
+    const bins=Array(10).fill(0);const maxT=Math.max(...times,10);
+    times.forEach(t=>{const b=Math.min(Math.floor(t/maxT*10),9);bins[b]++});
+    const maxB=Math.max(...bins,1);const bw=w/10;
+    bins.forEach((v,i)=>{const bh=v/maxB*(h-30);
+        ctx.fillStyle=i<3?'#3fb950':i<6?'#d29922':'#f85149';
+        ctx.fillRect(i*bw+4,h-bh-20,bw-8,bh);
+        ctx.fillStyle='#8b949e';ctx.font='9px sans-serif';
+        ctx.fillText((i*maxT/10).toFixed(1)+'s',i*bw+4,h-6)});
+}
+
+/* ===== History Table ===== */
+function updateHistory(){
+    const body=document.getElementById('historyBody');
+    const recent=state.attempts.slice(-15).reverse();
+    body.innerHTML=recent.map((a,i)=>{
+        const idx=state.attempts.length-i;
+        const prev=state.attempts.length-i-2>=0?state.attempts[state.attempts.length-i-2]:null;
+        let trend='—',cls='trend-flat';
+        if(prev){if(a.difficulty>prev.difficulty){trend='↑';cls='trend-up'}else if(a.difficulty<prev.difficulty){trend='↓';cls='trend-down'}else{trend='→';cls='trend-flat'}}
+        return `<tr><td>${idx}</td><td>${a.success?'✓':'✗'}</td><td style="color:${a.success?'var(--green)':'var(--red)'}">${a.success?'Pass':'Fail'}</td><td>${a.time.toFixed(1)}s</td><td>${a.difficulty}</td><td class="${cls}">${trend}</td></tr>`
+    }).join('');
+}
+
+/* ===== Proactive Recommendations ===== */
+function updateRecommendations(){
+    const list=document.getElementById('recoList');
+    const atts=state.attempts,d=state.difficulty;
+    if(atts.length<3){list.innerHTML='<li class="success">Waiting for more data (need 3+ attempts)...</li>';return}
+    const recos=[];
+    const rate=rollingRate(10);
+    const recent5=atts.slice(-5);
+    const avgTime=recent5.reduce((s,a)=>s+a.time,0)/recent5.length;
+    const allTimes=atts.map(a=>a.time);
+    const stdDev=Math.sqrt(allTimes.reduce((s,t)=>s+Math.pow(t-allTimes.reduce((a,b)=>a+b,0)/allTimes.length,2),0)/allTimes.length);
+
+    // Bot detection
+    if(avgTime<1&&rate>.8)recos.push({cls:'danger',txt:'⚠️ Possible bot detected — very fast solves with high success rate. Consider increasing minimum difficulty.'});
+    // Too easy
+    if(rate>.85&&d<5)recos.push({cls:'warn',txt:'🔼 Success rate is very high — difficulty should increase to maintain security.'});
+    // Too hard
+    if(rate!==null&&rate<.4)recos.push({cls:'warn',txt:'🔽 Success rate is too low — users may abandon. Consider lowering difficulty floor.'});
+    // Frustration warning
+    let fails=0;for(let i=atts.length-1;i>=0&&!atts[i].success;i--)fails++;
+    if(fails>=5)recos.push({cls:'danger',txt:`😤 ${fails} consecutive failures detected. User frustration risk is high. Emergency difficulty reduction recommended.`});
+    // Speed anomaly
+    if(stdDev>3)recos.push({cls:'warn',txt:'📊 High variance in solve times — may indicate mixed bot/human traffic.'});
+    // Optimal zone
+    if(rate!==null&&rate>=.6&&rate<=.8)recos.push({cls:'success',txt:'✅ Success rate is in the optimal zone (60-80%). Difficulty is well-calibrated.'});
+    // Plateau detection
+    if(atts.length>20){const last10=atts.slice(-10).map(a=>a.difficulty);const range=Math.max(...last10)-Math.min(...last10);
+        if(range<.5)recos.push({cls:'success',txt:'📐 Difficulty has stabilized — engine has converged on an appropriate level.'})}
+    // Time trend
+    if(atts.length>10){const early=atts.slice(0,5).reduce((s,a)=>s+a.time,0)/5;
+        const late=recent5.reduce((s,a)=>s+a.time,0)/5;
+        if(late<early*.7)recos.push({cls:'warn',txt:'⚡ Solve times are decreasing significantly — user may be adapting. Difficulty should keep pace.'})}
+
+    if(!recos.length)recos.push({cls:'success',txt:'👍 Everything looks good. Keep collecting data.'});
+    list.innerHTML=recos.map(r=>`<li class="${r.cls}">${r.txt}</li>`).join('');
+}
+
+/* ===== Init ===== */
+genCaptcha();updateUI();
+</script>
+</body>
+</html>

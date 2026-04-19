@@ -597,12 +597,7 @@ function createDifficultyCalibrator(challenges, opts) {
       maxTime = times[times.length - 1];
 
       // Population stddev (n denominator) — preserved for API compatibility
-      var sqDiffSum = 0;
-      times.forEach(function (t) {
-        var diff = t - avgTime;
-        sqDiffSum += diff * diff;
-      });
-      stdDev = Math.sqrt(sqDiffSum / times.length);
+      stdDev = _populationStddev(times, avgTime);
     }
 
     return {
@@ -922,13 +917,7 @@ function createSecurityScorer(challenges) {
 
     // coefficient of variation for answer lengths
     var mean = _mean(lengths);
-
-    var variance = 0;
-    for (var i = 0; i < lengths.length; i++) {
-      variance += (lengths[i] - mean) * (lengths[i] - mean);
-    }
-    variance = lengths.length > 1 ? variance / lengths.length : 0;
-    var stddev = Math.sqrt(variance);
+    var stddev = _populationStddev(lengths, mean);
     var coefficientOfVariation = mean > 0 ? stddev / mean : 0;
 
     var avgAnswerLength = mean;

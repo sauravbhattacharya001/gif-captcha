@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Defense Strategist — GIF CAPTCHA</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+.strat-grid{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-bottom:2rem}
+@media(max-width:900px){.strat-grid{grid-template-columns:1fr}}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:1.5rem}
+.panel h3{margin:0 0 1rem;color:var(--accent);font-size:1.1rem;display:flex;align-items:center;gap:.5rem}
+canvas{border-radius:8px;background:#0d1117;display:block;width:100%}
+.controls{display:flex;gap:.75rem;flex-wrap:wrap;margin-bottom:1.5rem}
+.btn-sm{padding:.5rem 1rem;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer;font-size:.85rem;transition:all .2s}
+.btn-sm:hover{border-color:var(--accent);color:var(--accent)}
+.btn-sm.active{background:var(--accent);color:#0d1117;border-color:var(--accent)}
+.threat-card{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:1rem;margin-bottom:.75rem;transition:border-color .3s}
+.threat-card.active-threat{border-color:var(--red);animation:pulse-border 2s infinite}
+@keyframes pulse-border{0%,100%{border-color:var(--red)}50%{border-color:var(--yellow)}}
+.threat-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem}
+.threat-name{font-weight:600;font-size:.95rem}
+.threat-severity{padding:.2rem .5rem;border-radius:6px;font-size:.75rem;font-weight:700}
+.sev-critical{background:var(--red-bg);color:var(--red)}
+.sev-high{background:var(--orange-bg);color:var(--orange)}
+.sev-medium{background:var(--yellow-bg);color:var(--yellow)}
+.sev-low{background:var(--green-bg);color:var(--green)}
+.threat-desc{color:var(--muted);font-size:.85rem}
+.defense-layer{display:flex;align-items:center;gap:.75rem;padding:.75rem;margin-bottom:.5rem;border-radius:8px;background:var(--bg);border-left:3px solid var(--border);transition:all .3s}
+.defense-layer.active-def{border-left-color:var(--green);background:var(--green-bg)}
+.defense-layer.partial-def{border-left-color:var(--yellow);background:var(--yellow-bg)}
+.defense-layer.inactive-def{border-left-color:var(--muted);opacity:.5}
+.def-icon{font-size:1.2rem;width:28px;text-align:center}
+.def-info{flex:1}
+.def-name{font-weight:600;font-size:.9rem}
+.def-detail{color:var(--muted);font-size:.8rem}
+.def-toggle{width:40px;height:22px;border-radius:11px;border:none;cursor:pointer;position:relative;transition:background .3s}
+.def-toggle.on{background:var(--green)}
+.def-toggle.off{background:var(--border)}
+.def-toggle::after{content:'';position:absolute;width:18px;height:18px;border-radius:50%;background:#fff;top:2px;transition:left .3s}
+.def-toggle.on::after{left:20px}
+.def-toggle.off::after{left:2px}
+.score-ring{position:relative;width:120px;height:120px;margin:0 auto 1rem}
+.score-ring canvas{width:120px;height:120px}
+.score-label{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center}
+.score-num{font-size:1.8rem;font-weight:800;line-height:1}
+.score-text{font-size:.7rem;color:var(--muted);margin-top:2px}
+.metric-row{display:flex;justify-content:space-between;padding:.5rem 0;border-bottom:1px solid var(--border);font-size:.9rem}
+.metric-row:last-child{border-bottom:none}
+.metric-label{color:var(--muted)}
+.metric-value{font-weight:600;font-variant-numeric:tabular-nums}
+.config-output{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:1rem;font-family:'SFMono-Regular',Consolas,monospace;font-size:.8rem;color:var(--green);white-space:pre-wrap;max-height:300px;overflow-y:auto;line-height:1.5}
+.recommendation{padding:.6rem .8rem;margin-bottom:.5rem;border-radius:8px;background:var(--bg);border-left:3px solid var(--accent);font-size:.85rem}
+.recommendation.urgent{border-left-color:var(--red);background:var(--red-bg)}
+.recommendation.warning{border-left-color:var(--yellow);background:var(--yellow-bg)}
+.recommendation.good{border-left-color:var(--green);background:var(--green-bg)}
+.sim-bar{height:6px;border-radius:3px;background:var(--border);overflow:hidden;margin-top:.3rem}
+.sim-fill{height:100%;border-radius:3px;transition:width .5s ease}
+.attack-log{max-height:200px;overflow-y:auto;font-family:monospace;font-size:.78rem;line-height:1.6;color:var(--muted);padding:.5rem}
+.attack-log .log-blocked{color:var(--green)}
+.attack-log .log-passed{color:var(--red)}
+.attack-log .log-partial{color:var(--yellow)}
+.tab-bar{display:flex;gap:.5rem;margin-bottom:1rem;border-bottom:1px solid var(--border);padding-bottom:.5rem}
+.tab-btn{background:none;border:none;color:var(--muted);cursor:pointer;padding:.4rem .8rem;font-size:.85rem;border-radius:6px 6px 0 0;transition:all .2s}
+.tab-btn.active{color:var(--accent);border-bottom:2px solid var(--accent)}
+</style>
+</head>
+<body>
+<div class="header">
+<h1>🛡️ Defense Strategist</h1>
+<p class="subtitle">Autonomous threat analysis & adaptive defense configuration generator</p>
+<nav class="nav"><a href="index.html">← Back to Hub</a></nav>
+</div>
+<main class="container">
+
+<div class="controls">
+<button class="btn-sm active" onclick="setScenario('standard')" id="sc-standard">📊 Standard Traffic</button>
+<button class="btn-sm" onclick="setScenario('botnet')" id="sc-botnet">🤖 Botnet Surge</button>
+<button class="btn-sm" onclick="setScenario('credential')" id="sc-credential">🔑 Credential Stuffing</button>
+<button class="btn-sm" onclick="setScenario('sophisticated')" id="sc-sophisticated">🎭 Sophisticated Bypass</button>
+<button class="btn-sm" onclick="setScenario('ddos')" id="sc-ddos">💥 DDoS + CAPTCHA Flood</button>
+<button class="btn-sm" onclick="toggleAutoDefense()" id="btn-auto">⚡ Auto-Defense: OFF</button>
+</div>
+
+<div class="strat-grid">
+<!-- Threat Landscape -->
+<div class="panel" id="threat-panel">
+<h3>🎯 Active Threat Landscape</h3>
+<div id="threats"></div>
+</div>
+
+<!-- Defense Layers -->
+<div class="panel">
+<h3>🔒 Defense Layers</h3>
+<div id="defenses"></div>
+</div>
+
+<!-- Protection Score -->
+<div class="panel">
+<h3>📈 Protection Score</h3>
+<div class="score-ring"><canvas id="scoreCanvas" width="120" height="120"></canvas><div class="score-label"><div class="score-num" id="scoreNum">0</div><div class="score-text">Protection</div></div></div>
+<div id="metrics"></div>
+</div>
+
+<!-- Attack Simulation -->
+<div class="panel">
+<h3>⚔️ Live Attack Simulation</h3>
+<canvas id="simCanvas" width="600" height="180"></canvas>
+<div style="margin-top:.75rem">
+<div class="metric-row"><span class="metric-label">Attacks/sec</span><span class="metric-value" id="atkRate">0</span></div>
+<div class="metric-row"><span class="metric-label">Blocked</span><span class="metric-value" style="color:var(--green)" id="atkBlocked">0</span></div>
+<div class="metric-row"><span class="metric-label">Passed</span><span class="metric-value" style="color:var(--red)" id="atkPassed">0</span></div>
+<div class="metric-row"><span class="metric-label">Block Rate</span><span class="metric-value" id="atkBlockRate">0%</span></div>
+</div>
+</div>
+</div>
+
+<!-- Tabs for Config & Recommendations -->
+<div class="panel" style="margin-bottom:2rem">
+<div class="tab-bar">
+<button class="tab-btn active" onclick="showTab('recs')" id="tab-recs">🧠 AI Recommendations</button>
+<button class="tab-btn" onclick="showTab('config')" id="tab-config">⚙️ Generated Config</button>
+<button class="tab-btn" onclick="showTab('log')" id="tab-log">📜 Attack Log</button>
+</div>
+<div id="tab-content-recs"></div>
+<div id="tab-content-config" style="display:none"><div class="config-output" id="configOutput"></div><button class="btn-sm" style="margin-top:.75rem" onclick="copyConfig()">📋 Copy Config</button></div>
+<div id="tab-content-log" style="display:none"><div class="attack-log" id="attackLog"></div></div>
+</div>
+
+</main>
+
+<footer class="footer">
+<p>GIF CAPTCHA Research · Defense Strategist · Autonomous threat modeling</p>
+</footer>
+
+<script src="shared.js"></script>
+<script>
+/* ===== Threat & Defense Data ===== */
+const THREATS = [
+  {id:'brute',name:'Brute Force Bots',desc:'High-volume automated CAPTCHA solving attempts',severity:'high',rate:50,bypass:0.15},
+  {id:'replay',name:'Replay Attack',desc:'Re-submitting captured valid CAPTCHA tokens',severity:'critical',rate:20,bypass:0.4},
+  {id:'ocr',name:'OCR/ML Solver',desc:'Machine learning models trained to solve GIF CAPTCHAs',severity:'high',rate:30,bypass:0.35},
+  {id:'farm',name:'Human Farm',desc:'Low-cost human workers solving CAPTCHAs at scale',severity:'medium',rate:10,bypass:0.7},
+  {id:'timing',name:'Timing Side-Channel',desc:'Exploiting response time patterns to infer solutions',severity:'medium',rate:15,bypass:0.25},
+  {id:'headless',name:'Headless Browser',desc:'Automated browsers mimicking real user behavior',severity:'high',rate:25,bypass:0.3},
+  {id:'token',name:'Token Harvesting',desc:'Stockpiling valid tokens for later automated use',severity:'critical',rate:12,bypass:0.5},
+  {id:'flood',name:'Request Flooding',desc:'Overwhelming CAPTCHA endpoints with volume',severity:'medium',rate:80,bypass:0.05}
+];
+
+const DEFENSES = [
+  {id:'ratelimit',name:'Rate Limiting',icon:'🚦',detail:'Adaptive per-IP request throttling',effectiveness:{brute:0.8,replay:0.3,ocr:0.2,farm:0.1,timing:0.1,headless:0.3,token:0.4,flood:0.9}},
+  {id:'tokenexp',name:'Token Expiry',icon:'⏱️',detail:'Short-lived tokens with HMAC validation',effectiveness:{brute:0.1,replay:0.9,ocr:0.1,farm:0.05,timing:0.05,headless:0.1,token:0.85,flood:0.05}},
+  {id:'difficulty',name:'Adaptive Difficulty',icon:'📈',detail:'Auto-scale complexity based on threat signals',effectiveness:{brute:0.6,replay:0.1,ocr:0.7,farm:0.3,timing:0.2,headless:0.5,token:0.1,flood:0.1}},
+  {id:'fingerprint',name:'Browser Fingerprint',icon:'🔍',detail:'Canvas/WebGL/font fingerprint validation',effectiveness:{brute:0.5,replay:0.4,ocr:0.3,farm:0.15,timing:0.1,headless:0.85,token:0.3,flood:0.2}},
+  {id:'behavioral',name:'Behavioral Analysis',icon:'🧠',detail:'Mouse/touch/scroll pattern verification',effectiveness:{brute:0.7,replay:0.5,ocr:0.4,farm:0.2,timing:0.6,headless:0.7,token:0.2,flood:0.1}},
+  {id:'proof',name:'Proof of Work',icon:'⛏️',detail:'Client-side computational challenge',effectiveness:{brute:0.6,replay:0.2,ocr:0.2,farm:0.4,timing:0.1,headless:0.4,token:0.3,flood:0.85}},
+  {id:'geo',name:'Geo-Fencing',icon:'🌍',detail:'Region-based access policies',effectiveness:{brute:0.3,replay:0.2,ocr:0.2,farm:0.6,timing:0.05,headless:0.2,token:0.15,flood:0.3}},
+  {id:'anomaly',name:'Anomaly Detection',icon:'📡',detail:'Statistical outlier identification in real-time',effectiveness:{brute:0.5,replay:0.6,ocr:0.5,farm:0.35,timing:0.7,headless:0.6,token:0.5,flood:0.4}}
+];
+
+/* ===== State ===== */
+let scenario = 'standard';
+let autoDefense = false;
+let activeDefenses = new Set(['ratelimit','tokenexp']);
+let simStats = {blocked:0,passed:0,total:0};
+let simHistory = []; // last 60 ticks
+let logEntries = [];
+let animFrame = null;
+
+const SCENARIOS = {
+  standard: {threats:['brute','headless'],multiplier:1},
+  botnet: {threats:['brute','ocr','headless','flood'],multiplier:3},
+  credential: {threats:['brute','replay','token'],multiplier:2},
+  sophisticated: {threats:['ocr','farm','timing','headless'],multiplier:1.5},
+  ddos: {threats:['flood','brute','token','replay'],multiplier:4}
+};
+
+/* ===== Scenario & Controls ===== */
+function setScenario(s) {
+  scenario = s;
+  document.querySelectorAll('.controls .btn-sm').forEach(b => {
+    if(b.id && b.id.startsWith('sc-')) b.classList.toggle('active', b.id === 'sc-'+s);
+  });
+  simStats = {blocked:0,passed:0,total:0};
+  simHistory = [];
+  logEntries = [];
+  renderThreats();
+  renderDefenses();
+  if(autoDefense) runAutoDefense();
+  updateAll();
+}
+
+function toggleAutoDefense() {
+  autoDefense = !autoDefense;
+  const btn = document.getElementById('btn-auto');
+  btn.textContent = autoDefense ? '⚡ Auto-Defense: ON' : '⚡ Auto-Defense: OFF';
+  btn.classList.toggle('active', autoDefense);
+  if(autoDefense) runAutoDefense();
+}
+
+function toggleDefense(id) {
+  if(activeDefenses.has(id)) activeDefenses.delete(id); else activeDefenses.add(id);
+  renderDefenses();
+  updateAll();
+}
+
+/* ===== Auto-Defense Engine ===== */
+function runAutoDefense() {
+  const sc = SCENARIOS[scenario];
+  const activeThreats = sc.threats;
+  // For each defense, compute how much it helps against active threats
+  const scores = DEFENSES.map(d => {
+    let score = 0;
+    activeThreats.forEach(t => { score += (d.effectiveness[t] || 0); });
+    return {id: d.id, score: score / activeThreats.length};
+  });
+  scores.sort((a,b) => b.score - a.score);
+  // Activate top defenses until coverage > 0.7
+  activeDefenses.clear();
+  let coverage = 0;
+  for(const s of scores) {
+    if(coverage >= 0.7) break;
+    activeDefenses.add(s.id);
+    coverage = computeProtection();
+  }
+  renderDefenses();
+  updateAll();
+}
+
+/* ===== Compute Protection ===== */
+function computeProtection() {
+  const sc = SCENARIOS[scenario];
+  let totalBlock = 0;
+  sc.threats.forEach(tid => {
+    const threat = THREATS.find(t => t.id === tid);
+    // Combined defense = 1 - product of (1 - each defense effectiveness)
+    let pass = 1;
+    activeDefenses.forEach(did => {
+      const def = DEFENSES.find(d => d.id === did);
+      pass *= (1 - (def.effectiveness[tid] || 0));
+    });
+    totalBlock += (1 - pass) * (1 - threat.bypass * 0.3);
+  });
+  return Math.min(totalBlock / sc.threats.length, 0.99);
+}
+
+/* ===== Render ===== */
+function renderThreats() {
+  const sc = SCENARIOS[scenario];
+  const el = document.getElementById('threats');
+  el.innerHTML = THREATS.map(t => {
+    const active = sc.threats.includes(t.id);
+    const sevClass = t.severity === 'critical' ? 'sev-critical' : t.severity === 'high' ? 'sev-high' : t.severity === 'medium' ? 'sev-medium' : 'sev-low';
+    return `<div class="threat-card ${active ? 'active-threat' : ''}" style="${active ? '' : 'opacity:.4'}">
+      <div class="threat-header"><span class="threat-name">${active ? '🔴 ' : '⚪ '}${sanitize(t.name)}</span><span class="threat-severity ${sevClass}">${sanitize(t.severity.toUpperCase())}</span></div>
+      <div class="threat-desc">${sanitize(t.desc)}</div>
+      ${active ? `<div class="sim-bar"><div class="sim-fill" style="width:${Math.min(t.rate * SCENARIOS[scenario].multiplier, 100)}%;background:var(--red)"></div></div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function renderDefenses() {
+  const el = document.getElementById('defenses');
+  el.innerHTML = DEFENSES.map(d => {
+    const on = activeDefenses.has(d.id);
+    // Compute this defense's contribution
+    const sc = SCENARIOS[scenario];
+    let contrib = 0;
+    sc.threats.forEach(tid => { contrib += (d.effectiveness[tid] || 0); });
+    contrib = (contrib / sc.threats.length * 100).toFixed(0);
+    return `<div class="defense-layer ${on ? 'active-def' : 'inactive-def'}">
+      <div class="def-icon">${d.icon}</div>
+      <div class="def-info"><div class="def-name">${sanitize(d.name)} <span style="color:var(--muted);font-size:.75rem">(${contrib}% relevance)</span></div><div class="def-detail">${sanitize(d.detail)}</div></div>
+      <button class="def-toggle ${on ? 'on' : 'off'}" onclick="toggleDefense('${d.id}')"></button>
+    </div>`;
+  }).join('');
+}
+
+function drawScoreRing(pct) {
+  const c = document.getElementById('scoreCanvas');
+  const ctx = c.getContext('2d');
+  ctx.clearRect(0,0,120,120);
+  const cx=60,cy=60,r=48,lw=10;
+  // Background
+  ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.strokeStyle='#30363d'; ctx.lineWidth=lw; ctx.stroke();
+  // Fill
+  const color = pct >= 80 ? '#3fb950' : pct >= 50 ? '#d29922' : '#f85149';
+  ctx.beginPath(); ctx.arc(cx,cy,r,-Math.PI/2,-Math.PI/2+Math.PI*2*pct/100); ctx.strokeStyle=color; ctx.lineWidth=lw; ctx.lineCap='round'; ctx.stroke();
+  document.getElementById('scoreNum').textContent = Math.round(pct);
+  document.getElementById('scoreNum').style.color = color;
+}
+
+function updateMetrics() {
+  const prot = computeProtection();
+  const pct = Math.round(prot * 100);
+  drawScoreRing(pct);
+  const sc = SCENARIOS[scenario];
+  const totalRate = sc.threats.reduce((s,tid) => s + THREATS.find(t=>t.id===tid).rate * sc.multiplier, 0);
+  const blocked = Math.round(totalRate * prot);
+  const el = document.getElementById('metrics');
+  el.innerHTML = `
+    <div class="metric-row"><span class="metric-label">Active Defenses</span><span class="metric-value">${activeDefenses.size}/${DEFENSES.length}</span></div>
+    <div class="metric-row"><span class="metric-label">Threat Coverage</span><span class="metric-value" style="color:${pct>=70?'var(--green)':pct>=40?'var(--yellow)':'var(--red)'}">${pct}%</span></div>
+    <div class="metric-row"><span class="metric-label">Est. Block Rate</span><span class="metric-value">${blocked}/${Math.round(totalRate)} req/s</span></div>
+    <div class="metric-row"><span class="metric-label">Uncovered Vectors</span><span class="metric-value" style="color:var(--red)">${sc.threats.filter(tid => {let p=1;activeDefenses.forEach(did=>{const d=DEFENSES.find(x=>x.id===did);p*=(1-(d.effectiveness[tid]||0))});return p>0.5}).length}</span></div>
+  `;
+}
+
+/* ===== Recommendations ===== */
+function generateRecommendations() {
+  const sc = SCENARIOS[scenario];
+  const recs = [];
+  const prot = computeProtection();
+  
+  // Find weak spots
+  sc.threats.forEach(tid => {
+    const threat = THREATS.find(t => t.id === tid);
+    let pass = 1;
+    activeDefenses.forEach(did => {
+      const d = DEFENSES.find(x => x.id === did);
+      pass *= (1 - (d.effectiveness[tid] || 0));
+    });
+    if(pass > 0.5) {
+      // Find best defense for this threat
+      let best = null, bestEff = 0;
+      DEFENSES.forEach(d => {
+        if(!activeDefenses.has(d.id) && (d.effectiveness[tid]||0) > bestEff) {
+          bestEff = d.effectiveness[tid]; best = d;
+        }
+      });
+      recs.push({
+        level: pass > 0.7 ? 'urgent' : 'warning',
+        text: `⚠️ <strong>${sanitize(threat.name)}</strong> has ${Math.round(pass*100)}% bypass rate.${best ? ` Enable <strong>${sanitize(best.name)}</strong> to reduce by ${Math.round(bestEff*100)}%.` : ''}`
+      });
+    }
+  });
+
+  if(prot < 0.5) {
+    recs.unshift({level:'urgent',text:'🚨 <strong>Critical:</strong> Overall protection below 50%. Enable Auto-Defense or activate more layers.'});
+  }
+  if(prot >= 0.8 && activeDefenses.size > 5) {
+    recs.push({level:'good',text:'💡 Protection is strong but you have many layers active. Consider disabling <strong>Geo-Fencing</strong> if latency is a concern.'});
+  }
+  if(prot >= 0.85) {
+    recs.push({level:'good',text:'✅ Excellent coverage! Current configuration handles this scenario well.'});
+  }
+  if(autoDefense) {
+    recs.push({level:'good',text:'🤖 Auto-Defense is actively monitoring and will adjust layers if threats change.'});
+  }
+
+  // Proactive suggestions
+  if(!activeDefenses.has('anomaly') && sc.multiplier >= 2) {
+    recs.push({level:'warning',text:'📡 High traffic scenario detected. Consider enabling <strong>Anomaly Detection</strong> for real-time outlier identification.'});
+  }
+  if(!activeDefenses.has('proof') && sc.threats.includes('flood')) {
+    recs.push({level:'urgent',text:'⛏️ Flood attack active without Proof of Work. Enable it to impose computational cost on attackers.'});
+  }
+
+  const el = document.getElementById('tab-content-recs');
+  el.innerHTML = recs.length ? recs.map(r => `<div class="recommendation ${r.level}">${r.text}</div>`).join('') : '<div class="recommendation good">✅ No immediate recommendations. Defenses look well-configured.</div>';
+}
+
+/* ===== Config Generator ===== */
+function generateConfig() {
+  const sc = SCENARIOS[scenario];
+  const prot = computeProtection();
+  const layers = [...activeDefenses].map(id => DEFENSES.find(d => d.id === id));
+  
+  let config = `# GIF CAPTCHA Defense Configuration
+# Generated by Defense Strategist
+# Scenario: ${scenario} | Protection: ${Math.round(prot*100)}%
+# ${new Date().toISOString()}
+
+captcha:
+  defense:
+    enabled: true
+    auto_adjust: ${autoDefense}
+    scenario_profile: "${scenario}"
+
+  layers:`;
+
+  layers.forEach(l => {
+    config += `\n    ${l.id}:
+      enabled: true
+      # ${l.detail}`;
+    if(l.id === 'ratelimit') config += `\n      max_requests_per_ip: ${sc.multiplier >= 3 ? 10 : 30}\n      window_seconds: 60\n      burst_tolerance: ${sc.multiplier >= 3 ? 5 : 15}`;
+    if(l.id === 'tokenexp') config += `\n      ttl_seconds: ${sc.multiplier >= 2 ? 30 : 120}\n      hmac_algorithm: "sha256"`;
+    if(l.id === 'difficulty') config += `\n      base_level: ${sc.multiplier >= 3 ? 'hard' : 'medium'}\n      escalation_threshold: 0.3\n      cooldown_seconds: 300`;
+    if(l.id === 'fingerprint') config += `\n      canvas_check: true\n      webgl_check: true\n      font_enumeration: false`;
+    if(l.id === 'behavioral') config += `\n      min_mouse_events: 5\n      min_interaction_ms: 800\n      entropy_threshold: 2.5`;
+    if(l.id === 'proof') config += `\n      difficulty_bits: ${sc.multiplier >= 3 ? 18 : 14}\n      timeout_ms: 10000`;
+    if(l.id === 'geo') config += `\n      blocked_regions: ["XX"]\n      suspicious_regions: ["high-risk"]\n      action: "challenge"`;
+    if(l.id === 'anomaly') config += `\n      z_score_threshold: 2.5\n      window_size: 100\n      alert_on_breach: true`;
+  });
+
+  config += `\n\n  monitoring:\n    metrics_enabled: true\n    alert_threshold: ${Math.round(prot*100) < 50 ? 'critical' : 'warning'}\n    dashboard: true`;
+
+  document.getElementById('configOutput').textContent = config;
+}
+
+function copyConfig() {
+  const text = document.getElementById('configOutput').textContent;
+  navigator.clipboard.writeText(text).catch(() => {});
+}
+
+/* ===== Attack Simulation ===== */
+function simTick() {
+  const sc = SCENARIOS[scenario];
+  const prot = computeProtection();
+  const totalRate = sc.threats.reduce((s,tid) => s + THREATS.find(t=>t.id===tid).rate * sc.multiplier, 0) / 10;
+  const attacks = Math.round(totalRate + (Math.random()-0.5)*totalRate*0.4);
+  let blocked = 0, passed = 0;
+
+  for(let i = 0; i < attacks; i++) {
+    // Pick random threat from scenario
+    const tid = sc.threats[Math.floor(Math.random()*sc.threats.length)];
+    let passProb = 1;
+    activeDefenses.forEach(did => {
+      const d = DEFENSES.find(x => x.id === did);
+      passProb *= (1 - (d.effectiveness[tid] || 0));
+    });
+    if(Math.random() > passProb) { blocked++; } else { passed++; }
+  }
+
+  simStats.blocked += blocked;
+  simStats.passed += passed;
+  simStats.total += attacks;
+  simHistory.push({blocked, passed, total: attacks});
+  if(simHistory.length > 60) simHistory.shift();
+
+  // Log
+  if(passed > 0) {
+    logEntries.push(`<span class="log-passed">[${new Date().toLocaleTimeString()}] ⚠ ${passed} attack(s) bypassed defenses</span>`);
+  }
+  if(blocked > 0) {
+    logEntries.push(`<span class="log-blocked">[${new Date().toLocaleTimeString()}] ✓ ${blocked} attack(s) blocked</span>`);
+  }
+  if(logEntries.length > 100) logEntries = logEntries.slice(-100);
+
+  // Auto-defense adaptation
+  if(autoDefense && simStats.total > 50 && simStats.passed / simStats.total > 0.3) {
+    runAutoDefense();
+  }
+
+  document.getElementById('atkRate').textContent = attacks * 10;
+  document.getElementById('atkBlocked').textContent = simStats.blocked;
+  document.getElementById('atkPassed').textContent = simStats.passed;
+  document.getElementById('atkBlockRate').textContent = simStats.total > 0 ? Math.round(simStats.blocked/simStats.total*100)+'%' : '0%';
+  document.getElementById('attackLog').innerHTML = logEntries.slice(-30).reverse().join('<br>');
+
+  drawSimChart();
+}
+
+function drawSimChart() {
+  const c = document.getElementById('simCanvas');
+  const ctx = c.getContext('2d');
+  const W = c.width, H = c.height;
+  ctx.clearRect(0,0,W,H);
+
+  if(simHistory.length < 2) return;
+  const max = Math.max(...simHistory.map(h => h.total), 1);
+  const dx = W / (59);
+
+  // Blocked area
+  ctx.beginPath();
+  ctx.moveTo(0, H);
+  simHistory.forEach((h,i) => {
+    ctx.lineTo(i*dx, H - (h.blocked/max)*H*0.9);
+  });
+  ctx.lineTo((simHistory.length-1)*dx, H);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(63,185,80,0.3)';
+  ctx.fill();
+
+  // Passed area
+  ctx.beginPath();
+  ctx.moveTo(0, H);
+  simHistory.forEach((h,i) => {
+    ctx.lineTo(i*dx, H - (h.passed/max)*H*0.9);
+  });
+  ctx.lineTo((simHistory.length-1)*dx, H);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(248,81,73,0.3)';
+  ctx.fill();
+
+  // Blocked line
+  ctx.beginPath();
+  simHistory.forEach((h,i) => {
+    const y = H - (h.blocked/max)*H*0.9;
+    i === 0 ? ctx.moveTo(0, y) : ctx.lineTo(i*dx, y);
+  });
+  ctx.strokeStyle = '#3fb950'; ctx.lineWidth = 2; ctx.stroke();
+
+  // Passed line
+  ctx.beginPath();
+  simHistory.forEach((h,i) => {
+    const y = H - (h.passed/max)*H*0.9;
+    i === 0 ? ctx.moveTo(0, y) : ctx.lineTo(i*dx, y);
+  });
+  ctx.strokeStyle = '#f85149'; ctx.lineWidth = 2; ctx.stroke();
+
+  // Legend
+  ctx.fillStyle = '#3fb950'; ctx.fillRect(W-140, 8, 10, 10);
+  ctx.fillStyle = '#8b949e'; ctx.font = '11px sans-serif'; ctx.fillText('Blocked', W-126, 17);
+  ctx.fillStyle = '#f85149'; ctx.fillRect(W-70, 8, 10, 10);
+  ctx.fillStyle = '#8b949e'; ctx.fillText('Passed', W-56, 17);
+}
+
+/* ===== Tabs ===== */
+function showTab(tab) {
+  ['recs','config','log'].forEach(t => {
+    document.getElementById('tab-content-'+t).style.display = t===tab ? '' : 'none';
+    document.getElementById('tab-'+t).classList.toggle('active', t===tab);
+  });
+}
+
+/* ===== Update All ===== */
+function updateAll() {
+  updateMetrics();
+  generateRecommendations();
+  generateConfig();
+}
+
+/* ===== Init ===== */
+renderThreats();
+renderDefenses();
+updateAll();
+setInterval(simTick, 500);
+</script>
+</body>
+</html>

@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Behavioral Biometrics Lab — GIF CAPTCHA Research</title>
+    <link rel="stylesheet" href="shared.css">
+    <style>
+        .lab-grid { display: grid; grid-template-columns: 1fr 340px; gap: 1.5rem; padding: 1.5rem; max-width: 1400px; margin: 0 auto; }
+        .zones { display: flex; flex-direction: column; gap: 1.5rem; }
+        .zone { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem; }
+        .zone h3 { margin-bottom: 0.75rem; font-size: 1rem; display: flex; align-items: center; gap: 0.5rem; }
+        .zone h3 .icon { font-size: 1.3rem; }
+        #mouseCanvas { width: 100%; height: 220px; border-radius: 8px; border: 1px solid var(--border); cursor: crosshair; background: #0d1117; }
+        #typeArea { width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; color: var(--text); font-family: monospace; font-size: 1rem; resize: none; height: 80px; outline: none; }
+        #typeArea:focus { border-color: var(--accent); }
+        .pangram { color: var(--muted); font-size: 0.85rem; margin-bottom: 0.5rem; }
+        #scrollZone { height: 180px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); padding: 1rem; font-size: 0.85rem; color: var(--muted); line-height: 1.8; }
+        .sidebar { display: flex; flex-direction: column; gap: 1.5rem; }
+        .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem; }
+        .panel h3 { margin-bottom: 1rem; font-size: 0.95rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+        #gaugeCanvas { width: 200px; height: 120px; display: block; margin: 0 auto 1rem; }
+        .classification { text-align: center; font-size: 1.5rem; font-weight: 700; margin-bottom: 0.25rem; }
+        .confidence { text-align: center; color: var(--muted); font-size: 0.9rem; }
+        .signals { display: flex; flex-direction: column; gap: 0.5rem; }
+        .signal-row { display: flex; align-items: center; gap: 0.75rem; }
+        .signal-label { font-size: 0.8rem; color: var(--muted); width: 100px; flex-shrink: 0; }
+        .signal-bar-bg { flex: 1; height: 8px; background: var(--bg); border-radius: 4px; overflow: hidden; }
+        .signal-bar { height: 100%; border-radius: 4px; transition: width 0.3s; }
+        .alerts { display: flex; flex-direction: column; gap: 0.5rem; max-height: 150px; overflow-y: auto; }
+        .alert-item { font-size: 0.8rem; padding: 0.5rem 0.75rem; border-radius: 6px; background: var(--yellow-bg); color: var(--yellow); border: 1px solid rgba(210,153,34,0.3); }
+        .controls { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+        .controls button, .controls label { font-size: 0.85rem; }
+        .toggle-wrap { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: var(--muted); }
+        .toggle-wrap input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--accent); }
+        .metrics-mini { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-top: 0.75rem; }
+        .metric-box { background: var(--bg); border-radius: 6px; padding: 0.5rem; text-align: center; }
+        .metric-box .val { font-size: 1.1rem; font-weight: 600; color: var(--text); }
+        .metric-box .lbl { font-size: 0.7rem; color: var(--muted); }
+        @media (max-width: 900px) { .lab-grid { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🧬 Behavioral Biometrics Lab</h1>
+        <p>Interact naturally — mouse, keyboard, scroll — and watch real-time bot vs human classification</p>
+    </div>
+
+    <div class="lab-grid">
+        <div class="zones">
+            <!-- Mouse Zone -->
+            <div class="zone">
+                <h3><span class="icon">🖱️</span> Mouse Dynamics</h3>
+                <canvas id="mouseCanvas"></canvas>
+                <div class="metrics-mini" id="mouseMetrics">
+                    <div class="metric-box"><div class="val" id="mSpeed">—</div><div class="lbl">Avg Speed</div></div>
+                    <div class="metric-box"><div class="val" id="mEntropy">—</div><div class="lbl">Path Entropy</div></div>
+                    <div class="metric-box"><div class="val" id="mCurve">—</div><div class="lbl">Curvature</div></div>
+                    <div class="metric-box"><div class="val" id="mPauses">—</div><div class="lbl">Micro-pauses</div></div>
+                </div>
+            </div>
+
+            <!-- Keystroke Zone -->
+            <div class="zone">
+                <h3><span class="icon">⌨️</span> Keystroke Dynamics</h3>
+                <div class="pangram">Type this: <strong>The quick brown fox jumps over the lazy dog</strong></div>
+                <textarea id="typeArea" placeholder="Start typing here..."></textarea>
+                <div class="metrics-mini" id="keyMetrics">
+                    <div class="metric-box"><div class="val" id="kWpm">—</div><div class="lbl">WPM</div></div>
+                    <div class="metric-box"><div class="val" id="kDwell">—</div><div class="lbl">Avg Dwell (ms)</div></div>
+                    <div class="metric-box"><div class="val" id="kFlight">—</div><div class="lbl">Avg Flight (ms)</div></div>
+                    <div class="metric-box"><div class="val" id="kErrors">—</div><div class="lbl">Errors</div></div>
+                </div>
+            </div>
+
+            <!-- Scroll Zone -->
+            <div class="zone">
+                <h3><span class="icon">📜</span> Scroll Behavior</h3>
+                <div id="scrollZone"></div>
+                <div class="metrics-mini" id="scrollMetrics">
+                    <div class="metric-box"><div class="val" id="sVelocity">—</div><div class="lbl">Avg Velocity</div></div>
+                    <div class="metric-box"><div class="val" id="sReversals">—</div><div class="lbl">Reversals</div></div>
+                    <div class="metric-box"><div class="val" id="sVariance">—</div><div class="lbl">Speed Variance</div></div>
+                    <div class="metric-box"><div class="val" id="sPauses">—</div><div class="lbl">Pauses</div></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="panel">
+                <h3>Classification</h3>
+                <canvas id="gaugeCanvas"></canvas>
+                <div class="classification" id="classLabel">WAITING...</div>
+                <div class="confidence" id="confLabel">Interact to begin analysis</div>
+            </div>
+
+            <div class="panel">
+                <h3>Signal Breakdown</h3>
+                <div class="signals" id="signalBars"></div>
+            </div>
+
+            <div class="panel">
+                <h3>Anomaly Alerts</h3>
+                <div class="alerts" id="alertList"><div style="color:var(--muted);font-size:0.8rem;">No anomalies yet</div></div>
+            </div>
+
+            <div class="panel">
+                <h3>Controls</h3>
+                <div class="controls">
+                    <label class="toggle-wrap"><input type="checkbox" id="botMode"> Bot Simulation</label>
+                    <button class="btn btn-sm" id="resetBtn">Reset</button>
+                    <button class="btn btn-sm" id="exportBtn">📥 Export JSON</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <p>Part of the <a href="index.html">GIF CAPTCHA</a> research project &mdash; Behavioral Biometrics Lab</p>
+    </footer>
+
+    <script src="shared.js"></script>
+    <script>
+    (function() {
+        'use strict';
+
+        // ========== STATE ==========
+        const state = {
+            mouse: { points: [], speeds: [], angles: [], pauses: 0, lastTime: 0, lastX: 0, lastY: 0 },
+            keys: { dwells: [], flights: [], lastKeyDown: 0, lastKeyUp: 0, errors: 0, startTime: 0, chars: 0 },
+            scroll: { velocities: [], reversals: 0, lastDir: 0, lastTime: 0, lastPos: 0, pauses: 0 },
+            scores: { mouse: 50, keyboard: 50, scroll: 50 },
+            botMode: false,
+            botInterval: null
+        };
+
+        const PANGRAM = "the quick brown fox jumps over the lazy dog";
+
+        // ========== MOUSE TRACKING ==========
+        const mouseCanvas = document.getElementById('mouseCanvas');
+        const mCtx = mouseCanvas.getContext('2d');
+
+        function resizeMouseCanvas() {
+            const rect = mouseCanvas.getBoundingClientRect();
+            mouseCanvas.width = rect.width * window.devicePixelRatio;
+            mouseCanvas.height = rect.height * window.devicePixelRatio;
+            mCtx.scale(window.devicePixelRatio, window.devicePixelRatio);
+        }
+        resizeMouseCanvas();
+        window.addEventListener('resize', resizeMouseCanvas);
+
+        mouseCanvas.addEventListener('mousemove', function(e) {
+            const rect = mouseCanvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            const now = performance.now();
+
+            if (state.mouse.lastTime > 0) {
+                const dt = now - state.mouse.lastTime;
+                const dx = x - state.mouse.lastX;
+                const dy = y - state.mouse.lastY;
+                const dist = Math.sqrt(dx*dx + dy*dy);
+                const speed = dt > 0 ? dist / dt : 0;
+
+                state.mouse.speeds.push(speed);
+                state.mouse.angles.push(Math.atan2(dy, dx));
+                state.mouse.points.push({ x, y, speed, t: now });
+
+                if (dt > 100 && dist < 2) state.mouse.pauses++;
+
+                // Draw trail
+                if (state.mouse.points.length > 1) {
+                    const prev = state.mouse.points[state.mouse.points.length - 2];
+                    const hue = Math.min(speed * 200, 240);
+                    mCtx.beginPath();
+                    mCtx.moveTo(prev.x, prev.y);
+                    mCtx.lineTo(x, y);
+                    mCtx.strokeStyle = `hsl(${hue}, 80%, 60%)`;
+                    mCtx.lineWidth = 2;
+                    mCtx.stroke();
+                }
+            }
+
+            state.mouse.lastX = x;
+            state.mouse.lastY = y;
+            state.mouse.lastTime = now;
+        });
+
+        // ========== KEYSTROKE TRACKING ==========
+        const typeArea = document.getElementById('typeArea');
+        let currentKeyDown = {};
+
+        typeArea.addEventListener('keydown', function(e) {
+            const now = performance.now();
+            currentKeyDown[e.key] = now;
+            if (state.keys.startTime === 0) state.keys.startTime = now;
+            if (state.keys.lastKeyUp > 0) {
+                state.keys.flights.push(now - state.keys.lastKeyUp);
+            }
+        });
+
+        typeArea.addEventListener('keyup', function(e) {
+            const now = performance.now();
+            if (currentKeyDown[e.key]) {
+                state.keys.dwells.push(now - currentKeyDown[e.key]);
+                delete currentKeyDown[e.key];
+            }
+            state.keys.lastKeyUp = now;
+            state.keys.chars++;
+
+            // Check errors
+            const typed = typeArea.value.toLowerCase();
+            const expected = PANGRAM.substring(0, typed.length);
+            if (typed !== expected && typed.length > 0) {
+                state.keys.errors++;
+            }
+        });
+
+        // ========== SCROLL TRACKING ==========
+        const scrollZone = document.getElementById('scrollZone');
+        // Fill with content
+        let scrollContent = '';
+        for (let i = 0; i < 60; i++) {
+            scrollContent += `<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. [Line ${i+1}]</p>`;
+        }
+        scrollZone.innerHTML = scrollContent;
+
+        scrollZone.addEventListener('scroll', function() {
+            const now = performance.now();
+            const pos = scrollZone.scrollTop;
+
+            if (state.scroll.lastTime > 0) {
+                const dt = now - state.scroll.lastTime;
+                const dp = pos - state.scroll.lastPos;
+                const vel = dt > 0 ? Math.abs(dp) / dt : 0;
+                const dir = dp > 0 ? 1 : dp < 0 ? -1 : 0;
+
+                state.scroll.velocities.push(vel);
+                if (dir !== 0 && dir !== state.scroll.lastDir && state.scroll.lastDir !== 0) {
+                    state.scroll.reversals++;
+                }
+                if (dt > 200) state.scroll.pauses++;
+                state.scroll.lastDir = dir || state.scroll.lastDir;
+            }
+
+            state.scroll.lastPos = pos;
+            state.scroll.lastTime = now;
+        });
+
+        // ========== SCORING ==========
+        function variance(arr) {
+            if (arr.length < 2) return 0;
+            const mean = arr.reduce((a, b) => a + b, 0) / arr.length;
+            return arr.reduce((s, v) => s + (v - mean) ** 2, 0) / arr.length;
+        }
+
+        function coeffOfVariation(arr) {
+            if (arr.length < 2) return 0;
+            const mean = arr.reduce((a, b) => a + b, 0) / arr.length;
+            if (mean === 0) return 0;
+            return Math.sqrt(variance(arr)) / mean;
+        }
+
+        function entropy(arr) {
+            if (arr.length < 3) return 0;
+            // Discretize angles into 8 bins
+            const bins = new Array(8).fill(0);
+            arr.forEach(a => {
+                const bin = Math.floor(((a + Math.PI) / (2 * Math.PI)) * 8) % 8;
+                bins[bin]++;
+            });
+            const total = arr.length;
+            let h = 0;
+            bins.forEach(c => { if (c > 0) { const p = c / total; h -= p * Math.log2(p); } });
+            return h / 3; // normalize to ~0-1
+        }
+
+        function scoreMouseHumanness() {
+            const s = state.mouse;
+            if (s.speeds.length < 10) return 50;
+
+            const speedCV = coeffOfVariation(s.speeds);
+            const angleEntropy = entropy(s.angles);
+            const pauseRatio = s.pauses / s.speeds.length;
+
+            // Humans: high speed variance, high angle entropy, some pauses
+            let score = 0;
+            score += Math.min(speedCV * 40, 35); // CV > 0.5 is human-like
+            score += Math.min(angleEntropy * 40, 35); // High entropy = human
+            score += Math.min(pauseRatio * 200, 15); // Some pauses = human
+            score += s.points.length > 50 ? 15 : s.points.length * 0.3;
+
+            return Math.min(Math.max(score, 0), 100);
+        }
+
+        function scoreKeystrokeHumanness() {
+            const k = state.keys;
+            if (k.dwells.length < 5) return 50;
+
+            const dwellCV = coeffOfVariation(k.dwells);
+            const flightCV = k.flights.length > 3 ? coeffOfVariation(k.flights) : 0.5;
+            const hasErrors = k.errors > 0 ? 1 : 0;
+
+            // Humans: variable dwell/flight times, some errors
+            let score = 0;
+            score += Math.min(dwellCV * 50, 30);
+            score += Math.min(flightCV * 50, 30);
+            score += hasErrors * 20;
+            score += Math.min(k.dwells.length * 0.5, 20);
+
+            return Math.min(Math.max(score, 0), 100);
+        }
+
+        function scoreScrollHumanness() {
+            const sc = state.scroll;
+            if (sc.velocities.length < 5) return 50;
+
+            const velCV = coeffOfVariation(sc.velocities);
+            const reversalRate = sc.reversals / sc.velocities.length;
+
+            let score = 0;
+            score += Math.min(velCV * 40, 35);
+            score += Math.min(reversalRate * 200, 30);
+            score += Math.min(sc.pauses * 3, 20);
+            score += sc.velocities.length > 10 ? 15 : sc.velocities.length * 1.5;
+
+            return Math.min(Math.max(score, 0), 100);
+        }
+
+        // ========== ANOMALY DETECTION ==========
+        function detectAnomalies() {
+            const alerts = [];
+            const s = state.mouse;
+            const k = state.keys;
+
+            if (s.speeds.length > 20 && coeffOfVariation(s.speeds) < 0.1) {
+                alerts.push("⚠️ Unnaturally constant mouse speed");
+            }
+            if (s.angles.length > 20 && entropy(s.angles) < 0.2) {
+                alerts.push("⚠️ Extremely linear mouse path");
+            }
+            if (k.dwells.length > 10 && coeffOfVariation(k.dwells) < 0.08) {
+                alerts.push("⚠️ Metronomic key timing — bot-like");
+            }
+            if (k.chars > 20 && k.errors === 0) {
+                alerts.push("⚠️ Zero typing errors — suspicious");
+            }
+            if (state.scroll.velocities.length > 10 && coeffOfVariation(state.scroll.velocities) < 0.05) {
+                alerts.push("⚠️ Perfectly uniform scroll speed");
+            }
+
+            return alerts;
+        }
+
+        // ========== GAUGE DRAWING ==========
+        const gaugeCanvas = document.getElementById('gaugeCanvas');
+        const gCtx = gaugeCanvas.getContext('2d');
+
+        function resizeGauge() {
+            const rect = gaugeCanvas.getBoundingClientRect();
+            gaugeCanvas.width = rect.width * window.devicePixelRatio;
+            gaugeCanvas.height = rect.height * window.devicePixelRatio;
+            gCtx.scale(window.devicePixelRatio, window.devicePixelRatio);
+        }
+        resizeGauge();
+
+        function drawGauge(score) {
+            const w = gaugeCanvas.getBoundingClientRect().width;
+            const h = gaugeCanvas.getBoundingClientRect().height;
+            const cx = w / 2, cy = h - 10, r = Math.min(w, h) * 0.7;
+
+            gCtx.clearRect(0, 0, w, h);
+
+            // Background arc
+            gCtx.beginPath();
+            gCtx.arc(cx, cy, r, Math.PI, 0);
+            gCtx.strokeStyle = '#30363d';
+            gCtx.lineWidth = 12;
+            gCtx.lineCap = 'round';
+            gCtx.stroke();
+
+            // Score arc
+            const angle = Math.PI + (score / 100) * Math.PI;
+            const hue = score < 40 ? 0 : score < 70 ? 40 : 120;
+            gCtx.beginPath();
+            gCtx.arc(cx, cy, r, Math.PI, angle);
+            gCtx.strokeStyle = `hsl(${hue}, 70%, 55%)`;
+            gCtx.lineWidth = 12;
+            gCtx.lineCap = 'round';
+            gCtx.stroke();
+
+            // Score text
+            gCtx.fillStyle = '#e6edf3';
+            gCtx.font = 'bold 24px -apple-system, sans-serif';
+            gCtx.textAlign = 'center';
+            gCtx.fillText(Math.round(score), cx, cy - 15);
+            gCtx.font = '11px -apple-system, sans-serif';
+            gCtx.fillStyle = '#8b949e';
+            gCtx.fillText('HUMANNESS', cx, cy + 2);
+        }
+
+        // ========== SIGNAL BARS ==========
+        const signalDefs = [
+            { id: 'mouse-speed', label: 'Speed Var', color: 'var(--accent)' },
+            { id: 'mouse-entropy', label: 'Path Entropy', color: 'var(--purple)' },
+            { id: 'key-dwell', label: 'Dwell Var', color: 'var(--green)' },
+            { id: 'key-flight', label: 'Flight Var', color: 'var(--cyan)' },
+            { id: 'scroll-vel', label: 'Scroll Var', color: 'var(--orange)' },
+            { id: 'scroll-rev', label: 'Reversals', color: 'var(--yellow)' },
+        ];
+
+        const signalBarsEl = document.getElementById('signalBars');
+        signalDefs.forEach(s => {
+            signalBarsEl.innerHTML += `<div class="signal-row"><span class="signal-label">${s.label}</span><div class="signal-bar-bg"><div class="signal-bar" id="bar-${s.id}" style="width:50%;background:${s.color}"></div></div></div>`;
+        });
+
+        function updateSignalBars(scores) {
+            document.getElementById('bar-mouse-speed').style.width = scores[0] + '%';
+            document.getElementById('bar-mouse-entropy').style.width = scores[1] + '%';
+            document.getElementById('bar-key-dwell').style.width = scores[2] + '%';
+            document.getElementById('bar-key-flight').style.width = scores[3] + '%';
+            document.getElementById('bar-scroll-vel').style.width = scores[4] + '%';
+            document.getElementById('bar-scroll-rev').style.width = scores[5] + '%';
+        }
+
+        // ========== UPDATE LOOP ==========
+        function update() {
+            const mouseScore = scoreMouseHumanness();
+            const keyScore = scoreKeystrokeHumanness();
+            const scrollScore = scoreScrollHumanness();
+
+            const overall = mouseScore * 0.4 + keyScore * 0.35 + scrollScore * 0.25;
+
+            drawGauge(overall);
+
+            // Classification
+            const label = document.getElementById('classLabel');
+            const conf = document.getElementById('confLabel');
+            if (overall > 70) { label.textContent = '✅ HUMAN'; label.style.color = 'var(--green)'; }
+            else if (overall < 40) { label.textContent = '🤖 BOT'; label.style.color = 'var(--red)'; }
+            else { label.textContent = '❓ UNCERTAIN'; label.style.color = 'var(--yellow)'; }
+            conf.textContent = `Confidence: ${Math.round(Math.abs(overall - 50) * 2)}%`;
+
+            // Signal bars
+            const ms = state.mouse.speeds;
+            const speedVar = ms.length > 5 ? Math.min(coeffOfVariation(ms) * 100, 100) : 50;
+            const ent = state.mouse.angles.length > 5 ? Math.min(entropy(state.mouse.angles) * 100, 100) : 50;
+            const dwellVar = state.keys.dwells.length > 3 ? Math.min(coeffOfVariation(state.keys.dwells) * 100, 100) : 50;
+            const flightVar = state.keys.flights.length > 3 ? Math.min(coeffOfVariation(state.keys.flights) * 100, 100) : 50;
+            const scrollVar = state.scroll.velocities.length > 3 ? Math.min(coeffOfVariation(state.scroll.velocities) * 100, 100) : 50;
+            const revScore = state.scroll.velocities.length > 3 ? Math.min((state.scroll.reversals / state.scroll.velocities.length) * 300, 100) : 50;
+            updateSignalBars([speedVar, ent, dwellVar, flightVar, scrollVar, revScore]);
+
+            // Metrics
+            document.getElementById('mSpeed').textContent = ms.length > 0 ? (ms.reduce((a,b)=>a+b,0)/ms.length).toFixed(1) : '—';
+            document.getElementById('mEntropy').textContent = state.mouse.angles.length > 3 ? entropy(state.mouse.angles).toFixed(2) : '—';
+            document.getElementById('mCurve').textContent = speedVar.toFixed(0) + '%';
+            document.getElementById('mPauses').textContent = state.mouse.pauses;
+
+            const k = state.keys;
+            const elapsed = k.startTime > 0 ? (performance.now() - k.startTime) / 60000 : 0;
+            document.getElementById('kWpm').textContent = elapsed > 0 ? Math.round((k.chars / 5) / elapsed) : '—';
+            document.getElementById('kDwell').textContent = k.dwells.length > 0 ? Math.round(k.dwells.reduce((a,b)=>a+b,0)/k.dwells.length) : '—';
+            document.getElementById('kFlight').textContent = k.flights.length > 0 ? Math.round(k.flights.reduce((a,b)=>a+b,0)/k.flights.length) : '—';
+            document.getElementById('kErrors').textContent = k.errors;
+
+            const sc = state.scroll;
+            document.getElementById('sVelocity').textContent = sc.velocities.length > 0 ? (sc.velocities.reduce((a,b)=>a+b,0)/sc.velocities.length).toFixed(2) : '—';
+            document.getElementById('sReversals').textContent = sc.reversals;
+            document.getElementById('sVariance').textContent = sc.velocities.length > 3 ? coeffOfVariation(sc.velocities).toFixed(2) : '—';
+            document.getElementById('sPauses').textContent = sc.pauses;
+
+            // Alerts
+            const alerts = detectAnomalies();
+            const alertEl = document.getElementById('alertList');
+            if (alerts.length > 0) {
+                alertEl.innerHTML = alerts.map(a => `<div class="alert-item">${a}</div>`).join('');
+            }
+
+            requestAnimationFrame(update);
+        }
+        requestAnimationFrame(update);
+
+        // ========== BOT SIMULATION ==========
+        document.getElementById('botMode').addEventListener('change', function() {
+            state.botMode = this.checked;
+            if (state.botMode) {
+                state.botInterval = setInterval(function() {
+                    // Inject bot-like mouse data: constant speed, linear path
+                    const t = performance.now();
+                    state.mouse.speeds.push(0.5);
+                    state.mouse.angles.push(0); // perfectly straight
+                    state.mouse.points.push({ x: 100, y: 100, speed: 0.5, t });
+                    state.mouse.lastTime = t;
+
+                    // Bot keystrokes: perfectly regular
+                    state.keys.dwells.push(100);
+                    state.keys.flights.push(150);
+                    state.keys.chars++;
+                    if (state.keys.startTime === 0) state.keys.startTime = t;
+                    state.keys.lastKeyUp = t;
+
+                    // Bot scroll: uniform
+                    state.scroll.velocities.push(0.5);
+                    state.scroll.lastTime = t;
+                }, 50);
+            } else {
+                clearInterval(state.botInterval);
+            }
+        });
+
+        // ========== RESET ==========
+        document.getElementById('resetBtn').addEventListener('click', function() {
+            state.mouse = { points: [], speeds: [], angles: [], pauses: 0, lastTime: 0, lastX: 0, lastY: 0 };
+            state.keys = { dwells: [], flights: [], lastKeyDown: 0, lastKeyUp: 0, errors: 0, startTime: 0, chars: 0 };
+            state.scroll = { velocities: [], reversals: 0, lastDir: 0, lastTime: 0, lastPos: 0, pauses: 0 };
+            typeArea.value = '';
+            resizeMouseCanvas();
+            document.getElementById('alertList').innerHTML = '<div style="color:var(--muted);font-size:0.8rem;">No anomalies yet</div>';
+        });
+
+        // ========== EXPORT ==========
+        document.getElementById('exportBtn').addEventListener('click', function() {
+            const report = {
+                timestamp: new Date().toISOString(),
+                mouse: { pointCount: state.mouse.points.length, speeds: state.mouse.speeds.slice(-200), angles: state.mouse.angles.slice(-200), pauses: state.mouse.pauses },
+                keyboard: { dwells: state.keys.dwells, flights: state.keys.flights, errors: state.keys.errors, chars: state.keys.chars },
+                scroll: { velocities: state.scroll.velocities, reversals: state.scroll.reversals, pauses: state.scroll.pauses },
+                scores: { mouse: scoreMouseHumanness(), keyboard: scoreKeystrokeHumanness(), scroll: scoreScrollHumanness(), overall: scoreMouseHumanness()*0.4 + scoreKeystrokeHumanness()*0.35 + scoreScrollHumanness()*0.25 }
+            };
+            const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'biometrics-report-' + Date.now() + '.json';
+            a.click();
+        });
+    })();
+    </script>
+</body>
+</html>

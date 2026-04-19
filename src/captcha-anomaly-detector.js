@@ -107,41 +107,60 @@ function createAnomalyDetector(options) {
   }
 
   // ── Filter events to analysis window ────────────────────────────
+  // Events are appended in chronological order, so we use binary search
+  // to find the cutoff index in O(log n) instead of scanning all events.
   function _windowEvents(now) {
     var cutoff = now - windowMs;
-    var result = [];
-    for (var i = 0; i < events.length; i++) {
-      if (events[i].timestamp >= cutoff) result.push(events[i]);
+    // Binary search for the first event >= cutoff
+    var lo = 0, hi = events.length;
+    while (lo < hi) {
+      var mid = (lo + hi) >>> 1;
+      if (events[mid].timestamp < cutoff) lo = mid + 1;
+      else hi = mid;
     }
-    return result;
+    // lo is now the index of the first event in the window
+    return events.slice(lo);
   }
 
   // ── Z-score anomaly check ───────────────────────────────────────
+  // Only report the single most extreme outlier per metric since the
+  // deduplication step in analyze() keeps at most one anomaly per
+  // method+metric anyway.  This avoids allocating O(n) anomaly objects
+  // when many values exceed the threshold (e.g. during a bot attack).
   function _zScoreCheck(values, label) {
     if (values.length < minSamples) return [];
     var avg = _mean(values);
     var sd = _stddev(values, avg);
     if (sd === 0) return [];
 
-    var anomalies = [];
+    var maxAbsZ = 0;
+    var maxVal = 0;
+    var maxZ = 0;
     for (var i = 0; i < values.length; i++) {
       var z = (values[i] - avg) / sd;
-      if (Math.abs(z) > zThreshold) {
-        anomalies.push({
-          method: "z-score",
-          metric: label,
-          value: values[i],
-          zScore: Math.round(z * 100) / 100,
-          mean: Math.round(avg * 100) / 100,
-          stddev: Math.round(sd * 100) / 100,
-          severity: Math.abs(z) > zThreshold * 1.5 ? "critical" : "warning"
-        });
+      var absZ = z < 0 ? -z : z;
+      if (absZ > maxAbsZ) {
+        maxAbsZ = absZ;
+        maxVal = values[i];
+        maxZ = z;
       }
     }
-    return anomalies;
+    if (maxAbsZ <= zThreshold) return [];
+    return [{
+      method: "z-score",
+      metric: label,
+      value: maxVal,
+      zScore: Math.round(maxZ * 100) / 100,
+      mean: Math.round(avg * 100) / 100,
+      stddev: Math.round(sd * 100) / 100,
+      severity: maxAbsZ > zThreshold * 1.5 ? "critical" : "warning"
+    }];
   }
 
   // ── IQR fence anomaly check ─────────────────────────────────────
+  // Like _zScoreCheck, only report the most extreme outlier since
+  // dedup keeps one per method+metric.  Uses the already-sorted array
+  // endpoints instead of scanning all values.
   function _iqrCheck(values, label) {
     if (values.length < minSamples) return [];
     var sorted = _sortedCopy(values);
@@ -153,22 +172,40 @@ function createAnomalyDetector(options) {
     var lowerFence = q1 - iqrMultiplier * iqr;
     var upperFence = q3 + iqrMultiplier * iqr;
 
-    var anomalies = [];
-    for (var i = 0; i < values.length; i++) {
-      if (values[i] < lowerFence || values[i] > upperFence) {
-        anomalies.push({
-          method: "iqr",
-          metric: label,
-          value: values[i],
-          q1: Math.round(q1 * 100) / 100,
-          q3: Math.round(q3 * 100) / 100,
-          iqr: Math.round(iqr * 100) / 100,
-          fence: values[i] < lowerFence ? "lower" : "upper",
-          severity: values[i] < lowerFence - 2 * iqr || values[i] > upperFence + 2 * iqr ? "critical" : "warning"
-        });
-      }
+    // Since sorted is in ascending order, the most extreme lower outlier
+    // is sorted[0] and the most extreme upper outlier is sorted[n-1].
+    var low = sorted[0];
+    var high = sorted[sorted.length - 1];
+    var extremeVal, fence;
+
+    // Pick whichever endpoint deviates more from its fence
+    var lowDev = low < lowerFence ? lowerFence - low : 0;
+    var highDev = high > upperFence ? high - upperFence : 0;
+
+    if (lowDev === 0 && highDev === 0) return [];
+
+    if (lowDev >= highDev) {
+      extremeVal = low;
+      fence = "lower";
+    } else {
+      extremeVal = high;
+      fence = "upper";
     }
-    return anomalies;
+
+    var isCritical = fence === "lower"
+      ? extremeVal < lowerFence - 2 * iqr
+      : extremeVal > upperFence + 2 * iqr;
+
+    return [{
+      method: "iqr",
+      metric: label,
+      value: extremeVal,
+      q1: Math.round(q1 * 100) / 100,
+      q3: Math.round(q3 * 100) / 100,
+      iqr: Math.round(iqr * 100) / 100,
+      fence: fence,
+      severity: isCritical ? "critical" : "warning"
+    }];
   }
 
   // ── EMA tracking ────────────────────────────────────────────────

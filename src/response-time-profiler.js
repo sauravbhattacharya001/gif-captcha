@@ -132,7 +132,9 @@ function createResponseTimeProfiler(options) {
     if(fc>0) anomalies.push({type:'too_fast',severity:fc/times.length>0.5?'critical':'warning',detail:fc+' of '+times.length+' solves under '+botThresholdMs+'ms',count:fc,ratio:_r(fc/times.length,3)});
     if(times.length>=minSamples&&cv<consistencyThreshold) anomalies.push({type:'too_consistent',severity:cv<consistencyThreshold/2?'critical':'warning',detail:'CV='+_r(cv,4)+' (threshold: '+consistencyThreshold+')',cv:_r(cv,4)});
     var ts=solves.map(function(s){return s.ts;}).sort(function(a,b){return a-b;}),mb=0;
-    for(var j=0;j<ts.length;j++){var c=0;for(var k=j;k<ts.length;k++){if(ts[k]-ts[j]<=burstWindowMs)c++;else break;}if(c>mb)mb=c;}
+    // Sliding window O(n) burst detection — replaces O(n²) nested loop.
+    // Both pointers advance monotonically through the sorted timestamps.
+    for(var j=0,left=0;j<ts.length;j++){while(ts[j]-ts[left]>burstWindowMs)left++;var c=j-left+1;if(c>mb)mb=c;}
     if(mb>=burstThreshold) anomalies.push({type:'burst_pattern',severity:mb>=burstThreshold*2?'critical':'warning',detail:mb+' solves within '+burstWindowMs+'ms window',burstSize:mb});
     var oor=0;for(var m=0;m<times.length;m++){if(times[m]<humanMinMs||times[m]>humanMaxMs)oor++;}
     if(oor>times.length*0.3) anomalies.push({type:'out_of_human_range',severity:oor/times.length>0.6?'critical':'warning',detail:oor+' of '+times.length+' outside '+humanMinMs+'-'+humanMaxMs+'ms',count:oor,ratio:_r(oor/times.length,3)});
@@ -178,7 +180,7 @@ function createResponseTimeProfiler(options) {
    */
   function getHistogram(type) {
     type=type||'default';var p=typeProfiles[type];if(!p||p.times.length<2)return null;
-    var t=p.times,mn=Math.min.apply(null,t),mx=Math.max.apply(null,t);if(mn===mx)mx=mn+1;
+    var t=p.times,mn=t[0],mx=t[0];for(var mi=1;mi<t.length;mi++){if(t[mi]<mn)mn=t[mi];if(t[mi]>mx)mx=t[mi];}if(mn===mx)mx=mn+1;
     var bw=(mx-mn)/histogramBins,bins=[];
     for(var i=0;i<histogramBins;i++)bins.push({rangeStart:_r(mn+i*bw),rangeEnd:_r(mn+(i+1)*bw),count:0});
     for(var j=0;j<t.length;j++){var idx=Math.min(Math.floor((t[j]-mn)/bw),histogramBins-1);bins[idx].count++;}
@@ -217,7 +219,7 @@ function createResponseTimeProfiler(options) {
     var gaps=[];for(var i=1;i<solves.length;i++)gaps.push(solves[i].ts-solves[i-1].ts);
     var avg=_mean(gaps),sd=_stddev(gaps,avg),cv=avg>0?sd/avg:0;
     return{sessionId:sessionId,gapCount:gaps.length,mean:_r(avg),median:_r(_median(gaps)),stddev:_r(sd),cv:_r(cv,3),
-      min:Math.min.apply(null,gaps),max:Math.max.apply(null,gaps),regularity:cv<0.2?'mechanical':cv<0.5?'semi_regular':'natural'};
+      min:gaps.reduce(function(a,b){return a<b?a:b},gaps[0]),max:gaps.reduce(function(a,b){return a>b?a:b},gaps[0]),regularity:cv<0.2?'mechanical':cv<0.5?'semi_regular':'natural'};
   }
 
   function exportData() {

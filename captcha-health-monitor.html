@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CAPTCHA Health Monitor — gif-captcha</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+  .monitor-grid { display: grid; grid-template-columns: 1fr; gap: 1.5rem; max-width: 1200px; margin: 0 auto; padding: 2rem 1rem; }
+  .top-row { display: grid; grid-template-columns: 280px 1fr; gap: 1.5rem; align-items: start; }
+  @media(max-width:800px){ .top-row { grid-template-columns: 1fr; } }
+
+  /* Health Ring */
+  .health-ring-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; text-align: center; }
+  .health-ring-card h3 { margin: 0 0 1rem; color: var(--muted); font-size: .85rem; text-transform: uppercase; letter-spacing: .08em; }
+  .ring-svg { width: 200px; height: 200px; }
+  .ring-bg { fill: none; stroke: var(--border); stroke-width: 10; }
+  .ring-fg { fill: none; stroke-width: 10; stroke-linecap: round; transition: stroke-dashoffset .8s ease, stroke .5s; }
+  .ring-score { font-size: 2.8rem; font-weight: 700; fill: var(--text); }
+  .ring-label { font-size: .75rem; fill: var(--muted); }
+  .health-status { margin-top: .75rem; font-size: .9rem; font-weight: 600; }
+
+  /* Vital cards */
+  .vitals-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; }
+  @media(max-width:600px){ .vitals-grid { grid-template-columns: 1fr; } }
+  .vital-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.2rem; }
+  .vital-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: .25rem; }
+  .vital-label { color: var(--muted); font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; }
+  .vital-trend { font-size: .85rem; }
+  .vital-trend.up { color: var(--green); }
+  .vital-trend.down { color: var(--red); }
+  .vital-trend.flat { color: var(--muted); }
+  .vital-value { font-size: 1.8rem; font-weight: 700; color: var(--text); }
+  .vital-spark { width: 100%; height: 32px; margin-top: .5rem; }
+
+  /* Timeline */
+  .timeline-section { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; }
+  .timeline-section h3 { margin: 0 0 .5rem; color: var(--text); font-size: 1rem; }
+  .threshold-row { display: flex; align-items: center; gap: .75rem; margin-bottom: 1rem; color: var(--muted); font-size: .85rem; }
+  .threshold-row input[type=range] { flex: 1; max-width: 200px; accent-color: var(--accent); }
+  #timelineCanvas { width: 100%; height: 220px; border-radius: 8px; }
+
+  /* Forecast + Recommendations side by side */
+  .bottom-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+  @media(max-width:800px){ .bottom-row { grid-template-columns: 1fr; } }
+
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; }
+  .panel h3 { margin: 0 0 1rem; color: var(--text); font-size: 1rem; }
+
+  /* Forecast */
+  .forecast-item { display: flex; align-items: center; gap: .75rem; padding: .6rem 0; border-bottom: 1px solid var(--border); }
+  .forecast-item:last-child { border: none; }
+  .forecast-hour { color: var(--muted); font-size: .8rem; min-width: 40px; }
+  .forecast-bar { flex: 1; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
+  .forecast-fill { height: 100%; border-radius: 4px; transition: width .5s; }
+  .forecast-val { font-weight: 600; font-size: .9rem; min-width: 36px; text-align: right; }
+  .breach-badge { display: inline-block; background: var(--red-bg); color: var(--red); font-size: .75rem; padding: .15rem .5rem; border-radius: 6px; margin-left: .5rem; }
+
+  /* Recommendations */
+  .rec-item { padding: .6rem 0; border-bottom: 1px solid var(--border); }
+  .rec-item:last-child { border: none; }
+  .rec-top { display: flex; align-items: center; gap: .5rem; margin-bottom: .25rem; }
+  .rec-sev { font-size: .7rem; padding: .15rem .45rem; border-radius: 4px; font-weight: 600; text-transform: uppercase; }
+  .rec-sev.critical { background: var(--red-bg); color: var(--red); }
+  .rec-sev.warning { background: var(--yellow-bg); color: var(--yellow); }
+  .rec-sev.info { background: var(--purple-bg); color: var(--purple); }
+  .rec-conf { color: var(--muted); font-size: .75rem; margin-left: auto; }
+  .rec-text { color: var(--text); font-size: .88rem; }
+  .rec-apply { margin-top: .35rem; background: var(--accent); color: #fff; border: none; padding: .3rem .7rem; border-radius: 6px; font-size: .75rem; cursor: pointer; }
+  .rec-apply:hover { background: var(--accent-hover); }
+  .rec-apply.applied { background: var(--green); cursor: default; }
+
+  /* Incident log */
+  .incident-controls { display: flex; gap: .75rem; margin-bottom: .75rem; flex-wrap: wrap; }
+  .incident-controls select { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: .35rem .5rem; font-size: .8rem; }
+  .incident-table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+  .incident-table th { text-align: left; color: var(--muted); font-weight: 600; padding: .5rem; border-bottom: 1px solid var(--border); }
+  .incident-table td { padding: .5rem; border-bottom: 1px solid var(--border); color: var(--text); }
+  .inc-sev { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: .4rem; }
+  .inc-sev.critical { background: var(--red); }
+  .inc-sev.warning { background: var(--yellow); }
+  .inc-sev.info { background: var(--accent); }
+  .inc-resolved { color: var(--green); }
+  .inc-active { color: var(--red); }
+</style>
+</head>
+<body>
+<header>
+  <nav><a href="index.html">← Back to Home</a></nav>
+  <h1>🏥 CAPTCHA Health Monitor</h1>
+  <p>Proactive system monitoring with anomaly detection, threat forecasting, and auto-recommendations</p>
+</header>
+
+<main class="monitor-grid">
+  <!-- Row 1: Health Ring + Vitals -->
+  <div class="top-row">
+    <div class="health-ring-card">
+      <h3>System Health</h3>
+      <svg class="ring-svg" viewBox="0 0 120 120">
+        <circle class="ring-bg" cx="60" cy="60" r="50"/>
+        <circle class="ring-fg" id="ringFg" cx="60" cy="60" r="50"
+          stroke-dasharray="314.16" stroke-dashoffset="314.16"
+          transform="rotate(-90 60 60)"/>
+        <text class="ring-score" id="ringScore" x="60" y="62" text-anchor="middle" dominant-baseline="central">--</text>
+        <text class="ring-label" x="60" y="82" text-anchor="middle">/ 100</text>
+      </svg>
+      <div class="health-status" id="healthStatus">Initializing…</div>
+    </div>
+    <div class="vitals-grid">
+      <div class="vital-card" id="vSolve">
+        <div class="vital-header"><span class="vital-label">Solve Rate</span><span class="vital-trend flat" id="vSolveTrend">—</span></div>
+        <div class="vital-value" id="vSolveVal">—</div>
+        <canvas class="vital-spark" id="vSolveSpark"></canvas>
+      </div>
+      <div class="vital-card" id="vBot">
+        <div class="vital-header"><span class="vital-label">Bot Block Rate</span><span class="vital-trend flat" id="vBotTrend">—</span></div>
+        <div class="vital-value" id="vBotVal">—</div>
+        <canvas class="vital-spark" id="vBotSpark"></canvas>
+      </div>
+      <div class="vital-card" id="vResp">
+        <div class="vital-header"><span class="vital-label">Avg Response Time</span><span class="vital-trend flat" id="vRespTrend">—</span></div>
+        <div class="vital-value" id="vRespVal">—</div>
+        <canvas class="vital-spark" id="vRespSpark"></canvas>
+      </div>
+      <div class="vital-card" id="vFP">
+        <div class="vital-header"><span class="vital-label">False Positive Rate</span><span class="vital-trend flat" id="vFPTrend">—</span></div>
+        <div class="vital-value" id="vFPVal">—</div>
+        <canvas class="vital-spark" id="vFPSpark"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Row 2: Timeline -->
+  <div class="timeline-section">
+    <h3>24-Hour Health Timeline</h3>
+    <div class="threshold-row">
+      <label>Anomaly Threshold:</label>
+      <input type="range" id="threshSlider" min="30" max="95" value="70">
+      <span id="threshVal">70</span>
+    </div>
+    <canvas id="timelineCanvas"></canvas>
+    <div id="anomalyList" style="margin-top:.75rem; font-size:.82rem; color:var(--muted);"></div>
+  </div>
+
+  <!-- Row 3: Forecast + Recommendations -->
+  <div class="bottom-row">
+    <div class="panel">
+      <h3>🔮 Threat Forecast</h3>
+      <div id="forecastItems"></div>
+      <div id="breachWarning" style="margin-top:.75rem; font-size:.85rem; display:none;"></div>
+    </div>
+    <div class="panel">
+      <h3>⚡ Auto-Recommendations</h3>
+      <div id="recItems"></div>
+    </div>
+  </div>
+
+  <!-- Row 4: Incident Log -->
+  <div class="panel">
+    <h3>📋 Incident Log</h3>
+    <div class="incident-controls">
+      <select id="incSevFilter"><option value="all">All Severities</option><option value="critical">Critical</option><option value="warning">Warning</option><option value="info">Info</option></select>
+      <select id="incTypeFilter"><option value="all">All Types</option><option value="bot_surge">Bot Surge</option><option value="perf_degradation">Perf Degradation</option><option value="fp_spike">FP Spike</option><option value="solve_drop">Solve Drop</option></select>
+    </div>
+    <div style="max-height:280px; overflow-y:auto;">
+      <table class="incident-table">
+        <thead><tr><th>Time</th><th>Type</th><th>Severity</th><th>Duration</th><th>Status</th></tr></thead>
+        <tbody id="incBody"></tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<footer><p>gif-captcha · CAPTCHA Health Monitor · Proactive Threat Detection</p></footer>
+
+<script src="shared.js"></script>
+<script>
+(function(){
+  /* ── State ── */
+  const H = []; // 24h of health scores (288 pts, every 5 min)
+  const vitals = { solve: [], bot: [], resp: [], fp: [] };
+  const incidents = [];
+  let score = 88;
+  let threshold = 70;
+
+  /* ── Seed 24h history ── */
+  for(let i=0;i<288;i++){
+    const base = 85 + Math.sin(i/20)*5;
+    const noise = (Math.random()-0.5)*8;
+    const anomaly = (i>180&&i<195) ? -25 : (i>240&&i<248) ? -18 : 0;
+    H.push(Math.max(10,Math.min(100, base+noise+anomaly)));
+  }
+  for(let i=0;i<60;i++){
+    vitals.solve.push(88+Math.random()*8);
+    vitals.bot.push(92+Math.random()*6);
+    vitals.resp.push(3.5+Math.random()*3);
+    vitals.fp.push(0.5+Math.random()*2);
+  }
+
+  /* Seed incidents */
+  const types=['bot_surge','perf_degradation','fp_spike','solve_drop'];
+  const sevs=['critical','warning','info'];
+  for(let i=0;i<12;i++){
+    const ago = Math.floor(Math.random()*24*60);
+    const d = new Date(Date.now()-ago*60000);
+    incidents.push({
+      time: d, type: types[Math.floor(Math.random()*types.length)],
+      severity: sevs[Math.floor(Math.random()*sevs.length)],
+      duration: Math.floor(Math.random()*45)+1,
+      resolved: Math.random()>0.25
+    });
+  }
+  incidents.sort((a,b)=>b.time-a.time);
+
+  /* ── Helpers ── */
+  function clamp(v,lo,hi){return Math.max(lo,Math.min(hi,v));}
+  function scoreColor(s){return s>=80?getComputedStyle(document.documentElement).getPropertyValue('--green').trim():s>=50?getComputedStyle(document.documentElement).getPropertyValue('--yellow').trim():getComputedStyle(document.documentElement).getPropertyValue('--red').trim();}
+  function trendArrow(arr){
+    if(arr.length<5) return {cls:'flat',txt:'—'};
+    const recent=arr.slice(-5).reduce((a,b)=>a+b,0)/5;
+    const prev=arr.slice(-10,-5).reduce((a,b)=>a+b,0)/5;
+    const d=recent-prev;
+    if(Math.abs(d)<0.5) return {cls:'flat',txt:'→'};
+    return d>0?{cls:'up',txt:'↑ +'+d.toFixed(1)}:{cls:'down',txt:'↓ '+d.toFixed(1)};
+  }
+
+  /* ── Linear Regression ── */
+  function linreg(arr){
+    const n=arr.length; if(n<2)return{slope:0,intercept:arr[0]||0};
+    let sx=0,sy=0,sxy=0,sxx=0;
+    for(let i=0;i<n;i++){sx+=i;sy+=arr[i];sxy+=i*arr[i];sxx+=i*i;}
+    const slope=(n*sxy-sx*sy)/(n*sxx-sx*sx||1);
+    const intercept=(sy-slope*sx)/n;
+    return {slope,intercept};
+  }
+
+  /* ── Draw sparkline ── */
+  function drawSpark(canvasId, arr, color){
+    const c=document.getElementById(canvasId);
+    if(!c)return;
+    const ctx=c.getContext('2d');
+    const dpr=window.devicePixelRatio||1;
+    c.width=c.offsetWidth*dpr; c.height=c.offsetHeight*dpr;
+    ctx.scale(dpr,dpr);
+    const w=c.offsetWidth, h=c.offsetHeight;
+    ctx.clearRect(0,0,w,h);
+    if(arr.length<2)return;
+    const mn=Math.min(...arr), mx=Math.max(...arr), rng=mx-mn||1;
+    ctx.beginPath();
+    ctx.strokeStyle=color; ctx.lineWidth=1.5;
+    arr.forEach((v,i)=>{
+      const x=i/(arr.length-1)*w, y=h-((v-mn)/rng)*h*0.8-h*0.1;
+      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    });
+    ctx.stroke();
+  }
+
+  /* ── Draw Timeline ── */
+  function drawTimeline(){
+    const c=document.getElementById('timelineCanvas');
+    if(!c)return;
+    const ctx=c.getContext('2d');
+    const dpr=window.devicePixelRatio||1;
+    c.width=c.offsetWidth*dpr; c.height=c.offsetHeight*dpr;
+    ctx.scale(dpr,dpr);
+    const w=c.offsetWidth, h=c.offsetHeight;
+    const pad={l:40,r:20,t:10,b:25};
+    const pw=w-pad.l-pad.r, ph=h-pad.t-pad.b;
+    ctx.clearRect(0,0,w,h);
+
+    // Threshold line
+    const ty=pad.t+ph*(1-threshold/100);
+    ctx.strokeStyle='rgba(248,81,73,0.4)'; ctx.lineWidth=1; ctx.setLineDash([4,4]);
+    ctx.beginPath(); ctx.moveTo(pad.l,ty); ctx.lineTo(pad.l+pw,ty); ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Anomaly shading
+    ctx.fillStyle='rgba(248,81,73,0.12)';
+    H.forEach((v,i)=>{
+      if(v<threshold){
+        const x=pad.l+(i/H.length)*pw;
+        ctx.fillRect(x,pad.t,pw/H.length+1,ph);
+      }
+    });
+
+    // Health line
+    ctx.beginPath(); ctx.strokeStyle='#58a6ff'; ctx.lineWidth=2;
+    H.forEach((v,i)=>{
+      const x=pad.l+(i/H.length)*pw, y=pad.t+ph*(1-v/100);
+      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    });
+    ctx.stroke();
+
+    // Forecast line (dashed)
+    const recent=H.slice(-30);
+    const reg=linreg(recent);
+    ctx.beginPath(); ctx.strokeStyle='rgba(188,140,255,0.7)'; ctx.lineWidth=2; ctx.setLineDash([6,3]);
+    for(let i=0;i<48;i++){
+      const val=clamp(reg.intercept+reg.slope*(recent.length+i),0,100);
+      const x=pad.l+((H.length+i)/336)*pw;
+      const y=pad.t+ph*(1-val/100);
+      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    }
+    ctx.stroke(); ctx.setLineDash([]);
+
+    // Y-axis labels
+    ctx.fillStyle='#8b949e'; ctx.font='11px sans-serif'; ctx.textAlign='right';
+    [0,25,50,75,100].forEach(v=>{
+      const y=pad.t+ph*(1-v/100);
+      ctx.fillText(v,pad.l-6,y+4);
+    });
+
+    // X-axis labels
+    ctx.textAlign='center';
+    for(let i=0;i<=24;i+=6){
+      const x=pad.l+(i/24)*pw*(288/H.length);
+      ctx.fillText(i+'h',x,h-4);
+    }
+  }
+
+  /* ── Update Ring ── */
+  function updateRing(){
+    const fg=document.getElementById('ringFg');
+    const sc=document.getElementById('ringScore');
+    const st=document.getElementById('healthStatus');
+    const circ=314.16;
+    const offset=circ*(1-score/100);
+    fg.style.strokeDashoffset=offset;
+    fg.style.stroke=scoreColor(score);
+    sc.textContent=Math.round(score);
+    sc.style.fill=scoreColor(score);
+    const labels={80:'Healthy',50:'Degraded',0:'Critical'};
+    st.textContent=score>=80?'✅ Healthy':score>=50?'⚠️ Degraded':'🚨 Critical';
+    st.style.color=scoreColor(score);
+  }
+
+  /* ── Update Vitals ── */
+  function updateVitals(){
+    const sv=vitals.solve, last=sv[sv.length-1];
+    document.getElementById('vSolveVal').textContent=last.toFixed(1)+'%';
+    let t=trendArrow(sv); document.getElementById('vSolveTrend').textContent=t.txt; document.getElementById('vSolveTrend').className='vital-trend '+t.cls;
+    drawSpark('vSolveSpark',sv.slice(-30),scoreColor(last));
+
+    const bv=vitals.bot, blast=bv[bv.length-1];
+    document.getElementById('vBotVal').textContent=blast.toFixed(1)+'%';
+    t=trendArrow(bv); document.getElementById('vBotTrend').textContent=t.txt; document.getElementById('vBotTrend').className='vital-trend '+t.cls;
+    drawSpark('vBotSpark',bv.slice(-30),'#3fb950');
+
+    const rv=vitals.resp, rlast=rv[rv.length-1];
+    document.getElementById('vRespVal').textContent=rlast.toFixed(1)+'s';
+    t=trendArrow(rv.map(v=>-v)); document.getElementById('vRespTrend').textContent=t.txt.replace('-',''); document.getElementById('vRespTrend').className='vital-trend '+t.cls;
+    drawSpark('vRespSpark',rv.slice(-30),'#58a6ff');
+
+    const fv=vitals.fp, flast=fv[fv.length-1];
+    document.getElementById('vFPVal').textContent=flast.toFixed(2)+'%';
+    t=trendArrow(fv.map(v=>-v)); document.getElementById('vFPTrend').textContent=t.txt.replace('-',''); document.getElementById('vFPTrend').className='vital-trend '+t.cls;
+    drawSpark('vFPSpark',fv.slice(-30),flast>2?'#f85149':'#d29922');
+  }
+
+  /* ── Forecast ── */
+  function updateForecast(){
+    const recent=H.slice(-30);
+    const reg=linreg(recent);
+    const el=document.getElementById('forecastItems');
+    const bw=document.getElementById('breachWarning');
+    let html=''; let breachHour=null;
+    for(let hr=1;hr<=4;hr++){
+      const pts=hr*12;
+      const pred=clamp(reg.intercept+reg.slope*(recent.length+pts),0,100);
+      const col=scoreColor(pred);
+      const breach=pred<threshold;
+      if(breach&&!breachHour) breachHour=hr;
+      html+=`<div class="forecast-item">
+        <span class="forecast-hour">+${hr}h</span>
+        <div class="forecast-bar"><div class="forecast-fill" style="width:${pred}%;background:${col}"></div></div>
+        <span class="forecast-val" style="color:${col}">${pred.toFixed(0)}</span>
+        ${breach?'<span class="breach-badge">⚠ BREACH</span>':''}
+      </div>`;
+    }
+    el.innerHTML=html;
+    if(breachHour){
+      bw.style.display='block';
+      bw.innerHTML=`<span style="color:var(--red)">⚠ Estimated breach in ~${breachHour}h — health predicted to drop below threshold (${threshold})</span>`;
+    } else { bw.style.display='none'; }
+  }
+
+  /* ── Recommendations ── */
+  function updateRecs(){
+    const recs=[];
+    const sv=vitals.solve[vitals.solve.length-1];
+    const bv=vitals.bot[vitals.bot.length-1];
+    const rv=vitals.resp[vitals.resp.length-1];
+    const fv=vitals.fp[vitals.fp.length-1];
+
+    if(sv<88) recs.push({sev:'warning',conf:82,text:'Increase GIF complexity — solve rate dropping, bots may be adapting'});
+    if(bv<94) recs.push({sev:'critical',conf:91,text:'Enable aggressive rate limiting — bot block rate below target'});
+    if(rv>6) recs.push({sev:'warning',conf:75,text:'Optimize GIF generation — response times elevated, user experience impacted'});
+    if(fv>1.8) recs.push({sev:'critical',conf:88,text:'Tune detection threshold — false positive rate is frustrating legitimate users'});
+    if(score<80) recs.push({sev:'critical',conf:95,text:'Rotate CAPTCHA pool immediately — pattern recognition risk is high'});
+    recs.push({sev:'info',conf:65,text:'Schedule pool refresh — proactive rotation reduces bot adaptation window'});
+    if(rv>4.5) recs.push({sev:'info',conf:70,text:'Consider CDN caching for GIF assets — reduce p95 load times'});
+
+    const el=document.getElementById('recItems');
+    el.innerHTML=recs.slice(0,5).map((r,i)=>`
+      <div class="rec-item">
+        <div class="rec-top">
+          <span class="rec-sev ${r.sev}">${r.sev}</span>
+          <span class="rec-conf">${r.conf}% confidence</span>
+        </div>
+        <div class="rec-text">${r.text}</div>
+        <button class="rec-apply" onclick="this.textContent='✓ Applied';this.classList.add('applied');this.disabled=true;">Apply</button>
+      </div>`).join('');
+  }
+
+  /* ── Incident Log ── */
+  function renderIncidents(){
+    const sevF=document.getElementById('incSevFilter').value;
+    const typeF=document.getElementById('incTypeFilter').value;
+    const filtered=incidents.filter(inc=>{
+      if(sevF!=='all'&&inc.severity!==sevF) return false;
+      if(typeF!=='all'&&inc.type!==typeF) return false;
+      return true;
+    });
+    const typeLabels={bot_surge:'Bot Surge',perf_degradation:'Perf Degradation',fp_spike:'FP Spike',solve_drop:'Solve Drop'};
+    document.getElementById('incBody').innerHTML=filtered.map(inc=>`
+      <tr>
+        <td>${inc.time.toLocaleTimeString()}</td>
+        <td>${typeLabels[inc.type]||inc.type}</td>
+        <td><span class="inc-sev ${inc.severity}"></span>${inc.severity}</td>
+        <td>${inc.duration}m</td>
+        <td class="${inc.resolved?'inc-resolved':'inc-active'}">${inc.resolved?'✓ Resolved':'● Active'}</td>
+      </tr>`).join('');
+  }
+
+  /* ── Anomaly list ── */
+  function updateAnomalyList(){
+    const anomalies=[];
+    let inAnomaly=false, start=0;
+    H.forEach((v,i)=>{
+      if(v<threshold&&!inAnomaly){inAnomaly=true;start=i;}
+      if((v>=threshold||i===H.length-1)&&inAnomaly){
+        inAnomaly=false;
+        const startH=((start/288)*24).toFixed(1);
+        const endH=((i/288)*24).toFixed(1);
+        const minScore=Math.min(...H.slice(start,i+1)).toFixed(0);
+        anomalies.push(`⚠ Anomaly ${startH}h–${endH}h ago (min score: ${minScore})`);
+      }
+    });
+    document.getElementById('anomalyList').innerHTML=anomalies.length?anomalies.map(a=>`<div>${a}</div>`).join(''):'<div>✅ No anomalies detected in the last 24 hours</div>';
+  }
+
+  /* ── Tick ── */
+  function tick(){
+    // Simulate metric changes
+    const botSpike=Math.random()<0.03;
+    const perfDip=Math.random()<0.04;
+    const ds=(Math.random()-0.5)*3 + (botSpike?-12:0) + (perfDip?-8:0);
+    score=clamp(score+ds,15,98);
+    H.push(score); if(H.length>336) H.shift();
+
+    vitals.solve.push(clamp(vitals.solve[vitals.solve.length-1]+(Math.random()-0.5)*3+(botSpike?-8:0),60,99));
+    vitals.bot.push(clamp(vitals.bot[vitals.bot.length-1]+(Math.random()-0.5)*2+(botSpike?-10:0),70,99));
+    vitals.resp.push(clamp(vitals.resp[vitals.resp.length-1]+(Math.random()-0.5)*0.5+(perfDip?2:0),1.5,12));
+    vitals.fp.push(clamp(vitals.fp[vitals.fp.length-1]+(Math.random()-0.5)*0.3,0.1,5));
+    [vitals.solve,vitals.bot,vitals.resp,vitals.fp].forEach(a=>{if(a.length>120)a.shift();});
+
+    // Occasional incident
+    if(botSpike||perfDip){
+      incidents.unshift({
+        time:new Date(),
+        type:botSpike?'bot_surge':'perf_degradation',
+        severity:Math.random()>0.5?'critical':'warning',
+        duration:Math.floor(Math.random()*20)+1,
+        resolved:false
+      });
+      if(incidents.length>30) incidents.pop();
+    }
+    // Resolve old incidents
+    incidents.forEach(inc=>{if(!inc.resolved&&Date.now()-inc.time>120000&&Math.random()>0.5)inc.resolved=true;});
+
+    updateRing(); updateVitals(); drawTimeline(); updateForecast(); updateRecs(); updateAnomalyList(); renderIncidents();
+  }
+
+  /* ── Init ── */
+  document.getElementById('threshSlider').addEventListener('input',e=>{
+    threshold=parseInt(e.target.value);
+    document.getElementById('threshVal').textContent=threshold;
+    drawTimeline(); updateForecast(); updateAnomalyList();
+  });
+  document.getElementById('incSevFilter').addEventListener('change',renderIncidents);
+  document.getElementById('incTypeFilter').addEventListener('change',renderIncidents);
+  window.addEventListener('resize',()=>{drawTimeline(); updateVitals();});
+
+  tick();
+  setInterval(tick,3000);
+})();
+</script>
+</body>
+</html>

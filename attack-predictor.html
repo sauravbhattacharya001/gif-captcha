@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Attack Pattern Predictor — GIF CAPTCHA</title>
+    <link rel="stylesheet" href="shared.css">
+    <style>
+        body { padding: 2rem; max-width: 1400px; margin: 0 auto; }
+        .back-link { color: var(--accent); text-decoration: none; font-size: 0.85rem; }
+        .back-link:hover { text-decoration: underline; }
+        h1 { font-size: 2rem; margin: 0.5rem 0 0.25rem; }
+        .subtitle { color: var(--muted); margin-bottom: 1.5rem; }
+        .top-row { display: grid; grid-template-columns: 200px 1fr; gap: 1.5rem; margin-bottom: 1.5rem; }
+        .gauge-box { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1rem; text-align: center; }
+        .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; }
+        .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; text-align: center; }
+        .stat-card .val { font-size: 1.6rem; font-weight: 700; color: var(--text); }
+        .stat-card .lbl { font-size: 0.75rem; color: var(--muted); margin-top: 0.25rem; }
+        .mid-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem; }
+        .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem; }
+        .panel h2 { font-size: 1.1rem; margin: 0 0 1rem; color: var(--accent); }
+        .heatmap-table { width: 100%; border-collapse: collapse; font-size: 0.7rem; }
+        .heatmap-table th, .heatmap-table td { padding: 4px; text-align: center; border: 1px solid var(--border); }
+        .heatmap-table th { background: var(--surface); color: var(--muted); font-weight: 600; }
+        .forecast-item { display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0; border-bottom: 1px solid var(--border); }
+        .forecast-item:last-child { border: none; }
+        .forecast-bar { height: 6px; background: var(--accent); border-radius: 3px; margin-top: 4px; }
+        .bottom-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+        .chain-item { padding: 0.4rem 0; border-bottom: 1px solid var(--border); font-size: 0.85rem; color: var(--muted); }
+        .chain-item span { color: var(--text); font-weight: 600; }
+        .defense-item { background: var(--surface-hover); border-radius: 6px; padding: 0.75rem; margin-bottom: 0.5rem; }
+        .defense-item h4 { margin: 0 0 0.25rem; font-size: 0.9rem; color: var(--text); }
+        .defense-item p { margin: 0; font-size: 0.8rem; color: var(--muted); }
+        .toggle-btn { padding: 0.5rem 1rem; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; font-size: 0.85rem; }
+        .toggle-btn.active { background: var(--green-bg); border-color: var(--green); color: var(--green); }
+        .alert-banner { background: var(--yellow-bg); border: 1px solid var(--yellow); border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1rem; color: var(--yellow); font-weight: 600; display: none; }
+        .controls { display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem; }
+        canvas { border-radius: 8px; }
+        .hourly-chart { display: flex; align-items: flex-end; gap: 2px; height: 60px; margin-top: 0.5rem; }
+        .hourly-bar { flex: 1; background: var(--accent); border-radius: 2px 2px 0 0; min-width: 4px; transition: height 0.3s; }
+        .feed-log { max-height: 150px; overflow-y: auto; font-size: 0.75rem; font-family: monospace; color: var(--muted); }
+        .feed-log .entry { padding: 2px 0; border-bottom: 1px solid rgba(48,54,61,0.5); }
+        .feed-log .entry.high { color: var(--red); }
+        .feed-log .entry.confirmed { color: var(--green); font-weight: 600; }
+        @media (max-width: 900px) {
+            .top-row, .mid-row, .bottom-row { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <a href="index.html" class="back-link">← Back to Case Study</a>
+    <h1>🔮 Attack Pattern Predictor</h1>
+    <p class="subtitle">Markov Chain Threat Forecasting</p>
+
+    <div id="alertBanner" class="alert-banner">⚡ Prediction confirmed! Attack matched forecast.</div>
+
+    <div class="controls">
+        <button id="liveToggle" class="toggle-btn" onclick="toggleLive()">▶ Live Feed</button>
+        <button class="toggle-btn" onclick="deployDefenses()">🛡️ Deploy Defenses</button>
+        <span id="liveStatus" style="font-size:0.8rem;color:var(--muted);">Paused</span>
+    </div>
+
+    <div class="top-row">
+        <div class="gauge-box">
+            <canvas id="gaugeCanvas" width="160" height="100"></canvas>
+            <div style="font-size:0.75rem;color:var(--muted);margin-top:0.25rem;">Risk Score</div>
+        </div>
+        <div class="stats-row">
+            <div class="stat-card"><div class="val" id="statTotal">0</div><div class="lbl">Total Attacks</div></div>
+            <div class="stat-card"><div class="val" id="statAccuracy">0%</div><div class="lbl">Prediction Accuracy</div></div>
+            <div class="stat-card"><div class="val" id="statSeverity">0.0</div><div class="lbl">Avg Severity</div></div>
+            <div class="stat-card"><div class="val" id="statChains">0</div><div class="lbl">Detected Chains</div></div>
+        </div>
+    </div>
+
+    <div class="mid-row">
+        <div class="panel">
+            <h2>Transition Matrix</h2>
+            <div id="heatmapContainer" style="overflow-x:auto;"></div>
+        </div>
+        <div class="panel">
+            <h2>Forecast (Next 5)</h2>
+            <div id="forecastList"></div>
+            <h3 style="font-size:0.9rem;color:var(--muted);margin-top:1rem;">Threat Timeline (24h)</h3>
+            <canvas id="timelineCanvas" width="500" height="80" style="width:100%;height:80px;"></canvas>
+        </div>
+    </div>
+
+    <div class="bottom-row">
+        <div class="panel">
+            <h2>Pattern Analysis</h2>
+            <div id="chainsList"></div>
+            <h3 style="font-size:0.9rem;color:var(--muted);margin-top:1rem;">Attacks by Hour</h3>
+            <div id="hourlyChart" class="hourly-chart"></div>
+            <div id="feedLog" class="feed-log" style="margin-top:1rem;"></div>
+        </div>
+        <div class="panel">
+            <h2>Defense Recommendations</h2>
+            <div id="defenseList"></div>
+        </div>
+    </div>
+
+    <script src="shared.js"></script>
+    <script>
+    /* === Attack Pattern Predictor === */
+    const ATTACK_TYPES = [
+        'Credential Stuffing', 'Replay Attack', 'OCR Bot', 'Headless Browser',
+        'CAPTCHA Farm', 'Token Manipulation', 'Timing Attack', 'Fingerprint Spoofing'
+    ];
+    const REGIONS = ['NA','EU','APAC','LATAM','MENA'];
+    const DEFENSES = {
+        'Credential Stuffing': {action:'Enable rate limiting + IP reputation scoring', reduction: 18},
+        'Replay Attack': {action:'Enforce nonce + timestamp validation window', reduction: 22},
+        'OCR Bot': {action:'Increase GIF complexity + add motion distortion', reduction: 15},
+        'Headless Browser': {action:'Deploy behavioral fingerprinting checks', reduction: 20},
+        'CAPTCHA Farm': {action:'Activate proof-of-work challenge layer', reduction: 12},
+        'Token Manipulation': {action:'Rotate HMAC keys + shorten token TTL', reduction: 25},
+        'Timing Attack': {action:'Add random delay jitter (50-200ms)', reduction: 17},
+        'Fingerprint Spoofing': {action:'Cross-validate canvas + WebGL + audio fingerprints', reduction: 14}
+    };
+
+    let attacks = [];
+    let transitionMatrix = {};
+    let liveInterval = null;
+    let predictions = [];
+    let confirmedCount = 0;
+    let totalPredictions = 0;
+    let riskScore = 50;
+
+    function rand(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+    function pick(arr) { return arr[rand(0, arr.length - 1)]; }
+
+    function generateAttack(baseTime) {
+        return {
+            type: pick(ATTACK_TYPES),
+            timestamp: baseTime || Date.now() - rand(0, 86400000 * 7),
+            severity: rand(1, 5),
+            success: Math.random() > 0.6,
+            region: pick(REGIONS),
+            variant: 'v' + rand(1, 4)
+        };
+    }
+
+    function initHistory() {
+        const now = Date.now();
+        for (let i = 0; i < 250; i++) {
+            attacks.push(generateAttack(now - rand(0, 86400000 * 7)));
+        }
+        attacks.sort((a, b) => a.timestamp - b.timestamp);
+    }
+
+    function buildMatrix() {
+        transitionMatrix = {};
+        ATTACK_TYPES.forEach(t => { transitionMatrix[t] = {}; ATTACK_TYPES.forEach(u => transitionMatrix[t][u] = 0); });
+        for (let i = 0; i < attacks.length - 1; i++) {
+            transitionMatrix[attacks[i].type][attacks[i + 1].type]++;
+        }
+        // Normalize
+        ATTACK_TYPES.forEach(t => {
+            const sum = Object.values(transitionMatrix[t]).reduce((a, b) => a + b, 0);
+            if (sum > 0) ATTACK_TYPES.forEach(u => transitionMatrix[t][u] /= sum);
+        });
+    }
+
+    function predict() {
+        const last = attacks[attacks.length - 1].type;
+        const probs = ATTACK_TYPES.map(t => ({type: t, prob: transitionMatrix[last][t] || 0}));
+        probs.sort((a, b) => b.prob - a.prob);
+        predictions = probs.slice(0, 5);
+        return predictions;
+    }
+
+    function renderHeatmap() {
+        const abbr = ATTACK_TYPES.map(t => t.split(' ').map(w => w[0]).join(''));
+        let html = '<table class="heatmap-table"><tr><th></th>';
+        abbr.forEach((a, i) => html += `<th title="${ATTACK_TYPES[i]}">${a}</th>`);
+        html += '</tr>';
+        ATTACK_TYPES.forEach((from, i) => {
+            html += `<tr><th title="${from}">${abbr[i]}</th>`;
+            ATTACK_TYPES.forEach(to => {
+                const val = transitionMatrix[from][to];
+                const intensity = Math.round(val * 255);
+                const bg = `rgba(88,166,255,${val.toFixed(2)})`;
+                html += `<td style="background:${bg};color:${val > 0.3 ? '#fff' : 'var(--muted)'}" title="${from} → ${to}: ${(val*100).toFixed(1)}%">${val > 0.01 ? (val*100).toFixed(0) : ''}</td>`;
+            });
+            html += '</tr>';
+        });
+        html += '</table>';
+        document.getElementById('heatmapContainer').innerHTML = html;
+    }
+
+    function renderForecast() {
+        const preds = predict();
+        let html = '';
+        preds.forEach(p => {
+            const w = Math.round(p.prob * 100);
+            html += `<div class="forecast-item"><div><span style="color:var(--text)">${p.type}</span><div class="forecast-bar" style="width:${w * 2}px"></div></div><span style="color:var(--accent);font-weight:600">${(p.prob*100).toFixed(1)}%</span></div>`;
+        });
+        document.getElementById('forecastList').innerHTML = html;
+    }
+
+    function renderTimeline() {
+        const canvas = document.getElementById('timelineCanvas');
+        const ctx = canvas.getContext('2d');
+        const W = canvas.width, H = canvas.height;
+        ctx.clearRect(0, 0, W, H);
+        // Simulate 24h forecast
+        let current = attacks[attacks.length - 1].type;
+        const points = [];
+        for (let h = 0; h < 24; h++) {
+            const probs = ATTACK_TYPES.map(t => transitionMatrix[current][t] || 0);
+            const max = Math.max(...probs);
+            const idx = probs.indexOf(max);
+            points.push({hour: h, type: ATTACK_TYPES[idx], prob: max});
+            // Stochastic step
+            const r = Math.random(); let cum = 0;
+            for (let j = 0; j < ATTACK_TYPES.length; j++) {
+                cum += probs[j]; if (r <= cum) { current = ATTACK_TYPES[j]; break; }
+            }
+        }
+        // Draw
+        ctx.strokeStyle = '#58a6ff'; ctx.lineWidth = 2; ctx.beginPath();
+        points.forEach((p, i) => {
+            const x = (i / 23) * (W - 20) + 10;
+            const y = H - 10 - (p.prob * (H - 20));
+            i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+        // Confidence band
+        ctx.fillStyle = 'rgba(88,166,255,0.1)';
+        ctx.beginPath();
+        points.forEach((p, i) => {
+            const x = (i / 23) * (W - 20) + 10;
+            const spread = 0.05 + (i * 0.015);
+            ctx.lineTo(x, H - 10 - ((p.prob + spread) * (H - 20)));
+        });
+        for (let i = points.length - 1; i >= 0; i--) {
+            const x = (i / 23) * (W - 20) + 10;
+            const spread = 0.05 + (i * 0.015);
+            ctx.lineTo(x, H - 10 - ((points[i].prob - spread) * (H - 20)));
+        }
+        ctx.closePath(); ctx.fill();
+    }
+
+    function renderGauge() {
+        const canvas = document.getElementById('gaugeCanvas');
+        const ctx = canvas.getContext('2d');
+        const W = canvas.width, H = canvas.height;
+        ctx.clearRect(0, 0, W, H);
+        const cx = W/2, cy = H - 10, r = 65;
+        // Background arc
+        ctx.beginPath(); ctx.arc(cx, cy, r, Math.PI, 0); ctx.strokeStyle = '#30363d'; ctx.lineWidth = 12; ctx.stroke();
+        // Value arc
+        const angle = Math.PI + (riskScore / 100) * Math.PI;
+        const color = riskScore > 70 ? '#f85149' : riskScore > 40 ? '#d29922' : '#3fb950';
+        ctx.beginPath(); ctx.arc(cx, cy, r, Math.PI, angle); ctx.strokeStyle = color; ctx.lineWidth = 12; ctx.lineCap = 'round'; ctx.stroke();
+        // Text
+        ctx.fillStyle = color; ctx.font = 'bold 22px sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText(riskScore, cx, cy - 15);
+    }
+
+    function renderStats() {
+        document.getElementById('statTotal').textContent = attacks.length;
+        const acc = totalPredictions > 0 ? Math.round((confirmedCount / totalPredictions) * 100) : 0;
+        document.getElementById('statAccuracy').textContent = acc + '%';
+        const avg = (attacks.reduce((s, a) => s + a.severity, 0) / attacks.length).toFixed(1);
+        document.getElementById('statSeverity').textContent = avg;
+    }
+
+    function detectChains() {
+        const chainMap = {};
+        for (let i = 0; i < attacks.length - 2; i++) {
+            const chain = `${attacks[i].type} → ${attacks[i+1].type} → ${attacks[i+2].type}`;
+            chainMap[chain] = (chainMap[chain] || 0) + 1;
+        }
+        const sorted = Object.entries(chainMap).sort((a, b) => b[1] - a[1]).slice(0, 5);
+        document.getElementById('statChains').textContent = sorted.length;
+        let html = '';
+        sorted.forEach(([chain, count]) => {
+            html += `<div class="chain-item"><span>${count}×</span> ${chain}</div>`;
+        });
+        document.getElementById('chainsList').innerHTML = html;
+    }
+
+    function renderHourly() {
+        const hours = new Array(24).fill(0);
+        attacks.forEach(a => { const h = new Date(a.timestamp).getHours(); hours[h]++; });
+        const max = Math.max(...hours);
+        let html = '';
+        hours.forEach(c => { html += `<div class="hourly-bar" style="height:${max > 0 ? (c/max)*100 : 0}%" title="${c} attacks"></div>`; });
+        document.getElementById('hourlyChart').innerHTML = html;
+    }
+
+    function renderDefenses() {
+        const preds = predictions.slice(0, 4);
+        let html = '';
+        preds.forEach(p => {
+            const def = DEFENSES[p.type];
+            html += `<div class="defense-item"><h4>${p.type} <span style="color:var(--accent);font-size:0.75rem;">(${(p.prob*100).toFixed(0)}% likely)</span></h4><p>↳ ${def.action}</p><p style="color:var(--green);font-size:0.75rem;">Risk reduction: -${def.reduction} pts</p></div>`;
+        });
+        document.getElementById('defenseList').innerHTML = html;
+    }
+
+    function toggleLive() {
+        const btn = document.getElementById('liveToggle');
+        const status = document.getElementById('liveStatus');
+        if (liveInterval) {
+            clearInterval(liveInterval); liveInterval = null;
+            btn.classList.remove('active'); btn.textContent = '▶ Live Feed'; status.textContent = 'Paused';
+        } else {
+            btn.classList.add('active'); btn.textContent = '⏸ Pause'; status.textContent = 'Streaming...';
+            liveInterval = setInterval(addLiveAttack, 2500);
+        }
+    }
+
+    function addLiveAttack() {
+        const atk = generateAttack(Date.now());
+        attacks.push(atk);
+        totalPredictions++;
+        // Check if predicted
+        if (predictions.some(p => p.type === atk.type)) {
+            confirmedCount++;
+            const banner = document.getElementById('alertBanner');
+            banner.style.display = 'block'; banner.textContent = `⚡ Prediction confirmed! "${atk.type}" matched forecast.`;
+            setTimeout(() => banner.style.display = 'none', 3000);
+        }
+        // Update risk
+        riskScore = Math.min(99, Math.max(10, riskScore + (atk.severity > 3 ? 3 : -1)));
+        // Log
+        const log = document.getElementById('feedLog');
+        const cls = atk.severity >= 4 ? 'high' : '';
+        log.innerHTML = `<div class="entry ${cls}">[${new Date().toLocaleTimeString()}] ${atk.type} (sev:${atk.severity}, ${atk.region})</div>` + log.innerHTML;
+        if (log.children.length > 50) log.removeChild(log.lastChild);
+        refresh();
+    }
+
+    function deployDefenses() {
+        const reduction = predictions.slice(0, 4).reduce((s, p) => s + DEFENSES[p.type].reduction * p.prob, 0);
+        riskScore = Math.max(5, Math.round(riskScore - reduction));
+        renderGauge();
+        const banner = document.getElementById('alertBanner');
+        banner.style.display = 'block'; banner.style.background = 'var(--green-bg)'; banner.style.borderColor = 'var(--green)'; banner.style.color = 'var(--green)';
+        banner.textContent = `🛡️ Defenses deployed! Risk reduced by ${Math.round(reduction)} points.`;
+        setTimeout(() => { banner.style.display = 'none'; banner.style.background = ''; banner.style.borderColor = ''; banner.style.color = ''; }, 4000);
+    }
+
+    function refresh() {
+        buildMatrix(); renderHeatmap(); renderForecast(); renderTimeline(); renderGauge(); renderStats(); detectChains(); renderHourly(); renderDefenses();
+    }
+
+    // Init
+    initHistory(); refresh();
+    </script>
+</body>
+</html>

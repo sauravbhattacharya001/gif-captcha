@@ -165,11 +165,15 @@ function createResponseTimeProfiler(options) {
     if(avg<botThresholdMs){ev.push('sub_bot_threshold_mean');conf-=40;}
     if(cv<consistencyThreshold&&times.length>=minSamples){ev.push('mechanical_consistency');conf-=30;}
     if(avg>=humanMinMs&&avg<=humanMaxMs&&cv<consistencyThreshold*2){ev.push('farm_like_consistency');conf-=15;}
-    var sr=solves.filter(function(s){return s.solved;}).length/solves.length;
+    var sc2=0;for(var si2=0;si2<solves.length;si2++){if(solves[si2].solved)sc2++;}
+    var sr=sc2/solves.length;
     if(sr>0.95&&times.length>=minSamples){ev.push('near_perfect_solve_rate');conf-=10;}
     var cls=ar.classification;if(cls==='human')conf=Math.max(conf,50);
-    return{classification:cls,confidence:Math.min(100,Math.max(0,Math.abs(conf))),humanLikelihood:cls==='human'?'high':cls==='uncertain'?'medium':'low',
+    var result={classification:cls,confidence:Math.min(100,Math.max(0,Math.abs(conf))),humanLikelihood:cls==='human'?'high':cls==='uncertain'?'medium':'low',
       evidence:ev,stats:{mean:_r(avg),median:_r(med),stddev:_r(sd),cv:_r(cv,3),solveRate:_r(sr,3),sampleSize:times.length},anomalies:ar.anomalies};
+    // Cache classification so getSummary can skip redundant anomaly detection
+    sessions[sessionId].classification=result;
+    return result;
   }
 
   /**
@@ -236,9 +240,14 @@ function createResponseTimeProfiler(options) {
   }
 
   function getSummary() {
-    var ts=0,td=0,at=[];var cls={human:0,bot:0,solver_farm:0,suspicious:0,uncertain:0,insufficient_data:0};
-    var sk=Object.keys(sessions);for(var i=0;i<sk.length;i++){var s=sessions[sk[i]];ts+=s.solves.length;for(var j=0;j<s.solves.length;j++){at.push(s.solves[j].time);if(s.solves[j].solved)td++;}var c=classifySession(sk[i]);cls[c.classification]=(cls[c.classification]||0)+1;}
-    return{totalSessions:sk.length,totalSolves:ts,overallSolveRate:ts>0?_r(td/ts,3):0,meanResponseMs:at.length>0?_r(_mean(at)):0,medianResponseMs:at.length>0?_r(_median(at)):0,challengeTypes:Object.keys(typeProfiles).length,classifications:cls};
+    var ts=0,td=0,timeSum=0,at=[];var cls={human:0,bot:0,solver_farm:0,suspicious:0,uncertain:0,insufficient_data:0};
+    var sk=Object.keys(sessions);for(var i=0;i<sk.length;i++){var s=sessions[sk[i]];ts+=s.solves.length;for(var j=0;j<s.solves.length;j++){var t=s.solves[j].time;timeSum+=t;at.push(t);if(s.solves[j].solved)td++;}
+      // Use cached classification when available (set by classifySession,
+      // cleared to null by record). Avoids redundant O(solves) anomaly
+      // detection for sessions whose data hasn't changed since last classify.
+      var c=s.classification||classifySession(sk[i]);
+      cls[c.classification]=(cls[c.classification]||0)+1;}
+    return{totalSessions:sk.length,totalSolves:ts,overallSolveRate:ts>0?_r(td/ts,3):0,meanResponseMs:at.length>0?_r(timeSum/at.length):0,medianResponseMs:at.length>0?_r(_median(at)):0,challengeTypes:Object.keys(typeProfiles).length,classifications:cls};
   }
 
   function reset() {

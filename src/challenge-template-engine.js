@@ -71,12 +71,15 @@ var EVENTS = [
 ];
 
 // ── Counter for unique IDs ──────────────────────────────────────────
+// Challenge IDs must be cryptographically unpredictable (CWE-330).
+// Predictable IDs (Date.now + counter) let attackers enumerate valid
+// challenge IDs and submit answers to challenges they never received,
+// bypassing the CAPTCHA entirely.
 
-var _globalCounter = 0;
+var _secureRandomHex = require('./crypto-utils').secureRandomHex;
 
 function _uniqueId() {
-  _globalCounter++;
-  return "ct_" + Date.now().toString(36) + "_" + _globalCounter.toString(36);
+  return "ct_" + _secureRandomHex(16);
 }
 
 // ── Utility ─────────────────────────────────────────────────────────

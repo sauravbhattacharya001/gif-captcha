@@ -2,6 +2,10 @@
 
 var _cryptoUtils = require('./crypto-utils');
 var secureRandomInt = _cryptoUtils.secureRandomInt;
+var sharedUtils = require('./shared-utils');
+var _sharedMean = sharedUtils._mean;
+var _sharedStddev = sharedUtils._stddev;
+var _sharedMedian = sharedUtils._median;
 
 /**
  * Captcha Traffic Analyzer — monitors aggregate CAPTCHA traffic patterns
@@ -46,27 +50,10 @@ function createCaptchaTrafficAnalyzer(options) {
   function _posNum(v, d) { return (v != null && v > 0) ? v : d; }
   function _r(v, d) { var f = Math.pow(10, d || 2); return Math.round(v * f) / f; }
 
-  function _mean(arr) {
-    if (!arr.length) return 0;
-    var s = 0;
-    for (var i = 0; i < arr.length; i++) s += arr[i];
-    return s / arr.length;
-  }
-
-  function _stddev(arr, avg) {
-    if (arr.length < 2) return 0;
-    if (avg == null) avg = _mean(arr);
-    var s = 0;
-    for (var i = 0; i < arr.length; i++) s += (arr[i] - avg) * (arr[i] - avg);
-    return Math.sqrt(s / (arr.length - 1));
-  }
-
-  function _median(arr) {
-    if (!arr.length) return 0;
-    var s = arr.slice().sort(function (a, b) { return a - b; });
-    var m = Math.floor(s.length / 2);
-    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
-  }
+  // _mean, _stddev, _median delegated to shared-utils.js
+  var _mean = _sharedMean;
+  var _stddev = _sharedStddev;
+  var _median = _sharedMedian;
 
   // ── Welford's Online Statistics Tracker ─────────────────────
   // Computes mean, variance, and stddev in O(1) memory per window

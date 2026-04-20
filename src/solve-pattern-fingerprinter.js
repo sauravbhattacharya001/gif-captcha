@@ -1,5 +1,13 @@
 'use strict';
 
+var sharedUtils = require('./shared-utils');
+var _mean = sharedUtils._mean;
+var _stddev = sharedUtils._stddev;
+var _median = sharedUtils._median;
+var _percentile = sharedUtils._percentile;
+var _medianSorted = sharedUtils._medianSorted;
+var _percentileSorted = sharedUtils._percentileSorted;
+
 /**
  * createSolvePatternFingerprinter — builds behavioral fingerprints from CAPTCHA
  * solve patterns to identify solver profiles across sessions.
@@ -37,61 +45,8 @@ function createSolvePatternFingerprinter(options) {
   var profileCount = 0;
 
   // ── Helpers ──────────────────────────────────────────────────────
-
-  function _mean(arr) {
-    if (arr.length === 0) return 0;
-    var s = 0;
-    for (var i = 0; i < arr.length; i++) s += arr[i];
-    return s / arr.length;
-  }
-
-  function _stddev(arr, avg) {
-    if (arr.length < 2) return 0;
-    var s = 0;
-    for (var i = 0; i < arr.length; i++) {
-      var d = arr[i] - avg;
-      s += d * d;
-    }
-    return Math.sqrt(s / (arr.length - 1));
-  }
-
-  function _median(arr) {
-    if (arr.length === 0) return 0;
-    var sorted = arr.slice().sort(function(a, b) { return a - b; });
-    var mid = Math.floor(sorted.length / 2);
-    return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
-  }
-
-  function _percentile(arr, p) {
-    if (arr.length === 0) return 0;
-    var sorted = arr.slice().sort(function(a, b) { return a - b; });
-    var idx = (p / 100) * (sorted.length - 1);
-    var lo = Math.floor(idx);
-    var hi = Math.ceil(idx);
-    if (lo === hi) return sorted[lo];
-    return sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
-  }
-
-  /**
-   * Compute median from a pre-sorted array (avoids redundant sorting).
-   */
-  function _medianSorted(sorted) {
-    if (sorted.length === 0) return 0;
-    var mid = Math.floor(sorted.length / 2);
-    return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
-  }
-
-  /**
-   * Compute percentile from a pre-sorted array (avoids redundant sorting).
-   */
-  function _percentileSorted(sorted, p) {
-    if (sorted.length === 0) return 0;
-    var idx = (p / 100) * (sorted.length - 1);
-    var lo = Math.floor(idx);
-    var hi = Math.ceil(idx);
-    if (lo === hi) return sorted[lo];
-    return sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
-  }
+  // _mean, _stddev, _median, _percentile, _medianSorted, _percentileSorted
+  // are imported from shared-utils.js (module-level) to eliminate duplication.
 
   /**
    * Cosine similarity between two equal-length arrays.

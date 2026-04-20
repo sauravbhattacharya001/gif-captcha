@@ -295,6 +295,35 @@ function _percentile(arr, p) {
   return lo === hi ? sorted[lo] : sorted[lo] + (sorted[hi] - sorted[lo]) * (i - lo);
 }
 
+/**
+ * Compute the median of a pre-sorted numeric array (avoids redundant sorting).
+ * Callers must ensure the input is sorted in ascending order.
+ * @param {number[]} sorted - Pre-sorted numeric array
+ * @returns {number} Median, or 0 for empty arrays
+ */
+function _medianSorted(sorted) {
+  if (sorted.length === 0) return 0;
+  var mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? (sorted[mid - 1] + sorted[mid]) / 2
+    : sorted[mid];
+}
+
+/**
+ * Compute the p-th percentile of a pre-sorted numeric array (avoids redundant sorting).
+ * Callers must ensure the input is sorted in ascending order.
+ * @param {number[]} sorted - Pre-sorted numeric array
+ * @param {number} p - Percentile (0-100)
+ * @returns {number} Percentile value, or 0 for empty arrays
+ */
+function _percentileSorted(sorted, p) {
+  if (sorted.length === 0) return 0;
+  var i = (p / 100) * (sorted.length - 1);
+  var lo = Math.floor(i);
+  var hi = Math.ceil(i);
+  return lo === hi ? sorted[lo] : sorted[lo] + (sorted[hi] - sorted[lo]) * (i - lo);
+}
+
 // ── Text Sanitizer ──────────────────────────────────────────────────
 
 /**
@@ -811,6 +840,8 @@ module.exports = {
   _stddev: _stddev,
   _populationStddev: _populationStddev,
   _percentile: _percentile,
+  _medianSorted: _medianSorted,
+  _percentileSorted: _percentileSorted,
   createSanitizer: createSanitizer,
   sanitize: sanitize,
   isSafeUrl: isSafeUrl,

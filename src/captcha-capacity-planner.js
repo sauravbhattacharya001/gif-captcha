@@ -53,8 +53,11 @@ var _shared = require("./shared-utils");
 var _mean = _shared._mean;
 var _median = _shared._median;
 var _percentile = _shared._percentile;
+var _medianSorted = _shared._medianSorted;
+var _percentileSorted = _shared._percentileSorted;
 var _stddev = _shared._stddev;
 var _clamp = _shared._clamp;
+var _numAsc = _shared._numAsc;
 
 function _linearRegression(xs, ys) {
   var n = xs.length;
@@ -131,15 +134,38 @@ function createCapacityPlanner(options) {
       if (samples[i].cpuPercent != null) cpuArr.push(samples[i].cpuPercent);
       if (samples[i].memoryPercent != null) memArr.push(samples[i].memoryPercent);
     }
-    return {
+
+    // Sort each array once and reuse for median/percentile/max.
+    // Previously _median and _percentile each called arr.slice().sort()
+    // internally, causing 2 redundant sorts per metric array (O(n log n) each).
+    var rpsS = rpsArr.slice().sort(_numAsc);
+    var latS = latArr.slice().sort(_numAsc);
+    var errS = errArr.slice().sort(_numAsc);
+
+    var rpsMean = _mean(rpsArr);
+    var latMean = _mean(latArr);
+    var errMean = _mean(errArr);
+
+    var result = {
       sampleCount: samples.length,
       timeSpanMs: samples[samples.length - 1].timestamp - samples[0].timestamp,
-      rps: { mean: _mean(rpsArr), median: _median(rpsArr), p95: _percentile(rpsArr, 95), max: Math.max.apply(null, rpsArr), stddev: _stddev(rpsArr) },
-      latencyMs: { mean: _mean(latArr), median: _median(latArr), p95: _percentile(latArr, 95), max: Math.max.apply(null, latArr) },
-      errorRate: { mean: _mean(errArr), max: Math.max.apply(null, errArr) },
-      cpu: cpuArr.length ? { mean: _mean(cpuArr), p95: _percentile(cpuArr, 95), max: Math.max.apply(null, cpuArr) } : null,
-      memory: memArr.length ? { mean: _mean(memArr), p95: _percentile(memArr, 95), max: Math.max.apply(null, memArr) } : null
+      rps: { mean: rpsMean, median: _medianSorted(rpsS), p95: _percentileSorted(rpsS, 95), max: rpsS.length ? rpsS[rpsS.length - 1] : 0, stddev: _stddev(rpsArr, rpsMean) },
+      latencyMs: { mean: latMean, median: _medianSorted(latS), p95: _percentileSorted(latS, 95), max: latS.length ? latS[latS.length - 1] : 0 },
+      errorRate: { mean: errMean, max: errS.length ? errS[errS.length - 1] : 0 },
+      cpu: null,
+      memory: null
     };
+
+    if (cpuArr.length) {
+      var cpuS = cpuArr.slice().sort(_numAsc);
+      result.cpu = { mean: _mean(cpuArr), p95: _percentileSorted(cpuS, 95), max: cpuS[cpuS.length - 1] };
+    }
+    if (memArr.length) {
+      var memS = memArr.slice().sort(_numAsc);
+      result.memory = { mean: _mean(memArr), p95: _percentileSorted(memS, 95), max: memS[memS.length - 1] };
+    }
+
+    return result;
   }
 
   // ── Forecast ────────────────────────────────────────────────────

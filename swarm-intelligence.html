@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CAPTCHA Swarm Intelligence — GIF CAPTCHA</title>
+    <link rel="stylesheet" href="shared.css">
+    <style>
+        body { padding: 2rem; max-width: 1400px; margin: 0 auto; }
+        .back-link { color: var(--accent); text-decoration: none; font-size: 0.85rem; }
+        .back-link:hover { text-decoration: underline; }
+        h1 { font-size: 2rem; margin: 0.5rem 0 0.25rem; }
+        .subtitle { color: var(--muted); margin-bottom: 1.5rem; }
+
+        /* Swarm Canvas */
+        .swarm-container { position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 1.5rem; }
+        #swarmCanvas { display: block; width: 100%; height: 400px; }
+
+        /* Stats bar */
+        .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+        .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem; text-align: center; }
+        .stat-card .val { font-size: 1.5rem; font-weight: 700; color: var(--text); }
+        .stat-card .lbl { font-size: 0.7rem; color: var(--muted); margin-top: 0.25rem; }
+
+        /* Grid layout */
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem; }
+        .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem; }
+        .panel h2 { font-size: 1.1rem; margin: 0 0 1rem; color: var(--accent); }
+
+        /* Agent cards */
+        .agent-card { background: var(--surface-hover); border-radius: 8px; padding: 0.75rem; margin-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center; }
+        .agent-name { font-weight: 600; color: var(--text); font-size: 0.9rem; }
+        .agent-role { font-size: 0.7rem; color: var(--muted); }
+        .agent-fitness { font-size: 0.85rem; font-weight: 700; }
+        .agent-bar { height: 4px; border-radius: 2px; margin-top: 4px; }
+
+        /* Consensus log */
+        .consensus-log { max-height: 200px; overflow-y: auto; font-size: 0.75rem; font-family: monospace; }
+        .consensus-log .entry { padding: 3px 0; border-bottom: 1px solid rgba(48,54,61,0.4); color: var(--muted); }
+        .consensus-log .entry.vote { color: var(--accent); }
+        .consensus-log .entry.decision { color: var(--green); font-weight: 600; }
+        .consensus-log .entry.alert { color: var(--yellow); }
+
+        /* Pheromone heatmap */
+        .pheromone-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; }
+        .pheromone-cell { aspect-ratio: 1; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 0.6rem; color: var(--text); font-weight: 600; }
+
+        /* Recommendation cards */
+        .rec-item { background: var(--surface-hover); border-radius: 6px; padding: 0.75rem; margin-bottom: 0.5rem; }
+        .rec-item h4 { margin: 0 0 0.25rem; font-size: 0.85rem; color: var(--text); }
+        .rec-item p { margin: 0; font-size: 0.75rem; color: var(--muted); }
+        .rec-priority { display: inline-block; padding: 1px 6px; border-radius: 8px; font-size: 0.65rem; font-weight: 600; }
+        .rec-priority.high { background: var(--red-bg); color: var(--red); }
+        .rec-priority.med { background: var(--yellow-bg); color: var(--yellow); }
+        .rec-priority.low { background: var(--green-bg); color: var(--green); }
+
+        /* Controls */
+        .controls { display: flex; gap: 0.75rem; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; }
+        .toggle-btn { padding: 0.4rem 0.9rem; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; font-size: 0.8rem; }
+        .toggle-btn.active { background: var(--green-bg); border-color: var(--green); color: var(--green); }
+        .toggle-btn:hover { background: var(--surface-hover); }
+
+        /* Threat gauge */
+        .gauge-wrap { text-align: center; }
+        #threatGauge { max-width: 180px; }
+
+        /* Formation diagram */
+        #formationCanvas { width: 100%; height: 250px; display: block; border-radius: 8px; }
+
+        @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+    <a href="index.html" class="back-link">← Back to Case Study</a>
+    <h1>🐝 CAPTCHA Swarm Intelligence</h1>
+    <p class="subtitle">Autonomous multi-CAPTCHA coordination through emergent collective behavior</p>
+
+    <div class="controls">
+        <button id="simBtn" class="toggle-btn active" onclick="toggleSimulation()">⏸ Pause Swarm</button>
+        <button class="toggle-btn" onclick="injectThreat()">🎯 Inject Threat</button>
+        <button class="toggle-btn" onclick="triggerEvolution()">🧬 Force Evolution</button>
+        <button class="toggle-btn" onclick="resetSwarm()">🔄 Reset</button>
+        <select id="scenarioSelect" onchange="loadScenario(this.value)" style="padding:0.4rem;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:0.8rem;">
+            <option value="normal">Normal Traffic</option>
+            <option value="botwave">Bot Wave Attack</option>
+            <option value="distributed">Distributed Probe</option>
+            <option value="adaptive">Adaptive Adversary</option>
+            <option value="zero-day">Zero-Day Exploit</option>
+        </select>
+    </div>
+
+    <div class="swarm-container">
+        <canvas id="swarmCanvas"></canvas>
+    </div>
+
+    <div class="stats-row">
+        <div class="stat-card"><div class="val" id="sAgents">6</div><div class="lbl">Active Agents</div></div>
+        <div class="stat-card"><div class="val" id="sConsensus">—</div><div class="lbl">Consensus</div></div>
+        <div class="stat-card"><div class="val" id="sThreat">LOW</div><div class="lbl">Threat Level</div></div>
+        <div class="stat-card"><div class="val" id="sFormation">Scout</div><div class="lbl">Formation</div></div>
+        <div class="stat-card"><div class="val" id="sGeneration">0</div><div class="lbl">Generation</div></div>
+        <div class="stat-card"><div class="val" id="sBlocked">0</div><div class="lbl">Bots Blocked</div></div>
+        <div class="stat-card"><div class="val" id="sHumans">0</div><div class="lbl">Humans Passed</div></div>
+    </div>
+
+    <div class="grid-2">
+        <div class="panel">
+            <h2>🤖 Swarm Agents</h2>
+            <div id="agentList"></div>
+        </div>
+        <div class="panel">
+            <h2>🗳️ Consensus Log</h2>
+            <div id="consensusLog" class="consensus-log"></div>
+        </div>
+    </div>
+
+    <div class="grid-2">
+        <div class="panel">
+            <h2>🧪 Pheromone Map</h2>
+            <p style="font-size:0.75rem;color:var(--muted);margin:0 0 0.75rem;">Signal intensity across defense zones — brighter = more agent attention</p>
+            <div id="pheromoneGrid" class="pheromone-grid"></div>
+        </div>
+        <div class="panel">
+            <h2>📋 Proactive Recommendations</h2>
+            <div id="recommendations"></div>
+        </div>
+    </div>
+
+    <div class="grid-2">
+        <div class="panel">
+            <h2>🎯 Formation View</h2>
+            <canvas id="formationCanvas"></canvas>
+        </div>
+        <div class="panel">
+            <h2>📊 Fitness History</h2>
+            <canvas id="fitnessCanvas" style="width:100%;height:250px;display:block;border-radius:8px;"></canvas>
+        </div>
+    </div>
+
+    <footer style="text-align:center;color:var(--muted);font-size:0.75rem;margin-top:2rem;padding:1rem 0;border-top:1px solid var(--border);">
+        GIF CAPTCHA Research &middot; Swarm Intelligence Module
+    </footer>
+
+<script>
+/* =====================================================
+   CAPTCHA Swarm Intelligence — autonomous multi-agent
+   CAPTCHA coordination with emergent collective defense
+   ===================================================== */
+
+// --- Agent definitions ---
+const AGENT_DEFS = [
+    { id: 'gif', name: 'GIF Puzzle', emoji: '🖼️', color: '#58a6ff', specialty: 'visual', baseFitness: 0.8 },
+    { id: 'text', name: 'Text Distort', emoji: '🔤', color: '#bc8cff', specialty: 'ocr', baseFitness: 0.65 },
+    { id: 'audio', name: 'Audio Challenge', emoji: '🔊', color: '#f0883e', specialty: 'aural', baseFitness: 0.6 },
+    { id: 'slide', name: 'Slide Puzzle', emoji: '🧩', color: '#3fb950', specialty: 'spatial', baseFitness: 0.7 },
+    { id: 'math', name: 'Math Verify', emoji: '🔢', color: '#d29922', specialty: 'logic', baseFitness: 0.55 },
+    { id: 'behav', name: 'Behavior Probe', emoji: '👁️', color: '#39d2c0', specialty: 'behavioral', baseFitness: 0.75 }
+];
+
+// --- State ---
+let agents = [];
+let pheromones = new Float32Array(64); // 8x8 grid
+let generation = 0;
+let botsBlocked = 0;
+let humansPassed = 0;
+let threatLevel = 0; // 0-1
+let running = true;
+let tickCount = 0;
+let consensusHistory = [];
+let fitnessHistory = [];
+let scenario = 'normal';
+const MAX_HISTORY = 60;
+
+// --- Agent class ---
+class SwarmAgent {
+    constructor(def) {
+        Object.assign(this, def);
+        this.fitness = def.baseFitness;
+        this.x = Math.random() * 800;
+        this.y = Math.random() * 400;
+        this.vx = (Math.random() - 0.5) * 2;
+        this.vy = (Math.random() - 0.5) * 2;
+        this.energy = 1.0;
+        this.votes = 0;
+        this.deployed = false;
+        this.pheromoneStr = 0;
+        this.successRate = 0.5 + Math.random() * 0.3;
+    }
+    update(w, h) {
+        // Swarm flocking: cohesion + separation + alignment + pheromone attraction
+        let cx = 0, cy = 0, sx = 0, sy = 0, ax = 0, ay = 0, n = 0;
+        for (const a of agents) {
+            if (a === this) continue;
+            const dx = a.x - this.x, dy = a.y - this.y;
+            const d = Math.sqrt(dx * dx + dy * dy) || 1;
+            if (d < 150) { cx += a.x; cy += a.y; ax += a.vx; ay += a.vy; n++; }
+            if (d < 40) { sx -= dx / d; sy -= dy / d; }
+        }
+        if (n > 0) {
+            this.vx += ((cx / n - this.x) * 0.005 + sx * 0.05 + (ax / n) * 0.05);
+            this.vy += ((cy / n - this.y) * 0.005 + sy * 0.05 + (ay / n) * 0.05);
+        }
+        // Pheromone attraction
+        const gi = Math.floor(this.x / (w / 8)), gj = Math.floor(this.y / (h / 8));
+        const pi = Math.min(7, Math.max(0, gi)), pj = Math.min(7, Math.max(0, gj));
+        for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) {
+            const ni = pi + di, nj = pj + dj;
+            if (ni >= 0 && ni < 8 && nj >= 0 && nj < 8) {
+                const pv = pheromones[nj * 8 + ni];
+                if (pv > 0.1) {
+                    this.vx += (ni * (w / 8) + w / 16 - this.x) * pv * 0.001;
+                    this.vy += (nj * (h / 8) + h / 16 - this.y) * pv * 0.001;
+                }
+            }
+        }
+        // Threat response: tighten formation
+        if (threatLevel > 0.5) {
+            this.vx += (w / 2 - this.x) * 0.002 * threatLevel;
+            this.vy += (h / 2 - this.y) * 0.002 * threatLevel;
+        }
+        // Speed limit
+        const spd = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+        const maxSpd = 2 + threatLevel * 2;
+        if (spd > maxSpd) { this.vx = (this.vx / spd) * maxSpd; this.vy = (this.vy / spd) * maxSpd; }
+        this.x += this.vx; this.y += this.vy;
+        // Bounce
+        if (this.x < 20 || this.x > w - 20) this.vx *= -0.8;
+        if (this.y < 20 || this.y > h - 20) this.vy *= -0.8;
+        this.x = Math.max(20, Math.min(w - 20, this.x));
+        this.y = Math.max(20, Math.min(h - 20, this.y));
+        // Deposit pheromone
+        const ci = Math.min(7, Math.max(0, Math.floor(this.x / (w / 8))));
+        const cj = Math.min(7, Math.max(0, Math.floor(this.y / (h / 8))));
+        pheromones[cj * 8 + ci] = Math.min(1, pheromones[cj * 8 + ci] + 0.02 * this.fitness);
+        this.pheromoneStr = pheromones[cj * 8 + ci];
+        // Energy
+        this.energy = Math.max(0.2, Math.min(1, this.energy + (this.deployed ? -0.002 : 0.005)));
+    }
+}
+
+function initAgents() {
+    agents = AGENT_DEFS.map(d => new SwarmAgent(d));
+}
+
+// --- Consensus mechanism ---
+function runConsensus() {
+    // Each agent votes based on fitness * energy * threat-appropriateness
+    const threatFactors = {
+        gif: { botwave: 0.9, distributed: 0.7, adaptive: 0.6, 'zero-day': 0.5, normal: 0.8 },
+        text: { botwave: 0.5, distributed: 0.6, adaptive: 0.4, 'zero-day': 0.3, normal: 0.65 },
+        audio: { botwave: 0.7, distributed: 0.5, adaptive: 0.8, 'zero-day': 0.6, normal: 0.6 },
+        slide: { botwave: 0.8, distributed: 0.8, adaptive: 0.7, 'zero-day': 0.7, normal: 0.7 },
+        math: { botwave: 0.4, distributed: 0.7, adaptive: 0.5, 'zero-day': 0.4, normal: 0.55 },
+        behav: { botwave: 0.6, distributed: 0.9, adaptive: 0.9, 'zero-day': 0.8, normal: 0.75 }
+    };
+    let scores = {};
+    for (const a of agents) {
+        const tf = (threatFactors[a.id] || {})[scenario] || 0.5;
+        const score = a.fitness * a.energy * (0.5 + tf * 0.5 + threatLevel * tf);
+        scores[a.id] = score;
+        a.votes = score;
+    }
+    // Sort and pick formation
+    const sorted = [...agents].sort((a, b) => scores[b.id] - scores[a.id]);
+    const primary = sorted[0];
+    const secondary = sorted[1];
+    const totalScore = Object.values(scores).reduce((s, v) => s + v, 0);
+    const agreement = scores[primary.id] / totalScore;
+
+    // Deploy top agents
+    for (const a of agents) a.deployed = false;
+    primary.deployed = true;
+    if (threatLevel > 0.3) secondary.deployed = true;
+    if (threatLevel > 0.7) sorted[2].deployed = true;
+
+    const consensusStr = (agreement * 100).toFixed(0) + '%';
+    const formation = threatLevel < 0.3 ? 'Scout' : threatLevel < 0.6 ? 'Defend' : threatLevel < 0.8 ? 'Fortress' : 'Swarm';
+
+    document.getElementById('sConsensus').textContent = consensusStr;
+    document.getElementById('sFormation').textContent = formation;
+    document.getElementById('sThreat').textContent = threatLevel < 0.3 ? 'LOW' : threatLevel < 0.6 ? 'MED' : threatLevel < 0.8 ? 'HIGH' : 'CRIT';
+    document.getElementById('sThreat').style.color = threatLevel < 0.3 ? 'var(--green)' : threatLevel < 0.6 ? 'var(--yellow)' : 'var(--red)';
+    document.getElementById('sGeneration').textContent = generation;
+    document.getElementById('sBlocked').textContent = botsBlocked;
+    document.getElementById('sHumans').textContent = humansPassed;
+
+    consensusHistory.push({ primary: primary.name, agreement, formation, threat: threatLevel });
+    if (consensusHistory.length > MAX_HISTORY) consensusHistory.shift();
+
+    return { primary, secondary, formation, agreement };
+}
+
+// --- Simulation events ---
+function simulateTick() {
+    tickCount++;
+    // Threat evolution based on scenario
+    if (scenario === 'normal') {
+        threatLevel = Math.max(0, Math.min(1, threatLevel + (Math.random() - 0.52) * 0.03));
+    } else if (scenario === 'botwave') {
+        threatLevel = Math.min(1, threatLevel + 0.005 + Math.random() * 0.01);
+    } else if (scenario === 'distributed') {
+        threatLevel = 0.3 + Math.sin(tickCount * 0.02) * 0.3 + Math.random() * 0.1;
+    } else if (scenario === 'adaptive') {
+        threatLevel = Math.min(1, threatLevel + (Math.random() > 0.7 ? 0.05 : -0.02));
+    } else if (scenario === 'zero-day') {
+        threatLevel = Math.min(1, 0.6 + Math.random() * 0.4);
+    }
+    threatLevel = Math.max(0, Math.min(1, threatLevel));
+
+    // Evolve agent fitness
+    for (const a of agents) {
+        if (a.deployed) {
+            const success = Math.random() < a.successRate * (1 - threatLevel * 0.3);
+            if (success) {
+                a.fitness = Math.min(1, a.fitness + 0.01);
+                if (Math.random() < 0.4) { botsBlocked++; }
+                else { humansPassed++; }
+            } else {
+                a.fitness = Math.max(0.1, a.fitness - 0.005);
+            }
+        }
+        a.successRate = Math.max(0.2, Math.min(0.95, a.successRate + (Math.random() - 0.5) * 0.02));
+    }
+
+    // Pheromone decay
+    for (let i = 0; i < 64; i++) pheromones[i] = Math.max(0, pheromones[i] * 0.97);
+
+    // Record fitness
+    if (tickCount % 5 === 0) {
+        const entry = { tick: tickCount };
+        for (const a of agents) entry[a.id] = a.fitness;
+        fitnessHistory.push(entry);
+        if (fitnessHistory.length > MAX_HISTORY) fitnessHistory.shift();
+    }
+}
+
+// --- Rendering ---
+const swarmCanvas = document.getElementById('swarmCanvas');
+const swarmCtx = swarmCanvas.getContext('2d');
+const formCanvas = document.getElementById('formationCanvas');
+const formCtx = formCanvas.getContext('2d');
+const fitCanvas = document.getElementById('fitnessCanvas');
+const fitCtx = fitCanvas.getContext('2d');
+
+function resizeCanvases() {
+    for (const [c, el] of [[swarmCtx, swarmCanvas], [formCtx, formCanvas], [fitCtx, fitCanvas]]) {
+        el.width = el.offsetWidth * (window.devicePixelRatio || 1);
+        el.height = el.offsetHeight * (window.devicePixelRatio || 1);
+        c.scale(window.devicePixelRatio || 1, window.devicePixelRatio || 1);
+    }
+}
+
+function drawSwarm() {
+    const w = swarmCanvas.offsetWidth, h = swarmCanvas.offsetHeight;
+    swarmCtx.clearRect(0, 0, w, h);
+    // Background grid
+    swarmCtx.strokeStyle = 'rgba(48,54,61,0.3)';
+    swarmCtx.lineWidth = 0.5;
+    for (let x = 0; x < w; x += w / 8) { swarmCtx.beginPath(); swarmCtx.moveTo(x, 0); swarmCtx.lineTo(x, h); swarmCtx.stroke(); }
+    for (let y = 0; y < h; y += h / 8) { swarmCtx.beginPath(); swarmCtx.moveTo(0, y); swarmCtx.lineTo(w, y); swarmCtx.stroke(); }
+
+    // Draw connections between nearby agents
+    swarmCtx.lineWidth = 1;
+    for (let i = 0; i < agents.length; i++) {
+        for (let j = i + 1; j < agents.length; j++) {
+            const dx = agents[i].x - agents[j].x, dy = agents[i].y - agents[j].y;
+            const d = Math.sqrt(dx * dx + dy * dy);
+            if (d < 150) {
+                const alpha = (1 - d / 150) * 0.4;
+                swarmCtx.strokeStyle = `rgba(88,166,255,${alpha})`;
+                swarmCtx.beginPath();
+                swarmCtx.moveTo(agents[i].x, agents[i].y);
+                swarmCtx.lineTo(agents[j].x, agents[j].y);
+                swarmCtx.stroke();
+            }
+        }
+    }
+
+    // Draw agents
+    for (const a of agents) {
+        // Outer ring (energy)
+        swarmCtx.beginPath();
+        swarmCtx.arc(a.x, a.y, 18 + a.energy * 6, 0, Math.PI * 2);
+        swarmCtx.strokeStyle = a.deployed ? a.color : 'rgba(139,148,158,0.3)';
+        swarmCtx.lineWidth = a.deployed ? 2.5 : 1;
+        swarmCtx.stroke();
+        // Inner circle
+        swarmCtx.beginPath();
+        swarmCtx.arc(a.x, a.y, 14, 0, Math.PI * 2);
+        swarmCtx.fillStyle = a.deployed ? a.color : '#30363d';
+        swarmCtx.globalAlpha = a.deployed ? 0.8 : 0.4;
+        swarmCtx.fill();
+        swarmCtx.globalAlpha = 1;
+        // Emoji label
+        swarmCtx.font = '14px sans-serif';
+        swarmCtx.textAlign = 'center';
+        swarmCtx.textBaseline = 'middle';
+        swarmCtx.fillText(a.emoji, a.x, a.y);
+        // Name below
+        swarmCtx.font = '9px sans-serif';
+        swarmCtx.fillStyle = 'rgba(230,237,243,0.7)';
+        swarmCtx.fillText(a.name, a.x, a.y + 26);
+    }
+
+    // Threat indicator bar
+    swarmCtx.fillStyle = threatLevel < 0.3 ? 'rgba(63,185,80,0.6)' : threatLevel < 0.6 ? 'rgba(210,153,34,0.6)' : 'rgba(248,81,73,0.6)';
+    swarmCtx.fillRect(0, h - 4, w * threatLevel, 4);
+}
+
+function drawFormation() {
+    const w = formCanvas.offsetWidth, h = formCanvas.offsetHeight;
+    formCtx.clearRect(0, 0, w, h);
+    const deployed = agents.filter(a => a.deployed);
+    const idle = agents.filter(a => !a.deployed);
+    const cx = w / 2, cy = h / 2;
+
+    // Draw formation zones
+    formCtx.strokeStyle = 'rgba(88,166,255,0.15)';
+    formCtx.lineWidth = 1;
+    for (let r = 30; r < 120; r += 30) {
+        formCtx.beginPath(); formCtx.arc(cx, cy, r, 0, Math.PI * 2); formCtx.stroke();
+    }
+
+    // Deployed in inner ring
+    deployed.forEach((a, i) => {
+        const angle = (i / Math.max(1, deployed.length)) * Math.PI * 2 - Math.PI / 2;
+        const r = 40;
+        const ax = cx + Math.cos(angle) * r, ay = cy + Math.sin(angle) * r;
+        formCtx.beginPath(); formCtx.arc(ax, ay, 16, 0, Math.PI * 2);
+        formCtx.fillStyle = a.color; formCtx.globalAlpha = 0.7; formCtx.fill(); formCtx.globalAlpha = 1;
+        formCtx.font = '14px sans-serif'; formCtx.textAlign = 'center'; formCtx.textBaseline = 'middle';
+        formCtx.fillText(a.emoji, ax, ay);
+        formCtx.font = '8px sans-serif'; formCtx.fillStyle = '#e6edf3';
+        formCtx.fillText(a.name, ax, ay + 22);
+    });
+
+    // Idle in outer ring
+    idle.forEach((a, i) => {
+        const angle = (i / Math.max(1, idle.length)) * Math.PI * 2 - Math.PI / 2;
+        const r = 100;
+        const ax = cx + Math.cos(angle) * r, ay = cy + Math.sin(angle) * r;
+        formCtx.beginPath(); formCtx.arc(ax, ay, 12, 0, Math.PI * 2);
+        formCtx.fillStyle = '#30363d'; formCtx.globalAlpha = 0.5; formCtx.fill(); formCtx.globalAlpha = 1;
+        formCtx.font = '12px sans-serif'; formCtx.textAlign = 'center'; formCtx.textBaseline = 'middle';
+        formCtx.fillText(a.emoji, ax, ay);
+    });
+
+    // Center label
+    formCtx.font = 'bold 10px sans-serif'; formCtx.fillStyle = 'var(--muted)';
+    formCtx.fillText('🛡️', cx, cy);
+}
+
+function drawFitness() {
+    const w = fitCanvas.offsetWidth, h = fitCanvas.offsetHeight;
+    fitCtx.clearRect(0, 0, w, h);
+    if (fitnessHistory.length < 2) return;
+
+    const pad = 30;
+    const plotW = w - pad * 2, plotH = h - pad * 2;
+
+    // Axes
+    fitCtx.strokeStyle = 'rgba(48,54,61,0.5)'; fitCtx.lineWidth = 1;
+    fitCtx.beginPath(); fitCtx.moveTo(pad, pad); fitCtx.lineTo(pad, h - pad); fitCtx.lineTo(w - pad, h - pad); fitCtx.stroke();
+
+    // Labels
+    fitCtx.font = '9px sans-serif'; fitCtx.fillStyle = '#8b949e'; fitCtx.textAlign = 'right';
+    fitCtx.fillText('1.0', pad - 4, pad + 4); fitCtx.fillText('0.0', pad - 4, h - pad + 4);
+
+    for (const def of AGENT_DEFS) {
+        fitCtx.beginPath();
+        fitCtx.strokeStyle = def.color;
+        fitCtx.lineWidth = 1.5;
+        fitnessHistory.forEach((entry, i) => {
+            const x = pad + (i / (fitnessHistory.length - 1)) * plotW;
+            const y = h - pad - (entry[def.id] || 0) * plotH;
+            i === 0 ? fitCtx.moveTo(x, y) : fitCtx.lineTo(x, y);
+        });
+        fitCtx.stroke();
+    }
+}
+
+// --- UI updates ---
+function updateAgentList() {
+    const el = document.getElementById('agentList');
+    el.innerHTML = agents.map(a => {
+        const barColor = a.deployed ? a.color : '#30363d';
+        return `<div class="agent-card">
+            <div><div class="agent-name">${a.emoji} ${a.name}${a.deployed ? ' 🟢' : ''}</div>
+            <div class="agent-role">${a.specialty} · energy ${(a.energy * 100).toFixed(0)}%</div>
+            <div class="agent-bar" style="width:${a.fitness * 100}%;background:${barColor}"></div></div>
+            <div class="agent-fitness" style="color:${a.color}">${(a.fitness * 100).toFixed(0)}</div>
+        </div>`;
+    }).join('');
+}
+
+function addConsensusEntry(text, cls) {
+    const el = document.getElementById('consensusLog');
+    const ts = new Date().toLocaleTimeString();
+    el.innerHTML = `<div class="entry ${cls}">[${ts}] ${text}</div>` + el.innerHTML;
+    if (el.children.length > 50) el.removeChild(el.lastChild);
+}
+
+function updatePheromoneGrid() {
+    const el = document.getElementById('pheromoneGrid');
+    let html = '';
+    for (let j = 0; j < 8; j++) for (let i = 0; i < 8; i++) {
+        const v = pheromones[j * 8 + i];
+        const r = Math.floor(88 + v * 160), g = Math.floor(166 - v * 100), b = Math.floor(255 - v * 100);
+        const bg = `rgba(${r},${g},${b},${0.1 + v * 0.6})`;
+        html += `<div class="pheromone-cell" style="background:${bg}">${v > 0.05 ? (v * 100).toFixed(0) : ''}</div>`;
+    }
+    el.innerHTML = html;
+}
+
+function updateRecommendations() {
+    const el = document.getElementById('recommendations');
+    const recs = [];
+    // Analyze swarm state for proactive recs
+    const deployed = agents.filter(a => a.deployed);
+    const avgFitness = agents.reduce((s, a) => s + a.fitness, 0) / agents.length;
+    const lowEnergy = agents.filter(a => a.energy < 0.4);
+
+    if (threatLevel > 0.7 && deployed.length < 3)
+        recs.push({ title: 'Escalate defense formation', desc: 'Threat level critical but only ' + deployed.length + ' agents deployed. Consider forcing Swarm formation.', p: 'high' });
+    if (lowEnergy.length > 2)
+        recs.push({ title: 'Agent fatigue detected', desc: lowEnergy.map(a => a.name).join(', ') + ' running low on energy. Rotate agents to prevent burnout.', p: 'med' });
+    if (avgFitness < 0.5)
+        recs.push({ title: 'Force evolution cycle', desc: 'Average swarm fitness below 50%. An evolution cycle could improve adaptation.', p: 'high' });
+    if (scenario === 'adaptive' && threatLevel > 0.5)
+        recs.push({ title: 'Deploy behavioral probe', desc: 'Adaptive adversary detected. Behavior Probe agent is most effective against evasive bots.', p: 'high' });
+    if (threatLevel < 0.2 && deployed.length > 1)
+        recs.push({ title: 'Reduce to scout formation', desc: 'Low threat environment. Scale down to single scout to conserve energy.', p: 'low' });
+    if (fitnessHistory.length > 10) {
+        const recent = fitnessHistory.slice(-5);
+        const best = AGENT_DEFS.reduce((b, d) => {
+            const avg = recent.reduce((s, e) => s + (e[d.id] || 0), 0) / recent.length;
+            return avg > b.avg ? { id: d.id, name: d.name, avg } : b;
+        }, { avg: 0 });
+        recs.push({ title: 'Promote ' + best.name, desc: 'Highest recent fitness (' + (best.avg * 100).toFixed(0) + '%). Consider as primary defender.', p: 'low' });
+    }
+    if (recs.length === 0) recs.push({ title: 'Swarm operating normally', desc: 'All agents healthy. No action needed.', p: 'low' });
+
+    el.innerHTML = recs.map(r => `<div class="rec-item"><h4><span class="rec-priority ${r.p}">${r.p.toUpperCase()}</span> ${r.title}</h4><p>${r.desc}</p></div>`).join('');
+}
+
+// --- Controls ---
+function toggleSimulation() {
+    running = !running;
+    document.getElementById('simBtn').textContent = running ? '⏸ Pause Swarm' : '▶ Resume Swarm';
+    document.getElementById('simBtn').classList.toggle('active', running);
+}
+
+function injectThreat() {
+    threatLevel = Math.min(1, threatLevel + 0.3 + Math.random() * 0.2);
+    addConsensusEntry('⚡ Threat injection! Level → ' + (threatLevel * 100).toFixed(0) + '%', 'alert');
+}
+
+function triggerEvolution() {
+    generation++;
+    // Mutate: boost top agents, penalize worst
+    const sorted = [...agents].sort((a, b) => b.fitness - a.fitness);
+    sorted[0].fitness = Math.min(1, sorted[0].fitness + 0.05);
+    sorted[sorted.length - 1].fitness = Math.max(0.2, sorted[sorted.length - 1].fitness - 0.03);
+    sorted[sorted.length - 1].successRate = Math.min(0.9, sorted[sorted.length - 1].successRate + 0.05);
+    addConsensusEntry('🧬 Evolution G' + generation + ': ' + sorted[0].name + ' promoted, ' + sorted[sorted.length - 1].name + ' mutated', 'decision');
+}
+
+function resetSwarm() {
+    initAgents();
+    pheromones = new Float32Array(64);
+    generation = 0; botsBlocked = 0; humansPassed = 0; threatLevel = 0; tickCount = 0;
+    fitnessHistory = []; consensusHistory = [];
+    document.getElementById('consensusLog').innerHTML = '';
+    addConsensusEntry('🔄 Swarm reset', 'decision');
+}
+
+function loadScenario(s) {
+    scenario = s;
+    if (s === 'botwave') threatLevel = 0.4;
+    else if (s === 'distributed') threatLevel = 0.3;
+    else if (s === 'adaptive') threatLevel = 0.35;
+    else if (s === 'zero-day') threatLevel = 0.7;
+    else threatLevel = 0.1;
+    addConsensusEntry('📋 Scenario: ' + s, 'alert');
+}
+
+// --- Main loop ---
+function mainLoop() {
+    if (running) {
+        const w = swarmCanvas.offsetWidth, h = swarmCanvas.offsetHeight;
+        for (const a of agents) a.update(w, h);
+        simulateTick();
+        if (tickCount % 30 === 0) {
+            const result = runConsensus();
+            addConsensusEntry(`Vote → ${result.primary.emoji} ${result.primary.name} (${(result.agreement * 100).toFixed(0)}% consensus) | Formation: ${result.formation}`, 'vote');
+        }
+        if (tickCount % 60 === 0 && generation < 999) {
+            triggerEvolution();
+        }
+        drawSwarm();
+        drawFormation();
+        drawFitness();
+        updateAgentList();
+        updatePheromoneGrid();
+        if (tickCount % 15 === 0) updateRecommendations();
+        document.getElementById('sAgents').textContent = agents.filter(a => a.deployed).length + '/' + agents.length;
+    }
+    requestAnimationFrame(mainLoop);
+}
+
+// --- Init ---
+window.addEventListener('resize', resizeCanvases);
+initAgents();
+resizeCanvases();
+addConsensusEntry('🐝 Swarm initialized with ' + agents.length + ' agents', 'decision');
+mainLoop();
+</script>
+</body>
+</html>

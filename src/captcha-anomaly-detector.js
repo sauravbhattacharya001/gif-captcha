@@ -219,15 +219,21 @@ function createAnomalyDetector(options) {
   }
 
   // ── Burst detection ─────────────────────────────────────────────
+  // Uses binary search to find the burst window start since windowEvents
+  // are sorted chronologically from _windowEvents — O(log n) vs O(n).
   function _detectBursts(windowEvents, now) {
     var recentCutoff = now - burstWindow;
-    var recentCount = 0;
+    // Binary search for first event at or after recentCutoff
+    var lo = 0, hi = windowEvents.length;
+    while (lo < hi) {
+      var mid = (lo + hi) >>> 1;
+      if (windowEvents[mid].timestamp < recentCutoff) lo = mid + 1;
+      else hi = mid;
+    }
+    var recentCount = windowEvents.length - lo;
     var recentFailures = 0;
-    for (var i = 0; i < windowEvents.length; i++) {
-      if (windowEvents[i].timestamp >= recentCutoff) {
-        recentCount++;
-        if (!windowEvents[i].success) recentFailures++;
-      }
+    for (var i = lo; i < windowEvents.length; i++) {
+      if (!windowEvents[i].success) recentFailures++;
     }
 
     var anomalies = [];

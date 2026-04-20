@@ -70,6 +70,19 @@ function _deepCopy(obj) {
   return JSON.parse(JSON.stringify(obj));
 }
 
+/**
+ * Shallow-copy an object (one level deep). Faster than JSON round-trip
+ * for flat or mostly-flat structures like stats counters and configs.
+ */
+ function _shallowCopy(obj) {
+  var result = Object.create(null);
+  var keys = Object.keys(obj);
+  for (var i = 0; i < keys.length; i++) {
+    result[keys[i]] = obj[keys[i]];
+  }
+  return result;
+}
+
 function _merge(base, override) {
   var result = Object.create(null);
   var k;
@@ -611,7 +624,12 @@ function createSessionRiskAggregator(options) {
    * @returns {Object}
    */
   function getStats() {
-    return _deepCopy(stats);
+    // Use shallow copy — stats is a flat object with primitive values
+    // and one-level-deep sub-objects. Avoids costly JSON round-trip.
+    var copy = _shallowCopy(stats);
+    copy.verdictCounts = _shallowCopy(stats.verdictCounts);
+    copy.moduleSignalCounts = _shallowCopy(stats.moduleSignalCounts);
+    return copy;
   }
 
   /**
@@ -619,7 +637,7 @@ function createSessionRiskAggregator(options) {
    * @returns {Object}
    */
   function getWeights() {
-    return _deepCopy(weights);
+    return _shallowCopy(weights);
   }
 
   /**

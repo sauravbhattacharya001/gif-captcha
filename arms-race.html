@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CAPTCHA Genetic Arms Race | gif-captcha</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0a0a0a;--surface:#1a1a1a;--border:#2a2a2a;--text:#e0e0e0;--muted:#888;--primary:#00d4aa;--danger:#ff4757;--warning:#ffa502;--info:#3498db}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh}
+h1{font-size:1.4rem;color:var(--primary)}
+h2{font-size:1rem;color:var(--text);margin-bottom:8px}
+h3{font-size:.85rem;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:1px}
+.header{padding:16px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.header .gen{font-size:1.1rem;color:var(--warning);font-weight:bold}
+.layout{display:grid;grid-template-columns:1fr 280px;grid-template-rows:auto auto auto;gap:12px;padding:16px}
+.controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.controls button{background:var(--surface);border:1px solid var(--border);color:var(--text);padding:6px 14px;border-radius:4px;cursor:pointer;font-size:.85rem}
+.controls button:hover{border-color:var(--primary)}
+.controls button.active{background:var(--primary);color:var(--bg);border-color:var(--primary)}
+.controls button.danger{border-color:var(--danger)}
+.controls button.danger:hover{background:var(--danger);color:#fff}
+.controls button.teal{border-color:var(--primary)}
+.controls button.teal:hover{background:var(--primary);color:var(--bg)}
+.slider-group{display:flex;align-items:center;gap:6px;font-size:.8rem;color:var(--muted)}
+.slider-group input[type=range]{width:80px;accent-color:var(--primary)}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px;overflow:hidden}
+.chart-row{grid-column:1;display:grid;grid-template-columns:1fr 1fr;gap:12px}
+canvas{width:100%;border-radius:4px;display:block;background:#111}
+.sidebar{grid-column:2;grid-row:1/5;display:flex;flex-direction:column;gap:12px}
+.insight{padding:8px;border-left:3px solid var(--primary);margin-bottom:6px;font-size:.82rem;line-height:1.4}
+.insight .label{color:var(--muted);font-size:.75rem;text-transform:uppercase}
+.insight .value{font-weight:bold;font-size:1rem}
+.insight.warn{border-color:var(--warning)}
+.insight.danger{border-color:var(--danger)}
+.log-box{max-height:200px;overflow-y:auto;font-size:.78rem;font-family:'Consolas',monospace;line-height:1.6;color:var(--muted)}
+.log-box .event{padding:2px 0;border-bottom:1px solid #1a1a1a}
+.log-box .event span{color:var(--warning)}
+.presets{display:flex;gap:6px;flex-wrap:wrap}
+.presets button{font-size:.75rem;padding:4px 10px}
+.legend{display:flex;gap:16px;font-size:.8rem;align-items:center}
+.legend i{width:12px;height:12px;border-radius:2px;display:inline-block;vertical-align:middle;margin-right:4px}
+@media(max-width:900px){.layout{grid-template-columns:1fr}.sidebar{grid-column:1;grid-row:auto}}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>🧬 CAPTCHA Genetic Arms Race</h1>
+  <div class="gen" id="genDisplay">Gen 0</div>
+  <div class="controls">
+    <button id="btnPlay" onclick="togglePlay()">▶ Play</button>
+    <button onclick="step()">⏭ Step</button>
+    <button onclick="reset()">🔄 Reset</button>
+    <button class="danger" onclick="injectThreat()">🦠 Inject Threat</button>
+    <button class="teal" onclick="deployPatch()">🛡️ Deploy Patch</button>
+  </div>
+  <div class="controls">
+    <div class="slider-group">Speed <input type="range" id="speed" min="1" max="100" value="10"><span id="speedVal">10x</span></div>
+    <div class="slider-group">Pop <input type="range" id="popSize" min="10" max="100" value="40" step="5"><span id="popVal">40</span></div>
+    <div class="slider-group">Mutation <input type="range" id="mutRate" min="1" max="50" value="10"><span id="mutVal">0.10</span></div>
+  </div>
+  <div class="presets">
+    <h3 style="margin:0;line-height:2">Presets:</h3>
+    <button onclick="preset('balanced')">Balanced</button>
+    <button onclick="preset('botAdv')">Bot Advantage</button>
+    <button onclick="preset('fortress')">Fortress CAPTCHA</button>
+    <button onclick="preset('crisis')">Diversity Crisis</button>
+  </div>
+</div>
+
+<div class="layout">
+  <!-- Arms Race Chart -->
+  <div class="panel" style="grid-column:1">
+    <h2>Arms Race Fitness Over Time</h2>
+    <div class="legend"><i style="background:var(--danger)"></i>Bots <i style="background:var(--primary)"></i>CAPTCHAs</div>
+    <canvas id="cArms" height="180"></canvas>
+  </div>
+
+  <!-- Heatmaps -->
+  <div class="chart-row">
+    <div class="panel">
+      <h2>🤖 Bot Genomes</h2>
+      <h3>OCR · Timing · Mouse · Pattern · Fingerprint</h3>
+      <canvas id="cBots" height="160"></canvas>
+    </div>
+    <div class="panel">
+      <h2>🛡️ CAPTCHA Genomes</h2>
+      <h3>Visual · Timing · Behavior · Fingerprint · Cognitive</h3>
+      <canvas id="cCaptchas" height="160"></canvas>
+    </div>
+  </div>
+
+  <!-- Diversity -->
+  <div class="panel" style="grid-column:1">
+    <h2>Genetic Diversity (Trait Variance)</h2>
+    <div class="legend"><i style="background:var(--danger)"></i>Bots <i style="background:var(--primary)"></i>CAPTCHAs</div>
+    <canvas id="cDiversity" height="120"></canvas>
+  </div>
+
+  <!-- Event Log -->
+  <div class="panel" style="grid-column:1">
+    <h2>📋 Event Log</h2>
+    <div class="log-box" id="logBox"></div>
+  </div>
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="panel">
+      <h2>🧠 Proactive Insights</h2>
+      <div id="insights"></div>
+    </div>
+    <div class="panel">
+      <h2>📊 Stats</h2>
+      <div id="stats" style="font-size:.82rem;line-height:1.8"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const TRAITS_BOT = ['OCR','Timing','Mouse','Pattern','Fingerprint'];
+const TRAITS_CAP = ['Visual','Timing','Behavior','Fingerprint','Cognitive'];
+const T = 5;
+
+// State
+let sim = null, playing = false, animId = null, frameCount = 0;
+
+function makePop(n, mode) {
+  const pop = [];
+  for (let i = 0; i < n; i++) {
+    const g = [];
+    for (let t = 0; t < T; t++) g.push(mode === 'random' ? Math.random() : 0.5 + (Math.random()-0.5)*0.1);
+    pop.push({genome: g, fitness: 0});
+  }
+  return pop;
+}
+
+function initSim(botMode='random', capMode='random') {
+  const n = +document.getElementById('popSize').value;
+  sim = {
+    gen: 0, bots: makePop(n, botMode), captchas: makePop(n, capMode),
+    history: {botFit:[], capFit:[], botDiv:[], capDiv:[]},
+    events: []
+  };
+  document.getElementById('logBox').innerHTML = '';
+  logEvent('Simulation initialized with ' + n + ' organisms per population');
+}
+
+function evalFitness() {
+  const bots = sim.bots, caps = sim.captchas;
+  // Each bot tested against all CAPTCHAs
+  for (const b of bots) {
+    b.fitness = 0;
+    for (const c of caps) {
+      let wins = 0;
+      for (let t = 0; t < T; t++) {
+        if (b.genome[t] > c.genome[t] * 0.9) wins++;
+      }
+      if (wins >= 3) b.fitness += 1;
+    }
+    b.fitness /= caps.length;
+  }
+  // Each CAPTCHA tested against all bots - reward catching bots while not being too hard
+  for (const c of caps) {
+    c.fitness = 0;
+    for (const b of bots) {
+      let caught = 0;
+      for (let t = 0; t < T; t++) {
+        if (c.genome[t] * 0.9 >= b.genome[t]) caught++;
+      }
+      if (caught >= 3) c.fitness += 1;
+    }
+    c.fitness /= bots.length;
+    // Penalize extreme complexity (usability)
+    const avg = c.genome.reduce((a,b)=>a+b,0)/T;
+    c.fitness *= (1 - avg * 0.2); // slight penalty for high complexity
+  }
+}
+
+function tournamentSelect(pop) {
+  const a = pop[Math.floor(Math.random()*pop.length)];
+  const b = pop[Math.floor(Math.random()*pop.length)];
+  return a.fitness >= b.fitness ? a : b;
+}
+
+function crossover(p1, p2) {
+  const cut = Math.floor(Math.random()*(T-1))+1;
+  const child = [];
+  for (let i=0;i<T;i++) child.push(i<cut?p1.genome[i]:p2.genome[i]);
+  return child;
+}
+
+function mutate(genome) {
+  const rate = +document.getElementById('mutRate').value / 100;
+  return genome.map(g => {
+    if (Math.random() < rate) {
+      let v = g + (Math.random()-0.5)*0.3;
+      return Math.max(0, Math.min(1, v));
+    }
+    return g;
+  });
+}
+
+function evolve(pop) {
+  const n = +document.getElementById('popSize').value;
+  const next = [];
+  // Elitism: keep best
+  const sorted = [...pop].sort((a,b)=>b.fitness-a.fitness);
+  next.push({genome:[...sorted[0].genome], fitness:0});
+  while (next.length < n) {
+    const p1 = tournamentSelect(pop);
+    const p2 = tournamentSelect(pop);
+    const child = mutate(crossover(p1,p2));
+    next.push({genome:child, fitness:0});
+  }
+  return next;
+}
+
+function diversity(pop) {
+  const divs = [];
+  for (let t=0;t<T;t++){
+    const vals = pop.map(p=>p.genome[t]);
+    const mean = vals.reduce((a,b)=>a+b,0)/vals.length;
+    const variance = vals.reduce((a,v)=>a+(v-mean)**2,0)/vals.length;
+    divs.push(variance);
+  }
+  return divs;
+}
+
+function avgFitness(pop) {
+  return pop.reduce((s,p)=>s+p.fitness,0)/pop.length;
+}
+
+function detectEvents() {
+  const g = sim.gen;
+  const h = sim.history;
+  const bf = h.botFit, cf = h.capFit;
+  if (bf.length < 2) return;
+  const botNow = bf[bf.length-1], botPrev = bf[bf.length-2];
+  const capNow = cf[cf.length-1], capPrev = cf[cf.length-2];
+
+  // Fitness crossover
+  if (botPrev <= capPrev && botNow > capNow) logEvent('Bots overtake CAPTCHAs! Attack advantage shifts.', 'danger');
+  if (capPrev <= botPrev && capNow > botNow) logEvent('CAPTCHAs regain control! Defenses adapt.', 'teal');
+
+  // Diversity crash
+  const bd = h.botDiv[h.botDiv.length-1];
+  const cd = h.capDiv[h.capDiv.length-1];
+  const botTotalDiv = bd.reduce((a,b)=>a+b,0);
+  const capTotalDiv = cd.reduce((a,b)=>a+b,0);
+  if (botTotalDiv < 0.01) logEvent('⚠️ Bot diversity collapse! Population converging.', 'warning');
+  if (capTotalDiv < 0.01) logEvent('⚠️ CAPTCHA diversity collapse! Defenses homogeneous.', 'warning');
+
+  // Mutation spike
+  if (botNow - botPrev > 0.15) logEvent('Bot mutation spike: rapid adaptation detected');
+  if (capNow - capPrev > 0.15) logEvent('CAPTCHA evolution burst: new defense strategy emerging');
+
+  // Dominant strategy
+  if (g % 20 === 0 && g > 0) {
+    const botAvg = Array(T).fill(0);
+    sim.bots.forEach(b=>b.genome.forEach((v,i)=>botAvg[i]+=v));
+    botAvg.forEach((v,i)=>botAvg[i]/=sim.bots.length);
+    const maxI = botAvg.indexOf(Math.max(...botAvg));
+    logEvent('Gen '+g+': Dominant bot strategy → '+TRAITS_BOT[maxI]+' ('+botAvg[maxI].toFixed(2)+')');
+  }
+}
+
+function stepSim() {
+  evalFitness();
+  const bf = avgFitness(sim.bots), cf = avgFitness(sim.captchas);
+  const bd = diversity(sim.bots), cd = diversity(sim.captchas);
+  sim.history.botFit.push(bf);
+  sim.history.capFit.push(cf);
+  sim.history.botDiv.push(bd);
+  sim.history.capDiv.push(cd);
+  detectEvents();
+  sim.bots = evolve(sim.bots);
+  sim.captchas = evolve(sim.captchas);
+  sim.gen++;
+  render();
+}
+
+function logEvent(msg, type='') {
+  sim.events.push({gen:sim.gen, msg, type});
+  const box = document.getElementById('logBox');
+  const d = document.createElement('div');
+  d.className = 'event';
+  d.innerHTML = '<span>Gen '+sim.gen+':</span> '+msg;
+  box.prepend(d);
+  if (box.children.length > 200) box.removeChild(box.lastChild);
+}
+
+// === Rendering ===
+function render() {
+  document.getElementById('genDisplay').textContent = 'Gen ' + sim.gen;
+  drawArmsRace();
+  drawHeatmap('cBots', sim.bots, '#ff4757');
+  drawHeatmap('cCaptchas', sim.captchas, '#00d4aa');
+  drawDiversity();
+  drawInsights();
+  drawStats();
+}
+
+function setupCanvas(id) {
+  const c = document.getElementById(id);
+  const rect = c.parentElement.getBoundingClientRect();
+  c.width = rect.width - 24;
+  c.height = c.getAttribute('height')|0;
+  return [c, c.getContext('2d')];
+}
+
+function drawArmsRace() {
+  const [c,ctx] = setupCanvas('cArms');
+  const w=c.width, h=c.height;
+  ctx.clearRect(0,0,w,h);
+  const bf=sim.history.botFit, cf=sim.history.capFit;
+  if(bf.length<2) return;
+  const maxG = bf.length;
+  const pad = 30;
+
+  // Grid
+  ctx.strokeStyle='#222';ctx.lineWidth=1;
+  for(let y=0;y<=4;y++){
+    const yp=pad+(h-pad*2)*(1-y/4);
+    ctx.beginPath();ctx.moveTo(pad,yp);ctx.lineTo(w-10,yp);ctx.stroke();
+    ctx.fillStyle='#555';ctx.font='10px monospace';ctx.fillText((y*25)+'%',2,yp+3);
+  }
+
+  function drawLine(data,color){
+    ctx.strokeStyle=color;ctx.lineWidth=2;ctx.beginPath();
+    for(let i=0;i<data.length;i++){
+      const x=pad+i*(w-pad-10)/(maxG-1);
+      const y=pad+(h-pad*2)*(1-data[i]);
+      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+  }
+  drawLine(bf,'#ff4757');
+  drawLine(cf,'#00d4aa');
+}
+
+function drawHeatmap(id, pop, baseColor) {
+  const [c,ctx] = setupCanvas(id);
+  const w=c.width, h=c.height;
+  ctx.clearRect(0,0,w,h);
+  const rows=Math.min(pop.length,50), cols=T;
+  const cw=w/cols, rh=h/rows;
+  const r=parseInt(baseColor.slice(1,3),16);
+  const g=parseInt(baseColor.slice(3,5),16);
+  const b=parseInt(baseColor.slice(5,7),16);
+
+  // Sort by fitness for visual clarity
+  const sorted=[...pop].sort((a,b)=>b.fitness-a.fitness).slice(0,rows);
+  for(let row=0;row<rows;row++){
+    for(let col=0;col<cols;col++){
+      const v=sorted[row].genome[col];
+      ctx.fillStyle=`rgba(${r},${g},${b},${v*0.9+0.1})`;
+      ctx.fillRect(col*cw, row*rh, cw-1, rh-1);
+    }
+  }
+}
+
+function drawDiversity() {
+  const [c,ctx] = setupCanvas('cDiversity');
+  const w=c.width, h=c.height;
+  ctx.clearRect(0,0,w,h);
+  if(!sim.history.botDiv.length) return;
+  const bd=sim.history.botDiv[sim.history.botDiv.length-1];
+  const cd=sim.history.capDiv[sim.history.capDiv.length-1];
+  const barW = w/(T*2+T+1);
+  const gap = barW;
+  const maxV = 0.1;
+
+  for(let t=0;t<T;t++){
+    const x = gap + t*(barW*2+gap);
+    // Bot bar
+    const bh = Math.min(bd[t]/maxV,1)*(h-30);
+    ctx.fillStyle='#ff4757';
+    ctx.fillRect(x, h-bh-20, barW, bh);
+    // Cap bar
+    const ch = Math.min(cd[t]/maxV,1)*(h-30);
+    ctx.fillStyle='#00d4aa';
+    ctx.fillRect(x+barW, h-ch-20, barW, ch);
+    // Label
+    ctx.fillStyle='#555';ctx.font='9px sans-serif';
+    ctx.fillText(TRAITS_BOT[t].slice(0,4), x, h-5);
+  }
+}
+
+function drawInsights() {
+  const el = document.getElementById('insights');
+  if (!sim.history.botFit.length) { el.innerHTML='<div class="insight"><div class="label">Waiting</div><div class="value">Start simulation</div></div>'; return; }
+
+  const bf = sim.history.botFit, cf = sim.history.capFit;
+  const botNow = bf[bf.length-1], capNow = cf[cf.length-1];
+
+  // Red Queen Index (oscillation measure)
+  let rqi = 0;
+  if (bf.length > 10) {
+    for(let i=bf.length-10;i<bf.length-1;i++) rqi += Math.abs((bf[i+1]-bf[i])-(cf[i+1]-cf[i]));
+    rqi /= 9;
+  }
+
+  // Dominant strategies
+  const botAvg=Array(T).fill(0), capAvg=Array(T).fill(0);
+  sim.bots.forEach(b=>b.genome.forEach((v,i)=>botAvg[i]+=v));
+  sim.captchas.forEach(c=>c.genome.forEach((v,i)=>capAvg[i]+=v));
+  botAvg.forEach((v,i)=>botAvg[i]/=sim.bots.length);
+  capAvg.forEach((v,i)=>capAvg[i]/=sim.captchas.length);
+  const domBot = TRAITS_BOT[botAvg.indexOf(Math.max(...botAvg))];
+  const weakCap = TRAITS_CAP[capAvg.indexOf(Math.min(...capAvg))];
+
+  // Diversity
+  const bd=sim.history.botDiv[sim.history.botDiv.length-1];
+  const totalDiv = bd.reduce((a,b)=>a+b,0);
+  const extRisk = totalDiv < 0.02 ? 'HIGH' : totalDiv < 0.05 ? 'MEDIUM' : 'LOW';
+  const extClass = extRisk==='HIGH'?'danger':extRisk==='MEDIUM'?'warn':'';
+
+  // Phase
+  let phase = 'Equilibrium';
+  if (bf.length > 5) {
+    const trend = bf.slice(-5).reduce((s,v,i,a)=>i>0?s+(v-a[i-1]):0,0);
+    if (trend > 0.1) phase = '🔺 Bot Escalation';
+    else if (trend < -0.1) phase = '🛡️ Defense Surge';
+    else if (rqi > 0.05) phase = '⚔️ Active Arms Race';
+    else phase = '⚖️ Stalemate';
+  }
+
+  // Recommendation
+  let rec = '';
+  const weakIdx = capAvg.indexOf(Math.min(...capAvg));
+  const strongBotIdx = botAvg.indexOf(Math.max(...botAvg));
+  if (botNow > capNow + 0.1) rec = '🚨 Bot '+domBot+' skills dominating — deploy '+TRAITS_CAP[strongBotIdx]+' patch!';
+  else if (capNow > botNow + 0.1) rec = '✅ Defenses holding. Monitor for mutation spikes.';
+  else rec = 'Arms race balanced. Watch for convergence.';
+
+  el.innerHTML = `
+    <div class="insight"><div class="label">Red Queen Index</div><div class="value">${rqi.toFixed(4)}</div></div>
+    <div class="insight"><div class="label">Dominant Bot Strategy</div><div class="value">${domBot} (${botAvg[botAvg.indexOf(Math.max(...botAvg))].toFixed(2)})</div></div>
+    <div class="insight"><div class="label">Weakest Defense</div><div class="value">${weakCap} (${capAvg[capAvg.indexOf(Math.min(...capAvg))].toFixed(2)})</div></div>
+    <div class="insight ${extClass}"><div class="label">Extinction Risk</div><div class="value">${extRisk}</div></div>
+    <div class="insight"><div class="label">Arms Race Phase</div><div class="value">${phase}</div></div>
+    <div class="insight" style="border-color:var(--info)"><div class="label">Recommendation</div><div class="value" style="font-size:.82rem;font-weight:normal">${rec}</div></div>
+  `;
+}
+
+function drawStats() {
+  const el = document.getElementById('stats');
+  if (!sim) return;
+  const bf = sim.history.botFit, cf = sim.history.capFit;
+  const botNow = bf.length?bf[bf.length-1]:0;
+  const capNow = cf.length?cf[cf.length-1]:0;
+  const maxBotFit = bf.length?Math.max(...bf):0;
+  const maxCapFit = cf.length?Math.max(...cf):0;
+  el.innerHTML = `
+    <b style="color:var(--danger)">Bot Fitness:</b> ${(botNow*100).toFixed(1)}% (peak: ${(maxBotFit*100).toFixed(1)}%)<br>
+    <b style="color:var(--primary)">CAPTCHA Fitness:</b> ${(capNow*100).toFixed(1)}% (peak: ${(maxCapFit*100).toFixed(1)}%)<br>
+    <b>Generation:</b> ${sim.gen}<br>
+    <b>Population:</b> ${sim.bots.length} vs ${sim.captchas.length}<br>
+    <b>Events:</b> ${sim.events.length}<br>
+    <b>Mutation Rate:</b> ${(+document.getElementById('mutRate').value/100).toFixed(2)}
+  `;
+}
+
+// === Controls ===
+function togglePlay() {
+  playing = !playing;
+  document.getElementById('btnPlay').textContent = playing ? '⏸ Pause' : '▶ Play';
+  document.getElementById('btnPlay').classList.toggle('active', playing);
+  if (playing) loop();
+}
+
+function step() { if(sim) stepSim(); }
+
+function loop() {
+  if (!playing) return;
+  const spd = +document.getElementById('speed').value;
+  const stepsPerFrame = Math.max(1, Math.floor(spd/10));
+  for(let i=0;i<stepsPerFrame;i++) stepSim();
+  frameCount++;
+  animId = requestAnimationFrame(loop);
+}
+
+function reset() {
+  playing = false;
+  document.getElementById('btnPlay').textContent = '▶ Play';
+  document.getElementById('btnPlay').classList.remove('active');
+  if(animId) cancelAnimationFrame(animId);
+  initSim();
+  render();
+}
+
+function injectThreat() {
+  if(!sim) return;
+  const superBot = {genome: Array(T).fill(0).map(()=>0.8+Math.random()*0.2), fitness:0};
+  sim.bots.push(superBot);
+  logEvent('🦠 SUPER-BOT injected! All traits 0.8+', 'danger');
+  render();
+}
+
+function deployPatch() {
+  if(!sim) return;
+  const superCap = {genome: Array(T).fill(0).map(()=>0.8+Math.random()*0.2), fitness:0};
+  sim.captchas.push(superCap);
+  logEvent('🛡️ SUPER-CAPTCHA deployed! All defenses 0.8+', 'teal');
+  render();
+}
+
+function preset(name) {
+  playing = false;
+  document.getElementById('btnPlay').textContent = '▶ Play';
+  document.getElementById('btnPlay').classList.remove('active');
+  if(animId) cancelAnimationFrame(animId);
+
+  const n = +document.getElementById('popSize').value;
+  sim = { gen:0, bots:[], captchas:[], history:{botFit:[],capFit:[],botDiv:[],capDiv:[]}, events:[] };
+  document.getElementById('logBox').innerHTML = '';
+
+  if (name === 'balanced') {
+    sim.bots = makePop(n,'random'); sim.captchas = makePop(n,'random');
+    logEvent('Preset: Balanced Start — even playing field');
+  } else if (name === 'botAdv') {
+    sim.bots = makePop(n,'random');
+    sim.captchas = [];
+    for(let i=0;i<n;i++) sim.captchas.push({genome:Array(T).fill(0).map(()=>Math.random()*0.3),fitness:0});
+    logEvent('Preset: Bot Advantage — weak initial defenses');
+  } else if (name === 'fortress') {
+    sim.bots = [];
+    for(let i=0;i<n;i++) sim.bots.push({genome:Array(T).fill(0).map(()=>Math.random()*0.3),fitness:0});
+    sim.captchas = makePop(n,'random');
+    for(const c of sim.captchas) c.genome = c.genome.map(v=>Math.min(1,v+0.3));
+    logEvent('Preset: Fortress CAPTCHA — strong defenses, weak bots');
+  } else if (name === 'crisis') {
+    sim.bots = []; sim.captchas = [];
+    const botGenome = Array(T).fill(0).map(()=>0.5+Math.random()*0.05);
+    const capGenome = Array(T).fill(0).map(()=>0.5+Math.random()*0.05);
+    for(let i=0;i<n;i++) {
+      sim.bots.push({genome:botGenome.map(v=>v+(Math.random()-0.5)*0.02),fitness:0});
+      sim.captchas.push({genome:capGenome.map(v=>v+(Math.random()-0.5)*0.02),fitness:0});
+    }
+    logEvent('Preset: Diversity Crisis — near-identical populations, extinction risk!');
+  }
+  render();
+}
+
+// Slider listeners
+document.getElementById('speed').oninput = function(){document.getElementById('speedVal').textContent=this.value+'x'};
+document.getElementById('popSize').oninput = function(){document.getElementById('popVal').textContent=this.value};
+document.getElementById('mutRate').oninput = function(){document.getElementById('mutVal').textContent=(this.value/100).toFixed(2)};
+
+// Init
+initSim();
+render();
+</script>
+</body>
+</html>

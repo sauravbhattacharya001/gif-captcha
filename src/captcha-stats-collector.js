@@ -22,21 +22,18 @@
 "use strict";
 
 var csvUtils = require("./csv-utils");
+var _percentileSorted = require("./shared-utils")._percentileSorted;
 
 /**
- * Compute percentile from a sorted array of numbers.
+ * Percentile wrapper that returns null for empty arrays (preserving original API).
+ * Delegates to shared-utils _percentileSorted for actual computation.
  * @param {number[]} sorted
  * @param {number} p - percentile 0-100
  * @returns {number|null}
  */
 function percentile(sorted, p) {
   if (!sorted.length) return null;
-  if (sorted.length === 1) return sorted[0];
-  const idx = (p / 100) * (sorted.length - 1);
-  const lo = Math.floor(idx);
-  const hi = Math.ceil(idx);
-  if (lo === hi) return sorted[lo];
-  return sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
+  return _percentileSorted(sorted, p);
 }
 
 /**

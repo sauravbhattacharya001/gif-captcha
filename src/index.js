@@ -5721,22 +5721,8 @@ function createAdaptiveTimeout(options) {
     return 1.0;
   }
 
-  /**
-   * Calculate the Nth percentile from a sorted array.
-   * @param {number[]} sorted - Sorted array of values
-   * @param {number} p - Percentile (0-1)
-   * @returns {number}
-   */
-  function percentile(sorted, p) {
-    if (sorted.length === 0) return 0;
-    if (sorted.length === 1) return sorted[0];
-    var idx = p * (sorted.length - 1);
-    var lower = Math.floor(idx);
-    var upper = Math.ceil(idx);
-    if (lower === upper) return sorted[lower];
-    var frac = idx - lower;
-    return sorted[lower] * (1 - frac) + sorted[upper] * frac;
-  }
+  // Re-use shared-utils percentile (expects 0-100 scale)
+  var _pctSorted = _shared._percentileSorted;
 
   /**
    * Insert a value into a sorted array, maintaining sort order.
@@ -5863,7 +5849,7 @@ function createAdaptiveTimeout(options) {
     var baseline;
     var historyData = history[bucket];
     if (historyData.length >= 10) {
-      var p = percentile(historyData, targetPercentile);
+      var p = _pctSorted(historyData, targetPercentile * 100);
       baseline = p * baselineMargin;
     } else {
       baseline = baseTimeoutMs;
@@ -5921,7 +5907,7 @@ function createAdaptiveTimeout(options) {
     return {
       percentile: targetPercentile,
       sampleCount: data.length,
-      baselineMs: Math.round(percentile(data, targetPercentile)),
+      baselineMs: Math.round(_pctSorted(data, targetPercentile * 100)),
     };
   }
 
@@ -7208,14 +7194,8 @@ function createLoadTester(options) {
     return userMetrics;
   }
 
-  /**
-   * Calculate percentile from a sorted array of numbers.
-   */
-  function _percentile(sorted, p) {
-    if (sorted.length === 0) return 0;
-    var idx = Math.ceil(p / 100 * sorted.length) - 1;
-    return sorted[_clamp(idx, 0, sorted.length - 1)];
-  }
+  // Use shared-utils _percentileSorted for sorted-array percentile calculation
+  var _percentile = _shared._percentileSorted;
 
   /**
    * Run the load test synchronously.

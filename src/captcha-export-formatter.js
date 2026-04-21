@@ -25,37 +25,15 @@
 "use strict";
 
 var { csvEscape } = require("./csv-utils");
+var _shared = require("./shared-utils");
+var mean = _shared._mean;
+var stddev = _shared._stddev;
+var median = _shared._median;
+var percentile = _shared._percentileSorted;
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
-
-function mean(arr) {
-  if (!arr.length) return 0;
-  return arr.reduce((a, b) => a + b, 0) / arr.length;
-}
-
-function stddev(arr) {
-  if (arr.length < 2) return 0;
-  const m = mean(arr);
-  return Math.sqrt(arr.reduce((s, v) => s + (v - m) ** 2, 0) / (arr.length - 1));
-}
-
-function median(arr) {
-  if (!arr.length) return 0;
-  const s = [...arr].sort((a, b) => a - b);
-  const mid = Math.floor(s.length / 2);
-  return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
-}
-
-function percentile(sorted, p) {
-  if (!sorted.length) return 0;
-  const idx = (p / 100) * (sorted.length - 1);
-  const lo = Math.floor(idx);
-  const hi = Math.ceil(idx);
-  if (lo === hi) return sorted[lo];
-  return sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
-}
 
 function escapeLatex(str) {
   return String(str)

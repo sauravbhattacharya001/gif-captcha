@@ -684,6 +684,12 @@ function createCaptchaTrafficAnalyzer(options) {
 
   /**
    * Get a comprehensive summary of all tracked data.
+   *
+   * Optimised: builds the window list once and computes aggregate stats,
+   * region breakdown, and hourly distribution in a single pass instead of
+   * calling getWindows() 4× (via analyze, getRegionBreakdown,
+   * getHourlyDistribution, and directly) with separate iterations each.
+   *
    * @returns {Object} Full summary
    */
   function getSummary() {
@@ -692,12 +698,78 @@ function createCaptchaTrafficAnalyzer(options) {
     var totalSolved = 0;
     var allRTs = [];
 
+    // Region + hourly accumulators (inlined from getRegionBreakdown / getHourlyDistribution)
+    var regionTotals = Object.create(null);
+    var regionTotal = 0;
+    var hourCounts = Object.create(null);
+    var hourTotal = 0;
+    for (var h = 0; h < 24; h++) hourCounts[String(h)] = 0;
+
+    // Single pass over all windows
     for (var i = 0; i < allW.length; i++) {
-      totalEvents += allW[i].count;
-      totalSolved += allW[i].solved;
-      if (allW[i].meanResponseMs > 0) allRTs.push(allW[i].meanResponseMs);
+      var w = allW[i];
+      totalEvents += w.count;
+      totalSolved += w.solved;
+      if (w.meanResponseMs > 0) allRTs.push(w.meanResponseMs);
+
+      // Accumulate regions
+      var rks = Object.keys(w.regions);
+      for (var ri = 0; ri < rks.length; ri++) {
+        if (!regionTotals[rks[ri]]) regionTotals[rks[ri]] = 0;
+        regionTotals[rks[ri]] += w.regions[rks[ri]];
+        regionTotal += w.regions[rks[ri]];
+      }
+
+      // Accumulate hours
+      var hks = Object.keys(w.hours);
+      for (var hi = 0; hi < hks.length; hi++) {
+        hourCounts[hks[hi]] = (hourCounts[hks[hi]] || 0) + w.hours[hks[hi]];
+        hourTotal += w.hours[hks[hi]];
+      }
     }
 
+    // Build region breakdown without re-iterating windows
+    var regions = [];
+    var rKeys = Object.keys(regionTotals);
+    for (var rk = 0; rk < rKeys.length; rk++) {
+      regions.push({
+        region: rKeys[rk],
+        count: regionTotals[rKeys[rk]],
+        percentage: regionTotal > 0 ? _r(regionTotals[rKeys[rk]] / regionTotal * 100, 1) : 0
+      });
+    }
+    regions.sort(function (a, b) { return b.count - a.count; });
+    var regionBreakdown = {
+      regions: regions,
+      totalEvents: regionTotal,
+      uniqueRegions: rKeys.length,
+      topRegion: regions.length > 0 ? regions[0].region : null,
+      topRegionShare: regions.length > 0 ? regions[0].percentage : 0
+    };
+
+    // Build hourly distribution without re-iterating windows
+    var distribution = [];
+    var peakHour = 0, troughHour = 0, maxC = -1, minC = Infinity;
+    for (var hd = 0; hd < 24; hd++) {
+      var hkey = String(hd);
+      var cnt = hourCounts[hkey];
+      distribution.push({
+        hour: hd,
+        count: cnt,
+        percentage: hourTotal > 0 ? _r(cnt / hourTotal * 100, 1) : 0
+      });
+      if (cnt > maxC) { maxC = cnt; peakHour = hd; }
+      if (cnt < minC) { minC = cnt; troughHour = hd; }
+    }
+    var hourlyDistribution = {
+      distribution: distribution,
+      totalEvents: hourTotal,
+      peakHour: peakHour,
+      troughHour: troughHour,
+      peakToTroughRatio: minC > 0 ? _r(maxC / minC, 1) : maxC > 0 ? Infinity : 0
+    };
+
+    // Reuse allW for analyze() — avoid another getWindows() call
     var analysis = analyze();
 
     return {
@@ -708,8 +780,8 @@ function createCaptchaTrafficAnalyzer(options) {
       status: analysis.status,
       anomalyCount: analysis.anomalies.length,
       alertCount: alertHistory.length,
-      regionBreakdown: getRegionBreakdown(),
-      hourlyDistribution: getHourlyDistribution(),
+      regionBreakdown: regionBreakdown,
+      hourlyDistribution: hourlyDistribution,
       trends: {
         traffic: getTrend('count'),
         solveRate: getTrend('solveRate'),

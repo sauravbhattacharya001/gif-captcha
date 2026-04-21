@@ -14,6 +14,10 @@ updates:
     commit-message:
       prefix: "ci"
     open-pull-requests-limit: 10
+    groups:
+      github-actions:
+        patterns:
+          - "*"
 
   # Keep Docker base images up to date
   - package-ecosystem: "docker"
@@ -41,3 +45,14 @@ updates:
       prefix: "npm"
     open-pull-requests-limit: 10
     versioning-strategy: increase
+    groups:
+      npm-production:
+        dependency-type: "production"
+        update-types:
+          - "minor"
+          - "patch"
+      npm-development:
+        dependency-type: "development"
+        update-types:
+          - "minor"
+          - "patch"

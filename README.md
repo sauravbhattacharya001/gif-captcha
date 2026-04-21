@@ -447,6 +447,7 @@ gif-captcha/
 ├── rate-limiter.html     # Rate limiter configuration
 ├── resistance.html       # AI resistance scoring
 ├── threat-feed.html      # Threat intelligence feed
+├── honeypot-designer.html # Honeypot trap designer with bot simulation & intel
 │
 │   ── User-Facing Features ──
 ├── accessibility.html    # Accessibility Audit (WCAG 2.1)

@@ -1,0 +1,859 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CAPTCHA Honeypot Designer — gif-captcha</title>
+    <link rel="stylesheet" href="shared.css">
+    <style>
+        .designer-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            margin: 1.5rem 0;
+        }
+        @media (max-width: 900px) { .designer-grid { grid-template-columns: 1fr; } }
+
+        .panel {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+        }
+        .panel h3 {
+            margin-bottom: 1rem;
+            font-size: 1rem;
+            color: var(--accent);
+        }
+
+        /* Trap builder */
+        .trap-list { display: flex; flex-direction: column; gap: 0.75rem; }
+        .trap-card {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem;
+            cursor: pointer;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .trap-card:hover { border-color: var(--accent); }
+        .trap-card.active { border-color: var(--green); box-shadow: 0 0 0 2px var(--green-bg); }
+        .trap-card .trap-name { font-weight: 600; margin-bottom: 0.25rem; }
+        .trap-card .trap-desc { font-size: 0.85rem; color: var(--muted); }
+        .trap-card .trap-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin-top: 0.5rem;
+        }
+        .badge-easy { background: var(--green-bg); color: var(--green); }
+        .badge-medium { background: var(--yellow-bg); color: var(--yellow); }
+        .badge-advanced { background: var(--purple-bg); color: var(--purple); }
+
+        /* Config panel */
+        .config-group { margin-bottom: 1rem; }
+        .config-group label {
+            display: block;
+            font-size: 0.85rem;
+            color: var(--muted);
+            margin-bottom: 0.35rem;
+        }
+        .config-group input[type="range"] { width: 100%; accent-color: var(--accent); }
+        .config-group select, .config-group input[type="text"] {
+            width: 100%;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+            border-radius: 6px;
+            padding: 0.5rem;
+            font-size: 0.9rem;
+        }
+        .range-val { float: right; color: var(--accent); font-weight: 600; font-size: 0.85rem; }
+
+        /* Preview */
+        .preview-area {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            min-height: 200px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }
+        .preview-captcha {
+            background: #fff;
+            border-radius: 6px;
+            padding: 1.5rem;
+            text-align: center;
+            min-width: 280px;
+            color: #333;
+            font-family: Arial, sans-serif;
+        }
+        .preview-captcha input {
+            display: block;
+            margin: 0.75rem auto 0;
+            padding: 0.5rem;
+            border: 2px solid #ccc;
+            border-radius: 4px;
+            font-size: 1rem;
+            width: 200px;
+            text-align: center;
+        }
+        .preview-captcha .captcha-text {
+            font-size: 2rem;
+            letter-spacing: 8px;
+            font-weight: bold;
+            padding: 0.5rem;
+            user-select: none;
+        }
+        .preview-captcha button {
+            margin-top: 0.75rem;
+            padding: 0.5rem 1.5rem;
+            background: #4a90d9;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+
+        /* Simulation */
+        .sim-controls { display: flex; gap: 0.75rem; margin-bottom: 1rem; flex-wrap: wrap; }
+        .sim-btn {
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            color: var(--text);
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: all 0.2s;
+        }
+        .sim-btn:hover { border-color: var(--accent); color: var(--accent); }
+        .sim-btn.running { border-color: var(--green); color: var(--green); animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
+
+        /* Bot log */
+        .bot-log {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: 'Cascadia Code', 'Fira Code', monospace;
+            font-size: 0.8rem;
+            padding: 1rem;
+        }
+        .log-entry { padding: 0.25rem 0; border-bottom: 1px solid var(--border); }
+        .log-entry:last-child { border-bottom: none; }
+        .log-bot { color: var(--red); }
+        .log-human { color: var(--green); }
+        .log-trap { color: var(--yellow); }
+        .log-info { color: var(--muted); }
+
+        /* Intelligence panel */
+        .intel-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+        @media (max-width: 600px) { .intel-grid { grid-template-columns: 1fr; } }
+        .intel-card {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem;
+        }
+        .intel-card .intel-value {
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin: 0.25rem 0;
+        }
+        .intel-card .intel-label { font-size: 0.8rem; color: var(--muted); }
+
+        /* Recommendations */
+        .rec-list { display: flex; flex-direction: column; gap: 0.5rem; }
+        .rec-item {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            font-size: 0.85rem;
+        }
+        .rec-item .rec-priority {
+            display: inline-block;
+            padding: 1px 6px;
+            border-radius: 10px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            margin-right: 0.5rem;
+        }
+        .rec-high { background: var(--red-bg); color: var(--red); }
+        .rec-med { background: var(--yellow-bg); color: var(--yellow); }
+        .rec-low { background: var(--green-bg); color: var(--green); }
+
+        /* Canvas */
+        #behaviorCanvas {
+            width: 100%;
+            height: 200px;
+            border-radius: 8px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+        }
+
+        /* Export */
+        .export-btns { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 1rem; }
+
+        .full-width { grid-column: 1 / -1; }
+
+        .tabs { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+        .tab-btn {
+            padding: 0.4rem 1rem;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: transparent;
+            color: var(--muted);
+            cursor: pointer;
+            font-size: 0.85rem;
+        }
+        .tab-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🍯 CAPTCHA Honeypot Designer</h1>
+        <p class="subtitle">Design intelligent honeypot CAPTCHAs that attract bots, profile their behavior, and auto-generate defense recommendations</p>
+    </div>
+
+    <div class="container">
+        <div class="designer-grid">
+            <!-- Left: Trap Selection -->
+            <div class="panel">
+                <h3>🪤 Select Trap Type</h3>
+                <div class="trap-list" id="trapList"></div>
+            </div>
+
+            <!-- Right: Configuration -->
+            <div class="panel">
+                <h3>⚙️ Trap Configuration</h3>
+                <div id="configPanel"></div>
+            </div>
+
+            <!-- Preview -->
+            <div class="panel full-width">
+                <h3>👁️ Live Preview</h3>
+                <div class="preview-area" id="previewArea"></div>
+            </div>
+
+            <!-- Simulation -->
+            <div class="panel full-width">
+                <h3>🤖 Bot Simulation</h3>
+                <div class="sim-controls">
+                    <button class="sim-btn" onclick="startSimulation('naive')">▶ Naive Bot</button>
+                    <button class="sim-btn" onclick="startSimulation('ocr')">▶ OCR Bot</button>
+                    <button class="sim-btn" onclick="startSimulation('ml')">▶ ML Bot</button>
+                    <button class="sim-btn" onclick="startSimulation('swarm')">▶ Bot Swarm (5x)</button>
+                    <button class="sim-btn" onclick="stopSimulation()">⏹ Stop</button>
+                    <button class="sim-btn" onclick="clearLog()">🗑 Clear Log</button>
+                </div>
+                <div class="bot-log" id="botLog">
+                    <div class="log-entry log-info">Ready. Select a trap and run a bot simulation.</div>
+                </div>
+            </div>
+
+            <!-- Intelligence Dashboard -->
+            <div class="panel">
+                <h3>📊 Bot Intelligence</h3>
+                <div class="intel-grid" id="intelGrid">
+                    <div class="intel-card"><div class="intel-label">Bots Trapped</div><div class="intel-value" id="statTrapped">0</div></div>
+                    <div class="intel-card"><div class="intel-label">Avg Solve Time</div><div class="intel-value" id="statSolveTime">—</div></div>
+                    <div class="intel-card"><div class="intel-label">Trap Success Rate</div><div class="intel-value" id="statSuccessRate">—</div></div>
+                    <div class="intel-card"><div class="intel-label">Bot Types Seen</div><div class="intel-value" id="statBotTypes">0</div></div>
+                </div>
+                <canvas id="behaviorCanvas"></canvas>
+            </div>
+
+            <!-- Proactive Recommendations -->
+            <div class="panel">
+                <h3>🧠 Proactive Recommendations</h3>
+                <p style="font-size:0.85rem;color:var(--muted);margin-bottom:1rem;">AI-generated trap improvements based on observed bot behavior patterns.</p>
+                <div class="rec-list" id="recList">
+                    <div class="rec-item" style="color:var(--muted)">Run a simulation to generate recommendations.</div>
+                </div>
+            </div>
+
+            <!-- Export -->
+            <div class="panel full-width">
+                <h3>📦 Export Honeypot Configuration</h3>
+                <p style="font-size:0.85rem;color:var(--muted)">Export your honeypot trap as deployable code or configuration.</p>
+                <div class="export-btns">
+                    <button class="btn btn-primary" onclick="exportConfig('json')">📄 JSON Config</button>
+                    <button class="btn btn-primary" onclick="exportConfig('html')">🌐 Embeddable HTML</button>
+                    <button class="btn btn-primary" onclick="exportConfig('nginx')">🔧 Nginx Rules</button>
+                    <button class="btn btn-primary" onclick="exportConfig('report')">📊 Intel Report</button>
+                </div>
+                <pre id="exportOutput" style="display:none;margin-top:1rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:1rem;max-height:300px;overflow:auto;font-size:0.8rem;white-space:pre-wrap;"></pre>
+            </div>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <p><a href="index.html">← Back to gif-captcha</a></p>
+    </footer>
+
+    <script src="shared.js"></script>
+    <script>
+    /* ===== Trap Definitions ===== */
+    const TRAPS = [
+        {
+            id: 'hidden-field',
+            name: 'Hidden Field Trap',
+            desc: 'Invisible form field that humans ignore but bots auto-fill. Classic honeypot.',
+            badge: 'Easy', badgeClass: 'badge-easy',
+            config: [
+                { id: 'fieldName', label: 'Hidden Field Name', type: 'text', default: 'email_confirm' },
+                { id: 'fieldCount', label: 'Number of Hidden Fields', type: 'range', min: 1, max: 5, default: 2 },
+                { id: 'hideMethod', label: 'Hide Method', type: 'select', options: ['CSS display:none','CSS opacity:0','Off-screen position','Aria-hidden + tiny','Tab-index -1 + clip'] }
+            ]
+        },
+        {
+            id: 'easy-text',
+            name: 'Deliberately Easy Text CAPTCHA',
+            desc: 'Plain-text CAPTCHA with no distortion. Irresistible to OCR bots — logs their solving patterns.',
+            badge: 'Easy', badgeClass: 'badge-easy',
+            config: [
+                { id: 'textLength', label: 'Text Length', type: 'range', min: 3, max: 8, default: 5 },
+                { id: 'charset', label: 'Character Set', type: 'select', options: ['Letters only','Digits only','Mixed alphanumeric','Simple words'] },
+                { id: 'decoyNoise', label: 'Decoy Noise Level', type: 'range', min: 0, max: 3, default: 0 }
+            ]
+        },
+        {
+            id: 'timing-trap',
+            name: 'Timing Analysis Trap',
+            desc: 'Looks normal but measures precise solve timing. Bots solve too fast or too consistently.',
+            badge: 'Medium', badgeClass: 'badge-medium',
+            config: [
+                { id: 'minTime', label: 'Minimum Human Time (ms)', type: 'range', min: 500, max: 5000, default: 2000, step: 100 },
+                { id: 'maxTime', label: 'Maximum Human Time (ms)', type: 'range', min: 5000, max: 30000, default: 15000, step: 500 },
+                { id: 'varianceThreshold', label: 'Variance Threshold', type: 'range', min: 0.1, max: 1.0, default: 0.3, step: 0.05 }
+            ]
+        },
+        {
+            id: 'math-bait',
+            name: 'Trivial Math Bait',
+            desc: 'Ultra-simple math that lures bots into revealing computational patterns.',
+            badge: 'Easy', badgeClass: 'badge-easy',
+            config: [
+                { id: 'difficulty', label: 'Difficulty', type: 'select', options: ['Single digit (2+3)','Double digit (12+7)','Simple multiply (3×4)'] },
+                { id: 'wrongAnswerTrap', label: 'Accept Wrong Answers', type: 'select', options: ['No — flag immediately','Yes — track silently','Yes — serve harder next'] }
+            ]
+        },
+        {
+            id: 'behavioral-canvas',
+            name: 'Canvas Behavioral Fingerprint',
+            desc: 'Invisible canvas that fingerprints mouse movement, click patterns, and rendering.',
+            badge: 'Advanced', badgeClass: 'badge-advanced',
+            config: [
+                { id: 'trackMouse', label: 'Track Mouse Movement', type: 'select', options: ['Yes','No'] },
+                { id: 'trackKeyboard', label: 'Track Keystroke Timing', type: 'select', options: ['Yes','No'] },
+                { id: 'canvasFingerprint', label: 'Canvas Rendering Fingerprint', type: 'select', options: ['Yes','No'] },
+                { id: 'scrollPattern', label: 'Track Scroll Patterns', type: 'select', options: ['Yes','No'] }
+            ]
+        },
+        {
+            id: 'progressive-trap',
+            name: 'Progressive Difficulty Trap',
+            desc: 'Starts trivially easy, escalates if bot behavior is detected. Adapts in real-time.',
+            badge: 'Advanced', badgeClass: 'badge-advanced',
+            config: [
+                { id: 'startLevel', label: 'Start Level', type: 'range', min: 1, max: 5, default: 1 },
+                { id: 'escalationSpeed', label: 'Escalation Speed', type: 'select', options: ['Slow (3 attempts)','Medium (2 attempts)','Fast (1 attempt)'] },
+                { id: 'maxLevel', label: 'Max Difficulty', type: 'range', min: 3, max: 10, default: 7 }
+            ]
+        }
+    ];
+
+    /* ===== State ===== */
+    let activeTrap = null;
+    let configValues = {};
+    let simRunning = false;
+    let simInterval = null;
+    let botLog = [];
+    let stats = { trapped: 0, solveTimes: [], botTypesSeen: new Set(), attempts: 0 };
+    let behaviorData = [];
+
+    /* ===== Trap List Render ===== */
+    function renderTraps() {
+        const el = document.getElementById('trapList');
+        el.innerHTML = TRAPS.map(t => `
+            <div class="trap-card ${activeTrap === t.id ? 'active' : ''}" onclick="selectTrap('${t.id}')">
+                <div class="trap-name">${sanitize(t.name)}</div>
+                <div class="trap-desc">${sanitize(t.desc)}</div>
+                <span class="trap-badge ${t.badgeClass}">${t.badge}</span>
+            </div>
+        `).join('');
+    }
+
+    function selectTrap(id) {
+        activeTrap = id;
+        const trap = TRAPS.find(t => t.id === id);
+        configValues = {};
+        trap.config.forEach(c => { configValues[c.id] = c.default !== undefined ? c.default : (c.options ? c.options[0] : ''); });
+        renderTraps();
+        renderConfig(trap);
+        renderPreview();
+    }
+
+    /* ===== Config Render ===== */
+    function renderConfig(trap) {
+        const el = document.getElementById('configPanel');
+        el.innerHTML = trap.config.map(c => {
+            if (c.type === 'range') {
+                const step = c.step || 1;
+                return `<div class="config-group">
+                    <label>${sanitize(c.label)} <span class="range-val" id="val_${c.id}">${configValues[c.id]}</span></label>
+                    <input type="range" min="${c.min}" max="${c.max}" step="${step}" value="${configValues[c.id]}"
+                        oninput="updateConfig('${c.id}', this.value); document.getElementById('val_${c.id}').textContent=this.value">
+                </div>`;
+            } else if (c.type === 'select') {
+                return `<div class="config-group">
+                    <label>${sanitize(c.label)}</label>
+                    <select onchange="updateConfig('${c.id}', this.value)">
+                        ${c.options.map(o => `<option ${configValues[c.id] === o ? 'selected' : ''}>${sanitize(o)}</option>`).join('')}
+                    </select>
+                </div>`;
+            } else {
+                return `<div class="config-group">
+                    <label>${sanitize(c.label)}</label>
+                    <input type="text" value="${sanitize(String(configValues[c.id]))}" onchange="updateConfig('${c.id}', this.value)">
+                </div>`;
+            }
+        }).join('');
+    }
+
+    function updateConfig(key, val) {
+        configValues[key] = isNaN(Number(val)) ? val : Number(val);
+        renderPreview();
+    }
+
+    /* ===== Preview Render ===== */
+    function renderPreview() {
+        const area = document.getElementById('previewArea');
+        if (!activeTrap) { area.innerHTML = '<div style="color:var(--muted)">Select a trap type to preview</div>'; return; }
+
+        const trap = TRAPS.find(t => t.id === activeTrap);
+        let html = '<div class="preview-captcha">';
+
+        switch (activeTrap) {
+            case 'hidden-field':
+                const count = configValues.fieldCount || 2;
+                html += '<div style="font-size:0.9rem;color:#666;margin-bottom:0.5rem">Complete the form:</div>';
+                html += '<input placeholder="Your email" style="margin-bottom:0.5rem">';
+                for (let i = 0; i < count; i++) {
+                    html += `<div style="font-size:0.65rem;color:#999;text-align:left;margin-top:0.25rem">⚠ Hidden field #${i+1} (${sanitize(configValues.hideMethod || 'CSS display:none')})</div>`;
+                }
+                html += '<button>Submit</button>';
+                break;
+            case 'easy-text':
+                const len = configValues.textLength || 5;
+                const chars = configValues.charset === 'Digits only' ? '0123456789' : configValues.charset === 'Simple words' ? '' : 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+                let text = '';
+                if (configValues.charset === 'Simple words') {
+                    text = ['apple','hello','world','robot','catch'][Math.floor(Math.random()*5)];
+                } else {
+                    for (let i = 0; i < len; i++) text += chars[Math.floor(Math.random()*chars.length)];
+                }
+                html += `<div class="captcha-text">${sanitize(text)}</div>`;
+                html += '<input placeholder="Type the text above">';
+                html += '<button>Verify</button>';
+                break;
+            case 'timing-trap':
+                html += '<div style="font-size:0.9rem;color:#666;margin-bottom:0.5rem">Verify you\'re human:</div>';
+                html += '<div class="captcha-text" style="font-size:1.5rem">🔒</div>';
+                html += `<div style="font-size:0.7rem;color:#999;margin-top:0.5rem">⏱ Window: ${configValues.minTime}ms – ${configValues.maxTime}ms</div>`;
+                html += '<input placeholder="Type the code">';
+                html += '<button>Submit</button>';
+                break;
+            case 'math-bait':
+                const problems = { 'Single digit (2+3)': '2 + 3 = ?', 'Double digit (12+7)': '12 + 7 = ?', 'Simple multiply (3×4)': '3 × 4 = ?' };
+                html += `<div class="captcha-text" style="font-size:1.8rem">${problems[configValues.difficulty] || '2 + 3 = ?'}</div>`;
+                html += '<input placeholder="Answer">';
+                html += '<button>Submit</button>';
+                break;
+            case 'behavioral-canvas':
+                html += '<div style="font-size:0.9rem;color:#666;margin-bottom:0.5rem">Click the button to verify:</div>';
+                html += '<button style="padding:1rem 2rem;font-size:1.1rem">I\'m Human</button>';
+                const sensors = [];
+                if (configValues.trackMouse === 'Yes') sensors.push('🖱 Mouse');
+                if (configValues.trackKeyboard === 'Yes') sensors.push('⌨ Keys');
+                if (configValues.canvasFingerprint === 'Yes') sensors.push('🎨 Canvas');
+                if (configValues.scrollPattern === 'Yes') sensors.push('📜 Scroll');
+                html += `<div style="font-size:0.65rem;color:#999;margin-top:0.75rem">Active sensors: ${sensors.join(' · ') || 'None'}</div>`;
+                break;
+            case 'progressive-trap':
+                html += `<div style="font-size:0.9rem;color:#666;margin-bottom:0.5rem">Level ${configValues.startLevel} / ${configValues.maxLevel}</div>`;
+                html += '<div class="captcha-text" style="font-size:1.5rem">A B C</div>';
+                html += '<input placeholder="Easy start...">';
+                html += '<button>Next</button>';
+                break;
+        }
+
+        html += '</div>';
+        area.innerHTML = html;
+    }
+
+    /* ===== Bot Simulation Engine ===== */
+    const BOT_PROFILES = {
+        naive: { name: 'Naive Bot', speed: [50, 200], accuracy: 0.3, icon: '🤖', solvePattern: 'instant' },
+        ocr: { name: 'OCR Bot', speed: [300, 800], accuracy: 0.75, icon: '👁️', solvePattern: 'fast' },
+        ml: { name: 'ML Bot', speed: [800, 2500], accuracy: 0.9, icon: '🧠', solvePattern: 'adaptive' },
+        swarm: { name: 'Swarm', speed: [100, 500], accuracy: 0.5, icon: '🐝', solvePattern: 'distributed' }
+    };
+
+    function addLog(msg, cls) {
+        const log = document.getElementById('botLog');
+        const entry = document.createElement('div');
+        entry.className = 'log-entry ' + cls;
+        const time = new Date().toLocaleTimeString();
+        entry.textContent = `[${time}] ${msg}`;
+        log.appendChild(entry);
+        log.scrollTop = log.scrollHeight;
+        botLog.push({ time, msg, cls });
+    }
+
+    function clearLog() {
+        document.getElementById('botLog').innerHTML = '';
+        botLog = [];
+    }
+
+    function startSimulation(botType) {
+        if (!activeTrap) { addLog('⚠ Select a trap type first', 'log-info'); return; }
+        if (simRunning) stopSimulation();
+
+        const profile = BOT_PROFILES[botType];
+        const count = botType === 'swarm' ? 5 : 1;
+        simRunning = true;
+        document.querySelectorAll('.sim-btn').forEach(b => b.classList.remove('running'));
+        event.target.classList.add('running');
+
+        addLog(`━━━ ${profile.icon} ${profile.name} simulation started (${count} instance${count>1?'s':''}) ━━━`, 'log-info');
+        stats.botTypesSeen.add(botType);
+        updateStats();
+
+        let step = 0;
+        simInterval = setInterval(() => {
+            if (step > 15) { stopSimulation(); return; }
+            for (let i = 0; i < count; i++) {
+                simulateBotStep(profile, botType, i, step);
+            }
+            step++;
+            updateBehaviorCanvas();
+            generateRecommendations();
+        }, 600);
+    }
+
+    function simulateBotStep(profile, botType, instance, step) {
+        const trap = TRAPS.find(t => t.id === activeTrap);
+        const solveTime = profile.speed[0] + Math.random() * (profile.speed[1] - profile.speed[0]);
+        const botId = botType === 'swarm' ? `${profile.icon}#${instance}` : profile.icon;
+
+        stats.attempts++;
+
+        switch (activeTrap) {
+            case 'hidden-field':
+                if (step === 0) addLog(`${botId} Scanning form fields...`, 'log-bot');
+                else if (step === 1) {
+                    const filled = Math.random() < (botType === 'ml' ? 0.2 : 0.85);
+                    if (filled) {
+                        addLog(`${botId} ⚡ AUTO-FILLED hidden field "${configValues.fieldName}" → TRAPPED!`, 'log-trap');
+                        stats.trapped++;
+                        stats.solveTimes.push(solveTime);
+                        behaviorData.push({ type: 'trapped', time: solveTime, bot: botType });
+                    } else {
+                        addLog(`${botId} Skipped hidden field (smart enough to avoid)`, 'log-bot');
+                        behaviorData.push({ type: 'evaded', time: solveTime, bot: botType });
+                    }
+                }
+                break;
+            case 'easy-text':
+                if (step === 0) addLog(`${botId} Running OCR on plain text...`, 'log-bot');
+                else if (step === 1) {
+                    addLog(`${botId} Text extracted in ${Math.round(solveTime)}ms`, 'log-bot');
+                    stats.solveTimes.push(solveTime);
+                } else if (step === 2) {
+                    const correct = Math.random() < profile.accuracy;
+                    if (correct) {
+                        addLog(`${botId} ✓ Solved correctly — but solve time (${Math.round(solveTime)}ms) logged for analysis`, 'log-trap');
+                        behaviorData.push({ type: 'solved', time: solveTime, bot: botType });
+                    } else {
+                        addLog(`${botId} ✗ OCR error — wrong answer submitted → TRAPPED!`, 'log-trap');
+                        stats.trapped++;
+                        behaviorData.push({ type: 'trapped', time: solveTime, bot: botType });
+                    }
+                }
+                break;
+            case 'timing-trap':
+                if (step === 0) addLog(`${botId} Attempting solve...`, 'log-bot');
+                else if (step === 1) {
+                    const tooFast = solveTime < configValues.minTime;
+                    const tooSlow = solveTime > configValues.maxTime;
+                    const tooConsistent = Math.random() < (1 - configValues.varianceThreshold);
+                    if (tooFast) {
+                        addLog(`${botId} ⏱ Solved in ${Math.round(solveTime)}ms — BELOW minimum (${configValues.minTime}ms) → TRAPPED!`, 'log-trap');
+                        stats.trapped++;
+                    } else if (tooConsistent && botType !== 'ml') {
+                        addLog(`${botId} ⏱ Timing variance too low (${(Math.random()*0.2).toFixed(3)}) → TRAPPED!`, 'log-trap');
+                        stats.trapped++;
+                    } else {
+                        addLog(`${botId} ⏱ Passed timing check (${Math.round(solveTime)}ms)`, 'log-bot');
+                    }
+                    stats.solveTimes.push(solveTime);
+                    behaviorData.push({ type: tooFast ? 'trapped' : 'passed', time: solveTime, bot: botType });
+                }
+                break;
+            case 'math-bait':
+                if (step === 0) addLog(`${botId} Parsing math expression...`, 'log-bot');
+                else if (step === 1) {
+                    addLog(`${botId} Computed answer in ${Math.round(solveTime)}ms (suspiciously fast)`, 'log-bot');
+                    stats.solveTimes.push(solveTime);
+                    if (solveTime < 300) {
+                        addLog(`${botId} ⚡ Sub-300ms math solve → FLAGGED`, 'log-trap');
+                        stats.trapped++;
+                        behaviorData.push({ type: 'trapped', time: solveTime, bot: botType });
+                    } else {
+                        behaviorData.push({ type: 'passed', time: solveTime, bot: botType });
+                    }
+                }
+                break;
+            case 'behavioral-canvas':
+                if (step === 0) addLog(`${botId} Clicking verify button...`, 'log-bot');
+                else if (step === 1) {
+                    const signals = [];
+                    if (configValues.trackMouse === 'Yes') {
+                        const linear = botType !== 'ml';
+                        signals.push(linear ? '🖱 Linear mouse path (bot)' : '🖱 Curved mouse path (human-like)');
+                        if (linear) stats.trapped++;
+                    }
+                    if (configValues.trackKeyboard === 'Yes') {
+                        const uniform = botType === 'naive';
+                        signals.push(uniform ? '⌨ Uniform key timing (bot)' : '⌨ Variable key timing');
+                    }
+                    if (configValues.canvasFingerprint === 'Yes') {
+                        signals.push(botType === 'naive' ? '🎨 Headless browser detected' : '🎨 Canvas rendered normally');
+                    }
+                    signals.forEach(s => addLog(`${botId} ${s}`, s.includes('bot') || s.includes('Headless') ? 'log-trap' : 'log-bot'));
+                    behaviorData.push({ type: signals.some(s => s.includes('bot') || s.includes('Headless')) ? 'trapped' : 'passed', time: solveTime, bot: botType });
+                    stats.solveTimes.push(solveTime);
+                }
+                break;
+            case 'progressive-trap':
+                const level = Math.min(configValues.startLevel + step, configValues.maxLevel);
+                if (step <= 4) {
+                    const passChance = Math.max(0, profile.accuracy - (level * 0.12));
+                    const passed = Math.random() < passChance;
+                    if (passed) {
+                        addLog(`${botId} Level ${level}: passed (${Math.round(solveTime)}ms)`, 'log-bot');
+                        behaviorData.push({ type: 'passed', time: solveTime, bot: botType });
+                    } else {
+                        addLog(`${botId} Level ${level}: FAILED — difficulty overwhelmed bot → TRAPPED!`, 'log-trap');
+                        stats.trapped++;
+                        behaviorData.push({ type: 'trapped', time: solveTime, bot: botType });
+                    }
+                    stats.solveTimes.push(solveTime);
+                }
+                break;
+        }
+        updateStats();
+    }
+
+    function stopSimulation() {
+        simRunning = false;
+        if (simInterval) clearInterval(simInterval);
+        simInterval = null;
+        document.querySelectorAll('.sim-btn').forEach(b => b.classList.remove('running'));
+        addLog('━━━ Simulation stopped ━━━', 'log-info');
+    }
+
+    /* ===== Stats ===== */
+    function updateStats() {
+        document.getElementById('statTrapped').textContent = stats.trapped;
+        const avg = stats.solveTimes.length ? (stats.solveTimes.reduce((a,b)=>a+b,0) / stats.solveTimes.length) : 0;
+        document.getElementById('statSolveTime').textContent = avg ? Math.round(avg) + 'ms' : '—';
+        document.getElementById('statSuccessRate').textContent = stats.attempts ? Math.round(stats.trapped / stats.attempts * 100) + '%' : '—';
+        document.getElementById('statBotTypes').textContent = stats.botTypesSeen.size;
+    }
+
+    /* ===== Behavior Canvas ===== */
+    function updateBehaviorCanvas() {
+        const canvas = document.getElementById('behaviorCanvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = canvas.offsetWidth;
+        canvas.height = canvas.offsetHeight;
+
+        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        if (!behaviorData.length) return;
+
+        // Draw solve time scatter plot
+        const maxTime = Math.max(...behaviorData.map(d => d.time), 1000);
+        const w = canvas.width, h = canvas.height;
+        const pad = 30;
+
+        // Axis
+        ctx.strokeStyle = '#30363d';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(pad, pad);
+        ctx.lineTo(pad, h - pad);
+        ctx.lineTo(w - pad, h - pad);
+        ctx.stroke();
+
+        // Labels
+        ctx.fillStyle = '#8b949e';
+        ctx.font = '10px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Solve Time →', w / 2, h - 5);
+        ctx.save();
+        ctx.translate(10, h / 2);
+        ctx.rotate(-Math.PI / 2);
+        ctx.fillText('Attempts', 0, 0);
+        ctx.restore();
+
+        // Points
+        behaviorData.forEach((d, i) => {
+            const x = pad + (d.time / maxTime) * (w - 2 * pad);
+            const y = h - pad - (i / behaviorData.length) * (h - 2 * pad);
+            ctx.beginPath();
+            ctx.arc(x, y, 5, 0, Math.PI * 2);
+            ctx.fillStyle = d.type === 'trapped' ? '#f85149' : d.type === 'evaded' ? '#d29922' : '#3fb950';
+            ctx.fill();
+            ctx.strokeStyle = '#0d1117';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+        });
+
+        // Legend
+        const legend = [['Trapped','#f85149'],['Passed','#3fb950'],['Evaded','#d29922']];
+        legend.forEach(([label, color], i) => {
+            const lx = w - 100;
+            const ly = 15 + i * 16;
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.arc(lx, ly, 4, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#8b949e';
+            ctx.font = '10px sans-serif';
+            ctx.textAlign = 'left';
+            ctx.fillText(label, lx + 10, ly + 4);
+        });
+    }
+
+    /* ===== Proactive Recommendations ===== */
+    function generateRecommendations() {
+        const recs = [];
+        const trappedCount = behaviorData.filter(d => d.type === 'trapped').length;
+        const passedCount = behaviorData.filter(d => d.type === 'passed').length;
+        const totalCount = behaviorData.length;
+        const avgTime = stats.solveTimes.length ? stats.solveTimes.reduce((a,b)=>a+b,0)/stats.solveTimes.length : 0;
+
+        // Trap-specific recommendations
+        if (activeTrap === 'hidden-field' && passedCount > trappedCount) {
+            recs.push({ priority: 'HIGH', cls: 'rec-high', text: 'ML bots are evading hidden fields. Add behavioral canvas fingerprinting as a secondary layer.' });
+        }
+        if (activeTrap === 'easy-text' && avgTime < 500) {
+            recs.push({ priority: 'HIGH', cls: 'rec-high', text: 'Sub-500ms average solve time detected. Add timing analysis to catch OCR bots.' });
+        }
+        if (activeTrap === 'timing-trap' && stats.botTypesSeen.has('ml')) {
+            recs.push({ priority: 'MED', cls: 'rec-med', text: 'ML bots adapt timing. Consider adding canvas fingerprinting for multi-signal detection.' });
+        }
+
+        // General recommendations
+        if (totalCount > 5 && trappedCount / totalCount < 0.4) {
+            recs.push({ priority: 'HIGH', cls: 'rec-high', text: `Low trap rate (${Math.round(trappedCount/totalCount*100)}%). Consider combining multiple trap types or increasing difficulty.` });
+        }
+        if (stats.botTypesSeen.size >= 3) {
+            recs.push({ priority: 'MED', cls: 'rec-med', text: 'Multiple bot types detected. Deploy progressive difficulty trap for adaptive defense.' });
+        }
+        if (activeTrap === 'behavioral-canvas' && configValues.trackMouse === 'No' && configValues.trackKeyboard === 'No') {
+            recs.push({ priority: 'HIGH', cls: 'rec-high', text: 'No behavioral sensors enabled! Enable mouse or keyboard tracking for effective fingerprinting.' });
+        }
+        if (totalCount > 3) {
+            const botTypes = {};
+            behaviorData.forEach(d => { botTypes[d.bot] = (botTypes[d.bot]||0) + 1; });
+            const dominant = Object.entries(botTypes).sort((a,b) => b[1]-a[1])[0];
+            if (dominant && dominant[1] > totalCount * 0.6) {
+                recs.push({ priority: 'LOW', cls: 'rec-low', text: `${BOT_PROFILES[dominant[0]]?.name || dominant[0]} accounts for ${Math.round(dominant[1]/totalCount*100)}% of traffic. Optimize trap specifically for this bot type.` });
+            }
+        }
+        if (trappedCount > 10) {
+            recs.push({ priority: 'LOW', cls: 'rec-low', text: 'Strong trap performance! Consider deploying to production with monitoring enabled.' });
+        }
+
+        if (!recs.length) recs.push({ priority: '', cls: '', text: 'Collecting data... run more simulations for actionable insights.' });
+
+        const el = document.getElementById('recList');
+        el.innerHTML = recs.map(r => `
+            <div class="rec-item">
+                ${r.priority ? `<span class="rec-priority ${r.cls}">${r.priority}</span>` : ''}
+                ${sanitize(r.text)}
+            </div>
+        `).join('');
+    }
+
+    /* ===== Export ===== */
+    function exportConfig(format) {
+        if (!activeTrap) { alert('Select a trap type first'); return; }
+        const trap = TRAPS.find(t => t.id === activeTrap);
+        const output = document.getElementById('exportOutput');
+        output.style.display = 'block';
+
+        switch (format) {
+            case 'json':
+                output.textContent = JSON.stringify({
+                    trap: { id: activeTrap, name: trap.name, config: configValues },
+                    stats: { trapped: stats.trapped, attempts: stats.attempts, avgSolveTime: stats.solveTimes.length ? Math.round(stats.solveTimes.reduce((a,b)=>a+b,0)/stats.solveTimes.length) : null, botTypesSeen: [...stats.botTypesSeen] },
+                    behaviorData: behaviorData.slice(-50)
+                }, null, 2);
+                break;
+            case 'html':
+                output.textContent = `<!-- CAPTCHA Honeypot: ${trap.name} -->\n<form id="honeypot-form" action="/verify" method="POST">\n` +
+                    (activeTrap === 'hidden-field'
+                        ? `  <!-- Honeypot field -->\n  <div style="position:absolute;left:-9999px" aria-hidden="true">\n    <input type="text" name="${configValues.fieldName || 'hp_field'}" tabindex="-1" autocomplete="off">\n  </div>\n`
+                        : `  <!-- ${trap.name} trap -->\n  <div class="captcha-container">\n    <!-- Implement ${activeTrap} logic -->\n  </div>\n`) +
+                    `  <button type="submit">Submit</button>\n</form>\n<script>\n  // Server-side: reject if honeypot field is filled\n  // Log all solve times for analysis\n</script>`;
+                break;
+            case 'nginx':
+                output.textContent = `# Nginx honeypot rules for ${trap.name}\n# Add to your server block\n\n` +
+                    `# Rate limit bot-like request patterns\nlimit_req_zone $binary_remote_addr zone=captcha:10m rate=5r/s;\n\n` +
+                    `location /captcha/verify {\n    limit_req zone=captcha burst=3 nodelay;\n\n` +
+                    `    # Log solve timing for analysis\n    access_log /var/log/nginx/honeypot.log honeypot_format;\n\n` +
+                    `    # Block known bot signatures\n    if ($http_user_agent ~* "(bot|crawler|spider|scraper)") {\n        return 403;\n    }\n\n` +
+                    `    proxy_pass http://backend;\n}`;
+                break;
+            case 'report':
+                const trappedPct = stats.attempts ? Math.round(stats.trapped/stats.attempts*100) : 0;
+                const avg = stats.solveTimes.length ? Math.round(stats.solveTimes.reduce((a,b)=>a+b,0)/stats.solveTimes.length) : 0;
+                output.textContent = `═══ HONEYPOT INTELLIGENCE REPORT ═══\n\n` +
+                    `Trap Type: ${trap.name}\nConfiguration: ${JSON.stringify(configValues)}\n\n` +
+                    `── Statistics ──\n` +
+                    `Total Attempts: ${stats.attempts}\nBots Trapped: ${stats.trapped} (${trappedPct}%)\n` +
+                    `Avg Solve Time: ${avg}ms\nBot Types Seen: ${[...stats.botTypesSeen].join(', ') || 'none'}\n\n` +
+                    `── Behavior Patterns ──\n` +
+                    behaviorData.slice(-10).map(d => `  ${d.bot.toUpperCase()} | ${d.type} | ${Math.round(d.time)}ms`).join('\n') +
+                    `\n\n── Recommendations ──\n` +
+                    document.getElementById('recList').textContent.trim();
+                break;
+        }
+    }
+
+    /* ===== Init ===== */
+    renderTraps();
+    renderPreview();
+    </script>
+</body>
+</html>

@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CAPTCHA Immune System — gif-captcha</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+.immune-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-top: 1.5rem; }
+@media (max-width: 900px) { .immune-grid { grid-template-columns: 1fr; } }
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; }
+.panel h3 { margin-bottom: 1rem; display: flex; align-items: center; gap: .5rem; }
+
+/* Immunity gauge */
+.gauge-wrap { text-align: center; margin: 1rem 0; }
+.gauge-svg { width: 200px; height: 120px; }
+.gauge-label { font-size: .85rem; color: var(--muted); margin-top: .25rem; }
+.gauge-value { font-size: 2rem; font-weight: 700; }
+
+/* Pathogen list */
+.pathogen-list { max-height: 320px; overflow-y: auto; }
+.pathogen { display: flex; align-items: center; gap: .75rem; padding: .6rem .75rem; border-radius: 8px; margin-bottom: .5rem; background: var(--bg); border: 1px solid var(--border); transition: border-color .2s; }
+.pathogen:hover { border-color: var(--accent); }
+.pathogen-icon { font-size: 1.3rem; flex-shrink: 0; }
+.pathogen-info { flex: 1; min-width: 0; }
+.pathogen-name { font-weight: 600; font-size: .95rem; }
+.pathogen-desc { font-size: .8rem; color: var(--muted); }
+.pathogen-badge { font-size: .7rem; padding: 2px 8px; border-radius: 99px; font-weight: 600; white-space: nowrap; }
+.badge-immune { background: var(--green-bg); color: var(--green); }
+.badge-partial { background: var(--yellow-bg); color: var(--yellow); }
+.badge-vulnerable { background: var(--red-bg); color: var(--red); }
+.badge-learning { background: var(--purple-bg); color: var(--purple); }
+
+/* Antibody log */
+.antibody-log { max-height: 260px; overflow-y: auto; font-family: 'SF Mono', 'Fira Code', monospace; font-size: .8rem; }
+.log-entry { padding: .4rem .6rem; border-left: 3px solid var(--border); margin-bottom: .35rem; background: var(--bg); border-radius: 0 6px 6px 0; }
+.log-entry.deploy { border-left-color: var(--green); }
+.log-entry.detect { border-left-color: var(--yellow); }
+.log-entry.evolve { border-left-color: var(--purple); }
+.log-entry.alert { border-left-color: var(--red); }
+.log-time { color: var(--muted); margin-right: .5rem; }
+
+/* Cell animation */
+.cell-canvas { width: 100%; height: 200px; border-radius: 8px; background: var(--bg); border: 1px solid var(--border); }
+
+/* Controls */
+.controls { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1rem; }
+.controls button { padding: .5rem 1rem; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; font-size: .85rem; transition: all .2s; }
+.controls button:hover { border-color: var(--accent); background: var(--surface-hover); }
+.controls button.active { background: var(--accent); color: #000; border-color: var(--accent); }
+
+/* Stats row */
+.stats-row { display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 1rem; }
+.stat-card { flex: 1; min-width: 120px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: .75rem; text-align: center; }
+.stat-card .val { font-size: 1.5rem; font-weight: 700; }
+.stat-card .lbl { font-size: .75rem; color: var(--muted); }
+
+/* Countermeasure cards */
+.cm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: .75rem; margin-top: .75rem; }
+.cm-card { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: .75rem; }
+.cm-card.active-cm { border-color: var(--green); }
+.cm-card .cm-name { font-weight: 600; font-size: .85rem; }
+.cm-card .cm-eff { font-size: .75rem; color: var(--muted); margin-top: .25rem; }
+.cm-bar { height: 4px; background: var(--border); border-radius: 2px; margin-top: .5rem; overflow: hidden; }
+.cm-bar-fill { height: 100%; border-radius: 2px; transition: width .5s; }
+
+/* Threat timeline */
+.timeline-canvas { width: 100%; height: 150px; border-radius: 8px; background: var(--bg); border: 1px solid var(--border); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🛡️ CAPTCHA Immune System</h1>
+  <p class="subtitle">Autonomous adaptive defense that learns, evolves, and protects</p>
+</div>
+
+<div class="container" style="max-width:1200px; margin:0 auto; padding:1.5rem;">
+
+  <div class="stats-row" id="statsRow"></div>
+
+  <div class="controls">
+    <button onclick="injectPathogen()" title="Simulate an attack">💉 Inject Pathogen</button>
+    <button onclick="startEpidemic()" title="Simulate coordinated attack wave">🌊 Epidemic Wave</button>
+    <button onclick="mutateThreat()" title="Mutate an existing threat">🧬 Mutate Threat</button>
+    <button onclick="toggleAutopilot()" id="autopilotBtn">🤖 Autopilot: OFF</button>
+    <button onclick="resetSystem()">🔄 Reset</button>
+    <button onclick="exportReport()">📋 Export Report</button>
+  </div>
+
+  <div class="immune-grid">
+    <!-- Immunity Gauge -->
+    <div class="panel">
+      <h3>🎯 System Immunity Level</h3>
+      <div class="gauge-wrap">
+        <svg class="gauge-svg" viewBox="0 0 200 120" id="gaugeChart">
+          <defs>
+            <linearGradient id="gaugeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="var(--red)"/>
+              <stop offset="50%" stop-color="var(--yellow)"/>
+              <stop offset="100%" stop-color="var(--green)"/>
+            </linearGradient>
+          </defs>
+          <path d="M20,100 A80,80 0 0,1 180,100" fill="none" stroke="var(--border)" stroke-width="12" stroke-linecap="round"/>
+          <path d="M20,100 A80,80 0 0,1 180,100" fill="none" stroke="url(#gaugeGrad)" stroke-width="12" stroke-linecap="round" id="gaugeArc" stroke-dasharray="0 251.33"/>
+          <text x="100" y="90" text-anchor="middle" class="gauge-value" fill="var(--text)" font-size="28" font-weight="700" id="gaugeText">0%</text>
+          <text x="100" y="110" text-anchor="middle" font-size="11" fill="var(--muted)" id="gaugeLabel">Initializing…</text>
+        </svg>
+      </div>
+      <canvas class="cell-canvas" id="cellCanvas"></canvas>
+    </div>
+
+    <!-- Pathogen Registry -->
+    <div class="panel">
+      <h3>🦠 Pathogen Registry</h3>
+      <div class="pathogen-list" id="pathogenList">
+        <div style="color:var(--muted); text-align:center; padding:2rem;">No pathogens detected yet. Inject one to begin.</div>
+      </div>
+    </div>
+
+    <!-- Countermeasures -->
+    <div class="panel">
+      <h3>💊 Active Countermeasures</h3>
+      <div class="cm-grid" id="cmGrid"></div>
+    </div>
+
+    <!-- Antibody Log -->
+    <div class="panel">
+      <h3>📜 Immune Response Log</h3>
+      <div class="antibody-log" id="antibodyLog">
+        <div style="color:var(--muted); text-align:center; padding:2rem;">Awaiting immune activity…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Threat Timeline -->
+  <div class="panel" style="margin-top:1.5rem;">
+    <h3>📈 Threat Timeline</h3>
+    <canvas class="timeline-canvas" id="timelineCanvas"></canvas>
+  </div>
+
+</div>
+
+<footer class="footer">
+  <a href="index.html">← Back to gif-captcha</a>
+</footer>
+
+<script src="shared.js"></script>
+<script>
+/* ============================================================
+   CAPTCHA Immune System — Autonomous Adaptive Defense
+   ============================================================ */
+
+// --- Pathogen Templates ---
+const PATHOGEN_TEMPLATES = [
+  { name: 'Headless Browser Bot', icon: '🤖', category: 'automation', desc: 'Puppeteer/Playwright automated solver' },
+  { name: 'OCR Cracker', icon: '👁️', category: 'vision', desc: 'Optical character recognition attack' },
+  { name: 'ML Classifier', icon: '🧠', category: 'ml', desc: 'Neural network trained on CAPTCHA images' },
+  { name: 'CAPTCHA Farm', icon: '👥', category: 'human', desc: 'Human solvers via crowdsourced labor' },
+  { name: 'Replay Attack', icon: '🔁', category: 'replay', desc: 'Reuses previously valid tokens' },
+  { name: 'Timing Exploit', icon: '⏱️', category: 'timing', desc: 'Exploits predictable timing patterns' },
+  { name: 'Session Hijacker', icon: '🔓', category: 'session', desc: 'Steals valid session tokens' },
+  { name: 'API Brute Force', icon: '🔨', category: 'brute', desc: 'Mass parallel verification attempts' },
+  { name: 'GAN Generator', icon: '🎨', category: 'ml', desc: 'Generates fake valid-looking responses' },
+  { name: 'Audio Bypass', icon: '🔊', category: 'audio', desc: 'Speech-to-text on audio challenges' },
+  { name: 'CSS Fingerprinter', icon: '🖼️', category: 'fingerprint', desc: 'Identifies CAPTCHA type via CSS analysis' },
+  { name: 'Token Forger', icon: '🔑', category: 'crypto', desc: 'Forges verification tokens' },
+  { name: 'Rate Limit Evader', icon: '🏃', category: 'evasion', desc: 'Rotates IPs to bypass rate limits' },
+  { name: 'DOM Manipulator', icon: '📝', category: 'dom', desc: 'Modifies DOM to skip challenge rendering' },
+  { name: 'WebDriver Injector', icon: '💉', category: 'automation', desc: 'Injects scripts via WebDriver protocol' },
+];
+
+// --- Countermeasure Templates ---
+const COUNTERMEASURE_TEMPLATES = [
+  { name: 'Rate Limiter', targets: ['brute', 'evasion'], icon: '🚦' },
+  { name: 'Behavioral Analysis', targets: ['automation', 'dom'], icon: '🔍' },
+  { name: 'Token Rotation', targets: ['replay', 'crypto', 'session'], icon: '🔄' },
+  { name: 'Visual Noise Injection', targets: ['vision', 'ml'], icon: '🌀' },
+  { name: 'Proof of Work', targets: ['brute', 'automation', 'evasion'], icon: '⛏️' },
+  { name: 'Mouse Trajectory Check', targets: ['automation', 'dom'], icon: '🖱️' },
+  { name: 'Audio Distortion', targets: ['audio'], icon: '🎵' },
+  { name: 'GAN Discriminator', targets: ['ml'], icon: '🛡️' },
+  { name: 'Timing Jitter', targets: ['timing', 'fingerprint'], icon: '⏰' },
+  { name: 'Human Verification Layer', targets: ['human'], icon: '🧑' },
+  { name: 'Honeypot Fields', targets: ['automation', 'dom', 'evasion'], icon: '🍯' },
+  { name: 'Fingerprint Obfuscation', targets: ['fingerprint', 'dom'], icon: '🎭' },
+];
+
+// --- State ---
+let state = {
+  pathogens: [],       // { id, template, strain, immunity: 0-100, encounters: 0, status, mutations: 0 }
+  countermeasures: [],  // { template, effectiveness: 0-100, deployedAt, active }
+  log: [],
+  stats: { totalAttacks: 0, blocked: 0, evolved: 0, immunityLevel: 0 },
+  autopilot: false,
+  autopilotTimer: null,
+  timelineData: [],     // { t, attacks, blocked, immunity }
+  cells: [],            // for cell animation
+};
+let nextId = 1;
+
+// --- Core Functions ---
+function addLog(type, msg) {
+  const now = new Date();
+  const ts = now.toLocaleTimeString('en-US', { hour12: false });
+  state.log.unshift({ type, msg, ts });
+  if (state.log.length > 200) state.log.length = 200;
+  renderLog();
+}
+
+function injectPathogen(templateIdx) {
+  const idx = templateIdx ?? Math.floor(Math.random() * PATHOGEN_TEMPLATES.length);
+  const tpl = PATHOGEN_TEMPLATES[idx];
+  const existing = state.pathogens.find(p => p.template === tpl && p.immunity < 80);
+  
+  state.stats.totalAttacks++;
+
+  if (existing) {
+    existing.encounters++;
+    // Immune response
+    const cm = state.countermeasures.find(c => c.active && c.template.targets.includes(tpl.category));
+    if (cm) {
+      const blockChance = (existing.immunity + cm.effectiveness) / 200;
+      if (Math.random() < blockChance) {
+        existing.immunity = Math.min(100, existing.immunity + Math.floor(Math.random() * 8 + 3));
+        cm.effectiveness = Math.min(100, cm.effectiveness + 1);
+        state.stats.blocked++;
+        addLog('deploy', `Blocked ${tpl.icon} ${tpl.name} (strain #${existing.strain}) — immunity ${existing.immunity}%`);
+        spawnCell('antibody', tpl.icon);
+      } else {
+        addLog('alert', `${tpl.icon} ${tpl.name} partially evaded defenses — adapting response`);
+        existing.immunity = Math.min(100, existing.immunity + Math.floor(Math.random() * 5 + 1));
+        autoDeployCountermeasure(tpl.category);
+      }
+    } else {
+      addLog('detect', `${tpl.icon} ${tpl.name} detected — no active countermeasure, deploying...`);
+      existing.immunity = Math.min(100, existing.immunity + Math.floor(Math.random() * 3 + 1));
+      autoDeployCountermeasure(tpl.category);
+    }
+    updatePathogenStatus(existing);
+  } else {
+    const p = { id: nextId++, template: tpl, strain: 1, immunity: 0, encounters: 1, status: 'vulnerable', mutations: 0 };
+    state.pathogens.push(p);
+    addLog('detect', `New pathogen detected: ${tpl.icon} ${tpl.name} — initiating immune response`);
+    spawnCell('pathogen', tpl.icon);
+    autoDeployCountermeasure(tpl.category);
+    // Start building immunity
+    setTimeout(() => {
+      if (p.immunity < 20) {
+        p.immunity = Math.min(100, p.immunity + Math.floor(Math.random() * 15 + 10));
+        p.status = p.immunity >= 80 ? 'immune' : p.immunity >= 40 ? 'partial' : 'learning';
+        addLog('evolve', `Developed initial antibodies for ${tpl.icon} ${tpl.name} — immunity ${p.immunity}%`);
+        render();
+      }
+    }, 1500);
+  }
+
+  recordTimeline();
+  render();
+}
+
+function updatePathogenStatus(p) {
+  if (p.immunity >= 80) p.status = 'immune';
+  else if (p.immunity >= 40) p.status = 'partial';
+  else if (p.immunity >= 10) p.status = 'learning';
+  else p.status = 'vulnerable';
+}
+
+function autoDeployCountermeasure(category) {
+  const existing = state.countermeasures.find(c => c.template.targets.includes(category) && c.active);
+  if (existing) { existing.effectiveness = Math.min(100, existing.effectiveness + 2); return; }
+
+  const candidates = COUNTERMEASURE_TEMPLATES.filter(t => t.targets.includes(category));
+  if (!candidates.length) return;
+  const tpl = candidates[Math.floor(Math.random() * candidates.length)];
+  
+  // Check if already deployed
+  const alreadyDeployed = state.countermeasures.find(c => c.template.name === tpl.name);
+  if (alreadyDeployed) { alreadyDeployed.active = true; alreadyDeployed.effectiveness = Math.min(100, alreadyDeployed.effectiveness + 5); return; }
+
+  state.countermeasures.push({ template: tpl, effectiveness: Math.floor(Math.random() * 30 + 40), deployedAt: new Date(), active: true });
+  addLog('deploy', `Auto-deployed ${tpl.icon} ${tpl.name} countermeasure`);
+}
+
+function mutateThreat() {
+  if (!state.pathogens.length) { addLog('alert', 'No pathogens to mutate — inject one first'); return; }
+  const p = state.pathogens[Math.floor(Math.random() * state.pathogens.length)];
+  p.mutations++;
+  p.strain++;
+  const drop = Math.floor(Math.random() * 25 + 10);
+  p.immunity = Math.max(0, p.immunity - drop);
+  state.stats.evolved++;
+  updatePathogenStatus(p);
+  addLog('evolve', `${p.template.icon} ${p.template.name} mutated to strain #${p.strain} — immunity dropped by ${drop}%`);
+  spawnCell('mutation', p.template.icon);
+  render();
+}
+
+function startEpidemic() {
+  addLog('alert', '🌊 Coordinated epidemic wave incoming!');
+  let delay = 0;
+  const count = Math.floor(Math.random() * 6 + 5);
+  for (let i = 0; i < count; i++) {
+    setTimeout(() => {
+      injectPathogen();
+      if (Math.random() < 0.3 && state.pathogens.length > 0) mutateThreat();
+    }, delay);
+    delay += Math.floor(Math.random() * 600 + 200);
+  }
+}
+
+function toggleAutopilot() {
+  state.autopilot = !state.autopilot;
+  document.getElementById('autopilotBtn').textContent = `🤖 Autopilot: ${state.autopilot ? 'ON' : 'OFF'}`;
+  document.getElementById('autopilotBtn').classList.toggle('active', state.autopilot);
+  if (state.autopilot) {
+    addLog('deploy', 'Autopilot engaged — autonomous threat simulation active');
+    runAutopilot();
+  } else {
+    addLog('detect', 'Autopilot disengaged');
+    clearTimeout(state.autopilotTimer);
+  }
+}
+
+function runAutopilot() {
+  if (!state.autopilot) return;
+  const r = Math.random();
+  if (r < 0.5) injectPathogen();
+  else if (r < 0.7) mutateThreat();
+  else if (r < 0.85) startEpidemic();
+  // else: quiet period
+  state.autopilotTimer = setTimeout(runAutopilot, Math.floor(Math.random() * 2000 + 1000));
+}
+
+function resetSystem() {
+  state.pathogens = []; state.countermeasures = []; state.log = []; state.cells = [];
+  state.stats = { totalAttacks: 0, blocked: 0, evolved: 0, immunityLevel: 0 };
+  state.timelineData = [];
+  if (state.autopilot) toggleAutopilot();
+  nextId = 1;
+  addLog('detect', 'Immune system reset — all memory cleared');
+  render();
+}
+
+function recordTimeline() {
+  const immunity = calcImmunity();
+  state.timelineData.push({ t: Date.now(), attacks: state.stats.totalAttacks, blocked: state.stats.blocked, immunity });
+  if (state.timelineData.length > 100) state.timelineData.shift();
+  drawTimeline();
+}
+
+function calcImmunity() {
+  if (!state.pathogens.length) return 0;
+  const sum = state.pathogens.reduce((a, p) => a + p.immunity, 0);
+  return Math.round(sum / state.pathogens.length);
+}
+
+// --- Rendering ---
+function render() {
+  const immunity = calcImmunity();
+  state.stats.immunityLevel = immunity;
+
+  // Gauge
+  const maxDash = 251.33;
+  document.getElementById('gaugeArc').setAttribute('stroke-dasharray', `${maxDash * immunity / 100} ${maxDash}`);
+  document.getElementById('gaugeText').textContent = immunity + '%';
+  const labels = ['Vulnerable', 'Building Defenses', 'Partial Immunity', 'Strong Immunity', 'Fully Immune'];
+  document.getElementById('gaugeLabel').textContent = labels[Math.min(4, Math.floor(immunity / 20))];
+
+  // Stats
+  const blockRate = state.stats.totalAttacks ? Math.round(state.stats.blocked / state.stats.totalAttacks * 100) : 0;
+  document.getElementById('statsRow').innerHTML = [
+    { val: state.stats.totalAttacks, lbl: 'Total Attacks' },
+    { val: state.stats.blocked, lbl: 'Blocked' },
+    { val: blockRate + '%', lbl: 'Block Rate' },
+    { val: state.pathogens.length, lbl: 'Known Pathogens' },
+    { val: state.countermeasures.filter(c => c.active).length, lbl: 'Active Defenses' },
+    { val: state.stats.evolved, lbl: 'Mutations' },
+  ].map(s => `<div class="stat-card"><div class="val">${s.val}</div><div class="lbl">${s.lbl}</div></div>`).join('');
+
+  // Pathogens
+  const pl = document.getElementById('pathogenList');
+  if (!state.pathogens.length) {
+    pl.innerHTML = '<div style="color:var(--muted); text-align:center; padding:2rem;">No pathogens detected yet. Inject one to begin.</div>';
+  } else {
+    pl.innerHTML = state.pathogens.map(p => {
+      const badge = { immune: 'badge-immune', partial: 'badge-partial', vulnerable: 'badge-vulnerable', learning: 'badge-learning' }[p.status] || 'badge-vulnerable';
+      return `<div class="pathogen">
+        <span class="pathogen-icon">${p.template.icon}</span>
+        <div class="pathogen-info">
+          <div class="pathogen-name">${sanitize(p.template.name)} <span style="color:var(--muted); font-weight:400; font-size:.8rem;">strain #${p.strain}</span></div>
+          <div class="pathogen-desc">${sanitize(p.template.desc)} · ${p.encounters} encounters · ${p.mutations} mutations</div>
+        </div>
+        <span class="pathogen-badge ${badge}">${p.status} ${p.immunity}%</span>
+      </div>`;
+    }).join('');
+  }
+
+  // Countermeasures
+  const cg = document.getElementById('cmGrid');
+  if (!state.countermeasures.length) {
+    cg.innerHTML = '<div style="color:var(--muted); padding:1rem;">No countermeasures deployed yet.</div>';
+  } else {
+    cg.innerHTML = state.countermeasures.map(c => {
+      const col = c.effectiveness >= 70 ? 'var(--green)' : c.effectiveness >= 40 ? 'var(--yellow)' : 'var(--red)';
+      return `<div class="cm-card ${c.active ? 'active-cm' : ''}">
+        <div class="cm-name">${c.template.icon} ${sanitize(c.template.name)}</div>
+        <div class="cm-eff">Effectiveness: ${c.effectiveness}% · ${c.active ? '✅ Active' : '⏸️ Standby'}</div>
+        <div class="cm-bar"><div class="cm-bar-fill" style="width:${c.effectiveness}%;background:${col};"></div></div>
+      </div>`;
+    }).join('');
+  }
+}
+
+function renderLog() {
+  const el = document.getElementById('antibodyLog');
+  if (!state.log.length) {
+    el.innerHTML = '<div style="color:var(--muted); text-align:center; padding:2rem;">Awaiting immune activity…</div>';
+    return;
+  }
+  el.innerHTML = state.log.slice(0, 50).map(l =>
+    `<div class="log-entry ${l.type}"><span class="log-time">${l.ts}</span>${sanitize(l.msg)}</div>`
+  ).join('');
+}
+
+// --- Cell Animation ---
+function spawnCell(type, icon) {
+  const canvas = document.getElementById('cellCanvas');
+  const rect = canvas.getBoundingClientRect();
+  state.cells.push({
+    type, icon,
+    x: Math.random() * (rect.width - 20) + 10,
+    y: Math.random() * (rect.height - 20) + 10,
+    vx: (Math.random() - 0.5) * 2,
+    vy: (Math.random() - 0.5) * 2,
+    life: 1,
+    decay: 0.002 + Math.random() * 0.003,
+    size: type === 'antibody' ? 14 : type === 'mutation' ? 16 : 12,
+  });
+}
+
+function animateCells() {
+  const canvas = document.getElementById('cellCanvas');
+  const ctx = canvas.getContext('2d');
+  canvas.width = canvas.clientWidth * (window.devicePixelRatio || 1);
+  canvas.height = canvas.clientHeight * (window.devicePixelRatio || 1);
+  ctx.scale(window.devicePixelRatio || 1, window.devicePixelRatio || 1);
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  ctx.clearRect(0, 0, w, h);
+
+  state.cells = state.cells.filter(c => c.life > 0);
+  for (const c of state.cells) {
+    c.x += c.vx; c.y += c.vy;
+    if (c.x < 5 || c.x > w - 5) c.vx *= -1;
+    if (c.y < 5 || c.y > h - 5) c.vy *= -1;
+    c.life -= c.decay;
+    ctx.globalAlpha = Math.max(0, c.life);
+    ctx.font = `${c.size}px sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(c.icon, c.x, c.y);
+    // Draw glow for antibodies
+    if (c.type === 'antibody') {
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, c.size, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(63, 185, 80, ${c.life * 0.3})`;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+  }
+  ctx.globalAlpha = 1;
+  requestAnimationFrame(animateCells);
+}
+
+// --- Timeline ---
+function drawTimeline() {
+  const canvas = document.getElementById('timelineCanvas');
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = canvas.clientWidth * dpr;
+  canvas.height = canvas.clientHeight * dpr;
+  ctx.scale(dpr, dpr);
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  ctx.clearRect(0, 0, w, h);
+
+  const data = state.timelineData;
+  if (data.length < 2) {
+    ctx.fillStyle = '#8b949e'; ctx.font = '13px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('Timeline will appear as attacks occur…', w / 2, h / 2);
+    return;
+  }
+
+  const pad = { t: 20, b: 25, l: 40, r: 20 };
+  const cw = w - pad.l - pad.r, ch = h - pad.t - pad.b;
+
+  // Draw immunity line
+  ctx.beginPath();
+  ctx.strokeStyle = '#58a6ff'; ctx.lineWidth = 2;
+  for (let i = 0; i < data.length; i++) {
+    const x = pad.l + (i / (data.length - 1)) * cw;
+    const y = pad.t + ch - (data[i].immunity / 100) * ch;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Draw block rate line
+  ctx.beginPath();
+  ctx.strokeStyle = '#3fb950'; ctx.lineWidth = 2; ctx.setLineDash([4, 3]);
+  for (let i = 0; i < data.length; i++) {
+    const br = data[i].attacks ? (data[i].blocked / data[i].attacks * 100) : 0;
+    const x = pad.l + (i / (data.length - 1)) * cw;
+    const y = pad.t + ch - (br / 100) * ch;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Labels
+  ctx.fillStyle = '#8b949e'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+  ctx.fillText('100%', pad.l - 5, pad.t + 4);
+  ctx.fillText('0%', pad.l - 5, pad.t + ch + 4);
+
+  // Legend
+  ctx.textAlign = 'left'; ctx.font = '11px sans-serif';
+  ctx.fillStyle = '#58a6ff'; ctx.fillText('— Immunity', pad.l, h - 5);
+  ctx.fillStyle = '#3fb950'; ctx.fillText('--- Block Rate', pad.l + 80, h - 5);
+}
+
+// --- Export ---
+function exportReport() {
+  const immunity = calcImmunity();
+  const blockRate = state.stats.totalAttacks ? Math.round(state.stats.blocked / state.stats.totalAttacks * 100) : 0;
+  let report = `CAPTCHA Immune System Report\n${'='.repeat(40)}\nGenerated: ${new Date().toISOString()}\n\n`;
+  report += `System Immunity: ${immunity}%\nTotal Attacks: ${state.stats.totalAttacks}\nBlocked: ${state.stats.blocked} (${blockRate}%)\nMutations: ${state.stats.evolved}\nKnown Pathogens: ${state.pathogens.length}\nActive Defenses: ${state.countermeasures.filter(c=>c.active).length}\n\n`;
+  report += `PATHOGEN REGISTRY\n${'-'.repeat(30)}\n`;
+  state.pathogens.forEach(p => {
+    report += `${p.template.icon} ${p.template.name} | Strain #${p.strain} | Immunity: ${p.immunity}% | Status: ${p.status} | Encounters: ${p.encounters} | Mutations: ${p.mutations}\n`;
+  });
+  report += `\nCOUNTERMEASURES\n${'-'.repeat(30)}\n`;
+  state.countermeasures.forEach(c => {
+    report += `${c.template.icon} ${c.template.name} | Effectiveness: ${c.effectiveness}% | ${c.active ? 'Active' : 'Standby'}\n`;
+  });
+  report += `\nRECENT LOG\n${'-'.repeat(30)}\n`;
+  state.log.slice(0, 20).forEach(l => { report += `[${l.ts}] ${l.msg}\n`; });
+
+  const blob = new Blob([report], { type: 'text/plain' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = 'immune-system-report.txt'; a.click(); URL.revokeObjectURL(a.href);
+}
+
+// --- Init ---
+render();
+animateCells();
+</script>
+</body>
+</html>

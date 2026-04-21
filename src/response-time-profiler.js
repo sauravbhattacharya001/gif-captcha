@@ -239,15 +239,29 @@ function createResponseTimeProfiler(options) {
     sessionCount=Object.keys(sessions).length;
   }
 
+  /**
+   * Reservoir sampling for approximate median — O(1) memory instead of
+   * collecting all response times into an array (O(N) memory + O(N log N)
+   * sort).  Uses the same pattern as captcha-traffic-analyzer.js's Welford
+   * online stats.  Reservoir size 256 gives a tight approximation while
+   * keeping memory bounded regardless of total solve count.
+   */
+  var _RESERVOIR_CAP = 256;
+
   function getSummary() {
-    var ts=0,td=0,timeSum=0,at=[];var cls={human:0,bot:0,solver_farm:0,suspicious:0,uncertain:0,insufficient_data:0};
-    var sk=Object.keys(sessions);for(var i=0;i<sk.length;i++){var s=sessions[sk[i]];ts+=s.solves.length;for(var j=0;j<s.solves.length;j++){var t=s.solves[j].time;timeSum+=t;at.push(t);if(s.solves[j].solved)td++;}
+    var ts=0,td=0,timeSum=0;var cls={human:0,bot:0,solver_farm:0,suspicious:0,uncertain:0,insufficient_data:0};
+    // Reservoir sampling for approximate median — avoids O(N) array + O(N log N) sort
+    var reservoir=[];var seen=0;
+    var sk=Object.keys(sessions);for(var i=0;i<sk.length;i++){var s=sessions[sk[i]];ts+=s.solves.length;for(var j=0;j<s.solves.length;j++){var t=s.solves[j].time;timeSum+=t;if(s.solves[j].solved)td++;
+        // Reservoir sampling: uniform random sample of up to _RESERVOIR_CAP values
+        seen++;if(reservoir.length<_RESERVOIR_CAP){reservoir.push(t);}else{var ri=Math.floor(Math.random()*seen);if(ri<_RESERVOIR_CAP)reservoir[ri]=t;}}
       // Use cached classification when available (set by classifySession,
       // cleared to null by record). Avoids redundant O(solves) anomaly
       // detection for sessions whose data hasn't changed since last classify.
       var c=s.classification||classifySession(sk[i]);
       cls[c.classification]=(cls[c.classification]||0)+1;}
-    return{totalSessions:sk.length,totalSolves:ts,overallSolveRate:ts>0?_r(td/ts,3):0,meanResponseMs:at.length>0?_r(timeSum/at.length):0,medianResponseMs:at.length>0?_r(_median(at)):0,challengeTypes:Object.keys(typeProfiles).length,classifications:cls};
+    var approxMedian=0;if(reservoir.length>0){reservoir.sort(function(a,b){return a-b;});approxMedian=_medianSorted(reservoir);}
+    return{totalSessions:sk.length,totalSolves:ts,overallSolveRate:ts>0?_r(td/ts,3):0,meanResponseMs:ts>0?_r(timeSum/ts):0,medianResponseMs:_r(approxMedian),challengeTypes:Object.keys(typeProfiles).length,classifications:cls};
   }
 
   function reset() {

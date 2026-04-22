@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CAPTCHA Forensic Investigator - GIF CAPTCHA</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0a0e17;--surface:#111827;--surface2:#1a2332;--border:#2a3a4e;--text:#e2e8f0;--muted:#8892a4;--accent:#3b82f6;--accent2:#8b5cf6;--green:#10b981;--red:#ef4444;--yellow:#f59e0b;--orange:#f97316;--cyan:#06b6d4;--pink:#ec4899}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+.header{background:linear-gradient(135deg,#1a1040,#0a1628);border-bottom:1px solid var(--border);padding:20px 24px;display:flex;align-items:center;gap:16px}
+.header h1{font-size:1.4em;font-weight:700}.header h1 span{color:var(--accent2)}
+.header .badge{background:var(--accent2);color:#fff;padding:2px 10px;border-radius:12px;font-size:.7em;font-weight:600}
+.header .sub{color:var(--muted);font-size:.85em;margin-left:auto}
+.layout{display:grid;grid-template-columns:280px 1fr 320px;height:calc(100vh - 68px);overflow:hidden}
+.sidebar{background:var(--surface);border-right:1px solid var(--border);overflow-y:auto;padding:12px}
+.sidebar h3{font-size:.75em;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);padding:8px 8px 4px}
+.case-btn{display:flex;align-items:center;gap:8px;width:100%;padding:10px 12px;background:none;border:none;color:var(--text);cursor:pointer;border-radius:8px;font-size:.85em;text-align:left;transition:.15s}
+.case-btn:hover{background:var(--surface2)}.case-btn.active{background:var(--accent);color:#fff}
+.case-btn .icon{font-size:1.2em;width:28px;text-align:center}
+.case-btn .meta{color:var(--muted);font-size:.75em}.case-btn.active .meta{color:rgba(255,255,255,.7)}
+.main{overflow-y:auto;padding:20px}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px}
+.panel h2{font-size:1.1em;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.panel h2 .tag{font-size:.65em;padding:2px 8px;border-radius:6px;font-weight:600}
+.evidence-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
+.evidence-card{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px;cursor:pointer;transition:.2s}
+.evidence-card:hover{border-color:var(--accent);transform:translateY(-2px)}
+.evidence-card .ev-type{font-size:.7em;text-transform:uppercase;letter-spacing:.05em;color:var(--accent2);font-weight:600;margin-bottom:4px}
+.evidence-card .ev-title{font-size:.9em;font-weight:600;margin-bottom:6px}
+.evidence-card .ev-detail{font-size:.78em;color:var(--muted)}
+.right-panel{background:var(--surface);border-left:1px solid var(--border);overflow-y:auto;padding:16px}
+.right-panel h3{font-size:.85em;font-weight:600;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.fp-section{margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border)}
+.fp-row{display:flex;justify-content:space-between;align-items:center;padding:4px 0;font-size:.82em}
+.fp-row .label{color:var(--muted)}.fp-row .value{font-weight:600}
+.confidence-bar{height:6px;background:var(--surface2);border-radius:3px;overflow:hidden;margin-top:4px}
+.confidence-fill{height:100%;border-radius:3px;transition:.4s}
+.verdict-box{padding:16px;border-radius:10px;text-align:center;margin-bottom:12px}
+.verdict-box.bot{background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.3)}
+.verdict-box.human{background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.3)}
+.verdict-box.uncertain{background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3)}
+.verdict-box .vtype{font-size:.7em;text-transform:uppercase;letter-spacing:.1em;margin-bottom:4px}
+.verdict-box .vscore{font-size:2em;font-weight:800}
+.timeline{position:relative;padding-left:20px}
+.timeline::before{content:'';position:absolute;left:6px;top:0;bottom:0;width:2px;background:var(--border)}
+.tl-item{position:relative;padding:8px 0 8px 16px;font-size:.82em}
+.tl-item::before{content:'';position:absolute;left:-18px;top:14px;width:10px;height:10px;border-radius:50%;border:2px solid var(--accent);background:var(--bg)}
+.tl-item.critical::before{border-color:var(--red);background:var(--red)}
+.tl-item .tl-time{color:var(--muted);font-size:.85em}
+.tl-item .tl-event{font-weight:500;margin-top:2px}
+canvas{border-radius:8px;width:100%;background:var(--surface2)}
+.btn{padding:8px 16px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;font-size:.82em;transition:.15s}
+.btn:hover{border-color:var(--accent);background:rgba(59,130,246,.1)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.danger{background:var(--red);border-color:var(--red);color:#fff}
+.btn-row{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.tab-row{display:flex;gap:4px;margin-bottom:16px;border-bottom:1px solid var(--border);padding-bottom:0}
+.tab-btn{padding:8px 16px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:.82em;border-bottom:2px solid transparent;transition:.15s}
+.tab-btn:hover{color:var(--text)}.tab-btn.active{color:var(--accent);border-bottom-color:var(--accent)}
+.heatmap-grid{display:grid;gap:2px}
+.heatmap-cell{border-radius:2px;aspect-ratio:1;position:relative}
+.heatmap-cell:hover::after{content:attr(data-tip);position:absolute;bottom:110%;left:50%;transform:translateX(-50%);background:#000;color:#fff;padding:2px 6px;border-radius:4px;font-size:.7em;white-space:nowrap;z-index:10}
+.stat-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px}
+.stat-card{background:var(--surface2);border-radius:8px;padding:12px;text-align:center}
+.stat-card .sc-val{font-size:1.6em;font-weight:800}.stat-card .sc-label{font-size:.72em;color:var(--muted);margin-top:2px}
+.note-input{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);font-size:.85em;resize:vertical;min-height:60px}
+.note-input:focus{outline:none;border-color:var(--accent)}
+.tag-list{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.tag{padding:2px 8px;border-radius:4px;font-size:.72em;font-weight:600}
+.tag.high{background:rgba(239,68,68,.15);color:var(--red)}
+.tag.med{background:rgba(245,158,11,.15);color:var(--yellow)}
+.tag.low{background:rgba(16,185,129,.15);color:var(--green)}
+.tag.info{background:rgba(59,130,246,.15);color:var(--accent)}
+@media(max-width:1100px){.layout{grid-template-columns:1fr;}.sidebar,.right-panel{display:none}}
+</style>
+</head>
+<body>
+<div class="header">
+<h1>🔍 <span>Forensic Investigator</span></h1>
+<span class="badge">INTERACTIVE</span>
+<span class="sub">Bot Fingerprint Analysis & Investigation</span>
+</div>
+<div class="layout">
+<div class="sidebar" id="sidebar"></div>
+<div class="main" id="main"></div>
+<div class="right-panel" id="rightPanel"></div>
+</div>
+<script>
+const CASES=[
+{id:'c1',name:'Selenium Farm',icon:'🤖',status:'open',severity:'critical',suspect:'Automated Browser Farm',sessions:847,botScore:94,
+ fingerprint:{userAgent:'Chrome 120 (headless)',mouseEntropy:0.12,keystrokeCadence:'Uniform 45ms',canvasHash:'0xDEAD01',timezone:'UTC+0 (mismatch)',webGL:'SwiftShader',plugins:0,touchSupport:false,screenRes:'1920x1080',cookieAge:'<1min'},
+ evidence:[
+  {type:'behavioral',title:'Zero Mouse Jitter',detail:'Mouse movements follow perfectly straight lines with no micro-corrections',severity:'high'},
+  {type:'temporal',title:'Inhuman Response Time',detail:'Average 23ms between CAPTCHA display and first interaction',severity:'high'},
+  {type:'network',title:'Datacenter IP Range',detail:'Source IP 45.33.x.x belongs to Linode datacenter block',severity:'med'},
+  {type:'browser',title:'Missing WebGL Extensions',detail:'Only 4 WebGL extensions vs. typical 30+ for real Chrome',severity:'high'},
+  {type:'behavioral',title:'No Scroll Events',detail:'Zero scroll events across 847 sessions despite page requiring scroll',severity:'med'},
+  {type:'temporal',title:'Exact 5s Intervals',detail:'Sessions arrive at precise 5000ms intervals (±2ms)',severity:'high'}
+ ],
+ timeline:[
+  {time:'00:00.000',event:'TCP SYN from 45.33.x.x',critical:false},
+  {time:'00:00.023',event:'TLS handshake (JA3: bot signature)',critical:true},
+  {time:'00:00.145',event:'Page loaded, no mouse movement',critical:false},
+  {time:'00:00.168',event:'CAPTCHA clicked (23ms reaction!)',critical:true},
+  {time:'00:01.200',event:'Answer submitted - correct',critical:false},
+  {time:'00:01.205',event:'Session ended, next in exactly 5000ms',critical:true}
+ ],
+ notes:'Likely a commercial bot farm using headless Chrome. The JA3 fingerprint matches known Selenium patterns.'
+},
+{id:'c2',name:'API Replay Attack',icon:'🔄',status:'open',severity:'high',suspect:'Token Replay Bot',sessions:2103,botScore:87,
+ fingerprint:{userAgent:'Python-Requests/2.31',mouseEntropy:0,keystrokeCadence:'N/A (API only)',canvasHash:'N/A',timezone:'N/A',webGL:'N/A',plugins:'N/A',touchSupport:false,screenRes:'N/A',cookieAge:'N/A'},
+ evidence:[
+  {type:'network',title:'Direct API Calls',detail:'Bypasses frontend entirely, calling /api/verify directly',severity:'high'},
+  {type:'temporal',title:'Token Reuse',detail:'Same CAPTCHA tokens submitted multiple times within validity window',severity:'high'},
+  {type:'network',title:'Missing Headers',detail:'No Referer, no Accept-Language, bare minimum HTTP headers',severity:'med'},
+  {type:'behavioral',title:'Sequential Token IDs',detail:'Tokens requested in perfect sequential order suggesting enumeration',severity:'high'},
+  {type:'network',title:'Rate: 12 req/sec',detail:'Sustained 12 requests/second from single IP',severity:'med'}
+ ],
+ timeline:[
+  {time:'T+0s',event:'GET /api/captcha/new (token request)',critical:false},
+  {time:'T+0.1s',event:'Token received, no image loaded',critical:true},
+  {time:'T+0.3s',event:'POST /api/verify with guessed answer',critical:true},
+  {time:'T+0.4s',event:'Failed - retry with next guess',critical:false},
+  {time:'T+0.5s',event:'POST /api/verify attempt #2',critical:true},
+  {time:'T+2.1s',event:'Correct guess found (brute force)',critical:true}
+ ],
+ notes:'Classic API abuse. No browser involved. Recommend server-side token binding and rate limiting.'
+},
+{id:'c3',name:'Sophisticated Mimic',icon:'🎭',status:'investigating',severity:'medium',suspect:'Advanced Human-Mimicking Bot',sessions:156,botScore:52,
+ fingerprint:{userAgent:'Chrome 121 (real)',mouseEntropy:0.67,keystrokeCadence:'Variable 80-220ms',canvasHash:'0xA3F7B2',timezone:'UTC-5 (EST)',webGL:'NVIDIA GeForce RTX 3060',plugins:7,touchSupport:true,screenRes:'2560x1440',cookieAge:'14 days'},
+ evidence:[
+  {type:'behavioral',title:'Synthetic Mouse Curves',detail:'Bézier curves detected but with slightly too-smooth acceleration profiles',severity:'med'},
+  {type:'temporal',title:'Gaussian Response Distribution',detail:'Response times follow perfect Gaussian - real humans have fat tails',severity:'med'},
+  {type:'browser',title:'Valid Canvas Fingerprint',detail:'Canvas hash matches real GPU but exact duplicate across 156 sessions',severity:'low'},
+  {type:'behavioral',title:'No Rage Clicks',detail:'Zero error corrections or hesitation patterns across all sessions',severity:'low'},
+  {type:'network',title:'Residential IP',detail:'Comcast residential IP range - possibly proxied',severity:'low'},
+  {type:'temporal',title:'No Weekend Activity',detail:'Zero sessions on weekends, perfect 9-5 EST pattern',severity:'med'}
+ ],
+ timeline:[
+  {time:'00:00.000',event:'Page load (real browser)',critical:false},
+  {time:'00:00.800',event:'Mouse enters viewport (natural delay)',critical:false},
+  {time:'00:01.234',event:'Smooth Bézier curve to CAPTCHA area',critical:true},
+  {time:'00:02.100',event:'First interaction - natural timing',critical:false},
+  {time:'00:04.567',event:'Answer submitted - correct',critical:false},
+  {time:'00:04.600',event:'Mouse exits with identical curve shape',critical:true}
+ ],
+ notes:'This one is tricky. Uses real browser with GPU. Mouse movements look human but are mathematically too perfect. Needs more data.'
+},
+{id:'c4',name:'CAPTCHA Farm',icon:'👥',status:'closed',severity:'high',suspect:'Human CAPTCHA-Solving Service',sessions:5230,botScore:31,
+ fingerprint:{userAgent:'Various (20+ unique)',mouseEntropy:0.89,keystrokeCadence:'Varied 50-400ms',canvasHash:'Various',timezone:'UTC+5:30 (IST cluster)',webGL:'Various',plugins:'Varies',touchSupport:'Mixed',screenRes:'Various',cookieAge:'Various'},
+ evidence:[
+  {type:'network',title:'Geographic Clustering',detail:'85% of solving IPs from India/Bangladesh despite account claiming US location',severity:'high'},
+  {type:'temporal',title:'Timezone Mismatch',detail:'Account timezone UTC-8 but activity peaks at IST business hours',severity:'high'},
+  {type:'behavioral',title:'Human-Like Behavior',detail:'Mouse movements and keystrokes are genuinely human - multiple distinct patterns',severity:'info'},
+  {type:'network',title:'WebSocket Relay',detail:'Detected WebSocket connection to known CAPTCHA farm relay server',severity:'high'},
+  {type:'temporal',title:'Solve Time Distribution',detail:'Bimodal: fast cluster (farm workers) and slow cluster (relay delay)',severity:'med'}
+ ],
+ timeline:[
+  {time:'T+0s',event:'CAPTCHA requested from US IP',critical:false},
+  {time:'T+0.5s',event:'Image forwarded via WebSocket relay',critical:true},
+  {time:'T+3.2s',event:'Solution received from IST IP',critical:true},
+  {time:'T+3.8s',event:'Answer submitted from original US IP',critical:false},
+  {time:'T+4.0s',event:'Correct - genuine human solved it',critical:true}
+ ],
+ notes:'Confirmed human CAPTCHA farm. The solvers are real humans in South Asia. Technical CAPTCHA alone cannot stop this - need economic deterrence.'
+},
+{id:'c5',name:'Browser Extension Bot',icon:'🧩',status:'open',severity:'medium',suspect:'Malicious Browser Extension',sessions:312,botScore:71,
+ fingerprint:{userAgent:'Chrome 121 (real)',mouseEntropy:0.45,keystrokeCadence:'Injected events',canvasHash:'0xB4C8D1',timezone:'UTC-8 (PST)',webGL:'Intel UHD 630',plugins:12,touchSupport:false,screenRes:'1920x1080',cookieAge:'30+ days'},
+ evidence:[
+  {type:'browser',title:'Elevated Extension Count',detail:'12 extensions including suspicious "CAPTCHA Helper Pro"',severity:'high'},
+  {type:'behavioral',title:'Dispatched Events',detail:'MouseEvents have isTrusted=false, created via dispatchEvent()',severity:'high'},
+  {type:'temporal',title:'Extension Load Delay',detail:'Consistent 200ms delay after page load before any interaction (extension init)',severity:'med'},
+  {type:'browser',title:'DOM Mutation',detail:'Extra <div> injected by extension before CAPTCHA interaction',severity:'med'}
+ ],
+ timeline:[
+  {time:'00:00.000',event:'Page load in real Chrome browser',critical:false},
+  {time:'00:00.200',event:'Extension injects helper script',critical:true},
+  {time:'00:00.400',event:'DOM mutation: hidden overlay added',critical:true},
+  {time:'00:01.100',event:'Synthetic click event (isTrusted=false)',critical:true},
+  {time:'00:02.500',event:'CAPTCHA solved via OCR in extension',critical:true}
+ ],
+ notes:'User may not even know their extension is solving CAPTCHAs. The extension likely monetizes by selling solving capacity.'
+}
+];
+
+let activeCase=CASES[0],activeTab='evidence';
+
+function renderSidebar(){
+ const sb=document.getElementById('sidebar');
+ const byStatus={open:[],investigating:[],closed:[]};
+ CASES.forEach(c=>(byStatus[c.status]||byStatus.open).push(c));
+ let h='';
+ for(const[status,cases] of Object.entries(byStatus)){
+  if(!cases.length)continue;
+  h+=`<h3>${status==='open'?'🔴 Open Cases':status==='investigating'?'🟡 Investigating':'🟢 Closed'}</h3>`;
+  cases.forEach(c=>{
+   h+=`<button class="case-btn ${c.id===activeCase.id?'active':''}" onclick="selectCase('${c.id}')">
+    <span class="icon">${c.icon}</span>
+    <div><div>${c.name}</div><div class="meta">${c.sessions} sessions · Score: ${c.botScore}%</div></div>
+   </button>`;
+  });
+ }
+ h+=`<h3>🛠️ Tools</h3>
+ <button class="case-btn" onclick="showTool('compare')"><span class="icon">⚖️</span><div>Compare Cases</div></button>
+ <button class="case-btn" onclick="showTool('heatmap')"><span class="icon">🗺️</span><div>Activity Heatmap</div></button>
+ <button class="case-btn" onclick="showTool('export')"><span class="icon">📤</span><div>Export Report</div></button>`;
+ sb.innerHTML=h;
+}
+
+function selectCase(id){
+ activeCase=CASES.find(c=>c.id===id);activeTab='evidence';
+ renderSidebar();renderMain();renderRight();
+}
+
+function setTab(t){activeTab=t;renderMain();}
+
+function renderMain(){
+ const c=activeCase;
+ let h=`<div class="panel">
+  <h2>${c.icon} ${c.name} <span class="tag" style="background:${c.severity==='critical'?'rgba(239,68,68,.2);color:var(--red)':c.severity==='high'?'rgba(249,115,22,.2);color:var(--orange)':'rgba(245,158,11,.2);color:var(--yellow)'}">${c.severity.toUpperCase()}</span></h2>
+  <div class="stat-cards">
+   <div class="stat-card"><div class="sc-val" style="color:${c.botScore>75?'var(--red)':c.botScore>50?'var(--yellow)':'var(--green)'}">${c.botScore}%</div><div class="sc-label">Bot Probability</div></div>
+   <div class="stat-card"><div class="sc-val">${c.sessions.toLocaleString()}</div><div class="sc-label">Sessions Analyzed</div></div>
+   <div class="stat-card"><div class="sc-val">${c.evidence.length}</div><div class="sc-label">Evidence Collected</div></div>
+  </div>
+  <div class="tab-row">
+   <button class="tab-btn ${activeTab==='evidence'?'active':''}" onclick="setTab('evidence')">Evidence</button>
+   <button class="tab-btn ${activeTab==='timeline'?'active':''}" onclick="setTab('timeline')">Timeline</button>
+   <button class="tab-btn ${activeTab==='behavior'?'active':''}" onclick="setTab('behavior')">Behavior Map</button>
+   <button class="tab-btn ${activeTab==='network'?'active':''}" onclick="setTab('network')">Network Graph</button>
+   <button class="tab-btn ${activeTab==='notes'?'active':''}" onclick="setTab('notes')">Investigator Notes</button>
+  </div>`;
+ if(activeTab==='evidence'){
+  h+=`<div class="evidence-grid">`;
+  c.evidence.forEach((e,i)=>{
+   h+=`<div class="evidence-card" onclick="highlightEvidence(${i})">
+    <div class="ev-type">${e.type}</div>
+    <div class="ev-title">${e.title}</div>
+    <div class="ev-detail">${e.detail}</div>
+    <div class="tag-list"><span class="tag ${e.severity}">${e.severity==='info'?'ℹ️ Info':e.severity==='high'?'🔴 High':e.severity==='med'?'🟡 Medium':'🟢 Low'}</span></div>
+   </div>`;
+  });
+  h+=`</div>`;
+ }else if(activeTab==='timeline'){
+  h+=`<div class="timeline">`;
+  c.timeline.forEach(t=>{
+   h+=`<div class="tl-item ${t.critical?'critical':''}"><div class="tl-time">${t.time}</div><div class="tl-event">${t.event}</div></div>`;
+  });
+  h+=`</div>`;
+ }else if(activeTab==='behavior'){
+  h+=`<canvas id="behaviorCanvas" width="700" height="400"></canvas>`;
+ }else if(activeTab==='network'){
+  h+=`<canvas id="networkCanvas" width="700" height="400"></canvas>`;
+ }else if(activeTab==='notes'){
+  h+=`<textarea class="note-input" rows="6" id="caseNotes">${c.notes||''}</textarea>
+  <div class="btn-row"><button class="btn primary" onclick="saveNotes()">💾 Save Notes</button>
+  <button class="btn" onclick="addTimestamp()">🕐 Add Timestamp</button></div>`;
+ }
+ h+=`</div>`;
+ // Recommendations panel
+ h+=`<div class="panel"><h2>🧠 Auto-Analysis Recommendations</h2>`;
+ const recs=generateRecommendations(c);
+ recs.forEach(r=>{
+  h+=`<div style="padding:8px 0;border-bottom:1px solid var(--border);font-size:.85em">
+   <span style="color:${r.priority==='urgent'?'var(--red)':r.priority==='high'?'var(--orange)':'var(--yellow)'};font-weight:600">${r.priority==='urgent'?'🚨':'⚡'} ${r.priority.toUpperCase()}</span>
+   <span style="margin-left:8px">${r.text}</span></div>`;
+ });
+ h+=`<div class="btn-row">
+  <button class="btn primary" onclick="runDeepScan()">🔬 Run Deep Scan</button>
+  <button class="btn" onclick="crossReference()">🔗 Cross-Reference Cases</button>
+  <button class="btn danger" onclick="flagAccount()">🚩 Flag Account</button>
+ </div></div>`;
+ document.getElementById('main').innerHTML=h;
+ if(activeTab==='behavior')drawBehaviorMap();
+ if(activeTab==='network')drawNetworkGraph();
+}
+
+function generateRecommendations(c){
+ const recs=[];
+ if(c.botScore>80)recs.push({priority:'urgent',text:`Bot score ${c.botScore}% exceeds threshold. Recommend immediate blocking with fingerprint rule.`});
+ if(c.fingerprint.mouseEntropy<0.3)recs.push({priority:'high',text:`Mouse entropy ${c.fingerprint.mouseEntropy} is suspiciously low. Deploy mouse dynamics challenge.`});
+ if(c.fingerprint.plugins===0||c.fingerprint.plugins==='N/A')recs.push({priority:'high',text:'Zero/missing browser plugins detected. Add plugin enumeration to fingerprint.'});
+ const highEv=c.evidence.filter(e=>e.severity==='high').length;
+ if(highEv>=3)recs.push({priority:'urgent',text:`${highEv} high-severity evidence items. Sufficient for automated block rule.`});
+ if(c.evidence.some(e=>e.type==='network'))recs.push({priority:'high',text:'Network anomalies detected. Cross-reference IP ranges with known bot infrastructure DBs.'});
+ if(c.evidence.some(e=>e.title.includes('Timezone')||e.title.includes('Geographic')))recs.push({priority:'high',text:'Geographic/timezone mismatch detected. Add geo-consistency validation layer.'});
+ if(c.botScore>40&&c.botScore<70)recs.push({priority:'medium',text:'Inconclusive bot score. Deploy progressive challenge escalation to gather more signals.'});
+ recs.push({priority:'medium',text:`Create blocking rule: fingerprint hash → ${c.fingerprint.canvasHash||'N/A'}, UA pattern → ${c.fingerprint.userAgent.substring(0,30)}`});
+ return recs;
+}
+
+function drawBehaviorMap(){
+ const cv=document.getElementById('behaviorCanvas');if(!cv)return;
+ const ctx=cv.getContext('2d');const W=cv.width,H=cv.height;
+ ctx.fillStyle='#111827';ctx.fillRect(0,0,W,H);
+ // Draw mouse movement heatmap simulation
+ ctx.font='12px system-ui';ctx.fillStyle='#8892a4';ctx.fillText('Mouse Movement Pattern Analysis',20,25);
+ const ent=activeCase.fingerprint.mouseEntropy;
+ // Generate paths based on entropy
+ for(let p=0;p<8;p++){
+  ctx.beginPath();ctx.strokeStyle=`hsla(${220+p*15},70%,60%,0.4)`;ctx.lineWidth=2;
+  let x=50+Math.random()*100,y=80+Math.random()*50;
+  ctx.moveTo(x,y);
+  for(let i=0;i<60;i++){
+   const jitter=ent*80;
+   x+=3+Math.random()*4;
+   y+=Math.sin(i*0.1+p)*jitter+(Math.random()-0.5)*jitter;
+   y=Math.max(60,Math.min(H-40,y));
+   if(x>W-50)break;
+   ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+ }
+ // Entropy gauge
+ const gx=W-160,gy=60;
+ ctx.fillStyle='#1a2332';ctx.fillRect(gx,gy,140,120);
+ ctx.strokeStyle='#2a3a4e';ctx.strokeRect(gx,gy,140,120);
+ ctx.fillStyle='#e2e8f0';ctx.font='bold 11px system-ui';ctx.fillText('Mouse Entropy',gx+20,gy+20);
+ ctx.font='bold 32px system-ui';
+ ctx.fillStyle=ent<0.3?'#ef4444':ent<0.6?'#f59e0b':'#10b981';
+ ctx.fillText(ent.toFixed(2),gx+30,gy+65);
+ ctx.font='11px system-ui';ctx.fillStyle='#8892a4';
+ ctx.fillText(ent<0.3?'🤖 Robotic':ent<0.6?'🤔 Suspicious':'👤 Human-like',gx+20,gy+90);
+ // Click pattern
+ ctx.fillStyle='#e2e8f0';ctx.font='12px system-ui';ctx.fillText('Click Distribution',20,H-120);
+ for(let i=0;i<20;i++){
+  const cx=40+i*32,cy=H-60,r=3+Math.random()*(ent>0.5?12:4);
+  ctx.beginPath();ctx.arc(cx+(Math.random()-0.5)*ent*20,cy+(Math.random()-0.5)*ent*30,r,0,Math.PI*2);
+  ctx.fillStyle=`rgba(139,92,246,${0.3+Math.random()*0.4})`;ctx.fill();
+ }
+}
+
+function drawNetworkGraph(){
+ const cv=document.getElementById('networkCanvas');if(!cv)return;
+ const ctx=cv.getContext('2d');const W=cv.width,H=cv.height;
+ ctx.fillStyle='#111827';ctx.fillRect(0,0,W,H);
+ ctx.font='12px system-ui';ctx.fillStyle='#8892a4';ctx.fillText('Request Flow & Network Topology',20,25);
+ const nodes=[
+  {x:100,y:200,label:'Client',color:'#3b82f6',r:25},
+  {x:280,y:120,label:'CDN',color:'#10b981',r:20},
+  {x:280,y:280,label:'Proxy?',color:'#f59e0b',r:20},
+  {x:460,y:200,label:'Server',color:'#8b5cf6',r:25},
+  {x:460,y:80,label:'Verify API',color:'#06b6d4',r:18},
+  {x:600,y:200,label:'DB',color:'#ec4899',r:18}
+ ];
+ const edges=[[0,1],[0,2],[1,3],[2,3],[3,4],[3,5]];
+ // Animated edges
+ const t=Date.now()*0.001;
+ edges.forEach(([a,b])=>{
+  ctx.beginPath();ctx.strokeStyle='rgba(59,130,246,0.3)';ctx.lineWidth=2;
+  ctx.moveTo(nodes[a].x,nodes[a].y);ctx.lineTo(nodes[b].x,nodes[b].y);ctx.stroke();
+  // Packet dot
+  const prog=(t*0.5+a*0.3)%1;
+  const px=nodes[a].x+(nodes[b].x-nodes[a].x)*prog;
+  const py=nodes[a].y+(nodes[b].y-nodes[a].y)*prog;
+  ctx.beginPath();ctx.arc(px,py,3,0,Math.PI*2);ctx.fillStyle='#3b82f6';ctx.fill();
+ });
+ nodes.forEach(n=>{
+  ctx.beginPath();ctx.arc(n.x,n.y,n.r,0,Math.PI*2);
+  ctx.fillStyle=n.color+'33';ctx.fill();
+  ctx.strokeStyle=n.color;ctx.lineWidth=2;ctx.stroke();
+  ctx.fillStyle='#e2e8f0';ctx.font='bold 11px system-ui';ctx.textAlign='center';
+  ctx.fillText(n.label,n.x,n.y+4);
+ });
+ ctx.textAlign='left';
+ // Stats
+ const suspicious=activeCase.evidence.filter(e=>e.type==='network');
+ ctx.fillStyle='#e2e8f0';ctx.font='bold 11px system-ui';ctx.fillText('Network Findings:',20,H-80);
+ ctx.font='11px system-ui';ctx.fillStyle='#f59e0b';
+ suspicious.forEach((s,i)=>{ctx.fillText(`⚠ ${s.title}`,20,H-60+i*18);});
+}
+
+function renderRight(){
+ const c=activeCase;
+ let h=`<div class="verdict-box ${c.botScore>70?'bot':c.botScore<40?'human':'uncertain'}">
+  <div class="vtype">${c.botScore>70?'🤖 BOT DETECTED':c.botScore<40?'👤 LIKELY HUMAN':'🤔 UNCERTAIN'}</div>
+  <div class="vscore" style="color:${c.botScore>70?'var(--red)':c.botScore<40?'var(--green)':'var(--yellow)'}">${c.botScore}%</div>
+  <div style="font-size:.75em;color:var(--muted);margin-top:4px">Confidence Score</div>
+ </div>`;
+ h+=`<div class="fp-section"><h3>🔬 Fingerprint Profile</h3>`;
+ const fp=c.fingerprint;
+ for(const[k,v] of Object.entries(fp)){
+  const label=k.replace(/([A-Z])/g,' $1').replace(/^./,s=>s.toUpperCase());
+  const flagged=['0','N/A','false','SwiftShader','<1min','Uniform 45ms','Injected events'].some(f=>String(v).includes(f));
+  h+=`<div class="fp-row"><span class="label">${label}</span><span class="value" style="${flagged?'color:var(--red)':''}">${v}${flagged?' ⚠':''}</span></div>`;
+ }
+ h+=`</div>`;
+ // Confidence breakdown
+ h+=`<div class="fp-section"><h3>📊 Signal Weights</h3>`;
+ const signals=[
+  {name:'Mouse Dynamics',score:fp.mouseEntropy<0.3?90:fp.mouseEntropy<0.6?50:15},
+  {name:'Browser Integrity',score:fp.plugins===0||fp.plugins==='N/A'?85:fp.plugins<5?50:10},
+  {name:'Timing Analysis',score:c.evidence.some(e=>e.type==='temporal'&&e.severity==='high')?88:30},
+  {name:'Network Signals',score:c.evidence.some(e=>e.type==='network'&&e.severity==='high')?82:20},
+  {name:'Behavioral Pattern',score:c.evidence.filter(e=>e.type==='behavioral'&&e.severity==='high').length*30}
+ ];
+ signals.forEach(s=>{
+  const sc=Math.min(100,s.score);
+  h+=`<div style="margin-bottom:8px"><div class="fp-row"><span class="label">${s.name}</span><span class="value" style="color:${sc>70?'var(--red)':sc>40?'var(--yellow)':'var(--green)'}">${sc}%</span></div>
+  <div class="confidence-bar"><div class="confidence-fill" style="width:${sc}%;background:${sc>70?'var(--red)':sc>40?'var(--yellow)':'var(--green)'}"></div></div></div>`;
+ });
+ h+=`</div>`;
+ h+=`<div class="fp-section"><h3>🏷️ Suspect Profile</h3>
+  <div class="fp-row"><span class="label">Type</span><span class="value">${c.suspect}</span></div>
+  <div class="fp-row"><span class="label">Status</span><span class="value" style="text-transform:capitalize">${c.status}</span></div>
+  <div class="fp-row"><span class="label">Sessions</span><span class="value">${c.sessions.toLocaleString()}</span></div>
+ </div>`;
+ h+=`<div class="btn-row">
+  <button class="btn primary" style="flex:1" onclick="generateReport()">📄 Generate Report</button>
+  <button class="btn danger" onclick="blockFingerprint()">🚫 Block</button>
+ </div>`;
+ document.getElementById('rightPanel').innerHTML=h;
+}
+
+function highlightEvidence(i){
+ const cards=document.querySelectorAll('.evidence-card');
+ cards.forEach((c,j)=>{c.style.borderColor=j===i?'var(--accent2)':'var(--border)';c.style.boxShadow=j===i?'0 0 12px rgba(139,92,246,.3)':'none';});
+}
+
+function saveNotes(){
+ const n=document.getElementById('caseNotes');
+ if(n){activeCase.notes=n.value;showToast('Notes saved');}
+}
+function addTimestamp(){
+ const n=document.getElementById('caseNotes');
+ if(n){n.value+=`\n[${new Date().toISOString()}] `;n.focus();}
+}
+function runDeepScan(){showToast('🔬 Deep scan initiated... Analyzing '+activeCase.sessions+' sessions');}
+function crossReference(){showToast('🔗 Cross-referencing with '+CASES.length+' other cases...');}
+function flagAccount(){showToast('🚩 Account flagged for review');}
+function blockFingerprint(){showToast('🚫 Fingerprint blocking rule created');}
+function generateReport(){
+ const c=activeCase;
+ const report=`FORENSIC INVESTIGATION REPORT\n${'='.repeat(40)}\nCase: ${c.name}\nSuspect: ${c.suspect}\nBot Score: ${c.botScore}%\nSessions: ${c.sessions}\nSeverity: ${c.severity}\nStatus: ${c.status}\n\nFINGERPRINT:\n${Object.entries(c.fingerprint).map(([k,v])=>`  ${k}: ${v}`).join('\n')}\n\nEVIDENCE (${c.evidence.length} items):\n${c.evidence.map((e,i)=>`  ${i+1}. [${e.severity.toUpperCase()}] ${e.title}\n     ${e.detail}`).join('\n')}\n\nTIMELINE:\n${c.timeline.map(t=>`  ${t.time} - ${t.event}${t.critical?' ⚠️':''}`).join('\n')}\n\nNOTES:\n${c.notes}\n\nGenerated: ${new Date().toISOString()}`;
+ const blob=new Blob([report],{type:'text/plain'});
+ const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+ a.download=`forensic-report-${c.id}.txt`;a.click();
+ showToast('📄 Report downloaded');
+}
+
+function showTool(tool){
+ const main=document.getElementById('main');
+ if(tool==='compare'){
+  let h=`<div class="panel"><h2>⚖️ Case Comparison Matrix</h2>
+  <table style="width:100%;border-collapse:collapse;font-size:.82em">
+  <tr style="border-bottom:1px solid var(--border)"><th style="text-align:left;padding:8px">Metric</th>`;
+  CASES.forEach(c=>{h+=`<th style="padding:8px">${c.icon} ${c.name}</th>`;});
+  h+=`</tr>`;
+  const metrics=[
+   {name:'Bot Score',fn:c=>c.botScore+'%'},
+   {name:'Sessions',fn:c=>c.sessions.toLocaleString()},
+   {name:'Severity',fn:c=>c.severity},
+   {name:'Mouse Entropy',fn:c=>c.fingerprint.mouseEntropy},
+   {name:'Evidence Count',fn:c=>c.evidence.length},
+   {name:'High Severity',fn:c=>c.evidence.filter(e=>e.severity==='high').length},
+   {name:'Status',fn:c=>c.status}
+  ];
+  metrics.forEach(m=>{
+   h+=`<tr style="border-bottom:1px solid var(--border)"><td style="padding:8px;color:var(--muted)">${m.name}</td>`;
+   CASES.forEach(c=>{h+=`<td style="padding:8px;text-align:center">${m.fn(c)}</td>`;});
+   h+=`</tr>`;
+  });
+  h+=`</table></div>`;
+  main.innerHTML=h;
+ }else if(tool==='heatmap'){
+  let h=`<div class="panel"><h2>🗺️ 24-Hour Activity Heatmap</h2>
+  <canvas id="heatmapCanvas" width="700" height="300"></canvas></div>`;
+  main.innerHTML=h;
+  drawHeatmap();
+ }else if(tool==='export'){
+  let h=`<div class="panel"><h2>📤 Export All Cases</h2><p style="font-size:.85em;color:var(--muted);margin-bottom:12px">Download a comprehensive report of all investigated cases.</p>
+  <div class="btn-row">
+   <button class="btn primary" onclick="exportAll('json')">📋 JSON Export</button>
+   <button class="btn" onclick="exportAll('txt')">📄 Text Report</button>
+  </div></div>`;
+  main.innerHTML=h;
+ }
+}
+
+function drawHeatmap(){
+ const cv=document.getElementById('heatmapCanvas');if(!cv)return;
+ const ctx=cv.getContext('2d');const W=cv.width,H=cv.height;
+ ctx.fillStyle='#111827';ctx.fillRect(0,0,W,H);
+ const hours=24,days=7,dayNames=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+ const cellW=(W-60)/hours,cellH=(H-40)/days;
+ ctx.font='10px system-ui';ctx.fillStyle='#8892a4';ctx.textAlign='center';
+ for(let h=0;h<hours;h++)ctx.fillText(h+':00',60+h*cellW+cellW/2,20);
+ ctx.textAlign='right';
+ for(let d=0;d<days;d++)ctx.fillText(dayNames[d],50,42+d*cellH+cellH/2);
+ for(let d=0;d<days;d++){
+  for(let h=0;h<hours;h++){
+   const intensity=Math.random();
+   const r=Math.floor(intensity*239),g=Math.floor((1-intensity)*185),b=Math.floor((1-intensity)*129);
+   ctx.fillStyle=`rgba(${r},${g},${b},${0.3+intensity*0.7})`;
+   ctx.fillRect(60+h*cellW+1,28+d*cellH+1,cellW-2,cellH-2);
+  }
+ }
+}
+
+function exportAll(fmt){
+ if(fmt==='json'){
+  const blob=new Blob([JSON.stringify(CASES,null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='forensic-cases.json';a.click();
+ }else{
+  let txt='FORENSIC INVESTIGATION - ALL CASES\n'+'='.repeat(50)+'\n\n';
+  CASES.forEach(c=>{
+   txt+=`Case: ${c.name} (${c.status})\nBot Score: ${c.botScore}% | Sessions: ${c.sessions} | Severity: ${c.severity}\nSuspect: ${c.suspect}\nEvidence: ${c.evidence.length} items (${c.evidence.filter(e=>e.severity==='high').length} high)\n\n`;
+  });
+  const blob=new Blob([txt],{type:'text/plain'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='forensic-all-cases.txt';a.click();
+ }
+ showToast('📤 Export complete');
+}
+
+function showToast(msg){
+ const d=document.createElement('div');
+ d.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1a2332;border:1px solid #2a3a4e;color:#e2e8f0;padding:12px 24px;border-radius:10px;font-size:.85em;z-index:999;animation:fadeIn .3s';
+ d.textContent=msg;document.body.appendChild(d);
+ setTimeout(()=>d.remove(),2500);
+}
+
+renderSidebar();renderMain();renderRight();
+</script>
+</body>
+</html>

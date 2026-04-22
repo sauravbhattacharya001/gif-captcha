@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CAPTCHA A/B Test Dashboard — gif-captcha</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+.dashboard{max-width:1200px;margin:0 auto;padding:1.5rem}
+.controls{display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1.5rem;align-items:end}
+.control-group{display:flex;flex-direction:column;gap:.3rem}
+.control-group label{font-size:.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+.control-group select,.control-group input{background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.5rem .75rem;border-radius:6px;font-size:.9rem}
+.btn{padding:.55rem 1.2rem;border:none;border-radius:6px;font-weight:600;cursor:pointer;font-size:.9rem;transition:all .2s}
+.btn-primary{background:var(--accent);color:#fff}.btn-primary:hover{background:var(--accent-hover)}
+.btn-danger{background:var(--red);color:#fff}.btn-danger:hover{opacity:.85}
+.btn-success{background:var(--green);color:#fff}.btn-success:hover{opacity:.85}
+.btn-outline{background:transparent;border:1px solid var(--border);color:var(--text)}.btn-outline:hover{border-color:var(--accent)}
+.stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1rem;margin-bottom:1.5rem}
+.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1.2rem;text-align:center}
+.stat-card .value{font-size:1.8rem;font-weight:700;margin:.3rem 0}
+.stat-card .label{font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+.stat-card.winner{border-color:var(--green);box-shadow:0 0 20px rgba(63,185,80,.15)}
+.variants-grid{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-bottom:1.5rem}
+@media(max-width:768px){.variants-grid{grid-template-columns:1fr}}
+.variant-panel{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1.5rem}
+.variant-panel h3{display:flex;align-items:center;gap:.5rem;margin-bottom:1rem}
+.variant-badge{display:inline-block;padding:.15rem .6rem;border-radius:4px;font-size:.75rem;font-weight:600}
+.badge-a{background:var(--accent);color:#fff}
+.badge-b{background:var(--purple);color:#fff}
+.metric-row{display:flex;justify-content:space-between;align-items:center;padding:.6rem 0;border-bottom:1px solid var(--border)}
+.metric-row:last-child{border-bottom:none}
+.metric-name{color:var(--muted);font-size:.85rem}
+.metric-val{font-weight:600;font-size:.95rem}
+.bar-container{height:8px;background:var(--bg);border-radius:4px;margin-top:.4rem;overflow:hidden}
+.bar-fill{height:100%;border-radius:4px;transition:width .5s ease}
+.bar-a{background:var(--accent)}.bar-b{background:var(--purple)}
+canvas{width:100%;background:var(--surface);border:1px solid var(--border);border-radius:10px}
+.verdict-panel{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1.5rem;margin-bottom:1.5rem}
+.verdict-panel h3{margin-bottom:.8rem}
+.verdict-text{font-size:1rem;line-height:1.7}
+.verdict-tag{display:inline-block;padding:.2rem .7rem;border-radius:4px;font-size:.8rem;font-weight:600;margin-right:.5rem}
+.tag-significant{background:var(--green-bg);color:var(--green)}
+.tag-inconclusive{background:var(--yellow-bg);color:var(--yellow)}
+.tag-insufficient{background:var(--red-bg);color:var(--red)}
+.recommendations{margin-top:1rem}
+.rec-item{display:flex;align-items:flex-start;gap:.5rem;padding:.5rem 0;font-size:.9rem}
+.rec-icon{flex-shrink:0;margin-top:2px}
+.timeline-section{margin-bottom:1.5rem}
+.speed-control{display:flex;align-items:center;gap:.5rem}
+.speed-control input[type=range]{width:100px}
+.experiment-log{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1rem;max-height:200px;overflow-y:auto;font-size:.82rem;font-family:monospace}
+.log-entry{padding:.2rem 0;color:var(--muted)}
+.log-entry.important{color:var(--accent)}
+.log-entry.alert{color:var(--yellow)}
+.log-entry.winner-log{color:var(--green)}
+.presets{display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem}
+.preset-chip{padding:.35rem .8rem;border-radius:20px;font-size:.8rem;cursor:pointer;background:var(--surface);border:1px solid var(--border);color:var(--text);transition:all .2s}
+.preset-chip:hover,.preset-chip.active{border-color:var(--accent);color:var(--accent)}
+.export-btns{display:flex;gap:.5rem;margin-top:1rem}
+</style>
+</head>
+<body>
+<div class="header">
+<h1>🧪 CAPTCHA A/B Test Dashboard</h1>
+<p class="subtitle">Autonomous experiment runner with statistical significance testing & deployment recommendations</p>
+</div>
+
+<div class="dashboard">
+<h3 style="margin-bottom:.8rem">Experiment Presets</h3>
+<div class="presets" id="presets"></div>
+
+<div class="controls">
+<div class="control-group">
+<label>Variant A — CAPTCHA Type</label>
+<select id="typeA"><option value="gif-slide">GIF Slide</option><option value="gif-click">GIF Click</option><option value="gif-sequence">GIF Sequence</option><option value="text">Text CAPTCHA</option><option value="image-grid">Image Grid</option></select>
+</div>
+<div class="control-group">
+<label>Variant B — CAPTCHA Type</label>
+<select id="typeB"><option value="gif-click">GIF Click</option><option value="gif-slide">GIF Slide</option><option value="gif-sequence">GIF Sequence</option><option value="text">Text CAPTCHA</option><option value="image-grid">Image Grid</option></select>
+</div>
+<div class="control-group">
+<label>Traffic Split</label>
+<select id="split"><option value="50">50/50</option><option value="70">70/30</option><option value="80">80/20</option><option value="90">90/10</option></select>
+</div>
+<div class="control-group">
+<label>Confidence Level</label>
+<select id="confidence"><option value="0.95">95%</option><option value="0.99">99%</option><option value="0.90">90%</option></select>
+</div>
+<div class="control-group">
+<label>Sim Speed</label>
+<div class="speed-control"><input type="range" id="speed" min="1" max="10" value="5"><span id="speedLabel">5x</span></div>
+</div>
+<div class="control-group" style="justify-content:end">
+<div style="display:flex;gap:.5rem">
+<button class="btn btn-primary" id="startBtn" onclick="startExperiment()">▶ Start Experiment</button>
+<button class="btn btn-danger" id="stopBtn" onclick="stopExperiment()" disabled>⏹ Stop</button>
+<button class="btn btn-outline" onclick="resetExperiment()">↻ Reset</button>
+</div>
+</div>
+</div>
+
+<div class="stats-row" id="statsRow">
+<div class="stat-card"><div class="label">Total Visitors</div><div class="value" id="totalVisitors">0</div></div>
+<div class="stat-card"><div class="label">Experiment Duration</div><div class="value" id="duration">0:00</div></div>
+<div class="stat-card"><div class="label">P-Value</div><div class="value" id="pValue">—</div></div>
+<div class="stat-card"><div class="label">Status</div><div class="value" id="status">Idle</div></div>
+</div>
+
+<div class="variants-grid">
+<div class="variant-panel" id="panelA">
+<h3><span class="variant-badge badge-a">A</span> <span id="nameA">GIF Slide</span></h3>
+<div id="metricsA"></div>
+</div>
+<div class="variant-panel" id="panelB">
+<h3><span class="variant-badge badge-b">B</span> <span id="nameB">GIF Click</span></h3>
+<div id="metricsB"></div>
+</div>
+</div>
+
+<div class="timeline-section">
+<h3 style="margin-bottom:.8rem">📈 Conversion Rate Over Time</h3>
+<canvas id="chart" height="220"></canvas>
+</div>
+
+<div class="verdict-panel" id="verdictPanel">
+<h3>🤖 Autonomous Verdict</h3>
+<div id="verdictContent"><span style="color:var(--muted)">Start an experiment to receive autonomous analysis and deployment recommendations.</span></div>
+</div>
+
+<h3 style="margin-bottom:.8rem">📋 Experiment Log</h3>
+<div class="experiment-log" id="expLog"><div class="log-entry">Waiting for experiment to start...</div></div>
+
+<div class="export-btns">
+<button class="btn btn-outline" onclick="exportJSON()">📦 Export JSON</button>
+<button class="btn btn-outline" onclick="exportCSV()">📊 Export CSV</button>
+</div>
+</div>
+
+<footer class="footer"><p>gif-captcha &middot; A/B Test Dashboard &middot; Autonomous Experiment Runner</p></footer>
+
+<script src="shared.js"></script>
+<script>
+// === CAPTCHA behaviour profiles ===
+const PROFILES={
+'gif-slide':{solveRate:.82,botBlock:.91,avgTime:3.2,abandon:.08},
+'gif-click':{solveRate:.88,botBlock:.87,avgTime:2.1,abandon:.05},
+'gif-sequence':{solveRate:.75,botBlock:.95,avgTime:4.8,abandon:.14},
+'text':{solveRate:.72,botBlock:.65,avgTime:5.5,abandon:.18},
+'image-grid':{solveRate:.79,botBlock:.89,avgTime:4.0,abandon:.12}
+};
+
+const PRESETS=[
+{name:'GIF Slide vs Click',a:'gif-slide',b:'gif-click',split:'50',conf:'0.95'},
+{name:'GIF vs Text',a:'gif-sequence',b:'text',split:'50',conf:'0.95'},
+{name:'Sequence vs Grid',a:'gif-sequence',b:'image-grid',split:'50',conf:'0.95'},
+{name:'High Confidence',a:'gif-slide',b:'gif-click',split:'50',conf:'0.99'},
+{name:'Conservative (90/10)',a:'gif-slide',b:'gif-click',split:'90',conf:'0.95'}
+];
+
+let state=null,timer=null,chartData={a:[],b:[]},startTime=0,logLines=[];
+
+function initPresets(){
+const c=document.getElementById('presets');
+PRESETS.forEach((p,i)=>{
+const el=document.createElement('div');
+el.className='preset-chip';el.textContent=p.name;
+el.onclick=()=>{
+document.querySelectorAll('.preset-chip').forEach(e=>e.classList.remove('active'));
+el.classList.add('active');
+document.getElementById('typeA').value=p.a;
+document.getElementById('typeB').value=p.b;
+document.getElementById('split').value=p.split;
+document.getElementById('confidence').value=p.conf;
+};c.appendChild(el);
+});
+}
+
+function resetState(){
+const a=document.getElementById('typeA').value,b=document.getElementById('typeB').value;
+state={a:{type:a,visitors:0,solves:0,botBlocked:0,totalTime:0,abandons:0},
+b:{type:b,visitors:0,solves:0,botBlocked:0,totalTime:0,abandons:0},
+running:false,decided:false,winner:null,tick:0};
+chartData={a:[],b:[]};logLines=[];
+}
+
+function addLog(msg,cls=''){
+logLines.push({msg,cls,tick:state?state.tick:0});
+const log=document.getElementById('expLog');
+const el=document.createElement('div');el.className='log-entry '+(cls||'');
+el.textContent='['+new Date().toLocaleTimeString()+'] '+msg;
+log.appendChild(el);log.scrollTop=log.scrollHeight;
+}
+
+function simulateTick(){
+const splitPct=parseInt(document.getElementById('split').value)/100;
+const batchSize=Math.floor(5+Math.random()*15);
+for(let i=0;i<batchSize;i++){
+const isA=Math.random()<splitPct;
+const v=isA?state.a:state.b;
+const prof=PROFILES[v.type];
+v.visitors++;
+// Add noise
+const noise=()=>(Math.random()-.5)*.1;
+if(Math.random()<prof.abandon+noise()*prof.abandon){v.abandons++;continue;}
+if(Math.random()<prof.solveRate+noise()*prof.solveRate){v.solves++;}
+if(Math.random()<prof.botBlock+noise()*prof.botBlock){v.botBlocked++;}
+v.totalTime+=(prof.avgTime+noise()*prof.avgTime*2);
+}
+state.tick++;
+// Record chart data every 2 ticks
+if(state.tick%2===0){
+chartData.a.push(state.a.visitors>0?state.a.solves/state.a.visitors:0);
+chartData.b.push(state.b.visitors>0?state.b.solves/state.b.visitors:0);
+}
+// Check significance
+if(state.a.visitors>30&&state.b.visitors>30){
+const p=calcPValue();
+const conf=parseFloat(document.getElementById('confidence').value);
+if(!state.decided&&p<(1-conf)){
+state.decided=true;
+const rA=state.a.solves/state.a.visitors,rB=state.b.solves/state.b.visitors;
+state.winner=rA>rB?'A':'B';
+addLog(`🏆 Statistical significance reached! Variant ${state.winner} wins (p=${p.toFixed(4)})`,'winner-log');
+}
+}
+// Periodic log
+if(state.tick%10===0){
+addLog(`Tick ${state.tick}: A=${state.a.visitors} visitors (${(100*state.a.solves/Math.max(1,state.a.visitors)).toFixed(1)}%), B=${state.b.visitors} visitors (${(100*state.b.solves/Math.max(1,state.b.visitors)).toFixed(1)}%)`);
+}
+// Anomaly detection
+if(state.tick%15===0){
+const rA=state.a.visitors>0?state.a.abandons/state.a.visitors:0;
+const rB=state.b.visitors>0?state.b.abandons/state.b.visitors:0;
+if(rA>.15)addLog(`⚠ Variant A abandon rate high: ${(rA*100).toFixed(1)}%`,'alert');
+if(rB>.15)addLog(`⚠ Variant B abandon rate high: ${(rB*100).toFixed(1)}%`,'alert');
+}
+updateUI();
+}
+
+function calcPValue(){
+const nA=state.a.visitors,nB=state.b.visitors;
+if(nA<2||nB<2)return 1;
+const pA=state.a.solves/nA,pB=state.b.solves/nB;
+const p=(state.a.solves+state.b.solves)/(nA+nB);
+const se=Math.sqrt(p*(1-p)*(1/nA+1/nB));
+if(se===0)return 1;
+const z=Math.abs(pA-pB)/se;
+// Approximate 2-tailed p-value from z
+return 2*(1-normalCDF(z));
+}
+
+function normalCDF(x){
+const a1=0.254829592,a2=-0.284496736,a3=1.421413741,a4=-1.453152027,a5=1.061405429,p=0.3275911;
+const sign=x<0?-1:1;x=Math.abs(x)/Math.sqrt(2);
+const t=1/(1+p*x);
+const y=1-(((((a5*t+a4)*t)+a3)*t+a2)*t+a1)*t*Math.exp(-x*x);
+return 0.5*(1+sign*y);
+}
+
+function renderMetrics(v,containerId){
+const c=document.getElementById(containerId);
+const rate=v.visitors>0?(v.solves/v.visitors*100).toFixed(1):'0.0';
+const botRate=v.visitors>0?(v.botBlocked/v.visitors*100).toFixed(1):'0.0';
+const avgT=v.solves>0?(v.totalTime/v.solves).toFixed(1):'0.0';
+const abandRate=v.visitors>0?(v.abandons/v.visitors*100).toFixed(1):'0.0';
+c.innerHTML=`
+<div class="metric-row"><span class="metric-name">Visitors</span><span class="metric-val">${v.visitors.toLocaleString()}</span></div>
+<div class="metric-row"><span class="metric-name">Solve Rate</span><span class="metric-val" style="color:var(--green)">${rate}%</span></div>
+<div><div class="bar-container"><div class="bar-fill bar-${containerId==='metricsA'?'a':'b'}" style="width:${rate}%"></div></div></div>
+<div class="metric-row"><span class="metric-name">Bot Block Rate</span><span class="metric-val">${botRate}%</span></div>
+<div class="metric-row"><span class="metric-name">Avg Solve Time</span><span class="metric-val">${avgT}s</span></div>
+<div class="metric-row"><span class="metric-name">Abandon Rate</span><span class="metric-val" style="color:${parseFloat(abandRate)>12?'var(--red)':'var(--text)'}">${abandRate}%</span></div>`;
+}
+
+function drawChart(){
+const canvas=document.getElementById('chart');
+const ctx=canvas.getContext('2d');
+const W=canvas.width=canvas.offsetWidth;
+const H=canvas.height=220;
+ctx.clearRect(0,0,W,H);
+ctx.fillStyle='#161b22';ctx.fillRect(0,0,W,H);
+if(chartData.a.length<2)return;
+const pad={l:50,r:20,t:20,b:30};
+const cw=W-pad.l-pad.r,ch=H-pad.t-pad.b;
+// Grid
+ctx.strokeStyle='#30363d';ctx.lineWidth=1;
+for(let i=0;i<=4;i++){
+const y=pad.t+ch*i/4;
+ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(W-pad.r,y);ctx.stroke();
+ctx.fillStyle='#8b949e';ctx.font='11px sans-serif';ctx.textAlign='right';
+ctx.fillText((100-25*i).toFixed(0)+'%',pad.l-6,y+4);
+}
+// Draw lines
+function drawLine(data,color){
+ctx.beginPath();ctx.strokeStyle=color;ctx.lineWidth=2;
+data.forEach((v,i)=>{
+const x=pad.l+i/(data.length-1)*cw;
+const y=pad.t+ch*(1-v);
+i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+});ctx.stroke();
+}
+drawLine(chartData.a,'#58a6ff');
+drawLine(chartData.b,'#bc8cff');
+// Legend
+ctx.font='12px sans-serif';
+ctx.fillStyle='#58a6ff';ctx.fillRect(W-180,10,12,12);ctx.fillStyle='#e6edf3';ctx.fillText('Variant A',W-164,21);
+ctx.fillStyle='#bc8cff';ctx.fillRect(W-90,10,12,12);ctx.fillStyle='#e6edf3';ctx.fillText('Variant B',W-74,21);
+}
+
+function updateVerdict(){
+const vc=document.getElementById('verdictContent');
+const nA=state.a.visitors,nB=state.b.visitors;
+if(nA<30||nB<30){
+vc.innerHTML='<span class="verdict-tag tag-insufficient">Insufficient Data</span><span class="verdict-text">Need at least 30 visitors per variant for analysis. Currently: A='+nA+', B='+nB+'</span>';
+return;
+}
+const p=calcPValue();
+const conf=parseFloat(document.getElementById('confidence').value);
+const rA=state.a.solves/nA,rB=state.b.solves/nB;
+const lift=((Math.max(rA,rB)/Math.min(rA,rB)-1)*100).toFixed(1);
+const better=rA>rB?'A':'B';
+const betterType=rA>rB?state.a.type:state.b.type;
+const worseType=rA>rB?state.b.type:state.a.type;
+let tag,analysis,recs;
+if(p<(1-conf)){
+tag='<span class="verdict-tag tag-significant">Statistically Significant</span>';
+analysis=`<strong>Variant ${better} (${betterType})</strong> outperforms with a <strong>${lift}% lift</strong> in solve rate (p=${p.toFixed(4)}). Confidence threshold met.`;
+recs=`
+<div class="recommendations">
+<div class="rec-item"><span class="rec-icon">🚀</span> <strong>Deploy ${betterType}</strong> to 100% of traffic immediately.</div>
+<div class="rec-item"><span class="rec-icon">📉</span> Phase out ${worseType} — ${lift}% lower conversion observed.</div>
+<div class="rec-item"><span class="rec-icon">🔍</span> Monitor post-deployment metrics for 48h to confirm lift holds.</div>
+${parseFloat(lift)>20?'<div class="rec-item"><span class="rec-icon">⚡</span> Large effect size detected — investigate root UX differences for future optimization.</div>':''}
+</div>`;
+}else if(p<0.2){
+tag='<span class="verdict-tag tag-inconclusive">Trending — Not Yet Significant</span>';
+analysis=`Variant ${better} (${betterType}) is trending ahead with ${lift}% lift but p=${p.toFixed(4)} hasn't crossed the ${((1-conf)*100).toFixed(0)}% threshold. More data needed.`;
+recs=`<div class="recommendations">
+<div class="rec-item"><span class="rec-icon">⏳</span> Continue running — significance may be reached with ~${Math.ceil(nA*1.5)} more visitors.</div>
+<div class="rec-item"><span class="rec-icon">📊</span> Consider widening the traffic split to accelerate data collection.</div>
+</div>`;
+}else{
+tag='<span class="verdict-tag tag-inconclusive">No Clear Winner</span>';
+analysis=`Both variants are performing similarly (p=${p.toFixed(4)}). The ${lift}% difference is within noise range.`;
+recs=`<div class="recommendations">
+<div class="rec-item"><span class="rec-icon">🤷</span> No significant difference — either variant is acceptable.</div>
+<div class="rec-item"><span class="rec-icon">💡</span> Consider testing a more differentiated variant to find a meaningful lift.</div>
+<div class="rec-item"><span class="rec-icon">🛡️</span> Pick the variant with better bot-block rate as a tiebreaker.</div>
+</div>`;
+}
+vc.innerHTML=tag+'<div class="verdict-text" style="margin-top:.5rem">'+analysis+'</div>'+recs;
+// Highlight winner panel
+document.getElementById('panelA').classList.toggle('winner',state.decided&&state.winner==='A');
+document.getElementById('panelB').classList.toggle('winner',state.decided&&state.winner==='B');
+}
+
+function updateUI(){
+document.getElementById('nameA').textContent=state.a.type;
+document.getElementById('nameB').textContent=state.b.type;
+document.getElementById('totalVisitors').textContent=(state.a.visitors+state.b.visitors).toLocaleString();
+const elapsed=state.running?Math.floor((Date.now()-startTime)/1000):0;
+const m=Math.floor(elapsed/60),s=elapsed%60;
+document.getElementById('duration').textContent=m+':'+(s<10?'0':'')+s;
+const p=state.a.visitors>30&&state.b.visitors>30?calcPValue():null;
+document.getElementById('pValue').textContent=p!==null?p.toFixed(4):'—';
+document.getElementById('pValue').style.color=p!==null&&p<0.05?'var(--green)':'var(--text)';
+document.getElementById('status').textContent=state.decided?'✅ Winner Found':state.running?'🔄 Running':'Idle';
+document.getElementById('status').style.color=state.decided?'var(--green)':state.running?'var(--accent)':'var(--muted)';
+renderMetrics(state.a,'metricsA');
+renderMetrics(state.b,'metricsB');
+drawChart();
+updateVerdict();
+}
+
+function startExperiment(){
+if(state&&state.running)return;
+resetState();state.running=true;startTime=Date.now();
+document.getElementById('startBtn').disabled=true;
+document.getElementById('stopBtn').disabled=false;
+document.getElementById('expLog').innerHTML='';
+addLog('🚀 Experiment started: '+state.a.type+' vs '+state.b.type,'important');
+addLog('Traffic split: '+document.getElementById('split').value+'/'+(100-parseInt(document.getElementById('split').value)));
+addLog('Confidence level: '+(parseFloat(document.getElementById('confidence').value)*100)+'%');
+const run=()=>{
+if(!state.running)return;
+const spd=parseInt(document.getElementById('speed').value);
+for(let i=0;i<spd;i++)simulateTick();
+if(state.decided&&state.running){
+addLog('🤖 Autonomous recommendation: Deploy '+state.winner+' ('+PROFILES[state.winner==='A'?state.a.type:state.b.type].solveRate*100+'% baseline solve rate)','winner-log');
+// Auto-stop after winner found + 20 more ticks for confirmation
+if(state.tick>20)stopExperiment();
+}
+timer=requestAnimationFrame(run);
+};
+timer=requestAnimationFrame(run);
+}
+
+function stopExperiment(){
+state.running=false;
+document.getElementById('startBtn').disabled=false;
+document.getElementById('stopBtn').disabled=true;
+if(timer)cancelAnimationFrame(timer);
+addLog('⏹ Experiment stopped at tick '+state.tick,'important');
+updateUI();
+}
+
+function resetExperiment(){
+stopExperiment();
+resetState();
+document.getElementById('expLog').innerHTML='<div class="log-entry">Waiting for experiment to start...</div>';
+document.getElementById('verdictContent').innerHTML='<span style="color:var(--muted)">Start an experiment to receive autonomous analysis and deployment recommendations.</span>';
+document.getElementById('panelA').classList.remove('winner');
+document.getElementById('panelB').classList.remove('winner');
+updateUI();
+}
+
+function exportJSON(){
+if(!state)return;
+const data={experiment:{variantA:state.a,variantB:state.b,pValue:calcPValue(),winner:state.winner,ticks:state.tick},chartData,log:logLines};
+const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='ab-test-results.json';a.click();
+}
+
+function exportCSV(){
+if(!state)return;
+let csv='Metric,Variant A ('+state.a.type+'),Variant B ('+state.b.type+')\n';
+csv+='Visitors,'+state.a.visitors+','+state.b.visitors+'\n';
+csv+='Solves,'+state.a.solves+','+state.b.solves+'\n';
+csv+='Solve Rate,'+(state.a.visitors?state.a.solves/state.a.visitors:0).toFixed(4)+','+(state.b.visitors?state.b.solves/state.b.visitors:0).toFixed(4)+'\n';
+csv+='Bot Blocked,'+state.a.botBlocked+','+state.b.botBlocked+'\n';
+csv+='Abandons,'+state.a.abandons+','+state.b.abandons+'\n';
+csv+='P-Value,'+calcPValue().toFixed(6)+',\n';
+csv+='Winner,'+(state.winner||'N/A')+',\n';
+const blob=new Blob([csv],{type:'text/csv'});
+const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='ab-test-results.csv';a.click();
+}
+
+document.getElementById('speed').oninput=function(){document.getElementById('speedLabel').textContent=this.value+'x';};
+initPresets();resetState();updateUI();
+</script>
+</body>
+</html>

@@ -38,7 +38,7 @@ function createSolvePatternFingerprinter(options) {
   var timeBuckets = options.timeBuckets != null && options.timeBuckets > 0 ? options.timeBuckets : 24;
   var maxProfiles = options.maxProfiles != null && options.maxProfiles > 0 ? options.maxProfiles : 500;
 
-  // sessionId -> { solves: [...], fingerprint: null }
+  // sessionId -> { solves: [...], fingerprint: null, _dirty: false }
   var sessions = Object.create(null);
   // profileId -> { fingerprint, sessionIds, createdAt, lastSeen }
   var profiles = Object.create(null);
@@ -220,7 +220,7 @@ function createSolvePatternFingerprinter(options) {
     }
 
     if (!sessions[sessionId]) {
-      sessions[sessionId] = { solves: [], fingerprint: null };
+      sessions[sessionId] = { solves: [], fingerprint: null, _dirty: false };
     }
 
     var sess = sessions[sessionId];
@@ -236,14 +236,30 @@ function createSolvePatternFingerprinter(options) {
       sess.solves.splice(0, excess);
     }
 
-    // Regenerate fingerprint if we have enough samples
-    sess.fingerprint = _buildFingerprint(sess.solves);
+    // Mark fingerprint as stale — defer O(n log n) rebuild to when
+    // the fingerprint is actually read (getFingerprint, match*, find*).
+    // Previously _buildFingerprint ran on every recordSolve call,
+    // which was O(n log n) per record even when the fingerprint was
+    // never accessed between records.
+    sess._dirty = true;
+    sess.fingerprint = null;
 
     return {
       sessionId: sessionId,
       solveCount: sess.solves.length,
-      hasFingerprint: sess.fingerprint !== null
+      hasFingerprint: sess.solves.length >= minSamples
     };
+  }
+
+  /**
+   * Ensure a session's fingerprint is up-to-date (lazy rebuild).
+   * Only recomputes if solves changed since last fingerprint build.
+   */
+  function _ensureFingerprint(sess) {
+    if (sess._dirty) {
+      sess.fingerprint = _buildFingerprint(sess.solves);
+      sess._dirty = false;
+    }
   }
 
   /**
@@ -251,7 +267,9 @@ function createSolvePatternFingerprinter(options) {
    */
   function getFingerprint(sessionId) {
     var sess = sessions[sessionId];
-    return sess ? sess.fingerprint : null;
+    if (!sess) return null;
+    _ensureFingerprint(sess);
+    return sess.fingerprint;
   }
 
   /**
@@ -264,6 +282,7 @@ function createSolvePatternFingerprinter(options) {
       throw new Error("profileId must be a non-empty string");
     }
     var sess = sessions[sessionId];
+    if (sess) _ensureFingerprint(sess);
     if (!sess || !sess.fingerprint) {
       throw new Error("Session has no fingerprint (need at least " + minSamples + " solves)");
     }
@@ -293,10 +312,12 @@ function createSolvePatternFingerprinter(options) {
    */
   function matchAgainstProfiles(sessionId) {
     var sess = sessions[sessionId];
+    if (sess) _ensureFingerprint(sess);
     if (!sess || !sess.fingerprint) {
       return { matches: [], totalProfiles: profileCount, checked: 0 };
     }
 
+    _ensureFingerprint(sess);
     var fp = sess.fingerprint;
     var matches = [];
     var checked = 0;
@@ -360,6 +381,7 @@ function createSolvePatternFingerprinter(options) {
     var candidates = [];
     for (var i = 0; i < sessionIds.length; i++) {
       var s = sessions[sessionIds[i]];
+      _ensureFingerprint(s);
       if (!s.fingerprint) continue;
       var lastTs = 0;
       if (s.solves.length > 0) {
@@ -434,7 +456,7 @@ function createSolvePatternFingerprinter(options) {
     for (var i = 0; i < sessionIds.length; i++) {
       var sess = sessions[sessionIds[i]];
       totalSolves += sess.solves.length;
-      if (sess.fingerprint) withFingerprint++;
+      if (sess.solves.length >= minSamples) withFingerprint++;
     }
     return {
       totalSessions: sessionIds.length,

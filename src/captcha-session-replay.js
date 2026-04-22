@@ -573,7 +573,21 @@ function createSessionReplay(options) {
   }
 
   /**
+   * Valid session statuses for import validation.
+   */
+  var VALID_STATUSES = new Set(["recording", "completed", "abandoned"]);
+
+  /**
    * Import sessions from JSON string.
+   *
+   * Validates imported data to prevent:
+   *  - Memory exhaustion via oversized event arrays (CWE-400)
+   *  - Invalid event types bypassing recordEvent() validation (CWE-20)
+   *  - Malformed session structures
+   *
+   * Sessions with invalid events are still imported but the invalid
+   * events are silently dropped to preserve partial data.
+   *
    * @param {string} jsonStr
    * @returns {number} Number of sessions imported
    */
@@ -583,10 +597,44 @@ function createSessionReplay(options) {
       throw new Error("Invalid import format");
     let count = 0;
     for (const s of data.sessions) {
-      if (!s.id || !s.events) continue;
+      if (!s.id || typeof s.id !== "string") continue;
+      if (!Array.isArray(s.events)) continue;
       if (sessions.has(s.id)) continue; // skip duplicates
-      sessions.set(s.id, _cloneDeep(s));
-      order.push(s.id);
+
+      // Validate and sanitise the session before storing
+      var cleaned = _cloneDeep(s);
+
+      // Enforce valid status
+      if (!cleaned.status || !VALID_STATUSES.has(cleaned.status)) {
+        cleaned.status = "completed";
+      }
+
+      // Enforce maxEventsPerSession to prevent memory exhaustion (CWE-400)
+      if (cleaned.events.length > opts.maxEventsPerSession) {
+        cleaned.events = cleaned.events.slice(0, opts.maxEventsPerSession);
+      }
+
+      // Validate event types — drop events with unknown types (CWE-20)
+      cleaned.events = cleaned.events.filter(function (e) {
+        return e && typeof e === "object" &&
+          typeof e.type === "string" &&
+          VALID_EVENT_TYPES.has(e.type);
+      });
+
+      // Ensure numeric timestamps and elapsed values
+      for (var i = 0; i < cleaned.events.length; i++) {
+        var ev = cleaned.events[i];
+        ev.seq = i; // re-sequence after filtering
+        if (ev.timestamp != null && typeof ev.timestamp !== "number") {
+          delete ev.timestamp;
+        }
+        if (ev.elapsed != null && typeof ev.elapsed !== "number") {
+          delete ev.elapsed;
+        }
+      }
+
+      sessions.set(cleaned.id, cleaned);
+      order.push(cleaned.id);
       count++;
     }
     _evict();

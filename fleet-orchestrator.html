@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CAPTCHA Fleet Orchestrator | GIF CAPTCHA</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0a0e1a;--surface:#111827;--surface2:#1a2236;--border:#2a3450;--text:#e2e8f0;--dim:#8892a8;--accent:#6366f1;--accent2:#818cf8;--green:#22c55e;--yellow:#eab308;--red:#ef4444;--orange:#f97316;--cyan:#06b6d4}
+body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding:20px}
+h1{font-size:1.5rem;font-weight:700;margin-bottom:4px}
+.subtitle{color:var(--dim);font-size:.85rem;margin-bottom:20px}
+.grid{display:grid;gap:16px;margin-bottom:16px}
+.grid-3{grid-template-columns:repeat(3,1fr)}
+.grid-2{grid-template-columns:1fr 1fr}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px}
+.card h3{font-size:.8rem;text-transform:uppercase;letter-spacing:.05em;color:var(--dim);margin-bottom:8px}
+.stat{font-size:2rem;font-weight:700}
+.stat-sm{font-size:.75rem;color:var(--dim);margin-top:2px}
+.badge{display:inline-block;padding:2px 8px;border-radius:99px;font-size:.7rem;font-weight:600}
+.badge-green{background:#22c55e22;color:var(--green)}
+.badge-yellow{background:#eab30822;color:var(--yellow)}
+.badge-red{background:#ef444422;color:var(--red)}
+.badge-cyan{background:#06b6d422;color:var(--cyan)}
+table{width:100%;border-collapse:collapse;font-size:.82rem}
+th{text-align:left;color:var(--dim);font-weight:500;padding:8px;border-bottom:1px solid var(--border);font-size:.72rem;text-transform:uppercase;letter-spacing:.04em}
+td{padding:8px;border-bottom:1px solid var(--border)22}
+tr:hover{background:var(--surface2)}
+.bar{height:6px;border-radius:3px;background:var(--border);overflow:hidden;min-width:60px}
+.bar-fill{height:100%;border-radius:3px;transition:width .5s}
+canvas{display:block;width:100%;border-radius:8px}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+button{background:var(--accent);color:#fff;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;transition:all .15s}
+button:hover{background:var(--accent2);transform:translateY(-1px)}
+button.outline{background:transparent;border:1px solid var(--border);color:var(--text)}
+button.outline:hover{border-color:var(--accent);color:var(--accent2)}
+button.danger{background:var(--red)}
+.log{background:#0d1117;border-radius:8px;padding:12px;font-family:'Fira Code',monospace;font-size:.72rem;max-height:300px;overflow-y:auto;line-height:1.8}
+.log-entry{opacity:.8}.log-entry:last-child{opacity:1}
+.log-time{color:var(--dim)}.log-info{color:var(--cyan)}.log-warn{color:var(--yellow)}.log-action{color:var(--green)}.log-alert{color:var(--red)}
+.endpoint-row{display:flex;align-items:center;gap:10px}
+.endpoint-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.pulse{animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.strategy-tag{padding:2px 6px;border-radius:4px;font-size:.68rem;font-weight:600;background:var(--surface2);border:1px solid var(--border)}
+.rotation-bar{display:flex;height:24px;border-radius:6px;overflow:hidden;gap:1px}
+.rotation-seg{transition:width .5s}
+.fleet-canvas{height:200px}
+.rec{background:var(--surface2);border-left:3px solid var(--accent);padding:10px 12px;border-radius:0 8px 8px 0;margin-top:8px;font-size:.78rem}
+.rec-title{font-weight:600;margin-bottom:4px}
+.rec-desc{color:var(--dim);font-size:.72rem}
+@media(max-width:768px){.grid-3,.grid-2{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<h1>🎯 CAPTCHA Fleet Orchestrator</h1>
+<p class="subtitle">Autonomous multi-CAPTCHA deployment • Traffic-driven strategy rotation • Fleet-wide health monitoring</p>
+
+<div class="grid grid-3" id="top-stats"></div>
+
+<div class="grid grid-2">
+  <div class="card">
+    <h3>Endpoint Fleet</h3>
+    <table>
+      <thead><tr><th>Endpoint</th><th>CAPTCHA Type</th><th>Traffic</th><th>Success</th><th>Bot Block</th><th>Status</th></tr></thead>
+      <tbody id="fleet-table"></tbody>
+    </table>
+    <div class="actions">
+      <button onclick="rotateAll()">🔄 Rotate All Strategies</button>
+      <button class="outline" onclick="addEndpoint()">+ Add Endpoint</button>
+      <button class="outline" onclick="toggleAutopilot()" id="autopilot-btn">🤖 Autopilot: OFF</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Traffic Distribution</h3>
+    <canvas id="traffic-canvas" class="fleet-canvas"></canvas>
+  </div>
+</div>
+
+<div class="grid grid-2">
+  <div class="card">
+    <h3>Strategy Rotation Timeline</h3>
+    <div id="rotation-timeline"></div>
+    <canvas id="rotation-canvas" height="160" style="margin-top:12px"></canvas>
+  </div>
+
+  <div class="card">
+    <h3>Autonomous Recommendations</h3>
+    <div id="recommendations"></div>
+  </div>
+</div>
+
+<div class="card">
+  <h3>Orchestration Log</h3>
+  <div class="log" id="log"></div>
+</div>
+
+<script>
+const CAPTCHA_TYPES = [
+  { id: 'gif', name: 'GIF CAPTCHA', color: '#6366f1', strength: 8, ux: 7 },
+  { id: 'text', name: 'Text Distort', color: '#f97316', strength: 5, ux: 6 },
+  { id: 'math', name: 'Math Challenge', color: '#22c55e', strength: 4, ux: 8 },
+  { id: 'slide', name: 'Slide Puzzle', color: '#06b6d4', strength: 7, ux: 5 },
+  { id: 'audio', name: 'Audio CAPTCHA', color: '#eab308', strength: 6, ux: 4 },
+  { id: 'honey', name: 'Honeypot', color: '#ec4899', strength: 3, ux: 10 },
+  { id: 'proof', name: 'Proof of Work', color: '#8b5cf6', strength: 9, ux: 3 },
+  { id: 'behav', name: 'Behavioral', color: '#14b8a6', strength: 7, ux: 9 }
+];
+
+const ENDPOINTS = [
+  { path: '/login', risk: 'high', traffic: 0, solved: 0, blocked: 0, captchaIdx: 0, history: [] },
+  { path: '/signup', risk: 'high', traffic: 0, solved: 0, blocked: 0, captchaIdx: 3, history: [] },
+  { path: '/checkout', risk: 'medium', traffic: 0, solved: 0, blocked: 0, captchaIdx: 5, history: [] },
+  { path: '/contact', risk: 'low', traffic: 0, solved: 0, blocked: 0, captchaIdx: 2, history: [] },
+  { path: '/api/submit', risk: 'high', traffic: 0, solved: 0, blocked: 0, captchaIdx: 6, history: [] },
+  { path: '/reset-pw', risk: 'medium', traffic: 0, solved: 0, blocked: 0, captchaIdx: 7, history: [] }
+];
+
+let autopilot = false;
+let totalRequests = 0, totalBlocked = 0, totalSolved = 0;
+let tick = 0;
+let logs = [];
+let trafficHistory = [];
+const MAX_HISTORY = 60;
+
+function rng(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+
+function addLog(type, msg) {
+  const t = new Date().toLocaleTimeString();
+  logs.push({ type, msg, time: t });
+  if (logs.length > 80) logs.shift();
+  const el = document.getElementById('log');
+  el.innerHTML = logs.map(l =>
+    `<div class="log-entry"><span class="log-time">[${l.time}]</span> <span class="log-${l.type}">${l.msg}</span></div>`
+  ).join('');
+  el.scrollTop = el.scrollHeight;
+}
+
+function simulateTick() {
+  tick++;
+  let tickBlocked = 0, tickTotal = 0;
+
+  ENDPOINTS.forEach(ep => {
+    const base = ep.risk === 'high' ? rng(20, 60) : ep.risk === 'medium' ? rng(8, 30) : rng(3, 15);
+    // surge simulation
+    const surge = Math.random() < 0.05 ? rng(50, 200) : 0;
+    const reqs = base + surge;
+    const cap = CAPTCHA_TYPES[ep.captchaIdx];
+    const botRate = ep.risk === 'high' ? 0.25 : ep.risk === 'medium' ? 0.12 : 0.05;
+    const bots = Math.round(reqs * botRate * (0.7 + Math.random() * 0.6));
+    const blocked = Math.round(bots * (cap.strength / 10) * (0.8 + Math.random() * 0.2));
+    const solved = reqs - blocked;
+
+    ep.traffic += reqs;
+    ep.blocked += blocked;
+    ep.solved += solved;
+    ep.history.push({ reqs, blocked, solved, time: tick });
+    if (ep.history.length > MAX_HISTORY) ep.history.shift();
+
+    totalRequests += reqs;
+    totalBlocked += blocked;
+    totalSolved += solved;
+    tickBlocked += blocked;
+    tickTotal += reqs;
+
+    if (surge > 0) {
+      addLog('alert', `⚠️ Traffic surge on ${ep.path}: +${surge} requests`);
+      if (autopilot) {
+        const strongIdx = CAPTCHA_TYPES.reduce((best, c, i) => c.strength > CAPTCHA_TYPES[best].strength ? i : best, 0);
+        if (ep.captchaIdx !== strongIdx) {
+          addLog('action', `🤖 Autopilot: Upgraded ${ep.path} → ${CAPTCHA_TYPES[strongIdx].name} (surge response)`);
+          ep.captchaIdx = strongIdx;
+        }
+      }
+    }
+  });
+
+  trafficHistory.push({ total: tickTotal, blocked: tickBlocked, time: tick });
+  if (trafficHistory.length > MAX_HISTORY) trafficHistory.shift();
+
+  // autopilot logic
+  if (autopilot && tick % 10 === 0) {
+    ENDPOINTS.forEach(ep => {
+      const recent = ep.history.slice(-10);
+      if (recent.length < 5) return;
+      const blockRate = recent.reduce((s, h) => s + h.blocked, 0) / recent.reduce((s, h) => s + h.reqs, 0);
+      if (blockRate < 0.1 && ep.risk !== 'low') {
+        const better = CAPTCHA_TYPES.findIndex(c => c.strength > CAPTCHA_TYPES[ep.captchaIdx].strength);
+        if (better >= 0 && better !== ep.captchaIdx) {
+          addLog('action', `🤖 Autopilot: Low block rate on ${ep.path} (${(blockRate*100).toFixed(1)}%) → switching to ${CAPTCHA_TYPES[better].name}`);
+          ep.captchaIdx = better;
+        }
+      }
+      if (blockRate > 0.4 && CAPTCHA_TYPES[ep.captchaIdx].ux < 6) {
+        const friendlier = CAPTCHA_TYPES.findIndex(c => c.ux >= 7 && c.strength >= 5);
+        if (friendlier >= 0 && friendlier !== ep.captchaIdx) {
+          addLog('action', `🤖 Autopilot: High block + low UX on ${ep.path} → switching to ${CAPTCHA_TYPES[friendlier].name} (better UX)`);
+          ep.captchaIdx = friendlier;
+        }
+      }
+    });
+  }
+
+  render();
+}
+
+function render() {
+  // Top stats
+  const blockRate = totalRequests > 0 ? (totalBlocked / totalRequests * 100) : 0;
+  const activeTypes = new Set(ENDPOINTS.map(e => e.captchaIdx)).size;
+  document.getElementById('top-stats').innerHTML = `
+    <div class="card"><h3>Total Requests</h3><div class="stat">${totalRequests.toLocaleString()}</div><div class="stat-sm">${ENDPOINTS.length} endpoints monitored</div></div>
+    <div class="card"><h3>Bot Block Rate</h3><div class="stat" style="color:${blockRate > 20 ? 'var(--green)' : blockRate > 10 ? 'var(--yellow)' : 'var(--red)'}">${blockRate.toFixed(1)}%</div><div class="stat-sm">${totalBlocked.toLocaleString()} blocked</div></div>
+    <div class="card"><h3>Fleet Status</h3><div class="stat">${activeTypes}/${CAPTCHA_TYPES.length}</div><div class="stat-sm">CAPTCHA types deployed • ${autopilot ? '<span class="badge badge-green">AUTOPILOT</span>' : '<span class="badge badge-yellow">MANUAL</span>'}</div></div>
+  `;
+
+  // Fleet table
+  const ftb = document.getElementById('fleet-table');
+  ftb.innerHTML = ENDPOINTS.map(ep => {
+    const cap = CAPTCHA_TYPES[ep.captchaIdx];
+    const successRate = ep.traffic > 0 ? (ep.solved / ep.traffic * 100) : 0;
+    const blockPct = ep.traffic > 0 ? (ep.blocked / ep.traffic * 100) : 0;
+    const riskBadge = ep.risk === 'high' ? 'badge-red' : ep.risk === 'medium' ? 'badge-yellow' : 'badge-green';
+    return `<tr>
+      <td><div class="endpoint-row"><div class="endpoint-dot pulse" style="background:${cap.color}"></div><strong>${ep.path}</strong> <span class="badge ${riskBadge}">${ep.risk}</span></div></td>
+      <td><span class="strategy-tag" style="border-color:${cap.color};color:${cap.color}">${cap.name}</span></td>
+      <td>${ep.traffic.toLocaleString()}</td>
+      <td><div class="bar"><div class="bar-fill" style="width:${successRate}%;background:var(--green)"></div></div><span style="font-size:.7rem">${successRate.toFixed(0)}%</span></td>
+      <td><div class="bar"><div class="bar-fill" style="width:${blockPct}%;background:var(--red)"></div></div><span style="font-size:.7rem">${blockPct.toFixed(0)}%</span></td>
+      <td><span class="badge badge-green">Active</span></td>
+    </tr>`;
+  }).join('');
+
+  // Traffic canvas
+  drawTrafficChart();
+  drawRotationChart();
+  renderRecommendations();
+}
+
+function drawTrafficChart() {
+  const c = document.getElementById('traffic-canvas');
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth * 2; c.height = 400;
+  ctx.scale(2, 2);
+  const W = c.offsetWidth, H = 200;
+  ctx.clearRect(0, 0, W, H);
+
+  if (trafficHistory.length < 2) return;
+  const maxT = Math.max(...trafficHistory.map(h => h.total), 1);
+
+  // total area
+  ctx.beginPath();
+  ctx.moveTo(0, H);
+  trafficHistory.forEach((h, i) => {
+    ctx.lineTo(i / (trafficHistory.length - 1) * W, H - (h.total / maxT) * (H - 20));
+  });
+  ctx.lineTo(W, H);
+  ctx.fillStyle = '#6366f122';
+  ctx.fill();
+
+  ctx.beginPath();
+  trafficHistory.forEach((h, i) => {
+    const x = i / (trafficHistory.length - 1) * W;
+    const y = H - (h.total / maxT) * (H - 20);
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.strokeStyle = '#6366f1';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // blocked area
+  ctx.beginPath();
+  ctx.moveTo(0, H);
+  trafficHistory.forEach((h, i) => {
+    ctx.lineTo(i / (trafficHistory.length - 1) * W, H - (h.blocked / maxT) * (H - 20));
+  });
+  ctx.lineTo(W, H);
+  ctx.fillStyle = '#ef444422';
+  ctx.fill();
+
+  ctx.beginPath();
+  trafficHistory.forEach((h, i) => {
+    const x = i / (trafficHistory.length - 1) * W;
+    const y = H - (h.blocked / maxT) * (H - 20);
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.strokeStyle = '#ef4444';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.font = '11px Inter,system-ui';
+  ctx.fillStyle = '#6366f1';
+  ctx.fillText('● Total Traffic', 10, 16);
+  ctx.fillStyle = '#ef4444';
+  ctx.fillText('● Blocked Bots', 110, 16);
+}
+
+function drawRotationChart() {
+  const c = document.getElementById('rotation-canvas');
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth * 2; c.height = 320;
+  ctx.scale(2, 2);
+  const W = c.offsetWidth, H = 160;
+  ctx.clearRect(0, 0, W, H);
+
+  const barH = 18, gap = 6, startY = 10;
+  ENDPOINTS.forEach((ep, i) => {
+    const y = startY + i * (barH + gap);
+    ctx.font = '10px Inter,system-ui';
+    ctx.fillStyle = '#8892a8';
+    ctx.fillText(ep.path, 4, y + 13);
+
+    const barX = 80, barW = W - 90;
+    ctx.fillStyle = '#1a2236';
+    ctx.fillRect(barX, y, barW, barH);
+
+    const cap = CAPTCHA_TYPES[ep.captchaIdx];
+    const pct = ep.traffic > 0 ? Math.min(ep.solved / ep.traffic, 1) : 0.5;
+    ctx.fillStyle = cap.color + '88';
+    ctx.fillRect(barX, y, barW * pct, barH);
+
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 9px Inter,system-ui';
+    ctx.fillText(cap.name, barX + 4, y + 13);
+  });
+}
+
+function renderRecommendations() {
+  const recs = [];
+  ENDPOINTS.forEach(ep => {
+    const recent = ep.history.slice(-10);
+    if (recent.length < 5) return;
+    const avgReqs = recent.reduce((s, h) => s + h.reqs, 0) / recent.length;
+    const blockRate = recent.reduce((s, h) => s + h.blocked, 0) / recent.reduce((s, h) => s + h.reqs, 0);
+    const cap = CAPTCHA_TYPES[ep.captchaIdx];
+
+    if (blockRate < 0.08 && ep.risk !== 'low') {
+      const stronger = CAPTCHA_TYPES.filter(c => c.strength > cap.strength).sort((a, b) => b.strength - a.strength)[0];
+      if (stronger) recs.push({ title: `Upgrade ${ep.path}`, desc: `Block rate only ${(blockRate*100).toFixed(1)}%. Consider switching from ${cap.name} to ${stronger.name} (strength ${stronger.strength}/10).`, prio: 'high' });
+    }
+    if (cap.ux < 5 && blockRate > 0.3) {
+      recs.push({ title: `UX concern on ${ep.path}`, desc: `${cap.name} has low UX score (${cap.ux}/10) with high block rate. Users may be getting caught. Consider ${CAPTCHA_TYPES.find(c => c.ux >= 7 && c.strength >= 5)?.name || 'a friendlier alternative'}.`, prio: 'medium' });
+    }
+    if (avgReqs > 80) {
+      recs.push({ title: `High traffic on ${ep.path}`, desc: `Averaging ${avgReqs.toFixed(0)} req/tick. Consider adding rate limiting before CAPTCHA.`, prio: 'low' });
+    }
+  });
+
+  if (recs.length === 0) recs.push({ title: 'Fleet healthy', desc: 'All endpoints performing within expected parameters.', prio: 'info' });
+
+  document.getElementById('recommendations').innerHTML = recs.slice(0, 5).map(r =>
+    `<div class="rec" style="border-color:${r.prio === 'high' ? 'var(--red)' : r.prio === 'medium' ? 'var(--yellow)' : 'var(--accent)'}"><div class="rec-title">${r.title}</div><div class="rec-desc">${r.desc}</div></div>`
+  ).join('');
+
+  // Rotation timeline
+  const timeline = document.getElementById('rotation-timeline');
+  const totalTraffic = ENDPOINTS.reduce((s, e) => s + e.traffic, 0) || 1;
+  timeline.innerHTML = `<div class="rotation-bar">${ENDPOINTS.map(ep => {
+    const pct = (ep.traffic / totalTraffic * 100);
+    const cap = CAPTCHA_TYPES[ep.captchaIdx];
+    return `<div class="rotation-seg" style="width:${pct}%;background:${cap.color}" title="${ep.path}: ${cap.name} (${pct.toFixed(1)}%)"></div>`;
+  }).join('')}</div>`;
+}
+
+function rotateAll() {
+  ENDPOINTS.forEach(ep => {
+    ep.captchaIdx = (ep.captchaIdx + 1) % CAPTCHA_TYPES.length;
+    addLog('action', `🔄 Rotated ${ep.path} → ${CAPTCHA_TYPES[ep.captchaIdx].name}`);
+  });
+  render();
+}
+
+function addEndpoint() {
+  const path = prompt('Endpoint path (e.g. /api/vote):');
+  if (!path) return;
+  const risk = prompt('Risk level (high/medium/low):', 'medium') || 'medium';
+  ENDPOINTS.push({ path, risk, traffic: 0, solved: 0, blocked: 0, captchaIdx: rng(0, CAPTCHA_TYPES.length - 1), history: [] });
+  addLog('info', `➕ Added endpoint ${path} (${risk} risk)`);
+  render();
+}
+
+function toggleAutopilot() {
+  autopilot = !autopilot;
+  document.getElementById('autopilot-btn').textContent = `🤖 Autopilot: ${autopilot ? 'ON' : 'OFF'}`;
+  addLog(autopilot ? 'action' : 'info', autopilot ? '🤖 Autopilot ENGAGED — autonomous strategy rotation active' : '🤖 Autopilot disengaged — manual mode');
+}
+
+addLog('info', '🎯 Fleet Orchestrator initialized with ' + ENDPOINTS.length + ' endpoints');
+addLog('info', '📦 ' + CAPTCHA_TYPES.length + ' CAPTCHA types available');
+
+setInterval(simulateTick, 1500);
+render();
+</script>
+</body>
+</html>

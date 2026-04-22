@@ -267,7 +267,15 @@ function createFraudRingDetector(options) {
           existing.solves = existing.solves.slice(existing.solves.length - 500);
         }
       }
-      if (data.signals) existing.signals = Object.assign(existing.signals || {}, data.signals);
+      if (data.signals && typeof data.signals === 'object') {
+        if (!existing.signals) existing.signals = Object.create(null);
+        var sigKeys = Object.keys(data.signals);
+        for (var sk = 0; sk < sigKeys.length; sk++) {
+          if (sigKeys[sk] !== '__proto__' && sigKeys[sk] !== 'constructor' && sigKeys[sk] !== 'prototype') {
+            existing.signals[sigKeys[sk]] = data.signals[sigKeys[sk]];
+          }
+        }
+      }
       existing.updatedAt = _now();
       // Re-derive cached distributions after solve data changes
       _precomputeDistributions(existing);
@@ -287,12 +295,22 @@ function createFraudRingDetector(options) {
       }
     }
 
+    // Copy signals safely to prevent prototype pollution (CWE-1321)
+    var safeSignals = Object.create(null);
+    if (data.signals && typeof data.signals === 'object') {
+      var dsk = Object.keys(data.signals);
+      for (var dsi = 0; dsi < dsk.length; dsi++) {
+        if (dsk[dsi] !== '__proto__' && dsk[dsi] !== 'constructor' && dsk[dsi] !== 'prototype') {
+          safeSignals[dsk[dsi]] = data.signals[dsk[dsi]];
+        }
+      }
+    }
     sessions[sessionId] = {
       id: sessionId,
       ip: data.ip || null,
       userAgent: data.userAgent || null,
       solves: Array.isArray(data.solves) ? data.solves.slice() : [],
-      signals: data.signals || {},
+      signals: safeSignals,
       addedAt: _now(),
       updatedAt: _now()
     };
@@ -593,29 +611,46 @@ function createFraudRingDetector(options) {
   /**
    * Import previously exported data.
    */
+  /**
+   * Reject keys that could cause prototype pollution (CWE-1321).
+   * @param {string} key
+   * @returns {boolean} true if safe
+   */
+  function _isSafeKey(key) {
+    return key !== '__proto__' && key !== 'constructor' && key !== 'prototype';
+  }
+
   function importData(data) {
     if (!data || typeof data !== 'object') {
       throw new Error('Invalid import data');
     }
-    if (data.sessions) {
+    if (data.sessions && typeof data.sessions === 'object' && !Array.isArray(data.sessions)) {
       var skeys = Object.keys(data.sessions);
       for (var i = 0; i < skeys.length; i++) {
-        sessions[skeys[i]] = data.sessions[skeys[i]];
+        if (!_isSafeKey(skeys[i])) continue;
+        var imported = data.sessions[skeys[i]];
+        if (!imported || typeof imported !== 'object') continue;
+        sessions[skeys[i]] = imported;
         _precomputeDistributions(sessions[skeys[i]]);
         sessionInsertionOrder.push(skeys[i]);
       }
       sessionCount = Object.keys(sessions).length;
     }
-    if (data.rings) {
+    if (data.rings && typeof data.rings === 'object' && !Array.isArray(data.rings)) {
       var rkeys = Object.keys(data.rings);
       for (var j = 0; j < rkeys.length; j++) {
-        rings[rkeys[j]] = data.rings[rkeys[j]];
+        if (!_isSafeKey(rkeys[j])) continue;
+        var ring = data.rings[rkeys[j]];
+        if (!ring || typeof ring !== 'object') continue;
+        rings[rkeys[j]] = ring;
         // Rebuild reverse index
-        var members = data.rings[rkeys[j]].members;
-        if (members) {
+        var members = ring.members;
+        if (Array.isArray(members)) {
           for (var m = 0; m < members.length; m++) {
-            if (!sessionToRings[members[m]]) sessionToRings[members[m]] = [];
-            sessionToRings[members[m]].push(rkeys[j]);
+            if (typeof members[m] === 'string' && _isSafeKey(members[m])) {
+              if (!sessionToRings[members[m]]) sessionToRings[members[m]] = [];
+              sessionToRings[members[m]].push(rkeys[j]);
+            }
           }
         }
       }

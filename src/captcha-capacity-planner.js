@@ -226,8 +226,8 @@ function createCapacityPlanner(options) {
 
   // ── Assess ──────────────────────────────────────────────────────
 
-  function assess() {
-    var s = stats();
+  function assess(cachedStats) {
+    var s = cachedStats || stats();
     if (!s) return { status: 'no-data', message: 'No samples recorded' };
 
     var utilization = s.rps.p95 / maxRps;
@@ -272,12 +272,12 @@ function createCapacityPlanner(options) {
 
   // ── Recommend ───────────────────────────────────────────────────
 
-  function recommend() {
-    var a = assess();
+  function recommend(cachedAssessment, cachedForecast) {
+    var a = cachedAssessment || assess();
     if (a.status === 'no-data') return { recommendations: [], assessment: a };
 
     var recs = [];
-    var fc = samples.length >= 2 ? forecast({ horizonHours: 72 }) : null;
+    var fc = cachedForecast !== undefined ? cachedForecast : (samples.length >= 2 ? forecast({ horizonHours: 72 }) : null);
 
     // Scaling recommendations
     if (a.status === 'overloaded' || a.status === 'critical') {
@@ -433,13 +433,22 @@ function createCapacityPlanner(options) {
     var ropts = options || {};
     var format = ropts.format || 'json';
 
+    // Compute each expensive result once and thread through dependents.
+    // Previously stats() was computed 3×, assess() 2×, forecast() 2×
+    // because assess→stats and recommend→assess+forecast were uncached.
+    var cachedStats = stats();
+    var cachedAssessment = assess(cachedStats);
+    var horizonHours = ropts.horizonHours || 72;
+    var cachedForecast = samples.length >= 2 ? forecast({ horizonHours: horizonHours }) : null;
+    var cachedRecs = recommend(cachedAssessment, cachedForecast);
+
     var data = {
       generated: new Date().toISOString(),
       config: { maxRps: maxRps, maxLatencyMs: maxLatencyMs, maxErrorRate: maxErrorRate, headroom: headroom },
-      stats: stats(),
-      assessment: assess(),
-      forecast: samples.length >= 2 ? forecast({ horizonHours: ropts.horizonHours || 72 }) : null,
-      recommendations: recommend().recommendations,
+      stats: cachedStats,
+      assessment: cachedAssessment,
+      forecast: cachedForecast,
+      recommendations: cachedRecs.recommendations,
       hourlyProfile: hourlyProfile(),
       scenarios: ropts.scenarios ? ropts.scenarios.map(function (t) { return scenario(t); }) : undefined
     };

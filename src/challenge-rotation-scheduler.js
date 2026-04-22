@@ -424,40 +424,72 @@ function createChallengeRotationScheduler(options) {
     return _getTypeStats(typeId);
   }
 
-  /** Internal stats calculation within the sliding window */
+  /** Internal stats calculation within the sliding window.
+   *
+   * Uses binary search to find the cutoff index in O(log n) instead of
+   * Array.filter() which allocates a new array in O(n).  The solve history
+   * is append-only (timestamps monotonically increase), so the entries are
+   * already sorted by `ts`.  This matters because _getTypeStats is called
+   * from recordSolve (every solve), getTypes (every type), and
+   * _performanceBased (every rotation decision).
+   */
   function _getTypeStats(typeId) {
     var history = _solveHistory[typeId] || [];
+    if (history.length === 0) {
+      return { total: 0, solved: 0, failed: 0, solveRate: null, avgTimeMs: null };
+    }
+
     var cutoff = Date.now() - opts.statsWindowMs;
-    var recent = history.filter(function (e) { return e.ts >= cutoff; });
+
+    // Binary search for the first entry with ts >= cutoff.
+    // All entries from that index onward are within the window.
+    var lo = 0, hi = history.length;
+    while (lo < hi) {
+      var mid = (lo + hi) >>> 1;
+      if (history[mid].ts < cutoff) lo = mid + 1;
+      else hi = mid;
+    }
+    // lo is now the index of the first in-window entry
+
+    var count = history.length - lo;
+    if (count === 0) {
+      return { total: 0, solved: 0, failed: 0, solveRate: null, avgTimeMs: null };
+    }
 
     var solved = 0;
     var totalTime = 0;
     var timeCount = 0;
-    for (var i = 0; i < recent.length; i++) {
-      if (recent[i].solved) solved++;
-      if (recent[i].timeMs != null) {
-        totalTime += recent[i].timeMs;
+    for (var i = lo; i < history.length; i++) {
+      if (history[i].solved) solved++;
+      if (history[i].timeMs != null) {
+        totalTime += history[i].timeMs;
         timeCount++;
       }
     }
 
     return {
-      total: recent.length,
+      total: count,
       solved: solved,
-      failed: recent.length - solved,
-      solveRate: recent.length > 0 ? Math.round((solved / recent.length) * 1000) / 1000 : null,
+      failed: count - solved,
+      solveRate: count > 0 ? Math.round((solved / count) * 1000) / 1000 : null,
       avgTimeMs: timeCount > 0 ? Math.round(totalTime / timeCount) : null,
     };
   }
 
   function _pruneHistory(typeId) {
     var history = _solveHistory[typeId];
-    if (!history) return;
+    if (!history || history.length === 0) return;
     var cutoff = Date.now() - opts.statsWindowMs * 2; // keep 2x window
-    if (history.length > 0 && history[0].ts < cutoff) {
-      var start = 0;
-      while (start < history.length && history[start].ts < cutoff) start++;
-      _solveHistory[typeId] = history.slice(start);
+    if (history[0].ts >= cutoff) return; // nothing to prune (common case)
+    // Binary search for the first entry >= cutoff — O(log n) vs linear scan
+    var lo = 0, hi = history.length;
+    while (lo < hi) {
+      var mid = (lo + hi) >>> 1;
+      if (history[mid].ts < cutoff) lo = mid + 1;
+      else hi = mid;
+    }
+    if (lo > 0) {
+      _solveHistory[typeId] = history.slice(lo);
     }
   }
 

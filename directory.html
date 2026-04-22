@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="GIF CAPTCHA — Complete directory of interactive tools, demos, dashboards, and documentation">
+    <title>GIF CAPTCHA — Tool Directory</title>
+    <link rel="stylesheet" href="shared.css">
+    <style>
+        body { padding: 2rem; max-width: 1100px; margin: 0 auto; }
+        h1 { font-size: 2rem; margin-bottom: 0.3rem; }
+        .subtitle { color: var(--muted); font-size: 1rem; margin-bottom: 2rem; }
+        h2 { font-size: 1.3rem; margin: 2.5rem 0 1rem; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 0.4rem; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 0.8rem; }
+        .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.2rem; transition: border-color 0.15s; }
+        .card:hover { border-color: var(--accent); }
+        .card a { color: var(--text); text-decoration: none; font-weight: 600; font-size: 0.95rem; display: block; margin-bottom: 0.3rem; }
+        .card a:hover { color: var(--accent); }
+        .card p { color: var(--muted); font-size: 0.82rem; margin: 0; line-height: 1.45; }
+        .tag { display: inline-block; background: rgba(139,92,246,0.15); color: var(--accent); font-size: 0.7rem; padding: 0.1rem 0.45rem; border-radius: 3px; margin-right: 0.3rem; font-weight: 600; }
+        .back { color: var(--accent); text-decoration: none; font-size: 0.9rem; }
+        .back:hover { text-decoration: underline; }
+        .search-box { width: 100%; padding: 0.6rem 1rem; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 0.95rem; margin-bottom: 1.5rem; }
+        .search-box:focus { outline: none; border-color: var(--accent); }
+        .hidden { display: none !important; }
+        .count { color: var(--muted); font-size: 0.85rem; font-weight: normal; }
+    </style>
+</head>
+<body>
+    <a href="index.html" class="back">&larr; Back to Case Study</a>
+    <h1>🗂️ Tool Directory</h1>
+    <p class="subtitle">All interactive tools, demos, dashboards, and documentation in one place.</p>
+
+    <input type="text" class="search-box" id="search" placeholder="Search tools..." autocomplete="off">
+
+    <h2>📖 Documentation <span class="count" id="count-docs"></span></h2>
+    <div class="grid" data-section="docs">
+        <div class="card"><a href="docs/index.html">API Documentation</a><p>Core library API reference — classes, methods, and parameters</p></div>
+        <div class="card"><a href="docs/architecture.html">Architecture Guide</a><p>System design, module structure, and data flow</p></div>
+        <div class="card"><a href="docs/getting-started.html">Getting Started</a><p>Installation, setup, and first integration walkthrough</p></div>
+        <div class="card"><a href="docs/security-guide.html">Security Guide</a><p>Threat model, best practices, and hardening recommendations</p></div>
+        <div class="card"><a href="API.md">API Reference (Markdown)</a><p>Full API reference in Markdown format</p></div>
+    </div>
+
+    <h2>🎮 Interactive Demos <span class="count" id="count-demos"></span></h2>
+    <div class="grid" data-section="demos">
+        <div class="card"><a href="demo.html">Interactive Demo</a><p>Try solving GIF CAPTCHAs live in the browser</p></div>
+        <div class="card"><a href="playground.html">Challenge Playground</a><p>Experiment with different challenge types and parameters</p></div>
+        <div class="card"><a href="generator.html">Workshop</a><p>Generate custom GIF CAPTCHAs with configurable settings</p></div>
+        <div class="card"><a href="bot-or-human.html">Bot or Human?</a><p>Interactive game testing human vs bot detection</p></div>
+        <div class="card"><a href="escape-room.html">Escape Room</a><p>Puzzle-based CAPTCHA escape room challenge</p></div>
+        <div class="card"><a href="speed-arena.html">Speed Challenge Arena</a><p>Competitive speed-solving challenge mode</p></div>
+        <div class="card"><a href="daily.html">Daily Challenge</a><p>New CAPTCHA challenge every day</p></div>
+        <div class="card"><a href="streak.html">Streak Mode</a><p>How many consecutive CAPTCHAs can you solve?</p></div>
+        <div class="card"><a href="leaderboard.html">Leaderboard</a><p>Top solvers and competitive rankings</p></div>
+        <div class="card"><a href="temporal.html">Temporal Sequence Challenge</a><p>Time-based sequence recognition CAPTCHAs</p></div>
+        <div class="card"><a href="gallery.html">Challenge Preview Gallery</a><p>Browse and preview all available challenge types</p></div>
+        <div class="card"><a href="embed.html">Embed Widget Generator</a><p>Generate embeddable CAPTCHA widgets for your site</p></div>
+    </div>
+
+    <h2>📊 Dashboards &amp; Monitoring <span class="count" id="count-dash"></span></h2>
+    <div class="grid" data-section="dash">
+        <div class="card"><a href="dashboard.html">Operations Dashboard</a><p>Live operational metrics and system health overview</p></div>
+        <div class="card"><a href="effectiveness.html">Effectiveness Dashboard</a><p>CAPTCHA solve rates, bot detection accuracy, and trends</p></div>
+        <div class="card"><a href="trust-dashboard.html">Trust Score Dashboard</a><p>User trust scores and risk level distribution</p></div>
+        <div class="card"><a href="captcha-health-monitor.html">Health Monitor</a><p>Real-time CAPTCHA system health and uptime tracking</p></div>
+        <div class="card"><a href="fleet.html">Fleet Monitor</a><p>Multi-instance deployment monitoring</p></div>
+        <div class="card"><a href="compliance.html">Compliance Dashboard</a><p>Regulatory compliance status and audit readiness</p></div>
+        <div class="card"><a href="my-stats.html">My Stats</a><p>Personal solving statistics and history</p></div>
+        <div class="card"><a href="funnel.html">Solve Funnel</a><p>Conversion funnel from challenge presentation to solve</p></div>
+        <div class="card"><a href="journey-map.html">User Journey Map</a><p>Visualize user paths through the CAPTCHA flow</p></div>
+        <div class="card"><a href="incident-timeline.html">Incident Timeline</a><p>Historical incident tracking and post-mortems</p></div>
+        <div class="card"><a href="audit-log.html">Audit Log</a><p>Detailed audit trail of CAPTCHA events</p></div>
+    </div>
+
+    <h2>🔬 Analysis &amp; Research <span class="count" id="count-research"></span></h2>
+    <div class="grid" data-section="research">
+        <div class="card"><a href="analysis.html">Research Analysis</a><p>In-depth analysis of CAPTCHA effectiveness and attack vectors</p></div>
+        <div class="card"><a href="research-paper.html">Research Paper Generator</a><p>Generate formatted research papers from CAPTCHA data</p></div>
+        <div class="card"><a href="comparison.html">Multi-Model Comparison</a><p>Compare different CAPTCHA models side by side</p></div>
+        <div class="card"><a href="competitive.html">Competitive Analysis</a><p>How gif-captcha stacks up against alternatives</p></div>
+        <div class="card"><a href="cognitive-load.html">Cognitive Load Analyzer</a><p>Measure and optimize cognitive effort required to solve</p></div>
+        <div class="card"><a href="biometrics-lab.html">Behavioral Biometrics Lab</a><p>Research interface for behavioral analysis during solving</p></div>
+        <div class="card"><a href="diversity-analyzer.html">Challenge Diversity Analyzer</a><p>Analyze the variety and distribution of challenge types</p></div>
+        <div class="card"><a href="entropy.html">Entropy Analyzer</a><p>Measure randomness and unpredictability of generated CAPTCHAs</p></div>
+    </div>
+
+    <h2>🛡️ Security &amp; Threat Intelligence <span class="count" id="count-security"></span></h2>
+    <div class="grid" data-section="security">
+        <div class="card"><a href="resistance.html">Bypass Resistance Tester</a><p>Test CAPTCHA resistance against known attack patterns</p></div>
+        <div class="card"><a href="simulator.html">AI Response Simulator</a><p>Simulate AI/ML attacks against your CAPTCHAs</p></div>
+        <div class="card"><a href="bot-signatures.html">Bot Signature Database</a><p>Known bot fingerprints and behavioral signatures</p></div>
+        <div class="card"><a href="attack-predictor.html">Attack Pattern Predictor</a><p>ML-based prediction of emerging attack vectors</p></div>
+        <div class="card"><a href="defense-strategist.html">Defense Strategist</a><p>AI-guided defense configuration recommendations</p></div>
+        <div class="card"><a href="threat-feed.html">Threat Intelligence Feed</a><p>Live threat intelligence and emerging risk alerts</p></div>
+        <div class="card"><a href="fingerprint-explorer.html">Fingerprint Explorer</a><p>Explore browser and device fingerprinting data</p></div>
+        <div class="card"><a href="fraud-rings.html">Fraud Ring Visualizer</a><p>Network graph visualization of coordinated fraud</p></div>
+        <div class="card"><a href="forensic-investigator.html">Forensic Investigator</a><p>Deep-dive forensic analysis of suspicious sessions</p></div>
+        <div class="card"><a href="honeypot-designer.html">Honeypot Designer</a><p>Design and deploy CAPTCHA honeypot traps</p></div>
+        <div class="card"><a href="arms-race.html">Genetic Arms Race</a><p>Evolutionary simulation of attacker vs defender</p></div>
+        <div class="card"><a href="immune-system.html">Immune System</a><p>Adaptive defense system inspired by biological immunity</p></div>
+        <div class="card"><a href="swarm-intelligence.html">Swarm Intelligence</a><p>Swarm-based distributed CAPTCHA defense</p></div>
+    </div>
+
+    <h2>⚙️ Configuration &amp; Operations <span class="count" id="count-ops"></span></h2>
+    <div class="grid" data-section="ops">
+        <div class="card"><a href="config.html">Configuration Wizard</a><p>Step-by-step CAPTCHA configuration builder</p></div>
+        <div class="card"><a href="integration-wizard.html">Integration Wizard</a><p>Guided integration for popular frameworks and platforms</p></div>
+        <div class="card"><a href="designer.html">Challenge Designer</a><p>Visual challenge design and customization tool</p></div>
+        <div class="card"><a href="theme-builder.html">Theme Builder</a><p>Customize CAPTCHA appearance and branding</p></div>
+        <div class="card"><a href="rotation-scheduler.html">Rotation Scheduler</a><p>Schedule automatic challenge type rotation</p></div>
+        <div class="card"><a href="difficulty-planner.html">Difficulty Curve Planner</a><p>Plan and visualize difficulty progression</p></div>
+        <div class="card"><a href="adaptive-difficulty.html">Adaptive Difficulty Engine</a><p>Real-time difficulty adjustment based on user behavior</p></div>
+        <div class="card"><a href="abtest.html">A/B Testing Configurator</a><p>Set up and manage CAPTCHA A/B experiments</p></div>
+        <div class="card"><a href="queue-manager.html">Queue Manager</a><p>Manage CAPTCHA generation and validation queues</p></div>
+        <div class="card"><a href="rate-limiter.html">Rate Limiter Simulator</a><p>Configure and test rate limiting policies</p></div>
+        <div class="card"><a href="cost-calculator.html">Cost Calculator</a><p>Estimate infrastructure and operational costs</p></div>
+    </div>
+
+    <h2>📈 Performance &amp; Testing <span class="count" id="count-perf"></span></h2>
+    <div class="grid" data-section="perf">
+        <div class="card"><a href="benchmark.html">Response Time Benchmark</a><p>Benchmark CAPTCHA generation and validation speed</p></div>
+        <div class="card"><a href="timing.html">Response Time Analyzer</a><p>Detailed response time distribution and percentiles</p></div>
+        <div class="card"><a href="performance-profiler.html">Performance Profiler</a><p>Profile CPU, memory, and rendering performance</p></div>
+        <div class="card"><a href="load-tester.html">Load Tester</a><p>Simulate high-traffic scenarios and stress test</p></div>
+        <div class="card"><a href="batch.html">Batch Validator</a><p>Bulk CAPTCHA validation and batch processing</p></div>
+        <div class="card"><a href="heatmap.html">Interaction Heatmap</a><p>Visualize user interaction patterns with heatmaps</p></div>
+        <div class="card"><a href="solve-histogram.html">Solve Time Histogram</a><p>Distribution of solve times across user segments</p></div>
+        <div class="card"><a href="frame-inspector.html">Frame Inspector</a><p>Inspect individual GIF frames and animation timing</p></div>
+        <div class="card"><a href="accessibility.html">Accessibility Audit</a><p>WCAG compliance audit and accessibility testing</p></div>
+        <div class="card"><a href="feedback.html">User Feedback Collector</a><p>Collect and analyze user feedback on CAPTCHA experience</p></div>
+        <div class="card"><a href="geo-risk-map.html">Geo Risk Map</a><p>Geographic distribution of risk levels and attacks</p></div>
+    </div>
+
+    <script>
+        // Live search
+        const search = document.getElementById('search');
+        const cards = document.querySelectorAll('.card');
+        search.addEventListener('input', () => {
+            const q = search.value.toLowerCase();
+            cards.forEach(c => {
+                const text = c.textContent.toLowerCase();
+                c.classList.toggle('hidden', q && !text.includes(q));
+            });
+            updateCounts();
+        });
+
+        function updateCounts() {
+            document.querySelectorAll('[data-section]').forEach(grid => {
+                const section = grid.dataset.section;
+                const visible = grid.querySelectorAll('.card:not(.hidden)').length;
+                const total = grid.querySelectorAll('.card').length;
+                const el = document.getElementById('count-' + section);
+                if (el) el.textContent = search.value ? `(${visible}/${total})` : `(${total})`;
+            });
+        }
+        updateCounts();
+    </script>
+</body>
+</html>

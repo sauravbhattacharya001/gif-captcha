@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PoW Calibrator — gif-captcha</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:1.2rem;margin:1.5rem 0}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:1.2rem}
+.panel h3{margin:0 0 .8rem;color:var(--accent);font-size:1rem}
+canvas{display:block;margin:0 auto}
+.gauge-wrap{text-align:center}
+.gauge-label{font-size:2rem;font-weight:700;margin-top:.5rem}
+.gauge-sub{color:var(--muted);font-size:.85rem}
+.bar{background:var(--border);border-radius:4px;height:18px;margin:4px 0;position:relative;overflow:hidden}
+.bar-fill{height:100%;border-radius:4px;transition:width .4s}
+.bar-row{display:flex;align-items:center;gap:.5rem;margin:3px 0;font-size:.82rem}
+.bar-row span:first-child{width:110px;color:var(--muted);flex-shrink:0}
+.bar-row .bar{flex:1}
+.bar-row .val{width:32px;text-align:right;flex-shrink:0}
+.pow-stats{display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin:.8rem 0;font-size:.85rem}
+.pow-stats dt{color:var(--muted)}
+.pow-stats dd{margin:0;font-weight:600;font-variant-numeric:tabular-nums}
+.timeline{max-height:200px;overflow-y:auto;font-size:.8rem;border-top:1px solid var(--border);padding-top:.5rem}
+.timeline .ev{padding:3px 0;border-bottom:1px solid var(--border);display:flex;gap:.5rem}
+.timeline .ev-t{color:var(--muted);width:55px;flex-shrink:0}
+.rec{background:var(--yellow-bg);border-left:3px solid var(--yellow);padding:.5rem .8rem;margin:.4rem 0;border-radius:4px;font-size:.82rem}
+.controls{display:flex;gap:.6rem;flex-wrap:wrap;margin:.6rem 0}
+#typingInput{background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.5rem;border-radius:6px;width:100%;font-size:.9rem}
+.hash-display{word-break:break-all;font-family:monospace;font-size:.75rem;color:var(--green);margin-top:.5rem;min-height:1.2em}
+.autopilot-badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:.75rem;font-weight:600}
+.autopilot-on{background:var(--green-bg);color:var(--green)}
+.autopilot-off{background:var(--red-bg);color:var(--red)}
+</style>
+</head>
+<body>
+<header><h1>⚡ Proof-of-Work Calibrator</h1><p>Dynamic computational difficulty based on client trust signals</p></header>
+<main>
+<div class="grid">
+<!-- Trust Gauge -->
+<div class="panel gauge-wrap">
+<h3>🛡️ Trust Score</h3>
+<canvas id="gaugeCanvas" width="220" height="140"></canvas>
+<div class="gauge-label" id="trustLabel">50</div>
+<div class="gauge-sub" id="trustTier">Medium Trust</div>
+</div>
+
+<!-- Signal Breakdown -->
+<div class="panel">
+<h3>📊 Signal Breakdown</h3>
+<div id="signalBars"></div>
+</div>
+
+<!-- Difficulty Curve -->
+<div class="panel">
+<h3>📈 Calibration Curve</h3>
+<canvas id="curveCanvas" width="340" height="160"></canvas>
+<div style="text-align:center;color:var(--muted);font-size:.75rem;margin-top:.3rem">Trust Score → Difficulty (leading zeros)</div>
+</div>
+
+<!-- Input Area for Trust Signals -->
+<div class="panel">
+<h3>🖱️ Interaction Zone</h3>
+<p style="color:var(--muted);font-size:.82rem">Move your mouse and type below to generate trust signals</p>
+<input id="typingInput" placeholder="Type here to generate keystroke data..." autocomplete="off">
+<div style="margin-top:.5rem;font-size:.8rem;color:var(--muted)">Mouse events: <span id="mouseCount">0</span> · Keystrokes: <span id="keyCount">0</span></div>
+</div>
+
+<!-- PoW Challenge -->
+<div class="panel">
+<h3>⛏️ PoW Challenge</h3>
+<div class="controls">
+<button class="btn btn-primary" id="btnPow">▶ Run Challenge</button>
+<button class="btn btn-secondary" id="btnStopPow" disabled>⏹ Stop</button>
+<span style="font-size:.8rem;color:var(--muted);align-self:center" id="diffLabel">Difficulty: 3 leading zeros</span>
+</div>
+<dl class="pow-stats">
+<dt>Nonce</dt><dd id="powNonce">—</dd>
+<dt>Hashes/sec</dt><dd id="powRate">—</dd>
+<dt>Elapsed</dt><dd id="powTime">—</dd>
+<dt>Status</dt><dd id="powStatus">Idle</dd>
+</dl>
+<div class="hash-display" id="powHash"></div>
+</div>
+
+<!-- Autopilot -->
+<div class="panel">
+<h3>🤖 Autonomous Calibration <span class="autopilot-badge autopilot-off" id="apBadge">OFF</span></h3>
+<div class="controls">
+<button class="btn btn-primary" id="btnAutopilot">Enable Autopilot</button>
+<button class="btn btn-secondary" id="btnExport">📥 Export JSON</button>
+</div>
+<div class="timeline" id="timeline"></div>
+</div>
+
+<!-- Recommendations -->
+<div class="panel">
+<h3>💡 Recommendations</h3>
+<div id="recsPanel"><div class="rec">Interact with the page to generate trust signals. The calibrator will adapt difficulty based on your behavior.</div></div>
+</div>
+</div>
+</main>
+<footer><p>Part of the <a href="index.html">gif-captcha</a> research project</p></footer>
+<script src="shared.js"></script>
+<script>
+(function(){
+'use strict';
+
+// === State ===
+const state = {
+  mouseEvents: [], keyEvents: [], mouseCount: 0, keyCount: 0,
+  sessionStart: Date.now(), interactions: 0,
+  solveHistory: [0.8, 0.6, 0.9, 0.7, 0.5], // simulated past
+  signals: { mouse: 50, typing: 50, fingerprint: 70, session: 30, history: 60 },
+  trustScore: 50, difficulty: 3, autopilot: false, autopilotTimer: null,
+  powRunning: false, powWorker: null, events: [], recommendations: []
+};
+
+// === Elements ===
+const $ = id => document.getElementById(id);
+
+// === Trust Signal Computation ===
+function entropy(arr) {
+  if (arr.length < 2) return 0;
+  const diffs = [];
+  for (let i = 1; i < arr.length; i++) diffs.push(arr[i] - arr[i-1]);
+  const mean = diffs.reduce((a,b) => a+b, 0) / diffs.length;
+  const variance = diffs.reduce((a,b) => a + (b-mean)**2, 0) / diffs.length;
+  return Math.min(100, Math.sqrt(variance) / 5 * 100);
+}
+
+function computeSignals() {
+  // Mouse entropy from recent movements
+  const recentMouse = state.mouseEvents.slice(-50);
+  state.signals.mouse = Math.round(entropy(recentMouse.map(e => e.x + e.y * 0.7)));
+
+  // Typing cadence
+  const recentKeys = state.keyEvents.slice(-20);
+  if (recentKeys.length > 2) {
+    const intervals = [];
+    for (let i = 1; i < recentKeys.length; i++) intervals.push(recentKeys[i] - recentKeys[i-1]);
+    const avg = intervals.reduce((a,b)=>a+b,0)/intervals.length;
+    const cv = Math.sqrt(intervals.reduce((a,b)=>a+(b-avg)**2,0)/intervals.length) / (avg||1);
+    state.signals.typing = Math.round(Math.min(100, cv * 200));
+  }
+
+  // Fingerprint consistency (static check)
+  const fp = navigator.hardwareConcurrency > 1 && navigator.cookieEnabled && !navigator.webdriver;
+  state.signals.fingerprint = fp ? 80 : 20;
+
+  // Session age
+  const ageSec = (Date.now() - state.sessionStart) / 1000;
+  state.signals.session = Math.round(Math.min(100, ageSec / 2));
+
+  // Solve history
+  const avgSolve = state.solveHistory.reduce((a,b)=>a+b,0) / state.solveHistory.length;
+  state.signals.history = Math.round(avgSolve * 100);
+
+  // Weighted trust score
+  const w = { mouse: 0.25, typing: 0.2, fingerprint: 0.2, session: 0.15, history: 0.2 };
+  state.trustScore = Math.round(
+    Object.keys(w).reduce((s, k) => s + state.signals[k] * w[k], 0)
+  );
+
+  // Difficulty mapping
+  if (state.trustScore < 30) state.difficulty = 5;
+  else if (state.trustScore < 50) state.difficulty = 4;
+  else if (state.trustScore < 70) state.difficulty = 3;
+  else if (state.trustScore < 85) state.difficulty = 2;
+  else state.difficulty = 1;
+}
+
+// === Rendering ===
+function drawGauge() {
+  const c = $('gaugeCanvas'), ctx = c.getContext('2d');
+  ctx.clearRect(0, 0, c.width, c.height);
+  const cx = c.width/2, cy = 120, r = 90;
+  const startA = Math.PI, endA = 2 * Math.PI;
+  // Background arc
+  ctx.beginPath(); ctx.arc(cx, cy, r, startA, endA); ctx.lineWidth = 16;
+  ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--border'); ctx.stroke();
+  // Value arc
+  const pct = state.trustScore / 100;
+  const valA = startA + pct * Math.PI;
+  const color = state.trustScore < 30 ? '#f85149' : state.trustScore < 70 ? '#d29922' : '#3fb950';
+  ctx.beginPath(); ctx.arc(cx, cy, r, startA, valA); ctx.lineWidth = 16; ctx.strokeStyle = color;
+  ctx.lineCap = 'round'; ctx.stroke();
+  // Needle
+  const na = startA + pct * Math.PI;
+  ctx.beginPath(); ctx.moveTo(cx, cy);
+  ctx.lineTo(cx + Math.cos(na) * (r - 25), cy + Math.sin(na) * (r - 25));
+  ctx.strokeStyle = '#e6edf3'; ctx.lineWidth = 2; ctx.stroke();
+
+  $('trustLabel').textContent = state.trustScore;
+  $('trustLabel').style.color = color;
+  const tier = state.trustScore < 30 ? 'Low Trust' : state.trustScore < 70 ? 'Medium Trust' : 'High Trust';
+  $('trustTier').textContent = tier;
+}
+
+function drawSignalBars() {
+  const names = { mouse: 'Mouse Entropy', typing: 'Typing Cadence', fingerprint: 'Fingerprint', session: 'Session Age', history: 'Solve History' };
+  const colors = { mouse: 'var(--accent)', typing: 'var(--purple)', fingerprint: 'var(--cyan)', session: 'var(--orange)', history: 'var(--green)' };
+  let html = '';
+  for (const [k, label] of Object.entries(names)) {
+    html += `<div class="bar-row"><span>${label}</span><div class="bar"><div class="bar-fill" style="width:${state.signals[k]}%;background:${colors[k]}"></div></div><span class="val">${state.signals[k]}</span></div>`;
+  }
+  $('signalBars').innerHTML = html;
+}
+
+function drawCurve() {
+  const c = $('curveCanvas'), ctx = c.getContext('2d');
+  const w = c.width, h = c.height, pad = 30;
+  ctx.clearRect(0, 0, w, h);
+  ctx.strokeStyle = 'rgba(88,166,255,0.2)'; ctx.lineWidth = 1;
+  // Grid
+  for (let i = 0; i <= 5; i++) {
+    const y = pad + (h - 2*pad) * i / 5;
+    ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(w-pad, y); ctx.stroke();
+  }
+  // Curve
+  ctx.beginPath(); ctx.strokeStyle = 'var(--accent)'; ctx.lineWidth = 2.5;
+  const pts = [];
+  for (let t = 0; t <= 100; t += 2) {
+    let d;
+    if (t < 30) d = 5;
+    else if (t < 50) d = 4;
+    else if (t < 70) d = 3;
+    else if (t < 85) d = 2;
+    else d = 1;
+    const x = pad + (t / 100) * (w - 2*pad);
+    const y = pad + ((5 - d) / 4) * (h - 2*pad);
+    pts.push({x, y});
+    if (t === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  // Current position
+  const cx = pad + (state.trustScore / 100) * (w - 2*pad);
+  let cd; if (state.trustScore < 30) cd=5; else if (state.trustScore<50) cd=4; else if (state.trustScore<70) cd=3; else if (state.trustScore<85) cd=2; else cd=1;
+  const cy = pad + ((5 - cd) / 4) * (h - 2*pad);
+  ctx.beginPath(); ctx.arc(cx, cy, 6, 0, Math.PI*2); ctx.fillStyle = '#f0883e'; ctx.fill();
+  // Labels
+  ctx.fillStyle = '#8b949e'; ctx.font = '10px system-ui';
+  ctx.textAlign = 'center'; ctx.fillText('0', pad, h-8); ctx.fillText('50', w/2, h-8); ctx.fillText('100', w-pad, h-8);
+  ctx.textAlign = 'right'; ctx.fillText('1', pad-5, h-pad); ctx.fillText('5', pad-5, pad+4);
+}
+
+function updateDiffLabel() {
+  $('diffLabel').textContent = `Difficulty: ${state.difficulty} leading zero${state.difficulty>1?'s':''}`;
+}
+
+// === PoW Engine (main thread, batched) ===
+let powCancel = false;
+async function runPoW() {
+  state.powRunning = true; powCancel = false;
+  $('btnPow').disabled = true; $('btnStopPow').disabled = false;
+  $('powStatus').textContent = 'Mining...'; $('powStatus').style.color = 'var(--yellow)';
+  $('powHash').textContent = '';
+  const target = '0'.repeat(state.difficulty);
+  const challenge = crypto.getRandomValues(new Uint8Array(16));
+  const challengeHex = Array.from(challenge, b => b.toString(16).padStart(2,'0')).join('');
+  let nonce = 0; const t0 = performance.now(); let lastUI = t0;
+  const enc = new TextEncoder();
+
+  while (!powCancel) {
+    const batch = 500;
+    for (let i = 0; i < batch; i++) {
+      const data = enc.encode(challengeHex + (nonce + i));
+      const hashBuf = await crypto.subtle.digest('SHA-256', data);
+      const hashArr = Array.from(new Uint8Array(hashBuf));
+      const hex = hashArr.map(b => b.toString(16).padStart(2,'0')).join('');
+      if (hex.startsWith(target)) {
+        const elapsed = ((performance.now() - t0)/1000).toFixed(2);
+        $('powNonce').textContent = (nonce + i).toLocaleString();
+        $('powRate').textContent = Math.round((nonce + i) / parseFloat(elapsed)).toLocaleString();
+        $('powTime').textContent = elapsed + 's';
+        $('powStatus').textContent = '✅ Found!'; $('powStatus').style.color = 'var(--green)';
+        $('powHash').textContent = hex;
+        state.solveHistory.push(Math.min(1, 1 / parseFloat(elapsed)));
+        if (state.solveHistory.length > 20) state.solveHistory.shift();
+        state.powRunning = false; $('btnPow').disabled = false; $('btnStopPow').disabled = true;
+        return;
+      }
+    }
+    nonce += batch;
+    const now = performance.now();
+    if (now - lastUI > 100) {
+      const elapsed = ((now - t0)/1000).toFixed(2);
+      $('powNonce').textContent = nonce.toLocaleString();
+      $('powRate').textContent = Math.round(nonce / parseFloat(elapsed)).toLocaleString();
+      $('powTime').textContent = elapsed + 's';
+      lastUI = now;
+      await new Promise(r => setTimeout(r, 0)); // yield to UI
+    }
+  }
+  $('powStatus').textContent = 'Stopped'; $('powStatus').style.color = 'var(--red)';
+  state.powRunning = false; $('btnPow').disabled = false; $('btnStopPow').disabled = true;
+}
+
+$('btnPow').onclick = () => { if (!state.powRunning) runPoW(); };
+$('btnStopPow').onclick = () => { powCancel = true; };
+
+// === Autopilot ===
+function addEvent(msg, type) {
+  const t = new Date().toLocaleTimeString('en-US', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  state.events.unshift({ t, msg, type });
+  if (state.events.length > 100) state.events.pop();
+  renderTimeline();
+}
+
+function renderTimeline() {
+  $('timeline').innerHTML = state.events.map(e =>
+    `<div class="ev"><span class="ev-t">${e.t}</span><span>${e.msg}</span></div>`
+  ).join('');
+}
+
+let prevTrust = 50, prevDiff = 3;
+function autopilotTick() {
+  computeSignals();
+  const trustDelta = state.trustScore - prevTrust;
+  const diffChanged = state.difficulty !== prevDiff;
+
+  if (Math.abs(trustDelta) > 10) {
+    addEvent(`Trust ${trustDelta > 0 ? '📈 rose' : '📉 dropped'} by ${Math.abs(trustDelta)} → ${state.trustScore}`, 'trust');
+  }
+  if (diffChanged) {
+    addEvent(`⚡ Difficulty adjusted: ${prevDiff} → ${state.difficulty} zeros`, 'diff');
+  }
+  if (trustDelta < -15) {
+    addEvent('🚨 Rapid trust decline detected — raising difficulty proactively', 'alert');
+    state.difficulty = Math.min(5, state.difficulty + 1);
+  }
+
+  // Recommendations
+  const recs = [];
+  if (state.signals.mouse < 20) recs.push('Low mouse entropy — potential headless bot. Consider adding mouse-path challenge.');
+  if (state.signals.typing < 20) recs.push('No typing detected — add keyboard interaction requirement.');
+  if (state.signals.session < 30) recs.push('Short session — new visitors get harder challenges until trust builds.');
+  if (state.difficulty >= 4) recs.push('High difficulty active — monitor solve rates to avoid blocking legitimate users.');
+  if (state.trustScore > 80) recs.push('High trust client — consider fast-tracking with reduced challenge frequency.');
+  if (recs.length === 0) recs.push('All signals nominal. Calibration is balanced.');
+  $('recsPanel').innerHTML = recs.map(r => `<div class="rec">${r}</div>`).join('');
+
+  prevTrust = state.trustScore; prevDiff = state.difficulty;
+  render();
+}
+
+function toggleAutopilot() {
+  state.autopilot = !state.autopilot;
+  $('apBadge').textContent = state.autopilot ? 'ON' : 'OFF';
+  $('apBadge').className = 'autopilot-badge ' + (state.autopilot ? 'autopilot-on' : 'autopilot-off');
+  $('btnAutopilot').textContent = state.autopilot ? 'Disable Autopilot' : 'Enable Autopilot';
+  if (state.autopilot) {
+    addEvent('🤖 Autopilot engaged — monitoring trust signals', 'system');
+    state.autopilotTimer = setInterval(autopilotTick, 5000);
+  } else {
+    clearInterval(state.autopilotTimer);
+    addEvent('🤖 Autopilot disengaged', 'system');
+  }
+}
+$('btnAutopilot').onclick = toggleAutopilot;
+
+// === Export ===
+$('btnExport').onclick = () => {
+  const data = {
+    timestamp: new Date().toISOString(),
+    trustScore: state.trustScore, difficulty: state.difficulty,
+    signals: { ...state.signals }, solveHistory: state.solveHistory,
+    events: state.events.slice(0, 50)
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = 'pow-calibration-' + Date.now() + '.json'; a.click();
+};
+
+// === Event Listeners ===
+document.addEventListener('mousemove', e => {
+  state.mouseEvents.push({ x: e.clientX, y: e.clientY, t: Date.now() });
+  if (state.mouseEvents.length > 200) state.mouseEvents.shift();
+  state.mouseCount++; state.interactions++;
+  $('mouseCount').textContent = state.mouseCount;
+});
+
+$('typingInput').addEventListener('keydown', () => {
+  state.keyEvents.push(Date.now());
+  if (state.keyEvents.length > 100) state.keyEvents.shift();
+  state.keyCount++; state.interactions++;
+  $('keyCount').textContent = state.keyCount;
+});
+
+// === Main Loop ===
+function render() {
+  computeSignals();
+  drawGauge();
+  drawSignalBars();
+  drawCurve();
+  updateDiffLabel();
+}
+render();
+setInterval(() => { if (!state.autopilot) render(); }, 2000);
+
+})();
+</script>
+</body>
+</html>

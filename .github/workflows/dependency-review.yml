@@ -1,0 +1,38 @@
+# Dependency Review — blocks PRs that introduce known-vulnerable packages
+# Runs on pull requests targeting main. Uses GitHub's dependency graph to
+# flag advisories, restricted licenses, and scope changes.
+
+name: Dependency Review
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'package.json'
+      - 'package-lock.json'
+      - 'yarn.lock'
+      - 'pnpm-lock.yaml'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    name: Dependency Review
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v4
+        with:
+          # Fail on any vulnerability with severity >= low
+          fail-on-severity: low
+          # Also flag copyleft licenses that conflict with MIT
+          deny-licenses: GPL-2.0-only, GPL-3.0-only, AGPL-3.0-only
+          # Comment summary on the PR
+          comment-summary-in-pr: always

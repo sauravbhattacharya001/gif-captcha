@@ -297,38 +297,67 @@ function createCaptchaTrafficAnalyzer(options) {
   function getBaseline() {
     if (windows.length < minWindowsForBaseline) return null;
 
-    var counts = [];
-    var solveRates = [];
-    var responseMeans = [];
-    var regionCounts = [];
+    var n = windows.length;
+    // Welford's online accumulators for mean/stddev — avoids 4×O(W) _mean/_stddev calls
+    var cSum = 0, cM2 = 0, cMean = 0;
+    var sSum = 0, sM2 = 0, sMean = 0;
+    var rSum = 0, rM2 = 0, rMean = 0;
+    var dSum = 0, dM2 = 0, dMean = 0;
+    // Still need arrays for median (requires sorted data)
+    var counts = new Array(n);
+    var solveRates = new Array(n);
 
-    for (var i = 0; i < windows.length; i++) {
+    for (var i = 0; i < n; i++) {
       var w = windows[i];
-      counts.push(w.count);
-      solveRates.push(w.solveRate);
-      responseMeans.push(w.meanResponseMs);
-      regionCounts.push(w.uniqueRegions);
+      var k = i + 1;
+
+      // traffic count
+      counts[i] = w.count;
+      var cd = w.count - cMean;
+      cMean += cd / k;
+      cM2 += cd * (w.count - cMean);
+
+      // solve rate
+      solveRates[i] = w.solveRate;
+      var sd = w.solveRate - sMean;
+      sMean += sd / k;
+      sM2 += sd * (w.solveRate - sMean);
+
+      // response time mean
+      var rd = w.meanResponseMs - rMean;
+      rMean += rd / k;
+      rM2 += rd * (w.meanResponseMs - rMean);
+
+      // region diversity
+      var dd = w.uniqueRegions - dMean;
+      dMean += dd / k;
+      dM2 += dd * (w.uniqueRegions - dMean);
     }
 
+    var cStd = n > 1 ? Math.sqrt(cM2 / (n - 1)) : 0;
+    var sStd = n > 1 ? Math.sqrt(sM2 / (n - 1)) : 0;
+    var rStd = n > 1 ? Math.sqrt(rM2 / (n - 1)) : 0;
+    var dStd = n > 1 ? Math.sqrt(dM2 / (n - 1)) : 0;
+
     return {
-      windowCount: windows.length,
+      windowCount: n,
       traffic: {
-        mean: _r(_mean(counts)),
-        stddev: _r(_stddev(counts)),
+        mean: _r(cMean),
+        stddev: _r(cStd),
         median: _r(_median(counts))
       },
       solveRate: {
-        mean: _r(_mean(solveRates), 3),
-        stddev: _r(_stddev(solveRates), 3),
+        mean: _r(sMean, 3),
+        stddev: _r(sStd, 3),
         median: _r(_median(solveRates), 3)
       },
       responseTime: {
-        mean: _r(_mean(responseMeans)),
-        stddev: _r(_stddev(responseMeans))
+        mean: _r(rMean),
+        stddev: _r(rStd)
       },
       regionDiversity: {
-        mean: _r(_mean(regionCounts)),
-        stddev: _r(_stddev(regionCounts))
+        mean: _r(dMean),
+        stddev: _r(dStd)
       }
     };
   }
@@ -526,9 +555,9 @@ function createCaptchaTrafficAnalyzer(options) {
    * @param {number} [lastN] - Number of recent windows to consider
    * @returns {Object|null} Trend result with slope, direction, and r-squared
    */
-  function getTrend(metric, lastN) {
-    var src = windows.slice();
-    if (currentWindow && currentWindow.count > 0) {
+  function getTrend(metric, lastN, _prebuiltWindows) {
+    var src = _prebuiltWindows ? _prebuiltWindows.slice() : windows.slice();
+    if (!_prebuiltWindows && currentWindow && currentWindow.count > 0) {
       src.push(_summarizeWindow(currentWindow));
     }
     if (lastN && lastN > 0 && lastN < src.length) {
@@ -783,9 +812,9 @@ function createCaptchaTrafficAnalyzer(options) {
       regionBreakdown: regionBreakdown,
       hourlyDistribution: hourlyDistribution,
       trends: {
-        traffic: getTrend('count'),
-        solveRate: getTrend('solveRate'),
-        responseTime: getTrend('meanResponseMs')
+        traffic: getTrend('count', undefined, allW),
+        solveRate: getTrend('solveRate', undefined, allW),
+        responseTime: getTrend('meanResponseMs', undefined, allW)
       }
     };
   }

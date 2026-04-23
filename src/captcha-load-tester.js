@@ -1,5 +1,8 @@
 'use strict';
 
+var _shared = require('./shared-utils');
+var _percentileSorted = _shared._percentileSorted;
+
 /**
  * createCaptchaLoadTester — simulates concurrent CAPTCHA sessions to measure
  * throughput, latency distribution, error rates, and identify bottlenecks
@@ -59,12 +62,6 @@ function createCaptchaLoadTester(options) {
 
   function _sleep(ms) {
     return new Promise(function(resolve) { setTimeout(resolve, ms); });
-  }
-
-  function _percentile(sorted, p) {
-    if (sorted.length === 0) return 0;
-    var idx = Math.ceil((p / 100) * sorted.length) - 1;
-    return sorted[Math.max(0, idx)];
   }
 
   function _timeout(promise, ms) {
@@ -211,11 +208,11 @@ function createCaptchaLoadTester(options) {
         min: latencies[0],
         max: latencies[latencies.length - 1],
         mean: Math.round(mean * 100) / 100,
-        median: _percentile(latencies, 50),
-        p75: _percentile(latencies, 75),
-        p90: _percentile(latencies, 90),
-        p95: _percentile(latencies, 95),
-        p99: _percentile(latencies, 99),
+        median: _percentileSorted(latencies, 50),
+        p75: _percentileSorted(latencies, 75),
+        p90: _percentileSorted(latencies, 90),
+        p95: _percentileSorted(latencies, 95),
+        p99: _percentileSorted(latencies, 99),
         stdDev: Math.round(stdDev * 100) / 100
       },
       errors: errorMap,

@@ -9,6 +9,7 @@ var _mean = _shared._mean;
 var _median = _shared._median;
 var _stddev = _shared._stddev;
 var LruTracker = _shared.LruTracker;
+var _percentile = _shared._percentile;
 
 
 // ── Configuration Validator ─────────────────────────────────────────
@@ -889,17 +890,7 @@ function createChallengeAnalytics(options) {
   }
 
   // -- Internal helpers --
-  // _mean, _median, _stddev are provided by shared top-level helpers
-
-  function _percentile(arr, p) {
-    if (arr.length === 0) return 0;
-    var sorted = arr.slice().sort(_numAsc);
-    var idx = (p / 100) * (sorted.length - 1);
-    var lo = Math.floor(idx);
-    var hi = Math.ceil(idx);
-    if (lo === hi) return sorted[lo];
-    return sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
-  }
+  // _mean, _median, _stddev, _percentile are provided by shared-utils
 
   function _computeTimingStats(arr) {
     if (arr.length === 0) return { count: 0, mean: 0, median: 0, stddev: 0, p5: 0, p95: 0, min: 0, max: 0 };

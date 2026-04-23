@@ -47,6 +47,9 @@
 
 "use strict";
 
+var _shared = require("./shared-utils");
+var _percentileSorted = _shared._percentileSorted;
+
 // ── Status Levels ────────────────────────────────────────────────────
 
 var STATUS = Object.create(null);
@@ -258,9 +261,9 @@ function createCaptchaHealthMonitor(options) {
     var avg = sum / times.length;
 
     var sorted = times.slice().sort(function(a, b) { return a - b; });
-    var p50 = _percentile(sorted, 50);
-    var p95 = _percentile(sorted, 95);
-    var p99 = _percentile(sorted, 99);
+    var p50 = _percentileSorted(sorted, 50);
+    var p95 = _percentileSorted(sorted, 95);
+    var p99 = _percentileSorted(sorted, 99);
 
     var status = STATUS.HEALTHY;
     if (avg >= thresholds.criticalResponseMs) status = STATUS.CRITICAL;
@@ -277,16 +280,6 @@ function createCaptchaHealthMonitor(options) {
       threshold: thresholds.maxAvgResponseMs,
       criticalThreshold: thresholds.criticalResponseMs
     };
-  }
-
-  function _percentile(sorted, p) {
-    if (sorted.length === 0) return 0;
-    if (sorted.length === 1) return sorted[0];
-    var idx = (p / 100) * (sorted.length - 1);
-    var lo = Math.floor(idx);
-    var hi = Math.ceil(idx);
-    if (lo === hi) return sorted[lo];
-    return sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
   }
 
   function _computePoolLevel() {

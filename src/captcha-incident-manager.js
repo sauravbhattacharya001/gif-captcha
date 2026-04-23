@@ -285,10 +285,7 @@ function createIncidentManager(opts) {
       action: 'acknowledged',
       detail: 'Acknowledged by ' + inc.responder + ' (TTA: ' + _duration(inc.createdAt, inc.acknowledgedAt) + ')'
     });
-    if (escalationTimers[id]) {
-      clearTimeout(escalationTimers[id]);
-      delete escalationTimers[id];
-    }
+    // Timer already cleared by _transition when leaving 'open' state
     return inc;
   }
 

@@ -56,16 +56,18 @@ var DEFAULT_DECAY_HALF_LIFE_MS = 300000; // 5 minutes — older signals matter l
 var DEFAULT_MAX_SIGNALS_PER_MODULE = 50;
 var DEFAULT_SESSION_TTL_MS = 1800000; // 30 minutes
 
+// ── Shared imports ──────────────────────────────────────────────────
+var _shared = require("./shared-utils");
+var _clamp = _shared._clamp;
+var _now = _shared._now;
+var _percentile = _shared._percentile;
+
 // ── Helpers ─────────────────────────────────────────────────────────
 
-function _clamp(v, lo, hi) {
-  return v < lo ? lo : v > hi ? hi : v;
-}
-
-function _now() {
-  return Date.now();
-}
-
+/**
+ * Deep-copy an object via JSON round-trip.
+ * Use only for nested structures; prefer _shallowCopy for flat objects.
+ */
 function _deepCopy(obj) {
   return JSON.parse(JSON.stringify(obj));
 }
@@ -74,7 +76,7 @@ function _deepCopy(obj) {
  * Shallow-copy an object (one level deep). Faster than JSON round-trip
  * for flat or mostly-flat structures like stats counters and configs.
  */
- function _shallowCopy(obj) {
+function _shallowCopy(obj) {
   var result = Object.create(null);
   var keys = Object.keys(obj);
   for (var i = 0; i < keys.length; i++) {
@@ -83,14 +85,36 @@ function _deepCopy(obj) {
   return result;
 }
 
+/**
+ * Two-level-deep copy: shallow-copies the top-level object, then
+ * shallow-copies any object-valued properties. Sufficient for config
+ * and stats objects that are at most one level of nesting deep, and
+ * avoids the O(JSON-stringify) cost of _deepCopy.
+ */
+function _shallowCopy2(obj) {
+  var result = Object.create(null);
+  var keys = Object.keys(obj);
+  for (var i = 0; i < keys.length; i++) {
+    var v = obj[keys[i]];
+    if (v !== null && typeof v === "object" && !Array.isArray(v)) {
+      result[keys[i]] = _shallowCopy(v);
+    } else {
+      result[keys[i]] = v;
+    }
+  }
+  return result;
+}
+
+var _hasOwn = Object.prototype.hasOwnProperty;
+
 function _merge(base, override) {
   var result = Object.create(null);
   var k;
   for (k in base) {
-    if (base.hasOwnProperty(k)) result[k] = base[k];
+    if (_hasOwn.call(base, k)) result[k] = base[k];
   }
   for (k in override) {
-    if (override.hasOwnProperty(k)) result[k] = override[k];
+    if (_hasOwn.call(override, k)) result[k] = override[k];
   }
   return result;
 }
@@ -110,9 +134,7 @@ function _decayFactor(ageMs, halfLifeMs) {
   return Math.pow(0.5, ageMs / halfLifeMs);
 }
 
-function _percentile(arr, p) {
-  return require("./shared-utils")._percentile(arr, p);
-}
+// _percentile imported from shared-utils above
 
 // ── Module name normalization ───────────────────────────────────────
 
@@ -731,12 +753,12 @@ function createSessionRiskAggregator(options) {
    */
   function exportData() {
     return {
-      sessions: _deepCopy(sessions),
-      stats: _deepCopy(stats),
+      sessions: _deepCopy(sessions),      // nested signal arrays need deep copy
+      stats: _shallowCopy2(stats),         // flat with one-level sub-objects
       config: {
-        weights: _deepCopy(weights),
-        thresholds: _deepCopy(thresholds),
-        actions: _deepCopy(actions),
+        weights: _shallowCopy(weights),    // flat key→number
+        thresholds: _shallowCopy(thresholds),
+        actions: _shallowCopy(actions),
         decayHalfLifeMs: decayHalfLife,
         maxSignalsPerModule: maxSignals,
         sessionTTLMs: sessionTTL

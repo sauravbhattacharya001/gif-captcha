@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CAPTCHA Session Replay Analyzer | gif-captcha</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+.tabs{display:flex;gap:4px;margin-bottom:20px;border-bottom:1px solid var(--border);padding-bottom:8px}
+.tab-btn{padding:8px 18px;background:transparent;color:var(--muted);border:none;cursor:pointer;border-radius:6px 6px 0 0;font-size:14px;transition:.2s}
+.tab-btn.active,.tab-btn:hover{background:var(--surface);color:var(--accent)}
+.tab-content{display:none}.tab-content.active{display:block}
+.record-area{position:relative;border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:16px}
+.record-canvas{display:block;cursor:crosshair}
+.controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
+.controls button{padding:6px 14px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:13px}
+.controls button:hover{border-color:var(--accent);color:var(--accent)}
+.controls button.active-rec{background:var(--red-bg);border-color:var(--red);color:var(--red)}
+.metric-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin:16px 0}
+.metric-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px}
+.metric-card h4{margin:0 0 6px;color:var(--muted);font-size:12px;text-transform:uppercase}
+.metric-card .val{font-size:28px;font-weight:700;color:var(--accent)}
+.metric-card .bar{height:6px;background:var(--border);border-radius:3px;margin-top:8px;overflow:hidden}
+.metric-card .bar-fill{height:100%;border-radius:3px;transition:.4s}
+.verdict-box{padding:20px;border-radius:8px;text-align:center;margin:16px 0}
+.verdict-box.human{background:var(--green-bg);border:1px solid var(--green)}
+.verdict-box.bot{background:var(--red-bg);border:1px solid var(--red)}
+.verdict-box.uncertain{background:var(--yellow-bg);border:1px solid var(--yellow)}
+.verdict-box h2{margin:0 0 4px}
+.compare-wrap{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.compare-wrap .panel{border:1px solid var(--border);border-radius:8px;padding:12px}
+.session-list{max-height:200px;overflow-y:auto;margin:8px 0}
+.session-item{padding:6px 10px;cursor:pointer;border-radius:4px;font-size:13px;display:flex;justify-content:space-between}
+.session-item:hover{background:var(--surface-hover)}
+.session-item.selected{background:var(--surface);border:1px solid var(--accent)}
+select{background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 8px}
+.radar-canvas{display:block;margin:0 auto}
+.legend{display:flex;gap:16px;justify-content:center;margin:8px 0;font-size:12px;color:var(--muted)}
+.legend span::before{content:'';display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:middle}
+.auto-alert{position:absolute;top:8px;right:8px;padding:4px 10px;border-radius:4px;font-size:12px;font-weight:600;z-index:2}
+.auto-alert.safe{background:var(--green-bg);color:var(--green)}
+.auto-alert.warn{background:var(--yellow-bg);color:var(--yellow)}
+.auto-alert.danger{background:var(--red-bg);color:var(--red)}
+.timeline{height:60px;background:var(--surface);border:1px solid var(--border);border-radius:6px;position:relative;margin:12px 0;overflow:hidden}
+.speed-label{font-size:12px;color:var(--muted)}
+</style>
+</head>
+<body>
+<header><h1>🎬 CAPTCHA Session Replay Analyzer</h1><p>Record, replay, and analyze CAPTCHA solving behavior with autonomous bot detection</p></header>
+<main>
+<div class="tabs">
+<button class="tab-btn active" data-tab="record">⏺ Record</button>
+<button class="tab-btn" data-tab="replay">▶ Replay</button>
+<button class="tab-btn" data-tab="compare">⚖ Compare</button>
+<button class="tab-btn" data-tab="analysis">🧠 Analysis</button>
+</div>
+
+<!-- RECORD TAB -->
+<div id="record" class="tab-content active">
+<div class="controls">
+<button id="startRec">⏺ Start Recording</button>
+<button id="stopRec" disabled>⏹ Stop</button>
+<button id="saveRec" disabled>💾 Save Session</button>
+<label><input type="checkbox" id="autoDetect"> Auto-detect mode</label>
+<span id="recStatus" style="color:var(--muted);font-size:13px"></span>
+</div>
+<div class="record-area">
+<canvas id="recCanvas" class="record-canvas" width="600" height="400"></canvas>
+<div id="autoAlert" class="auto-alert safe" style="display:none">✓ Normal</div>
+</div>
+<p style="color:var(--muted);font-size:13px">Click cells matching the <strong id="targetColorLabel">target color</strong> to solve the CAPTCHA while your behavior is recorded.</p>
+</div>
+
+<!-- REPLAY TAB -->
+<div id="replay" class="tab-content">
+<div class="controls">
+<select id="replaySelect"><option value="">Select session…</option></select>
+<button id="playBtn">▶ Play</button>
+<button id="pauseBtn" disabled>⏸ Pause</button>
+<button id="resetBtn">⏮ Reset</button>
+<label>Speed: <select id="speedSel"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="5">5×</option></select></label>
+<label><input type="checkbox" id="showTrails" checked> Trails</label>
+<label><input type="checkbox" id="showHeat"> Heatmap</label>
+<label><input type="checkbox" id="showVelocity"> Velocity</label>
+</div>
+<div class="record-area"><canvas id="replayCanvas" class="record-canvas" width="600" height="400"></canvas></div>
+<div class="timeline" id="replayTimeline"></div>
+</div>
+
+<!-- COMPARE TAB -->
+<div id="compare" class="tab-content">
+<div class="controls">
+<select id="cmpA"><option value="">Session A…</option></select>
+<select id="cmpB"><option value="">Session B…</option></select>
+<button id="cmpPlay">▶ Sync Play</button>
+<button id="cmpPause" disabled>⏸</button>
+</div>
+<div class="compare-wrap">
+<div class="panel"><h3 id="cmpLabelA">Session A</h3><canvas id="cmpCanvasA" width="290" height="290"></canvas></div>
+<div class="panel"><h3 id="cmpLabelB">Session B</h3><canvas id="cmpCanvasB" width="290" height="290"></canvas></div>
+</div>
+</div>
+
+<!-- ANALYSIS TAB -->
+<div id="analysis" class="tab-content">
+<div class="controls">
+<select id="analysisSelect"><option value="">Select session…</option></select>
+<button id="analyzeBtn">🧠 Analyze</button>
+<button id="exportBtn">📥 Export JSON</button>
+</div>
+<div id="verdictBox" class="verdict-box uncertain" style="display:none">
+<h2 id="verdictText">—</h2>
+<p id="verdictExplain" style="margin:4px 0 0;color:var(--muted)"></p>
+</div>
+<canvas id="radarCanvas" class="radar-canvas" width="300" height="300"></canvas>
+<div class="legend"><span style="color:var(--accent)">● Scores</span></div>
+<div class="metric-grid" id="metricGrid"></div>
+</div>
+</main>
+<footer><p>gif-captcha · Session Replay Analyzer · Autonomous behavioral analysis</p></footer>
+
+<script>
+(()=>{
+/* ===== STATE ===== */
+const STORE_KEY='gcap_sessions';
+let sessions=JSON.parse(localStorage.getItem(STORE_KEY)||'[]');
+let recording=false, recEvents=[], recStart=0, captchaGrid=[], targetColor='', solvedCells=new Set();
+let replayAnim=null, replayIdx=0, replayPaused=false;
+let cmpAnim=null;
+
+/* ===== DEMO SESSIONS ===== */
+function genDemo(name,type){
+  const evts=[];const t0=Date.now()-60000;const W=600,H=400;
+  if(type==='human'){
+    let x=100,y=300;
+    for(let i=0;i<300;i++){
+      const dt=i*25+Math.random()*40;
+      x+=Math.random()*12-6+(i%40===0?Math.random()*60-30:0);
+      y+=Math.random()*12-6+(i%40===0?Math.random()*60-30:0);
+      x=Math.max(5,Math.min(W-5,x));y=Math.max(5,Math.min(H-5,y));
+      evts.push({x,y,t:t0+dt,type:'move'});
+      if(i%50===0&&i>0){evts.push({x,y,t:t0+dt+10,type:'click'});
+        // pause
+        for(let p=0;p<8;p++) evts.push({x:x+Math.random()*2-1,y:y+Math.random()*2-1,t:t0+dt+200+p*100,type:'move'});
+      }
+    }
+  } else if(type==='bot'){
+    const targets=[[150,100],[350,100],[150,300],[350,300]];
+    let ci=0;
+    targets.forEach((tgt,ti)=>{
+      const steps=20;const sx=ti===0?50:targets[ti-1][0],sy=ti===0?350:targets[ti-1][1];
+      for(let s=0;s<=steps;s++){
+        const r=s/steps;
+        evts.push({x:sx+(tgt[0]-sx)*r,y:sy+(tgt[1]-sy)*r,t:t0+ci*15,type:'move'});ci++;
+      }
+      evts.push({x:tgt[0],y:tgt[1],t:t0+ci*15,type:'click'});ci++;
+    });
+  } else {
+    let x=200,y=200;
+    for(let i=0;i<150;i++){
+      const dt=i*20+Math.random()*15;
+      x+=Math.random()*8-4+(i%30<5?0:Math.random()*3);
+      y+=Math.random()*8-4;
+      x=Math.max(5,Math.min(W-5,x));y=Math.max(5,Math.min(H-5,y));
+      evts.push({x,y,t:t0+dt,type:'move'});
+      if(i%35===0&&i>0) evts.push({x,y,t:t0+dt+5,type:'click'});
+    }
+  }
+  return {name,events:evts,created:t0,duration:evts[evts.length-1].t-evts[0].t};
+}
+if(!sessions.find(s=>s.name==='Demo: Human')) sessions.push(genDemo('Demo: Human','human'));
+if(!sessions.find(s=>s.name==='Demo: Bot')) sessions.push(genDemo('Demo: Bot','bot'));
+if(!sessions.find(s=>s.name==='Demo: Ambiguous')) sessions.push(genDemo('Demo: Ambiguous','ambiguous'));
+save();
+
+function save(){localStorage.setItem(STORE_KEY,JSON.stringify(sessions));refreshSelects();}
+
+/* ===== TABS ===== */
+document.querySelectorAll('.tab-btn').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('.tab-btn').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
+  b.classList.add('active');document.getElementById(b.dataset.tab).classList.add('active');
+});
+
+/* ===== SELECTS ===== */
+function refreshSelects(){
+  [document.getElementById('replaySelect'),document.getElementById('cmpA'),document.getElementById('cmpB'),document.getElementById('analysisSelect')].forEach(sel=>{
+    const v=sel.value;sel.innerHTML='<option value="">Select session…</option>';
+    sessions.forEach((s,i)=>{const o=document.createElement('option');o.value=i;o.textContent=s.name+' ('+s.events.length+' events)';sel.appendChild(o);});
+    sel.value=v;
+  });
+}
+refreshSelects();
+
+/* ===== CAPTCHA GRID ===== */
+const COLORS=['#f85149','#58a6ff','#3fb950','#d29922','#bc8cff','#f0883e'];
+function initCaptcha(ctx,w,h){
+  captchaGrid=[];solvedCells.clear();
+  const cols=3,rows=3,cw=w/cols,ch=h/rows;
+  targetColor=COLORS[Math.floor(Math.random()*COLORS.length)];
+  document.getElementById('targetColorLabel').style.color=targetColor;
+  document.getElementById('targetColorLabel').textContent=targetColor;
+  for(let r=0;r<rows;r++) for(let c=0;c<cols;c++){
+    const color=Math.random()<0.35?targetColor:COLORS[Math.floor(Math.random()*COLORS.length)];
+    captchaGrid.push({x:c*cw,y:r*ch,w:cw,h:ch,color,isTarget:color===targetColor,row:r,col:c});
+  }
+  drawCaptcha(ctx,w,h);
+}
+function drawCaptcha(ctx,w,h){
+  ctx.fillStyle='#0d1117';ctx.fillRect(0,0,w,h);
+  captchaGrid.forEach((cell,i)=>{
+    ctx.fillStyle=cell.color;ctx.globalAlpha=solvedCells.has(i)?0.3:0.9;
+    ctx.fillRect(cell.x+3,cell.y+3,cell.w-6,cell.h-6);
+    ctx.globalAlpha=1;
+    if(solvedCells.has(i)){ctx.strokeStyle='#3fb950';ctx.lineWidth=3;ctx.strokeRect(cell.x+3,cell.y+3,cell.w-6,cell.h-6);}
+  });
+  ctx.fillStyle=targetColor;ctx.globalAlpha=1;
+  ctx.font='bold 16px system-ui';ctx.fillText('Click all: '+targetColor,10,h-12);
+}
+
+/* ===== RECORDING ===== */
+const recCanvas=document.getElementById('recCanvas');const recCtx=recCanvas.getContext('2d');
+initCaptcha(recCtx,600,400);
+
+document.getElementById('startRec').onclick=()=>{
+  recording=true;recEvents=[];recStart=Date.now();
+  document.getElementById('startRec').disabled=true;
+  document.getElementById('stopRec').disabled=false;
+  document.getElementById('saveRec').disabled=true;
+  document.getElementById('recStatus').textContent='⏺ Recording…';
+  document.getElementById('startRec').classList.add('active-rec');
+  initCaptcha(recCtx,600,400);
+};
+document.getElementById('stopRec').onclick=stopRec;
+function stopRec(){
+  recording=false;
+  document.getElementById('startRec').disabled=false;
+  document.getElementById('stopRec').disabled=true;
+  document.getElementById('saveRec').disabled=false;
+  document.getElementById('recStatus').textContent='Recorded '+recEvents.length+' events';
+  document.getElementById('startRec').classList.remove('active-rec');
+  document.getElementById('autoAlert').style.display='none';
+}
+document.getElementById('saveRec').onclick=()=>{
+  if(!recEvents.length) return;
+  const name='Session '+(sessions.length+1)+' ('+new Date().toLocaleTimeString()+')';
+  sessions.push({name,events:recEvents.slice(),created:recStart,duration:recEvents[recEvents.length-1].t-recEvents[0].t});
+  save();document.getElementById('recStatus').textContent='Saved: '+name;
+};
+
+recCanvas.onmousemove=e=>{if(!recording)return;const r=recCanvas.getBoundingClientRect();
+  recEvents.push({x:e.clientX-r.left,y:e.clientY-r.top,t:Date.now(),type:'move'});
+  if(document.getElementById('autoDetect').checked) autoCheck();
+};
+recCanvas.onclick=e=>{
+  const r=recCanvas.getBoundingClientRect();const mx=e.clientX-r.left,my=e.clientY-r.top;
+  if(recording) recEvents.push({x:mx,y:my,t:Date.now(),type:'click'});
+  captchaGrid.forEach((cell,i)=>{if(mx>=cell.x&&mx<cell.x+cell.w&&my>=cell.y&&my<cell.y+cell.h&&cell.isTarget) solvedCells.add(i);});
+  drawCaptcha(recCtx,600,400);
+  if(document.getElementById('autoDetect').checked) autoCheck();
+};
+
+/* ===== AUTO-DETECT ===== */
+function autoCheck(){
+  if(recEvents.length<30) return;
+  const sc=analyze(recEvents);const conf=sc.humanConfidence;
+  const el=document.getElementById('autoAlert');el.style.display='block';
+  if(conf>=65){el.className='auto-alert safe';el.textContent='✓ Human ('+conf+'%)';}
+  else if(conf>=40){el.className='auto-alert warn';el.textContent='⚠ Uncertain ('+conf+'%)';}
+  else{el.className='auto-alert danger';el.textContent='🤖 Bot? ('+conf+'%)';}
+}
+
+/* ===== ANALYSIS ENGINE ===== */
+function analyze(events){
+  const moves=events.filter(e=>e.type==='move');
+  const clicks=events.filter(e=>e.type==='click');
+  if(moves.length<5) return {smoothness:50,timingEntropy:50,pausePatterns:50,velocityConsistency:50,pathEfficiency:50,clickAccuracy:50,humanConfidence:50};
+
+  // Smoothness: angle variance
+  const angles=[];
+  for(let i=2;i<moves.length;i++){
+    const a1=Math.atan2(moves[i-1].y-moves[i-2].y,moves[i-1].x-moves[i-2].x);
+    const a2=Math.atan2(moves[i].y-moves[i-1].y,moves[i].x-moves[i-1].x);
+    angles.push(Math.abs(a2-a1));
+  }
+  const angleVar=variance(angles);
+  const smoothness=Math.min(100,Math.round(angleVar*80));// high variance = human
+
+  // Timing entropy
+  const intervals=[];
+  for(let i=1;i<events.length;i++) intervals.push(events[i].t-events[i-1].t);
+  const ent=shannon(intervals);
+  const timingEntropy=Math.min(100,Math.round(ent*15));
+
+  // Pause patterns
+  const pauses=intervals.filter(d=>d>500).length;
+  const pausePatterns=Math.min(100,Math.round(pauses*20));
+
+  // Velocity consistency
+  const vels=[];
+  for(let i=1;i<moves.length;i++){
+    const dt=moves[i].t-moves[i-1].t;if(dt===0)continue;
+    vels.push(Math.hypot(moves[i].x-moves[i-1].x,moves[i].y-moves[i-1].y)/dt);
+  }
+  const velStd=Math.sqrt(variance(vels));
+  const velocityConsistency=Math.min(100,Math.round(velStd*200));// high std = human
+
+  // Path efficiency
+  if(moves.length>1){
+    const direct=Math.hypot(moves[moves.length-1].x-moves[0].x,moves[moves.length-1].y-moves[0].y);
+    let actual=0;for(let i=1;i<moves.length;i++) actual+=Math.hypot(moves[i].x-moves[i-1].x,moves[i].y-moves[i-1].y);
+    var pathEfficiency=actual>0?Math.min(100,Math.round((1-direct/actual)*100)):50;
+  } else var pathEfficiency=50;
+
+  // Click accuracy
+  let clickAcc=50;
+  if(clicks.length>0&&moves.length>0){
+    const overshoots=clicks.map(c=>{
+      const before=moves.filter(m=>m.t<c.t).slice(-5);
+      if(before.length<2) return 0;
+      return before.reduce((s,m,i)=>i>0?s+Math.hypot(m.x-before[i-1].x,m.y-before[i-1].y):s,0);
+    });
+    clickAcc=Math.min(100,Math.round(mean(overshoots)*3));
+  }
+
+  const humanConfidence=Math.round(smoothness*0.2+timingEntropy*0.2+pausePatterns*0.15+velocityConsistency*0.2+pathEfficiency*0.1+clickAcc*0.15);
+  return {smoothness,timingEntropy,pausePatterns,velocityConsistency,pathEfficiency,clickAccuracy:clickAcc,humanConfidence};
+}
+
+function variance(a){if(a.length<2)return 0;const m=mean(a);return a.reduce((s,v)=>s+(v-m)**2,0)/a.length;}
+function mean(a){return a.length?a.reduce((s,v)=>s+v,0)/a.length:0;}
+function shannon(a){if(!a.length)return 0;const bins={};a.forEach(v=>{const b=Math.round(v/50)*50;bins[b]=(bins[b]||0)+1;});
+  const n=a.length;return -Object.values(bins).reduce((s,c)=>{const p=c/n;return s+p*Math.log2(p);},0);}
+
+/* ===== REPLAY ===== */
+const rpCanvas=document.getElementById('replayCanvas');const rpCtx=rpCanvas.getContext('2d');
+
+document.getElementById('playBtn').onclick=()=>{
+  const idx=+document.getElementById('replaySelect').value;
+  if(isNaN(idx)||!sessions[idx]) return;
+  replayPaused=false;replayIdx=0;
+  document.getElementById('pauseBtn').disabled=false;
+  runReplay(sessions[idx],rpCtx,600,400,document.getElementById('replayTimeline'));
+};
+document.getElementById('pauseBtn').onclick=()=>{replayPaused=!replayPaused;document.getElementById('pauseBtn').textContent=replayPaused?'▶ Resume':'⏸ Pause';};
+document.getElementById('resetBtn').onclick=()=>{cancelAnimationFrame(replayAnim);replayIdx=0;rpCtx.fillStyle='#0d1117';rpCtx.fillRect(0,0,600,400);};
+
+function runReplay(session,ctx,w,h,timeline){
+  const evts=session.events;if(!evts.length)return;
+  const t0=evts[0].t,dur=evts[evts.length-1].t-t0;
+  const speed=+document.getElementById('speedSel').value;
+  const showT=document.getElementById('showTrails').checked;
+  const showH=document.getElementById('showHeat').checked;
+  const showV=document.getElementById('showVelocity').checked;
+  let startReal=performance.now();
+
+  function frame(){
+    if(replayPaused){replayAnim=requestAnimationFrame(frame);return;}
+    const elapsed=(performance.now()-startReal)*speed;
+    ctx.fillStyle='#0d1117';ctx.globalAlpha=showT?0.05:1;ctx.fillRect(0,0,w,h);ctx.globalAlpha=1;
+
+    // heatmap
+    if(showH){
+      const drawn=evts.filter(e=>e.t-t0<=elapsed&&e.type==='move');
+      drawn.forEach(e=>{const g=ctx.createRadialGradient(e.x,e.y,0,e.x,e.y,25);
+        g.addColorStop(0,'rgba(248,81,73,0.08)');g.addColorStop(1,'transparent');ctx.fillStyle=g;ctx.fillRect(e.x-25,e.y-25,50,50);});
+    }
+
+    let prev=null;
+    for(let i=0;i<evts.length;i++){
+      const e=evts[i];if(e.t-t0>elapsed) break;
+      if(e.type==='move'&&prev){
+        const dt=e.t-prev.t;const dist=Math.hypot(e.x-prev.x,e.y-prev.y);
+        const vel=dt>0?dist/dt:0;
+        if(showV){const hue=Math.max(0,240-vel*600);ctx.strokeStyle='hsl('+hue+',80%,60%)';}
+        else ctx.strokeStyle='rgba(88,166,255,0.6)';
+        ctx.lineWidth=showT?2:1;ctx.beginPath();ctx.moveTo(prev.x,prev.y);ctx.lineTo(e.x,e.y);ctx.stroke();
+      }
+      if(e.type==='click'){ctx.fillStyle='#f85149';ctx.beginPath();ctx.arc(e.x,e.y,6,0,Math.PI*2);ctx.fill();
+        ctx.fillStyle='#fff';ctx.font='10px system-ui';ctx.fillText('click',e.x+8,e.y+3);}
+      prev=e;
+    }
+
+    // timeline
+    if(timeline&&dur>0){
+      const pct=Math.min(1,elapsed/dur)*100;
+      timeline.style.background='linear-gradient(to right,var(--accent) '+pct+'%,var(--surface) '+pct+'%)';
+    }
+    if(elapsed<dur) replayAnim=requestAnimationFrame(frame);
+  }
+  cancelAnimationFrame(replayAnim);frame();
+}
+
+/* ===== COMPARE ===== */
+const cmpA=document.getElementById('cmpCanvasA').getContext('2d');
+const cmpB=document.getElementById('cmpCanvasB').getContext('2d');
+document.getElementById('cmpPlay').onclick=()=>{
+  const a=sessions[+document.getElementById('cmpA').value],b=sessions[+document.getElementById('cmpB').value];
+  if(!a||!b)return;
+  document.getElementById('cmpLabelA').textContent=a.name;
+  document.getElementById('cmpLabelB').textContent=b.name;
+  document.getElementById('cmpPause').disabled=false;
+  replayPaused=false;
+  runCompare(a,b);
+};
+document.getElementById('cmpPause').onclick=()=>{replayPaused=!replayPaused;};
+
+function runCompare(sa,sb){
+  const maxDur=Math.max(sa.duration,sb.duration);
+  const startReal=performance.now();
+  function frame(){
+    if(replayPaused){cmpAnim=requestAnimationFrame(frame);return;}
+    const elapsed=performance.now()-startReal;
+    drawSessionFrame(cmpA,sa,elapsed,290,290);
+    drawSessionFrame(cmpB,sb,elapsed,290,290);
+    if(elapsed<maxDur) cmpAnim=requestAnimationFrame(frame);
+  }
+  cancelAnimationFrame(cmpAnim);frame();
+}
+function drawSessionFrame(ctx,session,elapsed,w,h){
+  const evts=session.events;if(!evts.length)return;
+  const t0=evts[0].t;const sx=w/600,sy=h/400;
+  ctx.fillStyle='#0d1117';ctx.globalAlpha=0.1;ctx.fillRect(0,0,w,h);ctx.globalAlpha=1;
+  let prev=null;
+  for(const e of evts){
+    if(e.t-t0>elapsed) break;
+    const ex=e.x*sx,ey=e.y*sy;
+    if(e.type==='move'&&prev){ctx.strokeStyle='rgba(88,166,255,0.5)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(prev.ex,prev.ey);ctx.lineTo(ex,ey);ctx.stroke();}
+    if(e.type==='click'){ctx.fillStyle='#f85149';ctx.beginPath();ctx.arc(ex,ey,4,0,Math.PI*2);ctx.fill();}
+    prev={ex,ey};
+  }
+}
+
+/* ===== ANALYSIS TAB ===== */
+document.getElementById('analyzeBtn').onclick=()=>{
+  const idx=+document.getElementById('analysisSelect').value;
+  if(isNaN(idx)||!sessions[idx]) return;
+  const s=sessions[idx];const sc=analyze(s.events);
+  renderVerdict(sc);renderRadar(sc);renderMetrics(sc);
+};
+document.getElementById('exportBtn').onclick=()=>{
+  const idx=+document.getElementById('analysisSelect').value;
+  if(isNaN(idx)||!sessions[idx]) return;
+  const s=sessions[idx];const sc=analyze(s.events);
+  const blob=new Blob([JSON.stringify({session:s,analysis:sc},null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=s.name.replace(/\s+/g,'_')+'.json';a.click();
+};
+
+function renderVerdict(sc){
+  const box=document.getElementById('verdictBox');box.style.display='block';
+  const c=sc.humanConfidence;
+  if(c>=65){box.className='verdict-box human';document.getElementById('verdictText').textContent='🧑 Human ('+c+'% confidence)';
+    document.getElementById('verdictExplain').textContent='Natural movement patterns, varied timing, and expected pause behavior detected.';}
+  else if(c>=40){box.className='verdict-box uncertain';document.getElementById('verdictText').textContent='❓ Uncertain ('+c+'% confidence)';
+    document.getElementById('verdictExplain').textContent='Mixed signals — some patterns appear natural, others are suspiciously consistent.';}
+  else{box.className='verdict-box bot';document.getElementById('verdictText').textContent='🤖 Likely Bot ('+c+'% confidence)';
+    document.getElementById('verdictExplain').textContent='Smooth trajectories, low timing entropy, and mechanical precision suggest automation.';}
+}
+
+function renderRadar(sc){
+  const canvas=document.getElementById('radarCanvas');const ctx=canvas.getContext('2d');
+  const cx=150,cy=150,r=110;
+  ctx.clearRect(0,0,300,300);
+  const dims=['smoothness','timingEntropy','pausePatterns','velocityConsistency','pathEfficiency','clickAccuracy'];
+  const labels=['Smoothness','Timing\nEntropy','Pause\nPatterns','Velocity\nVariance','Path\nEfficiency','Click\nAccuracy'];
+  const n=dims.length;
+
+  // grid
+  for(let ring=1;ring<=4;ring++){
+    ctx.beginPath();ctx.strokeStyle='rgba(48,54,61,0.6)';
+    for(let i=0;i<=n;i++){const a=-Math.PI/2+2*Math.PI*i/n;
+      const rr=r*ring/4;const method=i===0?'moveTo':'lineTo';ctx[method](cx+rr*Math.cos(a),cy+rr*Math.sin(a));}
+    ctx.stroke();
+  }
+  // axes + labels
+  dims.forEach((_,i)=>{
+    const a=-Math.PI/2+2*Math.PI*i/n;
+    ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(cx+r*Math.cos(a),cy+r*Math.sin(a));ctx.strokeStyle='rgba(48,54,61,0.4)';ctx.stroke();
+    ctx.fillStyle='#8b949e';ctx.font='10px system-ui';ctx.textAlign='center';
+    ctx.fillText(labels[i],cx+(r+18)*Math.cos(a),cy+(r+18)*Math.sin(a));
+  });
+  // data
+  ctx.beginPath();ctx.fillStyle='rgba(88,166,255,0.2)';ctx.strokeStyle='#58a6ff';ctx.lineWidth=2;
+  dims.forEach((d,i)=>{
+    const a=-Math.PI/2+2*Math.PI*i/n;const v=sc[d]/100*r;
+    const method=i===0?'moveTo':'lineTo';ctx[method](cx+v*Math.cos(a),cy+v*Math.sin(a));
+  });
+  ctx.closePath();ctx.fill();ctx.stroke();
+  // dots
+  dims.forEach((d,i)=>{
+    const a=-Math.PI/2+2*Math.PI*i/n;const v=sc[d]/100*r;
+    ctx.beginPath();ctx.arc(cx+v*Math.cos(a),cy+v*Math.sin(a),4,0,Math.PI*2);ctx.fillStyle='#58a6ff';ctx.fill();
+  });
+}
+
+function renderMetrics(sc){
+  const grid=document.getElementById('metricGrid');grid.innerHTML='';
+  const dims=[
+    {key:'smoothness',label:'Movement Smoothness',desc:'Angle variance in path'},
+    {key:'timingEntropy',label:'Timing Entropy',desc:'Shannon entropy of intervals'},
+    {key:'pausePatterns',label:'Pause Patterns',desc:'Thinking pauses detected'},
+    {key:'velocityConsistency',label:'Velocity Variance',desc:'Speed inconsistency'},
+    {key:'pathEfficiency',label:'Path Efficiency',desc:'Wandering vs direct paths'},
+    {key:'clickAccuracy',label:'Click Accuracy',desc:'Pre-click corrections'},
+  ];
+  dims.forEach(d=>{
+    const v=sc[d.key];const color=v>=65?'var(--green)':v>=40?'var(--yellow)':'var(--red)';
+    grid.innerHTML+=`<div class="metric-card"><h4>${d.label}</h4><div class="val" style="color:${color}">${v}</div><p style="color:var(--muted);font-size:12px;margin:4px 0">${d.desc}</p><div class="bar"><div class="bar-fill" style="width:${v}%;background:${color}"></div></div></div>`;
+  });
+}
+})();
+</script>
+</body>
+</html>

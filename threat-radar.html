@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CAPTCHA Threat Radar — gif-captcha</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+.radar-wrap{display:flex;gap:2rem;flex-wrap:wrap;justify-content:center;margin:1.5rem 0}
+.radar-box{position:relative;width:520px;height:520px;flex-shrink:0}
+canvas#radar{width:100%;height:100%;border-radius:50%;background:var(--surface)}
+.side-panels{flex:1;min-width:320px;display:flex;flex-direction:column;gap:1rem}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:1rem}
+.panel h3{margin-bottom:.5rem;font-size:.95rem;color:var(--muted)}
+.threat-list{max-height:240px;overflow-y:auto}
+.threat-item{display:flex;align-items:center;gap:.6rem;padding:.4rem .5rem;border-radius:6px;margin-bottom:.3rem;cursor:pointer;transition:background .2s}
+.threat-item:hover{background:var(--surface-hover)}
+.threat-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.threat-label{flex:1;font-size:.85rem}
+.threat-sev{font-size:.75rem;padding:2px 6px;border-radius:4px;font-weight:600}
+.sev-crit{background:var(--red-bg);color:var(--red)}
+.sev-high{background:var(--orange-bg);color:var(--orange)}
+.sev-med{background:var(--yellow-bg);color:var(--yellow)}
+.sev-low{background:var(--green-bg);color:var(--green)}
+.stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:.5rem}
+.stat-card{background:var(--bg);border-radius:8px;padding:.6rem;text-align:center}
+.stat-val{font-size:1.4rem;font-weight:700}
+.stat-lbl{font-size:.7rem;color:var(--muted);text-transform:uppercase}
+.controls{display:flex;gap:.5rem;flex-wrap:wrap;justify-content:center;margin:1rem 0}
+.controls button{background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.45rem 1rem;border-radius:8px;cursor:pointer;font-size:.8rem;transition:all .2s}
+.controls button:hover,.controls button.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.detail-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:100;align-items:center;justify-content:center}
+.detail-modal.open{display:flex}
+.detail-content{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:1.5rem;max-width:480px;width:90%}
+.detail-content h3{margin-bottom:.8rem}
+.detail-content .close-btn{float:right;background:none;border:none;color:var(--muted);font-size:1.2rem;cursor:pointer}
+.countermeasure{display:flex;align-items:center;gap:.5rem;padding:.4rem;border-radius:6px;margin:.3rem 0;background:var(--bg)}
+.cm-status{font-size:.7rem;padding:2px 6px;border-radius:4px;font-weight:600}
+.cm-active{background:var(--green-bg);color:var(--green)}
+.cm-pending{background:var(--yellow-bg);color:var(--yellow)}
+.auto-badge{display:inline-block;font-size:.65rem;background:var(--purple-bg);color:var(--purple);padding:1px 5px;border-radius:3px;margin-left:.3rem}
+.timeline{max-height:180px;overflow-y:auto;font-size:.8rem}
+.tl-entry{padding:.3rem 0;border-bottom:1px solid var(--border);display:flex;gap:.5rem}
+.tl-time{color:var(--muted);flex-shrink:0;width:55px}
+</style>
+</head>
+<body>
+<div class="header">
+<h1>📡 CAPTCHA Threat Radar</h1>
+<p>360° real-time threat detection with autonomous countermeasure deployment</p>
+</div>
+<div class="container" style="max-width:1100px;margin:0 auto;padding:1rem">
+<div class="controls">
+<button class="active" onclick="setView('all')">All Threats</button>
+<button onclick="setView('bots')">🤖 Bots</button>
+<button onclick="setView('solvers')">🧩 Solvers</button>
+<button onclick="setView('replay')">🔄 Replay</button>
+<button onclick="setView('brute')">💥 Brute Force</button>
+<button onclick="setView('ml')">🧠 ML Attack</button>
+<button id="autoBtn" onclick="toggleAuto()">⚡ Autopilot: OFF</button>
+</div>
+<div class="radar-wrap">
+<div class="radar-box"><canvas id="radar" width="520" height="520"></canvas></div>
+<div class="side-panels">
+<div class="panel">
+<h3>⚠️ Threat Level</h3>
+<div class="stats-grid">
+<div class="stat-card"><div class="stat-val" id="tlevel" style="color:var(--green)">LOW</div><div class="stat-lbl">Current</div></div>
+<div class="stat-card"><div class="stat-val" id="activeCount">0</div><div class="stat-lbl">Active Threats</div></div>
+<div class="stat-card"><div class="stat-val" id="blocked">0</div><div class="stat-lbl">Blocked Today</div></div>
+<div class="stat-card"><div class="stat-val" id="autoActions">0</div><div class="stat-lbl">Auto-Actions</div></div>
+</div>
+</div>
+<div class="panel">
+<h3>🎯 Live Threats</h3>
+<div class="threat-list" id="threatList"></div>
+</div>
+<div class="panel">
+<h3>📜 Event Timeline</h3>
+<div class="timeline" id="timeline"></div>
+</div>
+</div>
+</div>
+</div>
+<div class="detail-modal" id="detailModal">
+<div class="detail-content">
+<button class="close-btn" onclick="closeDetail()">✕</button>
+<h3 id="detailTitle"></h3>
+<div id="detailBody"></div>
+</div>
+</div>
+<div class="footer"><a href="index.html">← Back to Home</a></div>
+<script src="shared.js"></script>
+<script>
+const VECTORS=['bots','solvers','replay','brute','ml'];
+const VECTOR_LABELS={bots:'Bot Swarm',solvers:'CAPTCHA Solver',replay:'Session Replay',brute:'Brute Force',ml:'ML Attack'};
+const VECTOR_COLORS={bots:'#f85149',solvers:'#d29922',replay:'#58a6ff',brute:'#f0883e',ml:'#bc8cff'};
+const SEVERITIES=['critical','high','medium','low'];
+const COUNTERMEASURES={
+bots:['Rate limiting','IP blacklist','Device fingerprint','CAPTCHA complexity+'],
+solvers:['Distortion increase','Frame randomization','Answer rotation','Time limit decrease'],
+replay:['Token invalidation','Session binding','Nonce enforcement','Timestamp validation'],
+brute:['Progressive delay','Account lockout','CAPTCHA escalation','Alert dispatch'],
+ml:['Adversarial noise','Style mutation','Dynamic rendering','Model poisoning trap']
+};
+
+let threats=[],view='all',autopilot=false,blocked=0,autoActions=0,timeline=[];
+const canvas=document.getElementById('radar'),ctx=canvas.getContext('2d');
+const cx=260,cy=260,maxR=240;
+let sweepAngle=0,frame=0;
+
+function rnd(a,b){return Math.random()*(b-a)+a}
+function genThreat(){
+const v=VECTORS[Math.floor(Math.random()*VECTORS.length)];
+const sev=SEVERITIES[Math.floor(Math.random()*SEVERITIES.length)];
+const angle=rnd(0,Math.PI*2);
+const dist=rnd(40,maxR);
+const speed=rnd(.3,.9);
+const id=Date.now().toString(36)+Math.random().toString(36).slice(2,5);
+const ips=['192.168.'+Math.floor(rnd(1,255))+'.'+Math.floor(rnd(1,255)),
+'10.'+Math.floor(rnd(0,255))+'.'+Math.floor(rnd(0,255))+'.'+Math.floor(rnd(1,255)),
+'172.'+Math.floor(rnd(16,31))+'.'+Math.floor(rnd(0,255))+'.'+Math.floor(rnd(1,255))];
+return{id,vector:v,severity:sev,angle,dist,speed,ip:ips[Math.floor(Math.random()*ips.length)],
+born:Date.now(),ttl:rnd(8000,25000),countermeasures:[],alpha:1};
+}
+
+function addEvent(msg,type='info'){
+timeline.unshift({time:new Date().toLocaleTimeString().slice(0,-3),msg,type});
+if(timeline.length>50)timeline.pop();
+renderTimeline();
+}
+
+function renderTimeline(){
+const el=document.getElementById('timeline');
+el.innerHTML=timeline.map(e=>`<div class="tl-entry"><span class="tl-time">${e.time}</span><span>${e.msg}</span></div>`).join('');
+}
+
+function sevClass(s){return s==='critical'?'sev-crit':s==='high'?'sev-high':s==='medium'?'sev-med':'sev-low'}
+
+function renderThreatList(){
+const el=document.getElementById('threatList');
+const filtered=view==='all'?threats:threats.filter(t=>t.vector===view);
+el.innerHTML=filtered.map(t=>`<div class="threat-item" onclick="showDetail('${t.id}')">
+<div class="threat-dot" style="background:${VECTOR_COLORS[t.vector]}"></div>
+<span class="threat-label">${VECTOR_LABELS[t.vector]} — ${t.ip}</span>
+<span class="threat-sev ${sevClass(t.severity)}">${t.severity.toUpperCase()}</span>
+</div>`).join('')||'<div style="color:var(--muted);text-align:center;padding:1rem">No active threats</div>';
+}
+
+function updateStats(){
+const filtered=view==='all'?threats:threats.filter(t=>t.vector===view);
+document.getElementById('activeCount').textContent=filtered.length;
+document.getElementById('blocked').textContent=blocked;
+document.getElementById('autoActions').textContent=autoActions;
+const el=document.getElementById('tlevel');
+if(filtered.some(t=>t.severity==='critical')){el.textContent='CRITICAL';el.style.color='var(--red)'}
+else if(filtered.some(t=>t.severity==='high')){el.textContent='HIGH';el.style.color='var(--orange)'}
+else if(filtered.length>3){el.textContent='ELEVATED';el.style.color='var(--yellow)'}
+else{el.textContent='LOW';el.style.color='var(--green)'}
+}
+
+function drawRadar(){
+ctx.clearRect(0,0,520,520);
+// rings
+for(let i=1;i<=4;i++){
+ctx.beginPath();ctx.arc(cx,cy,maxR*i/4,0,Math.PI*2);
+ctx.strokeStyle='rgba(48,54,61,.6)';ctx.lineWidth=1;ctx.stroke();
+}
+// cross
+ctx.strokeStyle='rgba(48,54,61,.4)';ctx.lineWidth=1;
+ctx.beginPath();ctx.moveTo(cx,cy-maxR);ctx.lineTo(cx,cy+maxR);ctx.stroke();
+ctx.beginPath();ctx.moveTo(cx-maxR,cy);ctx.lineTo(cx+maxR,cy);ctx.stroke();
+// sector labels
+ctx.font='11px sans-serif';ctx.fillStyle='rgba(139,148,158,.7)';ctx.textAlign='center';
+const labels=['N','E','S','W'];const offs=[[0,-maxR-10],[maxR+16,4],[0,maxR+14],[-maxR-16,4]];
+labels.forEach((l,i)=>ctx.fillText(l,cx+offs[i][0],cy+offs[i][1]));
+// sweep
+const grad=ctx.createConicalGradient?null:null;
+ctx.save();ctx.globalAlpha=.15;ctx.beginPath();ctx.moveTo(cx,cy);
+ctx.arc(cx,cy,maxR,sweepAngle-0.5,sweepAngle);ctx.closePath();
+ctx.fillStyle='var(--green)';ctx.fill();ctx.restore();
+// sweep line
+ctx.save();ctx.strokeStyle='rgba(63,185,80,.6)';ctx.lineWidth=2;
+ctx.beginPath();ctx.moveTo(cx,cy);
+ctx.lineTo(cx+Math.cos(sweepAngle)*maxR,cy+Math.sin(sweepAngle)*maxR);
+ctx.stroke();ctx.restore();
+// threats
+const filtered=view==='all'?threats:threats.filter(t=>t.vector===view);
+filtered.forEach(t=>{
+const x=cx+Math.cos(t.angle)*t.dist;
+const y=cy+Math.sin(t.angle)*t.dist;
+const sz=t.severity==='critical'?8:t.severity==='high'?6:t.severity==='medium'?5:4;
+ctx.save();ctx.globalAlpha=t.alpha*(0.7+0.3*Math.sin(frame*.05));
+ctx.beginPath();ctx.arc(x,y,sz,0,Math.PI*2);
+ctx.fillStyle=VECTOR_COLORS[t.vector];ctx.fill();
+if(t.severity==='critical'){
+ctx.beginPath();ctx.arc(x,y,sz+4+2*Math.sin(frame*.08),0,Math.PI*2);
+ctx.strokeStyle=VECTOR_COLORS[t.vector];ctx.lineWidth=1.5;ctx.globalAlpha=t.alpha*.4;ctx.stroke();
+}
+ctx.restore();
+});
+}
+
+function showDetail(id){
+const t=threats.find(x=>x.id===id);if(!t)return;
+document.getElementById('detailTitle').textContent=VECTOR_LABELS[t.vector]+' Threat';
+const cms=COUNTERMEASURES[t.vector];
+let html=`<p style="margin-bottom:.8rem"><strong>IP:</strong> ${t.ip} &nbsp; <span class="threat-sev ${sevClass(t.severity)}">${t.severity.toUpperCase()}</span></p>
+<p style="font-size:.85rem;color:var(--muted);margin-bottom:.8rem">Vector: ${t.vector} | Distance: ${Math.round(t.dist)} | Speed: ${t.speed.toFixed(2)}</p>
+<h4 style="font-size:.85rem;margin-bottom:.4rem">Countermeasures</h4>`;
+cms.forEach(c=>{
+const active=t.countermeasures.includes(c);
+html+=`<div class="countermeasure"><span style="flex:1;font-size:.82rem">${c}</span>
+<span class="cm-status ${active?'cm-active':'cm-pending'}">${active?'ACTIVE':'DEPLOY'}</span></div>`;
+});
+document.getElementById('detailBody').innerHTML=html;
+document.getElementById('detailModal').classList.add('open');
+}
+function closeDetail(){document.getElementById('detailModal').classList.remove('open')}
+
+function setView(v){
+view=v;
+document.querySelectorAll('.controls button').forEach(b=>{
+if(b.id==='autoBtn')return;
+b.classList.toggle('active',b.textContent.toLowerCase().includes(v==='all'?'all':VECTOR_LABELS[v]?.toLowerCase().split(' ')[0]||v));
+});
+// simpler: reset all then set
+document.querySelectorAll('.controls button:not(#autoBtn)').forEach((b,i)=>{
+b.classList.toggle('active',i===0?v==='all':VECTORS[i-1]===v);
+});
+renderThreatList();updateStats();
+}
+
+function toggleAuto(){
+autopilot=!autopilot;
+const b=document.getElementById('autoBtn');
+b.textContent=autopilot?'⚡ Autopilot: ON':'⚡ Autopilot: OFF';
+b.classList.toggle('active',autopilot);
+if(autopilot)addEvent('🤖 Autopilot ENGAGED — autonomous countermeasures active','auto');
+else addEvent('Autopilot disengaged','info');
+}
+
+function autoDeploy(t){
+if(!autopilot)return;
+const cms=COUNTERMEASURES[t.vector];
+const pick=cms.filter(c=>!t.countermeasures.includes(c));
+if(pick.length===0)return;
+// deploy 1-2 countermeasures
+const n=Math.min(pick.length,t.severity==='critical'?2:1);
+for(let i=0;i<n;i++){
+t.countermeasures.push(pick[i]);
+autoActions++;
+addEvent(`⚡ Auto-deployed "${pick[i]}" against ${VECTOR_LABELS[t.vector]} (${t.ip})`,'auto');
+}
+// critical threats get neutralized faster
+if(t.severity==='critical'&&t.countermeasures.length>=2){
+t.ttl=Math.min(t.ttl,3000);
+addEvent(`🛡️ Critical threat ${t.ip} neutralization accelerated`,'auto');
+}
+}
+
+function tick(){
+frame++;
+sweepAngle+=0.015;
+// spawn threats
+if(Math.random()<0.06){
+const t=genThreat();
+threats.push(t);
+addEvent(`🔴 New ${t.severity} ${VECTOR_LABELS[t.vector]} from ${t.ip}`);
+setTimeout(()=>autoDeploy(t),rnd(500,2000));
+}
+// age threats
+const now=Date.now();
+threats.forEach(t=>{
+t.dist+=Math.sin(frame*.02+t.angle)*0.3;// wobble
+const age=now-t.born;
+if(age>t.ttl*.7)t.alpha=Math.max(0,1-(age-t.ttl*.7)/(t.ttl*.3));
+});
+// remove expired
+const before=threats.length;
+threats=threats.filter(t=>(now-t.born)<t.ttl);
+const removed=before-threats.length;
+if(removed>0){blocked+=removed;addEvent(`✅ ${removed} threat(s) expired/blocked`);}
+drawRadar();renderThreatList();updateStats();
+requestAnimationFrame(tick);
+}
+
+// seed initial threats
+for(let i=0;i<5;i++)threats.push(genThreat());
+addEvent('📡 Threat Radar initialized');
+addEvent(`🔍 Monitoring ${threats.length} initial threats`);
+tick();
+
+document.getElementById('detailModal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeDetail()});
+</script>
+</body>
+</html>

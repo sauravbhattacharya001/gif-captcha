@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CAPTCHA Adversarial Trainer - GIF CAPTCHA Research</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+:root{--bg:#0a0a1a;--surface:#12122a;--surface2:#1a1a3a;--accent:#00e5ff;--accent2:#7c4dff;--danger:#ff1744;--success:#00e676;--warning:#ffa726;--text:#e0e0e0;--text2:#888;--border:#2a2a4a}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;padding:20px}
+h1{text-align:center;font-size:1.8rem;margin-bottom:4px;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.subtitle{text-align:center;color:var(--text2);margin-bottom:24px;font-size:.9rem}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:1400px;margin:0 auto}
+@media(max-width:900px){.grid{grid-template-columns:1fr}}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px}
+.card h2{font-size:1rem;margin-bottom:12px;color:var(--accent)}
+.card h3{font-size:.85rem;color:var(--text2);margin:8px 0 4px}
+canvas{width:100%;border-radius:8px;background:var(--bg)}
+.btn{padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-size:.85rem;font-weight:600;transition:.2s}
+.btn-primary{background:var(--accent);color:#000}
+.btn-danger{background:var(--danger);color:#fff}
+.btn-success{background:var(--success);color:#000}
+.btn-warning{background:var(--warning);color:#000}
+.btn:hover{opacity:.85;transform:translateY(-1px)}
+.btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
+.controls{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.stat-row{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border);font-size:.85rem}
+.stat-row:last-child{border:none}
+.stat-val{font-weight:700;font-variant-numeric:tabular-nums}
+.log{max-height:220px;overflow-y:auto;font-family:'Cascadia Code',monospace;font-size:.75rem;line-height:1.5;padding:8px;background:var(--bg);border-radius:6px;border:1px solid var(--border)}
+.log-entry{padding:2px 0}
+.log-entry.attack{color:var(--danger)}
+.log-entry.defend{color:var(--success)}
+.log-entry.evolve{color:var(--accent2)}
+.log-entry.info{color:var(--text2)}
+.bar{height:6px;border-radius:3px;background:var(--border);overflow:hidden;margin:4px 0}
+.bar-fill{height:100%;border-radius:3px;transition:width .5s}
+.gen-badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:.7rem;font-weight:700;background:var(--accent2);color:#fff;margin-right:4px}
+.fleet{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:6px}
+.agent-card{background:var(--surface2);border-radius:8px;padding:8px;text-align:center;font-size:.75rem;border:1px solid var(--border);transition:.3s}
+.agent-card.active{border-color:var(--accent);box-shadow:0 0 8px rgba(0,229,255,.2)}
+.agent-card .name{font-weight:700;margin-bottom:4px}
+.agent-card .fitness{font-size:1.1rem;font-weight:700}
+.insight{background:var(--surface2);border-left:3px solid var(--accent2);padding:8px 12px;margin:6px 0;border-radius:0 6px 6px 0;font-size:.8rem}
+select,input[type=range]{background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-size:.8rem}
+.fullspan{grid-column:1/-1}
+.meter{display:flex;align-items:center;gap:8px;margin:4px 0}
+.meter label{font-size:.8rem;min-width:80px}
+.meter .bar{flex:1}
+</style>
+</head>
+<body>
+<h1>⚔️ CAPTCHA Adversarial Trainer</h1>
+<p class="subtitle">Autonomous attack evolution engine — stress-test your CAPTCHA defenses with adaptive adversaries</p>
+
+<div class="grid">
+  <!-- Control Panel -->
+  <div class="card">
+    <h2>🎮 Training Controls</h2>
+    <div class="controls">
+      <button class="btn btn-primary" id="btnStart">▶ Start Training</button>
+      <button class="btn btn-danger" id="btnStop" disabled>⏹ Stop</button>
+      <button class="btn btn-warning" id="btnReset">↺ Reset</button>
+      <button class="btn btn-success" id="btnExport">📊 Export</button>
+    </div>
+    <h3>Scenario</h3>
+    <select id="selScenario" style="width:100%;margin-bottom:8px">
+      <option value="standard">Standard — Balanced attack evolution</option>
+      <option value="blitz">Blitz — Fast mutation, high aggression</option>
+      <option value="stealth">Stealth — Evasion-focused, low detection</option>
+      <option value="swarm">Swarm — Coordinated multi-vector</option>
+      <option value="adaptive">Adaptive — Learns defense patterns</option>
+    </select>
+    <h3>Population Size</h3>
+    <input type="range" id="popSize" min="4" max="20" value="8" style="width:100%">
+    <span id="popLabel" style="font-size:.8rem">8 agents</span>
+    <h3>Mutation Rate</h3>
+    <input type="range" id="mutRate" min="5" max="50" value="15" style="width:100%">
+    <span id="mutLabel" style="font-size:.8rem">15%</span>
+    <h3>Defense Strength</h3>
+    <input type="range" id="defStr" min="1" max="10" value="5" style="width:100%">
+    <span id="defLabel" style="font-size:.8rem">5/10</span>
+  </div>
+
+  <!-- Stats -->
+  <div class="card">
+    <h2>📈 Training Metrics</h2>
+    <div class="stat-row"><span>Generation</span><span class="stat-val" id="sGen">0</span></div>
+    <div class="stat-row"><span>Total Attacks</span><span class="stat-val" id="sAtk">0</span></div>
+    <div class="stat-row"><span>Successful Breaches</span><span class="stat-val" id="sBreach">0</span></div>
+    <div class="stat-row"><span>Breach Rate</span><span class="stat-val" id="sRate">0%</span></div>
+    <div class="stat-row"><span>Best Fitness</span><span class="stat-val" id="sBest">0.00</span></div>
+    <div class="stat-row"><span>Avg Fitness</span><span class="stat-val" id="sAvg">0.00</span></div>
+    <div class="stat-row"><span>Diversity Index</span><span class="stat-val" id="sDiv">1.00</span></div>
+    <div class="stat-row"><span>Defense Adaptations</span><span class="stat-val" id="sAdapt">0</span></div>
+    <h3 style="margin-top:8px">Defense Health</h3>
+    <div class="meter"><label>Integrity</label><div class="bar"><div class="bar-fill" id="barInteg" style="width:100%;background:var(--success)"></div></div><span style="font-size:.75rem" id="lblInteg">100%</span></div>
+    <div class="meter"><label>Detection</label><div class="bar"><div class="bar-fill" id="barDetect" style="width:80%;background:var(--accent)"></div></div><span style="font-size:.75rem" id="lblDetect">80%</span></div>
+    <div class="meter"><label>Resilience</label><div class="bar"><div class="bar-fill" id="barResil" style="width:90%;background:var(--accent2)"></div></div><span style="font-size:.75rem" id="lblResil">90%</span></div>
+  </div>
+
+  <!-- Fitness Chart -->
+  <div class="card fullspan">
+    <h2>📉 Fitness Evolution</h2>
+    <canvas id="cvsFitness" height="180"></canvas>
+  </div>
+
+  <!-- Agent Fleet -->
+  <div class="card">
+    <h2>🤖 Attack Agent Fleet</h2>
+    <div class="fleet" id="fleet"></div>
+  </div>
+
+  <!-- Attack Vector Distribution -->
+  <div class="card">
+    <h2>🎯 Attack Vector Distribution</h2>
+    <canvas id="cvsVectors" height="180"></canvas>
+  </div>
+
+  <!-- Proactive Insights -->
+  <div class="card">
+    <h2>🧠 Autonomous Insights</h2>
+    <div id="insights"></div>
+  </div>
+
+  <!-- Event Log -->
+  <div class="card">
+    <h2>📜 Battle Log</h2>
+    <div class="log" id="log"></div>
+  </div>
+</div>
+
+<script>
+const VECTORS = ['Timing','Replay','Pixel Analysis','ML Solver','Fingerprint Spoof','Session Hijack','Rate Burst','Token Forge','OCR Hybrid','Behavioral Mimic'];
+const TACTICS = ['brute','evasion','mimicry','hybrid','exploit'];
+
+class AttackAgent {
+  constructor(id) {
+    this.id = id;
+    this.name = `A-${String(id).padStart(2,'0')}`;
+    this.genes = VECTORS.map(() => Math.random());
+    this.tactic = TACTICS[Math.floor(Math.random()*TACTICS.length)];
+    this.fitness = 0;
+    this.attacks = 0;
+    this.breaches = 0;
+    this.generation = 0;
+  }
+  get primaryVector() {
+    let mx = 0, mi = 0;
+    this.genes.forEach((g,i) => { if(g>mx){mx=g;mi=i} });
+    return VECTORS[mi];
+  }
+  mutate(rate) {
+    this.genes = this.genes.map(g => {
+      if(Math.random() < rate) return Math.max(0, Math.min(1, g + (Math.random()-.5)*.4));
+      return g;
+    });
+    if(Math.random() < rate*.5) this.tactic = TACTICS[Math.floor(Math.random()*TACTICS.length)];
+  }
+  static crossover(a, b, id) {
+    const child = new AttackAgent(id);
+    const cx = Math.floor(Math.random()*a.genes.length);
+    child.genes = a.genes.map((g,i) => i < cx ? g : b.genes[i]);
+    child.tactic = Math.random()<.5 ? a.tactic : b.tactic;
+    child.generation = Math.max(a.generation, b.generation)+1;
+    return child;
+  }
+}
+
+class DefenseSystem {
+  constructor(strength) {
+    this.strength = strength;
+    this.weaknesses = VECTORS.map(() => Math.random()*.3);
+    this.adaptations = 0;
+    this.integrity = 100;
+    this.detection = 80;
+    this.resilience = 90;
+    this.history = [];
+  }
+  evaluate(agent) {
+    let score = 0;
+    agent.genes.forEach((g,i) => {
+      const eff = g * (1 + this.weaknesses[i]) / (this.strength/5);
+      score += eff;
+    });
+    score /= agent.genes.length;
+    const tacticBonus = {brute:.8, evasion:1.1, mimicry:1.2, hybrid:1.0, exploit:1.3};
+    score *= (tacticBonus[agent.tactic]||1);
+    score = Math.min(1, Math.max(0, score));
+    const breached = score > (.4 + this.strength*.04);
+    if(breached) {
+      this.integrity = Math.max(0, this.integrity - (.5 + score*2));
+      this.resilience = Math.max(0, this.resilience - .3);
+    } else {
+      this.detection = Math.min(100, this.detection + .1);
+      this.resilience = Math.min(100, this.resilience + .05);
+    }
+    return { score, breached };
+  }
+  adapt(agents) {
+    const vsum = new Float64Array(VECTORS.length);
+    agents.forEach(a => a.genes.forEach((g,i) => vsum[i]+=g));
+    let mx=0,mi=0;
+    vsum.forEach((v,i)=>{if(v>mx){mx=v;mi=i}});
+    this.weaknesses[mi] = Math.max(0, this.weaknesses[mi]-.05);
+    this.adaptations++;
+    this.integrity = Math.min(100, this.integrity+1);
+    return VECTORS[mi];
+  }
+}
+
+class Trainer {
+  constructor() {
+    this.agents = [];
+    this.defense = null;
+    this.gen = 0;
+    this.totalAtk = 0;
+    this.totalBreach = 0;
+    this.running = false;
+    this.timer = null;
+    this.fitnessHistory = [];
+    this.avgHistory = [];
+    this.nextId = 0;
+    this.insights = [];
+    this.logs = [];
+  }
+  init(popSize, defStr) {
+    this.agents = [];
+    this.nextId = 0;
+    for(let i=0;i<popSize;i++) this.agents.push(new AttackAgent(this.nextId++));
+    this.defense = new DefenseSystem(defStr);
+    this.gen = 0; this.totalAtk=0; this.totalBreach=0;
+    this.fitnessHistory=[]; this.avgHistory=[];
+    this.insights=[]; this.logs=[];
+  }
+  step(scenario, mutRate) {
+    this.gen++;
+    let genBreaches = 0;
+    const results = this.agents.map(a => {
+      const r = this.defense.evaluate(a);
+      a.fitness = r.score;
+      a.attacks++;
+      this.totalAtk++;
+      if(r.breached){ a.breaches++; this.totalBreach++; genBreaches++; }
+      return { agent:a, ...r };
+    });
+    // Log
+    const best = results.reduce((a,b)=>a.score>b.score?a:b);
+    this.log(`Gen ${this.gen}: ${genBreaches}/${this.agents.length} breaches, best=${best.score.toFixed(3)} (${best.agent.name})`,
+      genBreaches>0?'attack':'defend');
+    // Defense adapts
+    if(this.gen%3===0) {
+      const patched = this.defense.adapt(this.agents);
+      this.log(`Defense patched weakness: ${patched}`,'defend');
+    }
+    // Record
+    const fits = this.agents.map(a=>a.fitness);
+    const bestF = Math.max(...fits);
+    const avgF = fits.reduce((a,b)=>a+b,0)/fits.length;
+    this.fitnessHistory.push(bestF);
+    this.avgHistory.push(avgF);
+    // Selection + reproduction
+    this.agents.sort((a,b)=>b.fitness-a.fitness);
+    const elite = Math.max(2, Math.floor(this.agents.length*.3));
+    const newPop = this.agents.slice(0, elite).map(a=>{const c=Object.assign(new AttackAgent(a.id),JSON.parse(JSON.stringify(a)));return c});
+    while(newPop.length < this.agents.length) {
+      const p1 = this.agents[Math.floor(Math.random()*elite)];
+      const p2 = this.agents[Math.floor(Math.random()*this.agents.length)];
+      const child = AttackAgent.crossover(p1, p2, this.nextId++);
+      const mr = scenario==='blitz' ? mutRate*2 : scenario==='stealth' ? mutRate*.7 : mutRate;
+      child.mutate(mr);
+      newPop.push(child);
+      this.log(`${child.name} spawned (${p1.name}×${p2.name})`,'evolve');
+    }
+    this.agents = newPop;
+    // Insights
+    if(this.gen%5===0) this.generateInsights(bestF, avgF, genBreaches);
+  }
+  generateInsights(bestF, avgF, breaches) {
+    const ins = [];
+    if(bestF > .7) ins.push({icon:'🚨',text:`High-fitness attacker detected (${bestF.toFixed(2)}). Defense may need reinforcement.`});
+    if(this.defense.integrity < 50) ins.push({icon:'⚠️',text:`Defense integrity critical (${this.defense.integrity.toFixed(0)}%). Consider increasing defense strength.`});
+    if(this.fitnessHistory.length>5) {
+      const recent = this.fitnessHistory.slice(-5);
+      const trend = recent[4]-recent[0];
+      if(trend>.1) ins.push({icon:'📈',text:`Attack fitness trending up (+${trend.toFixed(2)} over 5 gens). Adversaries are evolving.`});
+      if(trend<-.05) ins.push({icon:'📉',text:`Attack fitness declining. Defense adaptations are working.`});
+    }
+    const rate = this.totalAtk>0 ? this.totalBreach/this.totalAtk : 0;
+    if(rate>.4) ins.push({icon:'🔴',text:`Breach rate ${(rate*100).toFixed(0)}% — defense is being overwhelmed.`});
+    if(rate<.1 && this.gen>10) ins.push({icon:'🟢',text:`Breach rate only ${(rate*100).toFixed(0)}%. Defense is holding strong.`});
+    const vecs = new Float64Array(VECTORS.length);
+    this.agents.forEach(a=>a.genes.forEach((g,i)=>vecs[i]+=g));
+    let mx=0,mi=0; vecs.forEach((v,i)=>{if(v>mx){mx=v;mi=i}});
+    ins.push({icon:'🎯',text:`Dominant attack vector: ${VECTORS[mi]}. Consider hardening this surface.`});
+    if(ins.length) this.insights = ins;
+  }
+  log(msg, type='info') {
+    this.logs.unshift({msg, type, gen:this.gen});
+    if(this.logs.length>200) this.logs.length=200;
+  }
+  diversity() {
+    if(this.agents.length<2) return 1;
+    let diffs=0, pairs=0;
+    for(let i=0;i<this.agents.length;i++)
+      for(let j=i+1;j<this.agents.length;j++){
+        let d=0; this.agents[i].genes.forEach((g,k)=>d+=Math.abs(g-this.agents[j].genes[k]));
+        diffs+=d/VECTORS.length; pairs++;
+      }
+    return pairs>0 ? diffs/pairs : 1;
+  }
+  exportJSON() {
+    return JSON.stringify({
+      generation:this.gen, totalAttacks:this.totalAtk, totalBreaches:this.totalBreach,
+      breachRate: this.totalAtk>0?(this.totalBreach/this.totalAtk):0,
+      fitnessHistory:this.fitnessHistory, avgHistory:this.avgHistory,
+      defense:{integrity:this.defense.integrity,detection:this.defense.detection,resilience:this.defense.resilience,adaptations:this.defense.adaptations},
+      agents:this.agents.map(a=>({name:a.name,fitness:a.fitness,tactic:a.tactic,primaryVector:a.primaryVector,generation:a.generation})),
+      insights:this.insights
+    },null,2);
+  }
+}
+
+// UI
+const trainer = new Trainer();
+const $ = s => document.getElementById(s);
+const cvsFit = $('cvsFitness');
+const ctxFit = cvsFit.getContext('2d');
+const cvsVec = $('cvsVectors');
+const ctxVec = cvsVec.getContext('2d');
+
+function resizeCanvas(cvs) {
+  cvs.width = cvs.clientWidth * (window.devicePixelRatio||1);
+  cvs.height = cvs.clientHeight * (window.devicePixelRatio||1);
+}
+
+$('popSize').oninput = e => $('popLabel').textContent = e.target.value+' agents';
+$('mutRate').oninput = e => $('mutLabel').textContent = e.target.value+'%';
+$('defStr').oninput = e => $('defLabel').textContent = e.target.value+'/10';
+
+$('btnStart').onclick = () => {
+  if(!trainer.defense) {
+    trainer.init(+$('popSize').value, +$('defStr').value);
+  }
+  trainer.running = true;
+  $('btnStart').disabled = true;
+  $('btnStop').disabled = false;
+  tick();
+};
+$('btnStop').onclick = () => {
+  trainer.running = false;
+  $('btnStart').disabled = false;
+  $('btnStop').disabled = true;
+};
+$('btnReset').onclick = () => {
+  trainer.running = false;
+  trainer.init(+$('popSize').value, +$('defStr').value);
+  $('btnStart').disabled = false;
+  $('btnStop').disabled = true;
+  render();
+};
+$('btnExport').onclick = () => {
+  if(!trainer.defense) return;
+  const blob = new Blob([trainer.exportJSON()],{type:'application/json'});
+  const a = document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download=`adversarial-training-gen${trainer.gen}.json`; a.click();
+};
+
+function tick() {
+  if(!trainer.running) return;
+  const scenario = $('selScenario').value;
+  const mutRate = +$('mutRate').value/100;
+  trainer.step(scenario, mutRate);
+  render();
+  setTimeout(tick, 400);
+}
+
+function render() {
+  // Stats
+  $('sGen').textContent = trainer.gen;
+  $('sAtk').textContent = trainer.totalAtk;
+  $('sBreach').textContent = trainer.totalBreach;
+  $('sRate').textContent = trainer.totalAtk>0 ? (trainer.totalBreach/trainer.totalAtk*100).toFixed(1)+'%' : '0%';
+  const fits = trainer.agents.map(a=>a.fitness);
+  $('sBest').textContent = fits.length ? Math.max(...fits).toFixed(3) : '0.000';
+  $('sAvg').textContent = fits.length ? (fits.reduce((a,b)=>a+b,0)/fits.length).toFixed(3) : '0.000';
+  $('sDiv').textContent = trainer.diversity().toFixed(3);
+  $('sAdapt').textContent = trainer.defense ? trainer.defense.adaptations : 0;
+  // Defense bars
+  if(trainer.defense) {
+    const d = trainer.defense;
+    $('barInteg').style.width = d.integrity+'%';
+    $('barInteg').style.background = d.integrity>50?'var(--success)':'var(--danger)';
+    $('lblInteg').textContent = d.integrity.toFixed(0)+'%';
+    $('barDetect').style.width = d.detection+'%';
+    $('lblDetect').textContent = d.detection.toFixed(0)+'%';
+    $('barResil').style.width = d.resilience+'%';
+    $('lblResil').textContent = d.resilience.toFixed(0)+'%';
+  }
+  // Fleet
+  const fleet = $('fleet');
+  fleet.innerHTML = trainer.agents.slice(0,12).map((a,i) =>
+    `<div class="agent-card${i===0?' active':''}">
+      <div class="name">${a.name}</div>
+      <div class="fitness" style="color:${a.fitness>.5?'var(--danger)':'var(--success)'}">${a.fitness.toFixed(2)}</div>
+      <div style="font-size:.65rem;color:var(--text2)">${a.tactic} · G${a.generation}</div>
+      <div style="font-size:.65rem">${a.primaryVector}</div>
+    </div>`
+  ).join('');
+  // Insights
+  const insDiv = $('insights');
+  insDiv.innerHTML = trainer.insights.map(i =>
+    `<div class="insight">${i.icon} ${i.text}</div>`
+  ).join('') || '<div class="insight" style="color:var(--text2)">Start training to generate insights...</div>';
+  // Log
+  const logDiv = $('log');
+  logDiv.innerHTML = trainer.logs.slice(0,80).map(l =>
+    `<div class="log-entry ${l.type}"><span class="gen-badge">G${l.gen}</span>${l.msg}</div>`
+  ).join('');
+  // Charts
+  drawFitnessChart();
+  drawVectorChart();
+}
+
+function drawFitnessChart() {
+  resizeCanvas(cvsFit);
+  const w=cvsFit.width, h=cvsFit.height, ctx=ctxFit;
+  const dpr = window.devicePixelRatio||1;
+  ctx.clearRect(0,0,w,h);
+  const data = trainer.fitnessHistory;
+  const avg = trainer.avgHistory;
+  if(data.length<2) return;
+  const pad = 40*dpr;
+  const cw=w-pad*2, ch=h-pad*2;
+  // Grid
+  ctx.strokeStyle='#1a1a3a'; ctx.lineWidth=1;
+  for(let i=0;i<=4;i++){
+    const y=pad+ch*(1-i/4);
+    ctx.beginPath();ctx.moveTo(pad,y);ctx.lineTo(pad+cw,y);ctx.stroke();
+    ctx.fillStyle='#666';ctx.font=`${10*dpr}px sans-serif`;ctx.textAlign='right';
+    ctx.fillText((i/4).toFixed(1),pad-4,y+4);
+  }
+  // Lines
+  const draw = (arr,color) => {
+    const step = cw/(arr.length-1);
+    ctx.beginPath(); ctx.strokeStyle=color; ctx.lineWidth=2*dpr;
+    arr.forEach((v,i) => {
+      const x=pad+i*step, y=pad+ch*(1-v);
+      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    });
+    ctx.stroke();
+  };
+  draw(avg, '#7c4dff80');
+  draw(data, '#00e5ff');
+  // Labels
+  ctx.fillStyle='#00e5ff'; ctx.font=`${10*dpr}px sans-serif`; ctx.textAlign='left';
+  ctx.fillText('Best',pad+4,pad+12*dpr);
+  ctx.fillStyle='#7c4dff'; ctx.fillText('Avg',pad+50*dpr,pad+12*dpr);
+}
+
+function drawVectorChart() {
+  resizeCanvas(cvsVec);
+  const w=cvsVec.width, h=cvsVec.height, ctx=ctxVec;
+  const dpr=window.devicePixelRatio||1;
+  ctx.clearRect(0,0,w,h);
+  if(!trainer.agents.length) return;
+  const vecs = new Float64Array(VECTORS.length);
+  trainer.agents.forEach(a=>a.genes.forEach((g,i)=>vecs[i]+=g));
+  const mx = Math.max(...vecs)||1;
+  const pad=20*dpr, barH=(h-pad*2)/VECTORS.length*.8;
+  const gap=(h-pad*2)/VECTORS.length;
+  const colors=['#00e5ff','#7c4dff','#ff1744','#00e676','#ffa726','#e040fb','#40c4ff','#eeff41','#ff6e40','#69f0ae'];
+  VECTORS.forEach((v,i) => {
+    const y=pad+i*gap;
+    const bw = (vecs[i]/mx)*(w-pad*2-80*dpr);
+    ctx.fillStyle=colors[i%colors.length];
+    ctx.fillRect(pad+70*dpr,y,bw,barH);
+    ctx.fillStyle='#ccc'; ctx.font=`${9*dpr}px sans-serif`; ctx.textAlign='right';
+    ctx.fillText(v.length>10?v.slice(0,10)+'…':v, pad+65*dpr, y+barH*.75);
+  });
+}
+
+// Init render
+trainer.init(+$('popSize').value, +$('defStr').value);
+render();
+</script>
+</body>
+</html>

@@ -71,7 +71,11 @@ function createGeoRiskScorer(options) {
   var _sessionGeoKeys = [];  // track insertion order for eviction
   var _regionStats = Object.create(null);
   var _blockedIPs = Object.create(null);
+  var _blockedIPCount = 0;
   var _allowedIPs = Object.create(null);
+  var _allowedIPCount = 0;
+  var maxBlockedIPs = options.maxBlockedIPs || 10000;
+  var maxAllowedIPs = options.maxAllowedIPs || 10000;
 
   var _totalScored = 0;
   var _totalBlocked = 0;
@@ -280,10 +284,41 @@ function createGeoRiskScorer(options) {
 
   // ── IP Management ────────────────────────────────────────────────
 
-  function blockIP(ip) { _blockedIPs[ip] = true; }
-  function allowIP(ip) { _allowedIPs[ip] = true; }
-  function unblockIP(ip) { delete _blockedIPs[ip]; }
-  function unallowIP(ip) { delete _allowedIPs[ip]; }
+  function blockIP(ip) {
+    if (!_blockedIPs[ip]) {
+      if (_blockedIPCount >= maxBlockedIPs) {
+        // Evict oldest 10% to make room (CWE-400 prevention)
+        var keys = Object.keys(_blockedIPs);
+        var evict = Math.max(1, Math.floor(maxBlockedIPs * 0.1));
+        for (var i = 0; i < evict && i < keys.length; i++) {
+          delete _blockedIPs[keys[i]];
+          _blockedIPCount--;
+        }
+      }
+      _blockedIPs[ip] = true;
+      _blockedIPCount++;
+    }
+  }
+  function allowIP(ip) {
+    if (!_allowedIPs[ip]) {
+      if (_allowedIPCount >= maxAllowedIPs) {
+        var keys = Object.keys(_allowedIPs);
+        var evict = Math.max(1, Math.floor(maxAllowedIPs * 0.1));
+        for (var i = 0; i < evict && i < keys.length; i++) {
+          delete _allowedIPs[keys[i]];
+          _allowedIPCount--;
+        }
+      }
+      _allowedIPs[ip] = true;
+      _allowedIPCount++;
+    }
+  }
+  function unblockIP(ip) {
+    if (_blockedIPs[ip]) { delete _blockedIPs[ip]; _blockedIPCount--; }
+  }
+  function unallowIP(ip) {
+    if (_allowedIPs[ip]) { delete _allowedIPs[ip]; _allowedIPCount--; }
+  }
   function isBlocked(ip) { return !!_blockedIPs[ip]; }
   function isAllowed(ip) { return !!_allowedIPs[ip]; }
 
@@ -323,7 +358,9 @@ function createGeoRiskScorer(options) {
     _sessionGeoKeys.length = 0;
     _regionStats = Object.create(null);
     _blockedIPs = Object.create(null);
+    _blockedIPCount = 0;
     _allowedIPs = Object.create(null);
+    _allowedIPCount = 0;
     _totalScored = 0;
     _totalBlocked = 0;
     _totalChallenged = 0;

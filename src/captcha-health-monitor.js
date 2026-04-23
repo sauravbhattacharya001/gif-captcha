@@ -122,10 +122,25 @@ function _roundTo(v, decimals) {
   return Math.round(v * f) / f;
 }
 
+/**
+ * Evict entries older than cutoff.  Events are appended chronologically
+ * (ts is monotonically non-decreasing), so we binary-search for the
+ * first entry >= cutoff and splice once.  Previous implementation used
+ * a while+shift() loop — each shift() is O(n) due to array reindexing,
+ * making k evictions O(k×n).  A single splice(0, idx) is O(n) total.
+ */
 function _evictOld(arr, cutoff) {
-  while (arr.length > 0 && arr[0].ts < cutoff) {
-    arr.shift();
+  if (arr.length === 0 || arr[0].ts >= cutoff) return;
+  // Fast path: all entries are stale
+  if (arr[arr.length - 1].ts < cutoff) { arr.length = 0; return; }
+  // Binary search for first entry with ts >= cutoff
+  var lo = 0, hi = arr.length;
+  while (lo < hi) {
+    var mid = (lo + hi) >>> 1;
+    if (arr[mid].ts < cutoff) lo = mid + 1;
+    else hi = mid;
   }
+  if (lo > 0) arr.splice(0, lo);
 }
 
 function _pruneToMax(arr, max) {
@@ -671,7 +686,14 @@ function createCaptchaHealthMonitor(options) {
   function getCheckHistory(limit) {
     limit = limit > 0 ? limit : 20;
     var start = Math.max(0, checkHistory.length - limit);
-    return checkHistory.slice(start).map(_deepCopy);
+    var slice = checkHistory.slice(start);
+    // Shallow-copy each entry — they are flat {ts, status, score} objects,
+    // so JSON round-trip (_deepCopy) is unnecessary overhead.
+    var result = new Array(slice.length);
+    for (var i = 0; i < slice.length; i++) {
+      result[i] = { ts: slice[i].ts, status: slice[i].status, score: slice[i].score };
+    }
+    return result;
   }
 
   // ── Public: Trend Analysis ───────────────────────────────────────

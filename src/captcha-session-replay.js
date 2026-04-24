@@ -28,6 +28,8 @@
 "use strict";
 
 const { secureRandomHex } = require("./crypto-utils");
+const _shared = require("./shared-utils");
+const _now = _shared._now;
 
 // ── Event Types ─────────────────────────────────────────────────────
 
@@ -62,10 +64,6 @@ function _genId() {
   // attacks. Predictable IDs (Date.now + counter) let attackers iterate
   // through valid session IDs and access replay data (CWE-330/CWE-340).
   return "sess_" + secureRandomHex(16) + "_" + (++_idCounter).toString(36);
-}
-
-function _now() {
-  return Date.now();
 }
 
 function _cloneDeep(obj) {

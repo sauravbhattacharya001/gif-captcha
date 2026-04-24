@@ -34,6 +34,9 @@
 
 "use strict";
 
+const _shared = require("./shared-utils");
+const _now = _shared._now;
+
 // ── Severity levels (ordered) ───────────────────────────────────────
 const SEVERITIES = ['info', 'low', 'medium', 'high', 'critical'];
 const SEVERITY_INDEX = {};
@@ -105,8 +108,6 @@ function _generateId() {
   _nextId += 1;
   return 'INC-' + Date.now().toString(36).toUpperCase() + '-' + _nextId;
 }
-
-function _now() { return Date.now(); }
 
 function _validSeverity(s) {
   return SEVERITIES.indexOf(s) !== -1;

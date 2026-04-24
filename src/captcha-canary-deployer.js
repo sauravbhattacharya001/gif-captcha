@@ -6,6 +6,8 @@
 // new solving capabilities before they impact production CAPTCHAs.
 
 const crypto = require("crypto");
+const _shared = require("./shared-utils");
+const _clamp = _shared._clamp;
 
 /**
  * @typedef {Object} CanaryConfig
@@ -225,7 +227,5 @@ class CanaryDeployer {
     return insights;
   }
 }
-
-function _clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
 
 module.exports = { CanaryDeployer };

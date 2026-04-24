@@ -49,6 +49,7 @@
 
 var _shared = require("./shared-utils");
 var _percentileSorted = _shared._percentileSorted;
+var _now = _shared._now;
 
 // ── Status Levels ────────────────────────────────────────────────────
 
@@ -113,8 +114,6 @@ var DEFAULT_MAX_ALERTS    = 500;
 var DEFAULT_MAX_CHECKS    = 1000;
 
 // ── Helpers ──────────────────────────────────────────────────────────
-
-function _now() { return Date.now(); }
 
 function _pct(n, d) {
   return d === 0 ? 0 : n / d;

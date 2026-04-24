@@ -45,9 +45,15 @@ function stageIndex(stage) {
 function createFunnelAnalyzer(opts) {
   opts = opts || {};
   const bucketMs = opts.bucketMs || 3600000;
+  const maxSessions = opts.maxSessions != null && opts.maxSessions > 0
+    ? opts.maxSessions : 10000;
+  const maxRecords = opts.maxRecords != null && opts.maxRecords > 0
+    ? opts.maxRecords : maxSessions * 4;
 
   // sessionId -> { cohort, stages: { stageName: { timestamp, timeMs } } }
   const sessions = new Map();
+  // Insertion order for LRU eviction when maxSessions is reached
+  const sessionOrder = [];
   // For time bucketing
   const records = [];
 
@@ -61,7 +67,13 @@ function createFunnelAnalyzer(opts) {
     const sessionId = entry.sessionId;
 
     if (!sessions.has(sessionId)) {
+      // Evict oldest sessions when at capacity (LRU)
+      while (sessions.size >= maxSessions && sessionOrder.length > 0) {
+        var evicted = sessionOrder.shift();
+        sessions.delete(evicted);
+      }
       sessions.set(sessionId, { cohort: entry.cohort || "default", stages: {} });
+      sessionOrder.push(sessionId);
     }
     const session = sessions.get(sessionId);
     if (entry.cohort) session.cohort = entry.cohort;
@@ -78,6 +90,11 @@ function createFunnelAnalyzer(opts) {
       timestamp: ts,
       timeMs: entry.timeMs || null,
     });
+
+    // Evict oldest records when over capacity
+    if (records.length > maxRecords) {
+      records.splice(0, records.length - maxRecords);
+    }
   }
 
   function _countByStage(filterFn) {
@@ -263,6 +280,7 @@ function createFunnelAnalyzer(opts) {
 
   function reset() {
     sessions.clear();
+    sessionOrder.length = 0;
     records.length = 0;
   }
 

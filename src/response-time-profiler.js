@@ -4,6 +4,12 @@
 var _sharedUtils = require("./shared-utils");
 var LruTracker = _sharedUtils.LruTracker;
 var _posOpt = _sharedUtils._posOpt;
+var _mean = _sharedUtils._mean;
+var _median = _sharedUtils._median;
+var _medianSorted = _sharedUtils._medianSorted;
+var _stddev = _sharedUtils._stddev;
+var _percentileSorted = _sharedUtils._percentileSorted;
+var _percentile = _sharedUtils._percentile;
 
 /**
  * Response Time Profiler for CAPTCHA systems.
@@ -49,13 +55,9 @@ function createResponseTimeProfiler(options) {
   var sessionCount = 0;
   var sessionLru = new LruTracker();
 
-  function _mean(a) { if (!a.length) return 0; var s=0; for (var i=0;i<a.length;i++) s+=a[i]; return s/a.length; }
   function _sortedCopy(a) { return a.slice().sort(function(x,y){return x-y}); }
-  function _medianSorted(s) { if (!s.length) return 0; var m=Math.floor(s.length/2); return s.length%2?s[m]:(s[m-1]+s[m])/2; }
-  function _median(a) { if (!a.length) return 0; return _medianSorted(_sortedCopy(a)); }
-  function _stddev(a,avg) { if (a.length<2) return 0; if (avg==null) avg=_mean(a); var s=0; for (var i=0;i<a.length;i++) s+=(a[i]-avg)*(a[i]-avg); return Math.sqrt(s/(a.length-1)); }
-  function _pctSorted(s,p) { if (!s.length) return 0; var i=(p/100)*(s.length-1); var l=Math.floor(i),u=Math.ceil(i); return l===u?s[l]:s[l]+(i-l)*(s[u]-s[l]); }
-  function _pct(a,p) { return _pctSorted(_sortedCopy(a), p); }
+  function _pctSorted(s,p) { return _percentileSorted(s, p); }
+  function _pct(a,p) { return _percentile(a, p); }
   function _r(v,d) { var f=Math.pow(10,d||2); return Math.round(v*f)/f; }
 
   /**

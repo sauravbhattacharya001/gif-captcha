@@ -13,6 +13,10 @@
 
 "use strict";
 
+var _sharedUtils = require("./shared-utils");
+var _clamp = _sharedUtils._clamp;
+var _mean = _sharedUtils._mean;
+
 // ── Defaults ────────────────────────────────────────────────────────
 
 var DEFAULT_OPTIONS = {
@@ -55,7 +59,7 @@ var RECOMMENDATIONS = {
 };
 
 function clamp(val, min, max) {
-  return val < min ? min : val > max ? max : val;
+  return _clamp(val, min, max);
 }
 
 function tsNow() { return Date.now(); }
@@ -63,10 +67,7 @@ function tsNow() { return Date.now(); }
 function deepCopy(obj) { return JSON.parse(JSON.stringify(obj)); }
 
 function mean(arr) {
-  if (!arr.length) return 0;
-  var s = 0;
-  for (var i = 0; i < arr.length; i++) s += arr[i];
-  return s / arr.length;
+  return _mean(arr);
 }
 
 function linearRegSlope(vals) {

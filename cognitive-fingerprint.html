@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CAPTCHA Cognitive Fingerprint — gif-captcha</title>
+    <link rel="stylesheet" href="shared.css">
+    <style>
+        .fp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 1.2rem; margin: 1.5rem 0; }
+        .fp-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1.2rem; }
+        .fp-card h3 { margin: 0 0 .8rem; font-size: 1rem; color: var(--accent); }
+        canvas.fp-canvas { width: 100%; height: 180px; border-radius: 6px; background: var(--bg); }
+        .fp-hash { font-family: monospace; font-size: .85rem; color: var(--cyan); word-break: break-all; background: var(--bg); padding: .6rem; border-radius: 6px; margin-top: .6rem; }
+        .fp-meter { height: 8px; border-radius: 4px; background: var(--bg); margin-top: .4rem; overflow: hidden; }
+        .fp-meter-fill { height: 100%; border-radius: 4px; transition: width .4s; }
+        .capture-zone { background: var(--surface); border: 2px dashed var(--border); border-radius: 12px; padding: 2rem; text-align: center; min-height: 300px; position: relative; cursor: crosshair; user-select: none; }
+        .capture-zone.active { border-color: var(--accent); }
+        .target-dot { width: 32px; height: 32px; border-radius: 50%; position: absolute; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .8rem; cursor: pointer; transition: transform .15s; }
+        .target-dot:hover { transform: scale(1.2); }
+        .controls-bar { display: flex; gap: .8rem; flex-wrap: wrap; align-items: center; margin: 1rem 0; }
+        .stat-row { display: flex; justify-content: space-between; padding: .3rem 0; border-bottom: 1px solid var(--border); font-size: .9rem; }
+        .stat-label { color: var(--muted); }
+        .stat-value { color: var(--text); font-weight: 600; }
+        .profile-list { max-height: 260px; overflow-y: auto; }
+        .profile-item { display: flex; justify-content: space-between; align-items: center; padding: .5rem .6rem; border-radius: 6px; margin-bottom: .3rem; background: var(--bg); font-size: .85rem; }
+        .profile-item .match { font-weight: 700; }
+        .badge { display: inline-block; padding: .15rem .5rem; border-radius: 4px; font-size: .75rem; font-weight: 600; }
+        .badge-human { background: var(--green-bg); color: var(--green); }
+        .badge-bot { background: var(--red-bg); color: var(--red); }
+        .badge-suspicious { background: var(--yellow-bg); color: var(--yellow); }
+        .radar-wrap { display: flex; justify-content: center; }
+        .auto-badge { background: var(--purple-bg); color: var(--purple); padding: .2rem .6rem; border-radius: 4px; font-size: .75rem; }
+        .insight-box { background: var(--surface); border-left: 3px solid var(--accent); padding: .8rem 1rem; border-radius: 0 8px 8px 0; margin: .5rem 0; font-size: .9rem; }
+        .insight-box.warning { border-left-color: var(--yellow); }
+        .insight-box.danger { border-left-color: var(--red); }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>🧠 CAPTCHA Cognitive Fingerprint</h1>
+        <p>Behavioral biometric fingerprinting from solving patterns — classify solvers without cookies or tracking pixels</p>
+    </header>
+
+    <main>
+        <!-- Controls -->
+        <div class="controls-bar">
+            <button class="btn btn-primary" id="btnStart">▶ Start Capture Session</button>
+            <button class="btn" id="btnAutoProfile" disabled>🤖 Auto-Profile Mode</button>
+            <button class="btn" id="btnCompare" disabled>🔍 Compare Fingerprints</button>
+            <button class="btn" id="btnExport" disabled>📤 Export JSON</button>
+            <button class="btn" id="btnReset">🔄 Reset</button>
+            <span id="sessionStatus" style="color:var(--muted); font-size:.85rem;"></span>
+        </div>
+
+        <!-- Capture Zone -->
+        <div class="capture-zone" id="captureZone">
+            <p style="color:var(--muted);" id="capturePrompt">Click <strong>Start Capture Session</strong> to begin. You'll click targets as they appear — your behavioral patterns will be fingerprinted in real-time.</p>
+        </div>
+
+        <!-- Fingerprint Dashboard -->
+        <div class="fp-grid" id="dashboard" style="display:none;">
+            <!-- Radar Chart -->
+            <div class="fp-card">
+                <h3>🎯 Fingerprint Radar</h3>
+                <div class="radar-wrap"><canvas id="radarCanvas" class="fp-canvas" width="340" height="180"></canvas></div>
+                <div class="fp-hash" id="fpHash">—</div>
+            </div>
+
+            <!-- Motor Profile -->
+            <div class="fp-card">
+                <h3>🖱️ Motor Profile</h3>
+                <div id="motorStats"></div>
+                <canvas id="motorCanvas" class="fp-canvas" width="340" height="180"></canvas>
+            </div>
+
+            <!-- Temporal Pattern -->
+            <div class="fp-card">
+                <h3>⏱️ Temporal Signature</h3>
+                <div id="temporalStats"></div>
+                <canvas id="temporalCanvas" class="fp-canvas" width="340" height="180"></canvas>
+            </div>
+
+            <!-- Attention Map -->
+            <div class="fp-card">
+                <h3>👁️ Attention Distribution</h3>
+                <canvas id="attentionCanvas" class="fp-canvas" width="340" height="180"></canvas>
+                <div id="attentionStats"></div>
+            </div>
+
+            <!-- Classification -->
+            <div class="fp-card">
+                <h3>🏷️ Classification</h3>
+                <div id="classResult"></div>
+                <div id="classInsights"></div>
+            </div>
+
+            <!-- Profile Library -->
+            <div class="fp-card">
+                <h3>📚 Profile Library</h3>
+                <div class="profile-list" id="profileList">
+                    <p style="color:var(--muted); font-size:.85rem;">Complete sessions to build a library of fingerprints.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Proactive Insights -->
+        <div id="proactiveInsights" style="display:none; margin-top:1.5rem;">
+            <h2 style="font-size:1.1rem; margin-bottom:.8rem;">🧬 Proactive Insights</h2>
+            <div id="insightsList"></div>
+        </div>
+    </main>
+
+    <footer>
+        <p>Part of the <a href="index.html">gif-captcha</a> research project</p>
+    </footer>
+
+    <script src="shared.js"></script>
+    <script>
+    (function() {
+        'use strict';
+
+        // === State ===
+        const state = {
+            active: false,
+            autoMode: false,
+            targets: [],
+            clicks: [],        // {x, y, t, targetIdx, dx, dy}
+            mousePath: [],     // {x, y, t}
+            round: 0,
+            maxRounds: 15,
+            currentTarget: null,
+            targetSpawnTime: 0,
+            profiles: JSON.parse(localStorage.getItem('cf_profiles') || '[]'),
+            currentFingerprint: null
+        };
+
+        const zone = document.getElementById('captureZone');
+        const prompt = document.getElementById('capturePrompt');
+        const dashboard = document.getElementById('dashboard');
+        const proactiveDiv = document.getElementById('proactiveInsights');
+
+        // === Target Generation ===
+        function spawnTarget() {
+            if (state.round >= state.maxRounds) return endSession();
+            const rect = zone.getBoundingClientRect();
+            const pad = 30;
+            const x = pad + Math.random() * (rect.width - 2 * pad);
+            const y = pad + Math.random() * (rect.height - 2 * pad);
+            const colors = ['var(--accent)', 'var(--green)', 'var(--red)', 'var(--yellow)', 'var(--purple)', 'var(--orange)', 'var(--cyan)'];
+            const dot = document.createElement('div');
+            dot.className = 'target-dot';
+            dot.style.left = (x - 16) + 'px';
+            dot.style.top = (y - 16) + 'px';
+            dot.style.background = colors[state.round % colors.length];
+            dot.style.color = '#000';
+            dot.textContent = state.round + 1;
+            dot.dataset.idx = state.round;
+            dot.addEventListener('click', onTargetClick);
+            zone.appendChild(dot);
+            state.currentTarget = { x, y, el: dot, idx: state.round };
+            state.targetSpawnTime = performance.now();
+            state.targets.push({ x, y, spawnTime: state.targetSpawnTime });
+        }
+
+        function onTargetClick(e) {
+            e.stopPropagation();
+            const now = performance.now();
+            const rt = now - state.targetSpawnTime;
+            const rect = zone.getBoundingClientRect();
+            const cx = e.clientX - rect.left;
+            const cy = e.clientY - rect.top;
+            const t = state.currentTarget;
+            const dx = cx - t.x;
+            const dy = cy - t.y;
+            state.clicks.push({ x: cx, y: cy, t: now, rt, targetIdx: t.idx, dx, dy, dist: Math.sqrt(dx*dx + dy*dy) });
+            t.el.style.opacity = '0.3';
+            t.el.style.pointerEvents = 'none';
+            t.el.style.transform = 'scale(0.5)';
+            state.round++;
+            prompt.textContent = `Target ${state.round}/${state.maxRounds} — keep clicking!`;
+            updateLiveDashboard();
+            setTimeout(spawnTarget, 200 + Math.random() * 400);
+        }
+
+        // === Mouse Tracking ===
+        zone.addEventListener('mousemove', function(e) {
+            if (!state.active) return;
+            const rect = zone.getBoundingClientRect();
+            state.mousePath.push({ x: e.clientX - rect.left, y: e.clientY - rect.top, t: performance.now() });
+        });
+
+        // === Session Control ===
+        document.getElementById('btnStart').addEventListener('click', startSession);
+        document.getElementById('btnReset').addEventListener('click', resetAll);
+        document.getElementById('btnAutoProfile').addEventListener('click', toggleAutoMode);
+        document.getElementById('btnExport').addEventListener('click', exportJSON);
+        document.getElementById('btnCompare').addEventListener('click', compareFingerprints);
+
+        function startSession() {
+            state.active = true;
+            state.round = 0;
+            state.clicks = [];
+            state.mousePath = [];
+            state.targets = [];
+            state.currentFingerprint = null;
+            zone.classList.add('active');
+            // Remove old targets
+            zone.querySelectorAll('.target-dot').forEach(d => d.remove());
+            prompt.textContent = 'Click the numbered targets as they appear...';
+            dashboard.style.display = 'grid';
+            document.getElementById('btnStart').disabled = true;
+            document.getElementById('sessionStatus').textContent = 'Session active...';
+            spawnTarget();
+        }
+
+        function endSession() {
+            state.active = false;
+            zone.classList.remove('active');
+            document.getElementById('btnStart').disabled = false;
+            document.getElementById('btnAutoProfile').disabled = false;
+            document.getElementById('btnCompare').disabled = false;
+            document.getElementById('btnExport').disabled = false;
+            prompt.textContent = 'Session complete! Review your cognitive fingerprint below.';
+            document.getElementById('sessionStatus').textContent = `Captured ${state.clicks.length} clicks, ${state.mousePath.length} mouse samples`;
+            computeFingerprint();
+            renderDashboard();
+            generateInsights();
+            if (state.autoMode) {
+                setTimeout(startSession, 2000);
+            }
+        }
+
+        function resetAll() {
+            state.active = false;
+            state.autoMode = false;
+            state.clicks = [];
+            state.mousePath = [];
+            state.targets = [];
+            state.round = 0;
+            state.currentFingerprint = null;
+            zone.classList.remove('active');
+            zone.querySelectorAll('.target-dot').forEach(d => d.remove());
+            prompt.innerHTML = 'Click <strong>Start Capture Session</strong> to begin.';
+            document.getElementById('btnStart').disabled = false;
+            document.getElementById('btnAutoProfile').disabled = true;
+            document.getElementById('btnAutoProfile').textContent = '🤖 Auto-Profile Mode';
+            document.getElementById('sessionStatus').textContent = '';
+        }
+
+        function toggleAutoMode() {
+            state.autoMode = !state.autoMode;
+            document.getElementById('btnAutoProfile').textContent = state.autoMode ? '⏹ Stop Auto-Profile' : '🤖 Auto-Profile Mode';
+            if (state.autoMode && !state.active) startSession();
+        }
+
+        // === Fingerprint Computation ===
+        function computeFingerprint() {
+            const clicks = state.clicks;
+            const path = state.mousePath;
+            if (clicks.length < 3) return;
+
+            // Reaction times
+            const rts = clicks.map(c => c.rt);
+            const rtMean = mean(rts);
+            const rtStd = std(rts);
+            const rtSkew = skewness(rts);
+
+            // Accuracy
+            const dists = clicks.map(c => c.dist);
+            const accMean = mean(dists);
+            const accStd = std(dists);
+
+            // Motor: velocity & curvature from mouse path
+            let velocities = [], curvatures = [], jerks = [];
+            for (let i = 1; i < path.length; i++) {
+                const dx = path[i].x - path[i-1].x;
+                const dy = path[i].y - path[i-1].y;
+                const dt = (path[i].t - path[i-1].t) || 1;
+                velocities.push(Math.sqrt(dx*dx + dy*dy) / dt);
+            }
+            for (let i = 1; i < velocities.length; i++) {
+                curvatures.push(Math.abs(velocities[i] - velocities[i-1]));
+            }
+            for (let i = 1; i < curvatures.length; i++) {
+                jerks.push(Math.abs(curvatures[i] - curvatures[i-1]));
+            }
+
+            const velMean = mean(velocities) || 0;
+            const velStd = std(velocities) || 0;
+            const curvMean = mean(curvatures) || 0;
+            const jerkMean = mean(jerks) || 0;
+
+            // Attention: spatial distribution entropy
+            const gridSize = 4;
+            const rect = zone.getBoundingClientRect();
+            const grid = new Array(gridSize * gridSize).fill(0);
+            clicks.forEach(c => {
+                const gx = Math.min(gridSize - 1, Math.floor(c.x / rect.width * gridSize));
+                const gy = Math.min(gridSize - 1, Math.floor(c.y / rect.height * gridSize));
+                grid[gy * gridSize + gx]++;
+            });
+            const total = clicks.length;
+            const entropy = -grid.filter(v => v > 0).reduce((s, v) => {
+                const p = v / total;
+                return s + p * Math.log2(p);
+            }, 0);
+
+            // Rhythm regularity (autocorrelation of reaction times)
+            const rhythm = autocorrelation(rts);
+
+            // Dimensions (0-1 normalized)
+            const dims = {
+                speed: clamp01(1 - rtMean / 2000),
+                consistency: clamp01(1 - rtStd / rtMean),
+                accuracy: clamp01(1 - accMean / 30),
+                smoothness: clamp01(1 - (velStd / (velMean + 0.01))),
+                complexity: clamp01(curvMean / 2),
+                attention: clamp01(entropy / Math.log2(gridSize * gridSize)),
+                rhythm: clamp01((rhythm + 1) / 2),
+                jerk: clamp01(1 - jerkMean / 2)
+            };
+
+            // Hash
+            const hashInput = Object.values(dims).map(v => v.toFixed(4)).join('|');
+            const hash = simpleHash(hashInput);
+
+            // Classification
+            const botScore = classifyBotScore(dims, rts, velocities);
+
+            state.currentFingerprint = {
+                dims, hash, botScore,
+                stats: { rtMean, rtStd, rtSkew, accMean, accStd, velMean, velStd, curvMean, jerkMean, entropy, rhythm },
+                raw: { rts, dists, velocities, curvatures, jerks }
+            };
+
+            // Save to library
+            const profile = {
+                id: hash.slice(0, 12),
+                dims,
+                hash,
+                botScore,
+                timestamp: Date.now(),
+                label: botScore > 0.65 ? 'bot' : botScore > 0.35 ? 'suspicious' : 'human'
+            };
+            state.profiles.push(profile);
+            if (state.profiles.length > 50) state.profiles = state.profiles.slice(-50);
+            localStorage.setItem('cf_profiles', JSON.stringify(state.profiles));
+        }
+
+        function classifyBotScore(dims, rts, velocities) {
+            let score = 0;
+            let factors = 0;
+
+            // Too consistent reaction times → bot
+            if (dims.consistency > 0.92) { score += 0.8; factors++; }
+            else if (dims.consistency > 0.8) { score += 0.3; factors++; }
+            else { factors++; }
+
+            // Perfect accuracy → bot
+            if (dims.accuracy > 0.95) { score += 0.7; factors++; }
+            else { factors++; }
+
+            // Very smooth mouse → bot
+            if (dims.smoothness > 0.9) { score += 0.6; factors++; }
+            else { factors++; }
+
+            // Low jerk (no micro-corrections) → bot
+            if (dims.jerk > 0.95) { score += 0.5; factors++; }
+            else { factors++; }
+
+            // Low attention entropy (mechanical scanning) → bot
+            if (dims.attention < 0.3) { score += 0.4; factors++; }
+            else { factors++; }
+
+            // Very high rhythm autocorrelation → bot
+            if (dims.rhythm > 0.85) { score += 0.6; factors++; }
+            else { factors++; }
+
+            // Reaction times with near-zero variance
+            const cv = std(rts) / (mean(rts) + 1);
+            if (cv < 0.05) { score += 0.9; factors++; }
+            else if (cv < 0.15) { score += 0.3; factors++; }
+            else { factors++; }
+
+            return clamp01(score / factors);
+        }
+
+        // === Rendering ===
+        function updateLiveDashboard() {
+            if (state.clicks.length < 2) return;
+            dashboard.style.display = 'grid';
+            // Quick stats update
+            const rts = state.clicks.map(c => c.rt);
+            document.getElementById('motorStats').innerHTML = statRow('Clicks', state.clicks.length) + statRow('Avg RT', mean(rts).toFixed(0) + 'ms');
+        }
+
+        function renderDashboard() {
+            const fp = state.currentFingerprint;
+            if (!fp) return;
+
+            drawRadar(fp.dims);
+            drawMotor(fp);
+            drawTemporal(fp);
+            drawAttention();
+            renderClassification(fp);
+            renderProfiles();
+            document.getElementById('fpHash').textContent = 'FP: ' + fp.hash;
+        }
+
+        function drawRadar(dims) {
+            const c = document.getElementById('radarCanvas');
+            const ctx = c.getContext('2d');
+            const W = c.width, H = c.height;
+            ctx.clearRect(0, 0, W, H);
+            const cx = W / 2, cy = H / 2, r = Math.min(cx, cy) - 20;
+            const keys = Object.keys(dims);
+            const n = keys.length;
+
+            // Grid
+            for (let ring = 1; ring <= 4; ring++) {
+                ctx.beginPath();
+                const rr = r * ring / 4;
+                for (let i = 0; i <= n; i++) {
+                    const a = (Math.PI * 2 * i / n) - Math.PI / 2;
+                    const px = cx + rr * Math.cos(a), py = cy + rr * Math.sin(a);
+                    i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+                }
+                ctx.strokeStyle = 'rgba(48,54,61,0.6)';
+                ctx.stroke();
+            }
+
+            // Labels
+            ctx.font = '10px sans-serif';
+            ctx.fillStyle = '#8b949e';
+            ctx.textAlign = 'center';
+            keys.forEach((k, i) => {
+                const a = (Math.PI * 2 * i / n) - Math.PI / 2;
+                const lx = cx + (r + 14) * Math.cos(a), ly = cy + (r + 14) * Math.sin(a);
+                ctx.fillText(k, lx, ly + 3);
+            });
+
+            // Data polygon
+            ctx.beginPath();
+            keys.forEach((k, i) => {
+                const a = (Math.PI * 2 * i / n) - Math.PI / 2;
+                const v = dims[k] * r;
+                const px = cx + v * Math.cos(a), py = cy + v * Math.sin(a);
+                i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+            });
+            ctx.closePath();
+            ctx.fillStyle = 'rgba(88,166,255,0.2)';
+            ctx.fill();
+            ctx.strokeStyle = '#58a6ff';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Dots
+            keys.forEach((k, i) => {
+                const a = (Math.PI * 2 * i / n) - Math.PI / 2;
+                const v = dims[k] * r;
+                ctx.beginPath();
+                ctx.arc(cx + v * Math.cos(a), cy + v * Math.sin(a), 3, 0, Math.PI * 2);
+                ctx.fillStyle = '#58a6ff';
+                ctx.fill();
+            });
+        }
+
+        function drawMotor(fp) {
+            const c = document.getElementById('motorCanvas');
+            const ctx = c.getContext('2d');
+            const W = c.width, H = c.height;
+            ctx.clearRect(0, 0, W, H);
+
+            // Draw velocity over time
+            const vels = fp.raw.velocities;
+            if (vels.length < 2) return;
+            const maxV = Math.max(...vels, 1);
+            ctx.beginPath();
+            ctx.strokeStyle = '#3fb950';
+            ctx.lineWidth = 1.5;
+            vels.forEach((v, i) => {
+                const x = (i / (vels.length - 1)) * W;
+                const y = H - (v / maxV) * (H - 10) - 5;
+                i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+            });
+            ctx.stroke();
+
+            // Curvature overlay
+            const curvs = fp.raw.curvatures;
+            if (curvs.length > 1) {
+                const maxC = Math.max(...curvs, 1);
+                ctx.beginPath();
+                ctx.strokeStyle = 'rgba(188,140,255,0.6)';
+                curvs.forEach((v, i) => {
+                    const x = (i / (curvs.length - 1)) * W;
+                    const y = H - (v / maxC) * (H - 10) - 5;
+                    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+                });
+                ctx.stroke();
+            }
+
+            // Legend
+            ctx.font = '10px sans-serif';
+            ctx.fillStyle = '#3fb950'; ctx.fillText('● velocity', 5, 12);
+            ctx.fillStyle = '#bc8cff'; ctx.fillText('● curvature', 70, 12);
+
+            document.getElementById('motorStats').innerHTML =
+                statRow('Avg Velocity', fp.stats.velMean.toFixed(2) + ' px/ms') +
+                statRow('Velocity σ', fp.stats.velStd.toFixed(2)) +
+                statRow('Avg Curvature', fp.stats.curvMean.toFixed(3)) +
+                statRow('Avg Jerk', fp.stats.jerkMean.toFixed(4));
+        }
+
+        function drawTemporal(fp) {
+            const c = document.getElementById('temporalCanvas');
+            const ctx = c.getContext('2d');
+            const W = c.width, H = c.height;
+            ctx.clearRect(0, 0, W, H);
+
+            const rts = fp.raw.rts;
+            const maxRT = Math.max(...rts, 1);
+            // Bar chart of reaction times
+            const bw = W / rts.length - 2;
+            rts.forEach((rt, i) => {
+                const x = i * (bw + 2) + 1;
+                const h = (rt / maxRT) * (H - 20);
+                const hue = rt < 400 ? 120 : rt < 800 ? 60 : 0;
+                ctx.fillStyle = `hsl(${hue}, 70%, 50%)`;
+                ctx.fillRect(x, H - h - 5, bw, h);
+            });
+
+            // Mean line
+            const my = H - (fp.stats.rtMean / maxRT) * (H - 20) - 5;
+            ctx.strokeStyle = 'rgba(88,166,255,0.7)';
+            ctx.setLineDash([4, 4]);
+            ctx.beginPath(); ctx.moveTo(0, my); ctx.lineTo(W, my); ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.font = '10px sans-serif';
+            ctx.fillStyle = '#58a6ff';
+            ctx.fillText('μ=' + fp.stats.rtMean.toFixed(0) + 'ms', W - 70, my - 4);
+
+            document.getElementById('temporalStats').innerHTML =
+                statRow('Mean RT', fp.stats.rtMean.toFixed(0) + 'ms') +
+                statRow('RT σ', fp.stats.rtStd.toFixed(0) + 'ms') +
+                statRow('Skewness', fp.stats.rtSkew.toFixed(3)) +
+                statRow('Rhythm (AC)', fp.stats.rhythm.toFixed(3));
+        }
+
+        function drawAttention() {
+            const c = document.getElementById('attentionCanvas');
+            const ctx = c.getContext('2d');
+            const W = c.width, H = c.height;
+            ctx.clearRect(0, 0, W, H);
+            const rect = zone.getBoundingClientRect();
+
+            // Heatmap from mouse path
+            const gridW = 20, gridH = 12;
+            const grid = new Array(gridW * gridH).fill(0);
+            state.mousePath.forEach(p => {
+                const gx = Math.min(gridW - 1, Math.floor(p.x / rect.width * gridW));
+                const gy = Math.min(gridH - 1, Math.floor(p.y / rect.height * gridH));
+                if (gx >= 0 && gy >= 0) grid[gy * gridW + gx]++;
+            });
+            const maxG = Math.max(...grid, 1);
+            const cellW = W / gridW, cellH = H / gridH;
+            grid.forEach((v, i) => {
+                const gx = i % gridW, gy = Math.floor(i / gridW);
+                const intensity = v / maxG;
+                ctx.fillStyle = `rgba(88,166,255,${intensity * 0.8})`;
+                ctx.fillRect(gx * cellW, gy * cellH, cellW, cellH);
+            });
+
+            // Click markers
+            state.clicks.forEach(cl => {
+                const sx = (cl.x / rect.width) * W;
+                const sy = (cl.y / rect.height) * H;
+                ctx.beginPath();
+                ctx.arc(sx, sy, 4, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(248,81,73,0.8)';
+                ctx.fill();
+            });
+
+            document.getElementById('attentionStats').innerHTML =
+                statRow('Spatial Entropy', (state.currentFingerprint?.stats.entropy || 0).toFixed(3)) +
+                statRow('Mouse Samples', state.mousePath.length.toLocaleString());
+        }
+
+        function renderClassification(fp) {
+            const bs = fp.botScore;
+            const label = bs > 0.65 ? 'bot' : bs > 0.35 ? 'suspicious' : 'human';
+            const badgeClass = label === 'bot' ? 'badge-bot' : label === 'suspicious' ? 'badge-suspicious' : 'badge-human';
+
+            document.getElementById('classResult').innerHTML = `
+                <div style="text-align:center; margin:1rem 0;">
+                    <div style="font-size:2.5rem; font-weight:700; color:${bs > 0.65 ? 'var(--red)' : bs > 0.35 ? 'var(--yellow)' : 'var(--green)'};">${(bs * 100).toFixed(1)}%</div>
+                    <div style="font-size:.85rem; color:var(--muted);">Bot Probability</div>
+                    <span class="badge ${badgeClass}" style="margin-top:.5rem; display:inline-block; font-size:.9rem; padding:.3rem .8rem;">${label.toUpperCase()}</span>
+                </div>
+                <div class="fp-meter"><div class="fp-meter-fill" style="width:${bs*100}%; background: ${bs > 0.65 ? 'var(--red)' : bs > 0.35 ? 'var(--yellow)' : 'var(--green)'};"></div></div>
+            `;
+
+            // Dimension breakdown
+            let dimHtml = '';
+            for (const [k, v] of Object.entries(fp.dims)) {
+                dimHtml += `<div class="stat-row"><span class="stat-label">${k}</span><span class="stat-value">${(v*100).toFixed(1)}%</span></div>`;
+            }
+            document.getElementById('classInsights').innerHTML = dimHtml;
+        }
+
+        function renderProfiles() {
+            const list = document.getElementById('profileList');
+            if (state.profiles.length === 0) return;
+            let html = '';
+            state.profiles.slice().reverse().forEach(p => {
+                const badgeClass = p.label === 'bot' ? 'badge-bot' : p.label === 'suspicious' ? 'badge-suspicious' : 'badge-human';
+                const time = new Date(p.timestamp).toLocaleTimeString();
+                html += `<div class="profile-item">
+                    <span style="color:var(--muted);">${p.id}</span>
+                    <span style="color:var(--muted); font-size:.8rem;">${time}</span>
+                    <span class="badge ${badgeClass}">${p.label}</span>
+                </div>`;
+            });
+            list.innerHTML = html;
+        }
+
+        // === Proactive Insights ===
+        function generateInsights() {
+            const fp = state.currentFingerprint;
+            if (!fp) return;
+            proactiveDiv.style.display = 'block';
+            const insights = [];
+
+            if (fp.stats.rtStd < 30) {
+                insights.push({ level: 'danger', text: '⚠️ <strong>Extremely consistent reaction times</strong> (σ=' + fp.stats.rtStd.toFixed(0) + 'ms) — characteristic of automated scripts. Human response times typically vary by 100-300ms.' });
+            } else if (fp.stats.rtStd < 80) {
+                insights.push({ level: 'warning', text: '⚡ <strong>Unusually consistent timing</strong> — could indicate assisted solving or pre-computed paths. Consider adding variable delays between targets.' });
+            }
+
+            if (fp.dims.smoothness > 0.85) {
+                insights.push({ level: 'warning', text: '🖱️ <strong>Unnaturally smooth mouse movement</strong> — human mouse paths typically show micro-corrections and tremor. This pattern suggests programmatic cursor control.' });
+            }
+
+            if (fp.stats.entropy < 1.5) {
+                insights.push({ level: 'warning', text: '👁️ <strong>Low spatial attention entropy</strong> — clicks concentrated in narrow area. May indicate formulaic solving strategy.' });
+            }
+
+            if (fp.dims.rhythm > 0.8) {
+                insights.push({ level: 'warning', text: '🥁 <strong>High rhythmic regularity</strong> — solving cadence is metronomic. Humans show natural tempo variation.' });
+            }
+
+            if (fp.stats.rtMean < 200) {
+                insights.push({ level: 'danger', text: '⚡ <strong>Sub-200ms average reaction time</strong> — faster than typical human visual processing. Strong indicator of automation.' });
+            }
+
+            if (fp.dims.accuracy > 0.97) {
+                insights.push({ level: 'warning', text: '🎯 <strong>Near-perfect click accuracy</strong> — humans typically overshoot targets by 3-8 pixels. Precision suggests pixel-exact clicking.' });
+            }
+
+            // Positive signals
+            if (fp.botScore < 0.2) {
+                insights.push({ level: 'ok', text: '✅ <strong>Strong human behavioral signature</strong> — natural variation in timing, movement, and accuracy. This solver shows authentic cognitive patterns.' });
+            }
+
+            if (state.profiles.length >= 3) {
+                const recent = state.profiles.slice(-5);
+                const avgBot = mean(recent.map(p => p.botScore));
+                if (avgBot > 0.5) {
+                    insights.push({ level: 'danger', text: '📈 <strong>Trending bot-like across sessions</strong> — recent fingerprints average ' + (avgBot * 100).toFixed(0) + '% bot probability. Recommend escalating CAPTCHA difficulty.' });
+                }
+            }
+
+            if (insights.length === 0) {
+                insights.push({ level: 'ok', text: '🔍 No anomalies detected in this session. Behavioral patterns fall within expected human ranges.' });
+            }
+
+            document.getElementById('insightsList').innerHTML = insights.map(i =>
+                `<div class="insight-box ${i.level === 'danger' ? 'danger' : i.level === 'warning' ? 'warning' : ''}">${i.text}</div>`
+            ).join('');
+        }
+
+        // === Compare ===
+        function compareFingerprints() {
+            if (state.profiles.length < 2) { alert('Need at least 2 sessions to compare.'); return; }
+            const last = state.profiles[state.profiles.length - 1];
+            const prev = state.profiles[state.profiles.length - 2];
+            const sim = cosineSimilarity(Object.values(last.dims), Object.values(prev.dims));
+            const same = sim > 0.95;
+            alert(`Fingerprint similarity: ${(sim * 100).toFixed(1)}%\n${same ? '✅ Likely same solver' : '❌ Different solver detected'}\n\nLast: ${last.id} (${last.label})\nPrev: ${prev.id} (${prev.label})`);
+        }
+
+        // === Export ===
+        function exportJSON() {
+            if (!state.currentFingerprint) return;
+            const data = {
+                fingerprint: state.currentFingerprint.hash,
+                dimensions: state.currentFingerprint.dims,
+                classification: state.currentFingerprint.botScore > 0.65 ? 'bot' : state.currentFingerprint.botScore > 0.35 ? 'suspicious' : 'human',
+                botScore: state.currentFingerprint.botScore,
+                stats: state.currentFingerprint.stats,
+                profiles: state.profiles,
+                exportedAt: new Date().toISOString()
+            };
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'cognitive-fingerprint-' + Date.now() + '.json';
+            a.click();
+        }
+
+        // === Utilities ===
+        function mean(arr) { return arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0; }
+        function std(arr) { const m = mean(arr); return Math.sqrt(mean(arr.map(v => (v - m) ** 2))); }
+        function skewness(arr) {
+            const m = mean(arr), s = std(arr);
+            if (s === 0) return 0;
+            return mean(arr.map(v => ((v - m) / s) ** 3));
+        }
+        function autocorrelation(arr) {
+            if (arr.length < 3) return 0;
+            const m = mean(arr);
+            let num = 0, den = 0;
+            for (let i = 0; i < arr.length - 1; i++) {
+                num += (arr[i] - m) * (arr[i + 1] - m);
+                den += (arr[i] - m) ** 2;
+            }
+            den += (arr[arr.length - 1] - m) ** 2;
+            return den === 0 ? 0 : num / den;
+        }
+        function clamp01(v) { return Math.max(0, Math.min(1, v)); }
+        function cosineSimilarity(a, b) {
+            let dot = 0, ma = 0, mb = 0;
+            for (let i = 0; i < a.length; i++) { dot += a[i] * b[i]; ma += a[i] ** 2; mb += b[i] ** 2; }
+            return dot / (Math.sqrt(ma) * Math.sqrt(mb) + 1e-10);
+        }
+        function simpleHash(str) {
+            let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+            for (let i = 0; i < str.length; i++) {
+                const ch = str.charCodeAt(i);
+                h1 = Math.imul(h1 ^ ch, 2654435761);
+                h2 = Math.imul(h2 ^ ch, 1597334677);
+            }
+            h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+            h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+            return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16).padStart(16, '0');
+        }
+        function statRow(label, value) {
+            return `<div class="stat-row"><span class="stat-label">${label}</span><span class="stat-value">${value}</span></div>`;
+        }
+
+    })();
+    </script>
+</body>
+</html>

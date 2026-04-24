@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CAPTCHA Canary Deployer | gif-captcha</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+.deploy-grid{display:grid;grid-template-columns:320px 1fr;gap:1.5rem;padding:1.5rem;max-width:1400px;margin:0 auto}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:1.25rem}
+.panel h3{font-size:.95rem;color:var(--accent);margin-bottom:1rem;display:flex;align-items:center;gap:.5rem}
+.stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-bottom:1.5rem}
+.stat-card{background:var(--bg);border-radius:8px;padding:.75rem;text-align:center}
+.stat-val{font-size:1.3rem;font-weight:700}.stat-label{font-size:.7rem;color:var(--muted);text-transform:uppercase}
+.fleet-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:1rem;margin-top:1rem}
+.canary-card{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:1rem;position:relative;transition:all .2s}
+.canary-card:hover{border-color:var(--accent);transform:translateY(-2px)}
+.canary-card.compromised{border-color:var(--red);box-shadow:0 0 12px rgba(248,81,73,.15)}
+.canary-card.retired{opacity:.5}
+.canary-id{font-size:.7rem;color:var(--muted);font-family:monospace}
+.canary-name{font-size:.9rem;font-weight:600;margin:.3rem 0}
+.gap-bar{height:6px;background:var(--bg);border-radius:3px;margin:.5rem 0;overflow:hidden;border:1px solid var(--border)}
+.gap-fill{height:100%;border-radius:3px;transition:width .4s}
+.status-badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:.65rem;font-weight:600}
+.status-active{background:rgba(63,185,80,.15);color:var(--green)}
+.status-compromised{background:rgba(248,81,73,.15);color:var(--red)}
+.status-retired{background:rgba(139,148,158,.15);color:var(--muted)}
+.trend-arrow{font-size:.85rem;margin-left:.3rem}
+.param-row{display:flex;align-items:center;justify-content:space-between;padding:.5rem 0;border-bottom:1px solid var(--border)}
+.param-row:last-child{border:none}
+.param-label{font-size:.8rem;color:var(--muted);min-width:90px}
+.param-val{font-size:.8rem;font-weight:600;font-family:'SF Mono',monospace;min-width:40px;text-align:right}
+input[type=range]{flex:1;margin:0 .5rem;accent-color:var(--accent)}
+.controls{display:flex;gap:.75rem;flex-wrap:wrap;margin-top:1rem}
+.btn-lab{padding:.5rem 1rem;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);cursor:pointer;font-size:.8rem;transition:all .2s}
+.btn-lab:hover{background:var(--surface-hover,#21262d);border-color:var(--accent)}
+.btn-lab.active{background:var(--accent);color:#000;border-color:var(--accent)}
+.btn-lab.danger{border-color:var(--red);color:var(--red)}
+.auto-badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:.65rem;font-weight:600;background:rgba(63,185,80,.15);color:var(--green);margin-left:.5rem}
+.insight-card{background:rgba(188,140,255,.1);border:1px solid rgba(188,140,255,.3);border-radius:8px;padding:.75rem;margin-top:.75rem;font-size:.8rem;color:#bc8cff}
+.insight-card.critical{background:rgba(248,81,73,.1);border-color:rgba(248,81,73,.3);color:var(--red)}
+.insight-card.high{background:rgba(210,153,34,.1);border-color:rgba(210,153,34,.3);color:var(--yellow,#d29922)}
+canvas.chart{width:100%;height:180px;border-radius:8px;background:var(--bg);margin-top:.75rem}
+.activity-log{max-height:200px;overflow-y:auto;font-size:.75rem;font-family:monospace;padding:.5rem}
+.activity-log div{padding:.2rem 0;border-bottom:1px solid rgba(48,54,61,.3)}
+.rate-pair{display:flex;gap:1rem;font-size:.78rem;margin:.3rem 0}
+.rate-pair span:first-child{color:var(--green)}
+.rate-pair span:last-child{color:var(--red)}
+.config-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:.4rem}
+.config-chip{font-size:.6rem;padding:2px 5px;border-radius:4px;background:var(--surface);color:var(--muted)}
+@media(max-width:900px){.deploy-grid{grid-template-columns:1fr}.stats-row{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+<div class="header">
+<h1>🐤 CAPTCHA Canary Deployer</h1>
+<p class="subtitle">Autonomous canary CAPTCHAs — early warning for bot capability evolution</p>
+</div>
+
+<div class="deploy-grid">
+<div style="display:flex;flex-direction:column;gap:1rem">
+
+<div class="panel">
+<h3>🚀 Deploy Canary</h3>
+<div class="param-row"><span class="param-label">Frames</span><input type="range" id="pFrames" min="3" max="12" value="6" oninput="updateSliders()"><span class="param-val" id="vFrames">6</span></div>
+<div class="param-row"><span class="param-label">Noise</span><input type="range" id="pNoise" min="0" max="100" value="30" oninput="updateSliders()"><span class="param-val" id="vNoise">0.30</span></div>
+<div class="param-row"><span class="param-label">Distortion</span><input type="range" id="pDistort" min="0" max="100" value="30" oninput="updateSliders()"><span class="param-val" id="vDistort">0.30</span></div>
+<div class="param-row"><span class="param-label">Color</span><input type="range" id="pColor" min="1" max="5" value="2" oninput="updateSliders()"><span class="param-val" id="vColor">2</span></div>
+<div class="param-row"><span class="param-label">Speed</span><input type="range" id="pSpeed" min="1" max="30" value="10" oninput="updateSliders()"><span class="param-val" id="vSpeed">1.0</span></div>
+<div class="controls">
+<button class="btn-lab" onclick="deployCanary()">🚀 Deploy</button>
+<button class="btn-lab" onclick="deployRandom()">🎲 Random</button>
+</div>
+</div>
+
+<div class="panel">
+<h3>⚙️ Fleet Controls</h3>
+<div class="controls">
+<button class="btn-lab" id="btnAuto" onclick="toggleAuto()">🤖 Auto-Rotate</button>
+<button class="btn-lab" onclick="runRotation()">🔄 Rotate Now</button>
+<button class="btn-lab danger" onclick="resetFleet()">🗑 Reset</button>
+</div>
+<div id="autoStatus" style="margin-top:.5rem;font-size:.75rem;color:var(--muted)">Auto-rotate: OFF</div>
+</div>
+
+<div class="panel">
+<h3>📋 Activity Log</h3>
+<div class="activity-log" id="actLog"></div>
+</div>
+
+</div>
+
+<div style="display:flex;flex-direction:column;gap:1.5rem">
+
+<div class="stats-row" id="statsRow">
+<div class="stat-card"><div class="stat-val" id="sTot">0</div><div class="stat-label">Total</div></div>
+<div class="stat-card"><div class="stat-val" id="sAct">0</div><div class="stat-label">Active</div></div>
+<div class="stat-card"><div class="stat-val" id="sComp">0</div><div class="stat-label">Compromised</div></div>
+<div class="stat-card"><div class="stat-val" id="sGap">—</div><div class="stat-label">Avg Gap</div></div>
+</div>
+
+<div class="panel">
+<h3>🐤 Canary Fleet</h3>
+<div class="fleet-grid" id="fleetGrid"></div>
+</div>
+
+<div class="panel">
+<h3>📈 Bot Capability Timeline</h3>
+<canvas class="chart" id="capChart"></canvas>
+</div>
+
+<div class="panel">
+<h3>🧠 Proactive Insights</h3>
+<div id="insightsArea"></div>
+</div>
+
+</div>
+</div>
+
+<script>
+"use strict";
+// ── State ──
+const canaries = [];
+let autoMode = false, autoTimer = null;
+const capHistory = []; // {tick, avgBotRate}
+let tick = 0;
+
+function uid(){return Math.random().toString(36).slice(2,10)}
+function clamp(v,lo,hi){return Math.max(lo,Math.min(hi,v))}
+
+// ── Slider display ──
+function updateSliders(){
+  document.getElementById("vFrames").textContent=document.getElementById("pFrames").value;
+  document.getElementById("vNoise").textContent=(document.getElementById("pNoise").value/100).toFixed(2);
+  document.getElementById("vDistort").textContent=(document.getElementById("pDistort").value/100).toFixed(2);
+  document.getElementById("vColor").textContent=document.getElementById("pColor").value;
+  document.getElementById("vSpeed").textContent=(document.getElementById("pSpeed").value/10).toFixed(1);
+}
+
+// ── Deploy ──
+function deployCanary(){
+  const c = {
+    id: uid(), name:"canary-"+uid().slice(0,6),
+    config:{frameCount:+document.getElementById("pFrames").value,noiseLevel:document.getElementById("pNoise").value/100,distortion:document.getElementById("pDistort").value/100,colorComplexity:+document.getElementById("pColor").value,animationSpeed:document.getElementById("pSpeed").value/10},
+    deployedAt:Date.now(), status:"active", solves:[], humanPass:0, botPass:0, gap:0, trend:"stable"
+  };
+  canaries.push(c);
+  log("🚀 Deployed "+c.name);
+  refresh();
+}
+function deployRandom(){
+  document.getElementById("pFrames").value=3+Math.floor(Math.random()*10);
+  document.getElementById("pNoise").value=Math.floor(Math.random()*100);
+  document.getElementById("pDistort").value=Math.floor(Math.random()*100);
+  document.getElementById("pColor").value=1+Math.floor(Math.random()*5);
+  document.getElementById("pSpeed").value=1+Math.floor(Math.random()*30);
+  updateSliders(); deployCanary();
+}
+
+// ── Simulation ──
+function simulateTick(){
+  tick++;
+  const botSkill = 0.15 + 0.35 * Math.min(1, tick/200) + 0.1*Math.sin(tick/30); // bots gradually improve
+  for(const c of canaries){
+    if(c.status!=="active") continue;
+    // difficulty factor
+    const diff = (c.config.noiseLevel*0.3 + c.config.distortion*0.3 + c.config.frameCount/12*0.2 + c.config.colorComplexity/5*0.1 + (1-c.config.animationSpeed/3)*0.1);
+    const humanRate = clamp(0.85 - diff*0.3 + Math.random()*0.1, 0.4, 0.98);
+    const botRate = clamp(botSkill - diff*0.6 + Math.random()*0.15, 0.01, 0.95);
+    // generate 2-5 attempts per tick
+    const n = 2+Math.floor(Math.random()*4);
+    for(let i=0;i<n;i++){
+      const isBot = Math.random()<0.4;
+      const rate = isBot ? botRate : humanRate;
+      c.solves.push({isBot, correct:Math.random()<rate, t:tick});
+    }
+    // recompute stats
+    const hAttempts=c.solves.filter(s=>!s.isBot), bAttempts=c.solves.filter(s=>s.isBot);
+    c.humanPass=hAttempts.length?hAttempts.filter(s=>s.correct).length/hAttempts.length:0;
+    c.botPass=bAttempts.length?bAttempts.filter(s=>s.correct).length/bAttempts.length:0;
+    c.gap=c.humanPass-c.botPass;
+    // trend from last 25% vs first 25%
+    if(bAttempts.length>=8){
+      const q=Math.floor(bAttempts.length/4);
+      const early=bAttempts.slice(0,q).filter(s=>s.correct).length/q;
+      const late=bAttempts.slice(-q).filter(s=>s.correct).length/q;
+      c.trend=late-early>0.1?"rising":early-late>0.1?"falling":"stable";
+    }
+  }
+  // capability history
+  const actives=canaries.filter(c=>c.status==="active");
+  if(actives.length){
+    const avg=actives.reduce((s,c)=>s+c.botPass,0)/actives.length;
+    capHistory.push({tick,avgBotRate:avg});
+    if(capHistory.length>200) capHistory.shift();
+  }
+}
+
+// ── Auto-rotate ──
+function toggleAuto(){
+  autoMode=!autoMode;
+  document.getElementById("btnAuto").classList.toggle("active",autoMode);
+  document.getElementById("autoStatus").textContent="Auto-rotate: "+(autoMode?"ON":"OFF");
+  if(autoMode&&!autoTimer) autoTimer=setInterval(()=>{runRotation()},3000);
+  if(!autoMode&&autoTimer){clearInterval(autoTimer);autoTimer=null;}
+}
+function runRotation(){
+  let retired=0,deployed=0;
+  for(const c of [...canaries]){
+    if(c.status!=="active"||c.solves.length<10) continue;
+    if(c.gap<0.1||c.trend==="rising"){
+      c.status=c.gap<0.05?"compromised":"retired";
+      retired++;
+      // spawn harder replacement
+      const nc={id:uid(),name:"canary-"+uid().slice(0,6),
+        config:{frameCount:Math.min(12,c.config.frameCount+1),noiseLevel:Math.min(1,c.config.noiseLevel+0.1),distortion:Math.min(1,c.config.distortion+0.05),colorComplexity:Math.min(5,c.config.colorComplexity+0.5),animationSpeed:Math.max(0.1,c.config.animationSpeed-0.1)},
+        deployedAt:Date.now(),status:"active",solves:[],humanPass:0,botPass:0,gap:0,trend:"stable"};
+      canaries.push(nc); deployed++;
+    }
+  }
+  if(retired) log("🔄 Rotated: "+retired+" retired, "+deployed+" deployed");
+  refresh();
+}
+function resetFleet(){canaries.length=0;capHistory.length=0;tick=0;log("🗑 Fleet reset");refresh();}
+
+// ── Activity log ──
+const logs=[];
+function log(msg){logs.unshift({t:new Date().toLocaleTimeString(),msg});if(logs.length>50)logs.pop();renderLog();}
+function renderLog(){document.getElementById("actLog").innerHTML=logs.map(l=>"<div><span style='color:var(--muted)'>"+l.t+"</span> "+l.msg+"</div>").join("");}
+
+// ── Render ──
+function refresh(){
+  const actives=canaries.filter(c=>c.status==="active");
+  document.getElementById("sTot").textContent=canaries.length;
+  document.getElementById("sAct").textContent=actives.length;
+  document.getElementById("sComp").textContent=canaries.filter(c=>c.status==="compromised").length;
+  const avgGap=actives.length?actives.reduce((s,c)=>s+c.gap,0)/actives.length:0;
+  document.getElementById("sGap").textContent=actives.length?(avgGap*100).toFixed(1)+"%":"—";
+  document.getElementById("sGap").style.color=avgGap>0.3?"var(--green)":avgGap>0.15?"var(--yellow,#d29922)":"var(--red)";
+
+  // fleet grid
+  const grid=document.getElementById("fleetGrid");
+  grid.innerHTML=canaries.map(c=>{
+    const tArrow=c.trend==="rising"?"⬆️":c.trend==="falling"?"⬇️":"➡️";
+    const gapPct=(c.gap*100).toFixed(1);
+    const gapColor=c.gap>0.3?"var(--green)":c.gap>0.15?"var(--yellow,#d29922)":"var(--red)";
+    return `<div class="canary-card ${c.status}">
+      <span class="status-badge status-${c.status}">${c.status}</span>
+      <div class="canary-name">${c.name} <span class="trend-arrow">${tArrow}</span></div>
+      <div class="canary-id">${c.id}</div>
+      <div class="rate-pair"><span>👤 ${(c.humanPass*100).toFixed(0)}%</span><span>🤖 ${(c.botPass*100).toFixed(0)}%</span></div>
+      <div style="font-size:.75rem;color:var(--muted)">Gap: <span style="color:${gapColor};font-weight:600">${gapPct}%</span></div>
+      <div class="gap-bar"><div class="gap-fill" style="width:${Math.max(0,c.gap*100)}%;background:${gapColor}"></div></div>
+      <div class="config-chips">
+        <span class="config-chip">🎞 ${c.config.frameCount}</span>
+        <span class="config-chip">📡 ${c.config.noiseLevel.toFixed(1)}</span>
+        <span class="config-chip">🌀 ${c.config.distortion.toFixed(1)}</span>
+        <span class="config-chip">🎨 ${c.config.colorComplexity}</span>
+        <span class="config-chip">⚡ ${c.config.animationSpeed.toFixed(1)}</span>
+      </div>
+    </div>`;
+  }).join("");
+
+  // insights
+  renderInsights();
+}
+
+function renderInsights(){
+  const area=document.getElementById("insightsArea");
+  const insights=[];
+  const actives=canaries.filter(c=>c.status==="active");
+  if(!actives.length) insights.push({sev:"critical",msg:"No active canaries — deploy canaries to monitor bot capabilities."});
+  const comp=canaries.filter(c=>c.status==="compromised").length;
+  if(comp>canaries.length*0.3&&canaries.length>0) insights.push({sev:"high",msg:comp+" of "+canaries.length+" canaries compromised — bots are rapidly adapting."});
+  const avgGap=actives.length?actives.reduce((s,c)=>s+c.gap,0)/actives.length:0;
+  if(avgGap<0.2&&actives.length) insights.push({sev:"high",msg:"Average detection gap is only "+(avgGap*100).toFixed(1)+"% — consider deploying harder canaries."});
+  const rising=actives.filter(c=>c.trend==="rising");
+  if(rising.length) insights.push({sev:"medium",msg:rising.length+" canary(s) show rising bot success — capability evolution in progress."});
+  if(actives.length>0&&actives.length<3) insights.push({sev:"medium",msg:"Fleet has fewer than 3 active canaries — deploy more for coverage."});
+  if(!insights.length) insights.push({sev:"info",msg:"Fleet is healthy — canaries maintaining good detection gaps."});
+  area.innerHTML=insights.map(i=>`<div class="insight-card ${i.sev}">💡 ${i.msg}</div>`).join("");
+}
+
+// ── Canvas chart ──
+function drawChart(){
+  const cvs=document.getElementById("capChart");
+  const ctx=cvs.getContext("2d");
+  const W=cvs.width=cvs.offsetWidth, H=cvs.height=cvs.offsetHeight;
+  ctx.clearRect(0,0,W,H);
+  if(capHistory.length<2) return;
+  // grid
+  ctx.strokeStyle="rgba(48,54,61,.6)"; ctx.lineWidth=1;
+  for(let y=0;y<=4;y++){const py=H*0.1+y*(H*0.8/4);ctx.beginPath();ctx.moveTo(40,py);ctx.lineTo(W-10,py);ctx.stroke();
+    ctx.fillStyle="#8b949e";ctx.font="10px monospace";ctx.fillText((100-y*25)+"%",2,py+4);}
+  // line
+  ctx.beginPath(); ctx.strokeStyle="#f85149"; ctx.lineWidth=2;
+  const xStep=(W-50)/(capHistory.length-1);
+  capHistory.forEach((p,i)=>{
+    const x=40+i*xStep, y=H*0.1+(1-p.avgBotRate)*(H*0.8);
+    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  });
+  ctx.stroke();
+  // label
+  ctx.fillStyle="#f85149";ctx.font="11px sans-serif";ctx.fillText("🤖 Avg Bot Success Rate",50,20);
+  // danger zone
+  ctx.fillStyle="rgba(248,81,73,.08)";ctx.fillRect(40,H*0.1,W-50,H*0.8*0.3);
+  ctx.fillStyle="rgba(248,81,73,.4)";ctx.font="9px monospace";ctx.fillText("DANGER ZONE (>70%)",W-140,H*0.1+14);
+}
+
+// ── Main loop ──
+function mainLoop(){
+  if(canaries.filter(c=>c.status==="active").length>0) simulateTick();
+  refresh(); drawChart();
+  requestAnimationFrame(mainLoop);
+}
+
+// ── Init: deploy 5 starter canaries ──
+for(let i=0;i<5;i++) deployRandom();
+log("🐤 Fleet initialized with 5 canaries");
+mainLoop();
+</script>
+</body>
+</html>

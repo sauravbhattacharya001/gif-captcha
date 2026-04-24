@@ -210,26 +210,51 @@ function createCaptchaHealthMonitor(options) {
     return nowFn() - windowMs;
   }
 
+  /**
+   * Count entries in a chronological array within the rolling window,
+   * optionally counting how many satisfy a predicate.  Reverse-iterates
+   * and stops at the cutoff — O(window) instead of O(all).
+   *
+   * Deduplicates the identical loop formerly in _computeSolveRate,
+   * _computeBotRate, _computeRateLimitPressure, and _computeErrorRate.
+   */
+  function _countInWindow(arr, cutoff, predFn) {
+    var total = 0, matched = 0;
+    for (var i = arr.length - 1; i >= 0; i--) {
+      if (arr[i].ts < cutoff) break;
+      total++;
+      if (predFn && predFn(arr[i])) matched++;
+    }
+    return { total: total, matched: matched };
+  }
+
+  /**
+   * Classify a rate against a two-tier threshold pair.
+   * @param {string} direction  'below' — rate < threshold is bad;
+   *                            'above' — rate > threshold is bad
+   */
+  function _classifyRate(rate, total, warnThreshold, critThreshold, direction) {
+    if (total < 3) return STATUS.HEALTHY;
+    if (direction === 'below') {
+      if (rate < critThreshold) return STATUS.CRITICAL;
+      if (rate < warnThreshold) return STATUS.DEGRADED;
+    } else {
+      if (rate >= critThreshold) return STATUS.CRITICAL;
+      if (rate >= warnThreshold) return STATUS.DEGRADED;
+    }
+    return STATUS.HEALTHY;
+  }
+
   function _computeSolveRate() {
     var cutoff = _windowCutoff();
-    var total = 0, solved = 0;
-    for (var i = solves.length - 1; i >= 0; i--) {
-      if (solves[i].ts < cutoff) break;
-      total++;
-      if (solves[i].solved) solved++;
-    }
-    var rate = _pct(solved, total);
-    var status = STATUS.HEALTHY;
-    if (total >= 3) {
-      if (rate < thresholds.criticalSolveRate) status = STATUS.CRITICAL;
-      else if (rate < thresholds.minSolveRate) status = STATUS.DEGRADED;
-    }
+    var c = _countInWindow(solves, cutoff, function (e) { return e.solved; });
+    var rate = _pct(c.matched, c.total);
     return {
       signal: SIGNALS.SOLVE_RATE,
       value: _roundTo(rate, 4),
-      total: total,
-      solved: solved,
-      status: status,
+      total: c.total,
+      solved: c.matched,
+      status: _classifyRate(rate, c.total, thresholds.minSolveRate, thresholds.criticalSolveRate, 'below'),
       threshold: thresholds.minSolveRate,
       criticalThreshold: thresholds.criticalSolveRate
     };
@@ -319,24 +344,14 @@ function createCaptchaHealthMonitor(options) {
 
   function _computeBotRate() {
     var cutoff = _windowCutoff();
-    var total = 0, blocked = 0;
-    for (var i = botChecks.length - 1; i >= 0; i--) {
-      if (botChecks[i].ts < cutoff) break;
-      total++;
-      if (botChecks[i].blocked) blocked++;
-    }
-    var rate = _pct(blocked, total);
-    var status = STATUS.HEALTHY;
-    if (total >= 3) {
-      if (rate >= thresholds.criticalBotRate) status = STATUS.CRITICAL;
-      else if (rate >= thresholds.maxBotRate) status = STATUS.DEGRADED;
-    }
+    var c = _countInWindow(botChecks, cutoff, function (e) { return e.blocked; });
+    var rate = _pct(c.matched, c.total);
     return {
       signal: SIGNALS.BOT_RATE,
       value: _roundTo(rate, 4),
-      total: total,
-      blocked: blocked,
-      status: status,
+      total: c.total,
+      blocked: c.matched,
+      status: _classifyRate(rate, c.total, thresholds.maxBotRate, thresholds.criticalBotRate, 'above'),
       threshold: thresholds.maxBotRate,
       criticalThreshold: thresholds.criticalBotRate
     };
@@ -344,28 +359,15 @@ function createCaptchaHealthMonitor(options) {
 
   function _computeRateLimitPressure() {
     var cutoff = _windowCutoff();
-    var hits = 0;
-    for (var i = rateLimitHits.length - 1; i >= 0; i--) {
-      if (rateLimitHits[i].ts < cutoff) break;
-      hits++;
-    }
-    var ops = 0;
-    for (var j = totalOps.length - 1; j >= 0; j--) {
-      if (totalOps[j].ts < cutoff) break;
-      ops++;
-    }
-    var rate = _pct(hits, ops);
-    var status = STATUS.HEALTHY;
-    if (ops >= 3) {
-      if (rate >= thresholds.criticalRateLimitRate) status = STATUS.CRITICAL;
-      else if (rate >= thresholds.maxRateLimitRate) status = STATUS.DEGRADED;
-    }
+    var rlc = _countInWindow(rateLimitHits, cutoff);
+    var opsc = _countInWindow(totalOps, cutoff);
+    var rate = _pct(rlc.total, opsc.total);
     return {
       signal: SIGNALS.RATE_LIMIT,
       value: _roundTo(rate, 4),
-      hits: hits,
-      totalOps: ops,
-      status: status,
+      hits: rlc.total,
+      totalOps: opsc.total,
+      status: _classifyRate(rate, opsc.total, thresholds.maxRateLimitRate, thresholds.criticalRateLimitRate, 'above'),
       threshold: thresholds.maxRateLimitRate,
       criticalThreshold: thresholds.criticalRateLimitRate
     };
@@ -373,22 +375,9 @@ function createCaptchaHealthMonitor(options) {
 
   function _computeErrorRate() {
     var cutoff = _windowCutoff();
-    var errCount = 0;
-    for (var i = errors.length - 1; i >= 0; i--) {
-      if (errors[i].ts < cutoff) break;
-      errCount++;
-    }
-    var ops = 0;
-    for (var j = totalOps.length - 1; j >= 0; j--) {
-      if (totalOps[j].ts < cutoff) break;
-      ops++;
-    }
-    var rate = _pct(errCount, ops);
-    var status = STATUS.HEALTHY;
-    if (ops >= 3) {
-      if (rate >= thresholds.criticalErrorRate) status = STATUS.CRITICAL;
-      else if (rate >= thresholds.maxErrorRate) status = STATUS.DEGRADED;
-    }
+    var errc = _countInWindow(errors, cutoff);
+    var opsc = _countInWindow(totalOps, cutoff);
+    var rate = _pct(errc.total, opsc.total);
 
     // Top error codes
     var codeCounts = Object.create(null);
@@ -406,10 +395,10 @@ function createCaptchaHealthMonitor(options) {
     return {
       signal: SIGNALS.ERROR_RATE,
       value: _roundTo(rate, 4),
-      errors: errCount,
-      totalOps: ops,
+      errors: errc.total,
+      totalOps: opsc.total,
       topCodes: topCodes.slice(0, 5),
-      status: status,
+      status: _classifyRate(rate, opsc.total, thresholds.maxErrorRate, thresholds.criticalErrorRate, 'above'),
       threshold: thresholds.maxErrorRate,
       criticalThreshold: thresholds.criticalErrorRate
     };

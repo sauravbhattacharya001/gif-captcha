@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CAPTCHA Mutation Lab | gif-captcha</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+.lab-grid{display:grid;grid-template-columns:340px 1fr;gap:1.5rem;padding:1.5rem;max-width:1400px;margin:0 auto}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:1.25rem}
+.panel h3{font-size:.95rem;color:var(--accent);margin-bottom:1rem;display:flex;align-items:center;gap:.5rem}
+.gene-row{display:flex;align-items:center;justify-content:space-between;padding:.6rem 0;border-bottom:1px solid var(--border)}
+.gene-row:last-child{border:none}
+.gene-label{font-size:.82rem;color:var(--muted);min-width:100px}
+.gene-value{font-size:.85rem;font-weight:600;font-family:'SF Mono',monospace;min-width:50px;text-align:right}
+.gene-bar{flex:1;height:6px;background:var(--bg);border-radius:3px;margin:0 .75rem;position:relative;overflow:hidden}
+.gene-fill{height:100%;border-radius:3px;transition:width .4s}
+.gen-counter{text-align:center;padding:1rem;font-size:2rem;font-weight:700;color:var(--accent)}
+.gen-label{font-size:.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:.1em}
+.pop-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:1rem;margin-top:1rem}
+.specimen{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:1rem;position:relative;cursor:pointer;transition:all .2s}
+.specimen:hover{border-color:var(--accent);transform:translateY(-2px)}
+.specimen.elite{border-color:var(--green);box-shadow:0 0 12px rgba(63,185,80,.2)}
+.specimen.dead{opacity:.4;border-color:var(--red)}
+.specimen-id{font-size:.7rem;color:var(--muted);font-family:monospace}
+.specimen-fitness{font-size:1.4rem;font-weight:700;margin:.5rem 0}
+.specimen-genes{display:flex;flex-wrap:wrap;gap:4px}
+.gene-chip{font-size:.65rem;padding:2px 6px;border-radius:4px;background:var(--surface);color:var(--muted)}
+.fitness-good{color:var(--green)}.fitness-mid{color:var(--yellow)}.fitness-bad{color:var(--red)}
+.timeline-row{display:flex;align-items:center;gap:.5rem;padding:.4rem 0;font-size:.8rem;border-bottom:1px solid rgba(48,54,61,.5)}
+.timeline-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.controls{display:flex;gap:.75rem;flex-wrap:wrap;margin-top:1rem}
+.btn-lab{padding:.5rem 1rem;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);cursor:pointer;font-size:.8rem;transition:all .2s}
+.btn-lab:hover{background:var(--surface-hover);border-color:var(--accent)}
+.btn-lab.active{background:var(--accent);color:#000;border-color:var(--accent)}
+.btn-lab.danger{border-color:var(--red);color:var(--red)}
+.btn-lab.danger:hover{background:var(--red-bg)}
+.stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-bottom:1rem}
+.stat-card{background:var(--bg);border-radius:8px;padding:.75rem;text-align:center}
+.stat-val{font-size:1.3rem;font-weight:700}.stat-label{font-size:.7rem;color:var(--muted);text-transform:uppercase}
+canvas.chart{width:100%;height:180px;border-radius:8px;background:var(--bg);margin-top:.75rem}
+.mutation-log{max-height:250px;overflow-y:auto;font-size:.75rem;font-family:monospace;padding:.5rem}
+.mutation-log div{padding:.2rem 0;border-bottom:1px solid rgba(48,54,61,.3)}
+.auto-badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:.65rem;font-weight:600;background:var(--green-bg);color:var(--green);margin-left:.5rem}
+.insight-card{background:var(--purple-bg);border:1px solid rgba(188,140,255,.3);border-radius:8px;padding:.75rem;margin-top:.75rem;font-size:.8rem;color:var(--purple)}
+@media(max-width:900px){.lab-grid{grid-template-columns:1fr}.stats-row{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+<div class="header">
+<h1>🧬 CAPTCHA Mutation Lab</h1>
+<p class="subtitle">Autonomous parameter evolution — mutate, evaluate, survive</p>
+</div>
+
+<div class="lab-grid">
+<div style="display:flex;flex-direction:column;gap:1rem">
+<div class="panel">
+<h3>⚙️ Evolution Controls</h3>
+<div class="controls">
+<button class="btn-lab" onclick="stepGeneration()">⏭ Next Gen</button>
+<button class="btn-lab" id="autoBtn" onclick="toggleAuto()">▶ Autopilot</button>
+<button class="btn-lab" onclick="injectMutant()">🧪 Inject Mutant</button>
+<button class="btn-lab danger" onclick="massExtinction()">☄️ Mass Extinction</button>
+</div>
+<div style="margin-top:1rem">
+<label style="font-size:.8rem;color:var(--muted)">Mutation Rate</label>
+<input type="range" id="mutRate" min="1" max="50" value="15" style="width:100%" oninput="mutRateVal.textContent=this.value+'%'">
+<span id="mutRateVal" style="font-size:.75rem;color:var(--accent)">15%</span>
+</div>
+<div style="margin-top:.5rem">
+<label style="font-size:.8rem;color:var(--muted)">Population Size</label>
+<input type="range" id="popSize" min="4" max="20" value="8" style="width:100%" oninput="popSizeVal.textContent=this.value">
+<span id="popSizeVal" style="font-size:.75rem;color:var(--accent)">8</span>
+</div>
+<div style="margin-top:.5rem">
+<label style="font-size:.8rem;color:var(--muted)">Selection Pressure</label>
+<select id="selPressure" style="width:100%;padding:.3rem;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:.8rem">
+<option value="soft">Soft (top 60%)</option>
+<option value="normal" selected>Normal (top 50%)</option>
+<option value="harsh">Harsh (top 30%)</option>
+<option value="brutal">Brutal (top 1)</option>
+</select>
+</div>
+</div>
+
+<div class="panel">
+<h3>🏆 Best Genome</h3>
+<div id="bestGenome">
+<div class="gen-counter"><span id="bestFitness">—</span></div>
+<div style="text-align:center" class="gen-label">Fitness Score</div>
+<div id="bestGenes"></div>
+</div>
+</div>
+
+<div class="panel">
+<h3>📋 Mutation Log</h3>
+<div class="mutation-log" id="mutLog"></div>
+</div>
+
+<div class="panel">
+<h3>💡 Proactive Insights</h3>
+<div id="insights"><span style="font-size:.8rem;color:var(--muted)">Run a few generations to see insights...</span></div>
+</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:1rem">
+<div class="stats-row">
+<div class="stat-card"><div class="stat-val" id="genNum">0</div><div class="stat-label">Generation</div></div>
+<div class="stat-card"><div class="stat-val" id="avgFit">—</div><div class="stat-label">Avg Fitness</div></div>
+<div class="stat-card"><div class="stat-val" id="diversity">—</div><div class="stat-label">Diversity</div></div>
+<div class="stat-card"><div class="stat-val" id="stagnation">0</div><div class="stat-label">Stagnation</div></div>
+</div>
+
+<div class="panel">
+<h3>📈 Fitness Over Time</h3>
+<canvas class="chart" id="fitnessChart"></canvas>
+</div>
+
+<div class="panel">
+<h3>🧫 Population <span class="auto-badge" id="autoBadge" style="display:none">AUTOPILOT</span></h3>
+<div class="pop-grid" id="popGrid"></div>
+</div>
+
+<div class="panel">
+<h3>🧬 Gene Distribution</h3>
+<canvas class="chart" id="geneChart"></canvas>
+</div>
+
+<div class="panel" style="display:flex;gap:1rem;flex-wrap:wrap">
+<button class="btn-lab" onclick="exportPop()">📥 Export JSON</button>
+<button class="btn-lab" onclick="importPop()">📤 Import</button>
+<button class="btn-lab" onclick="resetLab()">🔄 Reset Lab</button>
+</div>
+</div>
+</div>
+
+<footer class="footer"><p>Part of the <a href="index.html">gif-captcha</a> research project</p></footer>
+
+<script>
+const GENES = [
+  { name: 'frameRate', label: 'Frame Rate', min: 2, max: 30, unit: 'fps' },
+  { name: 'distortion', label: 'Distortion', min: 0, max: 100, unit: '%' },
+  { name: 'noise', label: 'Noise Level', min: 0, max: 100, unit: '%' },
+  { name: 'colorVariance', label: 'Color Variance', min: 0, max: 100, unit: '%' },
+  { name: 'frameDuration', label: 'Frame Duration', min: 50, max: 500, unit: 'ms' },
+  { name: 'charSpacing', label: 'Char Spacing', min: 0, max: 50, unit: 'px' },
+  { name: 'rotationRange', label: 'Rotation Range', min: 0, max: 45, unit: '°' },
+  { name: 'lineDecoys', label: 'Decoy Lines', min: 0, max: 20, unit: '' },
+  { name: 'blurRadius', label: 'Blur Radius', min: 0, max: 10, unit: 'px' },
+  { name: 'contrast', label: 'Contrast', min: 20, max: 100, unit: '%' }
+];
+
+let generation = 0, population = [], history = { best: [], avg: [], diversity: [] }, autoMode = false, autoTimer = null, stagnationCount = 0, lastBestFitness = 0;
+
+function rand(a, b) { return a + Math.random() * (b - a); }
+function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+
+function randomGenome() {
+  const g = {};
+  GENES.forEach(gene => g[gene.name] = rand(gene.min, gene.max));
+  return g;
+}
+
+function fitness(genome) {
+  // Simulate: high contrast + moderate distortion + low noise = high human solve rate
+  // High distortion + noise + blur = low bot success
+  const humanSolve = (genome.contrast / 100) * 0.3 +
+    (1 - genome.noise / 150) * 0.2 +
+    (genome.frameRate > 8 && genome.frameRate < 20 ? 0.15 : 0.05) +
+    (genome.charSpacing > 5 && genome.charSpacing < 30 ? 0.1 : 0.03) +
+    (genome.frameDuration > 100 && genome.frameDuration < 350 ? 0.1 : 0.04);
+  const botBlock = (genome.distortion / 120) * 0.25 +
+    (genome.noise / 130) * 0.15 +
+    (genome.rotationRange / 60) * 0.1 +
+    (genome.lineDecoys / 25) * 0.1 +
+    (genome.blurRadius / 12) * 0.05 +
+    (genome.colorVariance / 120) * 0.05;
+  // Add some randomness to simulate real-world variance
+  const jitter = (Math.random() - 0.5) * 0.06;
+  return clamp((humanSolve * 0.55 + botBlock * 0.45 + jitter) * 100, 0, 100);
+}
+
+function mutate(genome) {
+  const rate = parseInt(document.getElementById('mutRate').value) / 100;
+  const g = { ...genome };
+  GENES.forEach(gene => {
+    if (Math.random() < rate) {
+      const range = gene.max - gene.min;
+      g[gene.name] = clamp(g[gene.name] + (Math.random() - 0.5) * range * 0.4, gene.min, gene.max);
+      log(`Mutated ${gene.label}: ${g[gene.name].toFixed(1)}${gene.unit}`);
+    }
+  });
+  return g;
+}
+
+function crossover(a, b) {
+  const child = {};
+  GENES.forEach(gene => {
+    child[gene.name] = Math.random() < 0.5 ? a[gene.name] : b[gene.name];
+  });
+  return child;
+}
+
+function calcDiversity(pop) {
+  if (pop.length < 2) return 0;
+  let total = 0, pairs = 0;
+  for (let i = 0; i < pop.length; i++) {
+    for (let j = i + 1; j < pop.length; j++) {
+      let dist = 0;
+      GENES.forEach(g => {
+        const range = g.max - g.min;
+        dist += Math.pow((pop[i].genome[g.name] - pop[j].genome[g.name]) / range, 2);
+      });
+      total += Math.sqrt(dist / GENES.length);
+      pairs++;
+    }
+  }
+  return ((total / pairs) * 100).toFixed(1);
+}
+
+function selectParents(pop) {
+  const pressure = document.getElementById('selPressure').value;
+  const sorted = [...pop].sort((a, b) => b.fitness - a.fitness);
+  const cutoff = { soft: 0.6, normal: 0.5, harsh: 0.3, brutal: 1 / pop.length }[pressure];
+  const survivors = sorted.slice(0, Math.max(2, Math.ceil(pop.length * cutoff)));
+  return survivors;
+}
+
+function initPopulation() {
+  const size = parseInt(document.getElementById('popSize').value);
+  population = [];
+  for (let i = 0; i < size; i++) {
+    const genome = randomGenome();
+    population.push({ id: `S${generation}-${i}`, genome, fitness: fitness(genome), gen: generation, elite: false, dead: false });
+  }
+}
+
+function stepGeneration() {
+  generation++;
+  const targetSize = parseInt(document.getElementById('popSize').value);
+  
+  if (population.length === 0) { initPopulation(); render(); return; }
+  
+  const parents = selectParents(population);
+  const newPop = [];
+  
+  // Keep the elite
+  const elite = { ...parents[0], elite: true, dead: false };
+  newPop.push(elite);
+  
+  // Breed the rest
+  while (newPop.length < targetSize) {
+    const a = parents[Math.floor(Math.random() * parents.length)];
+    const b = parents[Math.floor(Math.random() * parents.length)];
+    const childGenome = mutate(crossover(a.genome, b.genome));
+    newPop.push({ id: `S${generation}-${newPop.length}`, genome: childGenome, fitness: fitness(childGenome), gen: generation, elite: false, dead: false });
+  }
+  
+  // Mark dead
+  population.forEach(s => { if (!parents.find(p => p.id === s.id)) s.dead = true; });
+  
+  population = newPop;
+  
+  const best = Math.max(...population.map(s => s.fitness));
+  const avg = population.reduce((s, p) => s + p.fitness, 0) / population.length;
+  const div = calcDiversity(population);
+  
+  history.best.push(best);
+  history.avg.push(avg);
+  history.diversity.push(parseFloat(div));
+  
+  // Stagnation detection
+  if (Math.abs(best - lastBestFitness) < 0.5) stagnationCount++;
+  else stagnationCount = 0;
+  lastBestFitness = best;
+  
+  // Auto-adapt: if stagnating, increase mutation
+  if (autoMode && stagnationCount > 5) {
+    document.getElementById('mutRate').value = Math.min(50, parseInt(document.getElementById('mutRate').value) + 5);
+    document.getElementById('mutRateVal').textContent = document.getElementById('mutRate').value + '%';
+    log('⚡ Auto-increased mutation rate (stagnation detected)');
+  }
+  
+  generateInsights();
+  render();
+}
+
+function log(msg) {
+  const el = document.getElementById('mutLog');
+  const d = document.createElement('div');
+  d.textContent = `[G${generation}] ${msg}`;
+  el.prepend(d);
+  if (el.children.length > 100) el.removeChild(el.lastChild);
+}
+
+function toggleAuto() {
+  autoMode = !autoMode;
+  const btn = document.getElementById('autoBtn');
+  const badge = document.getElementById('autoBadge');
+  if (autoMode) {
+    btn.textContent = '⏸ Pause'; btn.classList.add('active');
+    badge.style.display = 'inline-block';
+    autoTimer = setInterval(stepGeneration, 800);
+  } else {
+    btn.textContent = '▶ Autopilot'; btn.classList.remove('active');
+    badge.style.display = 'none';
+    clearInterval(autoTimer);
+  }
+}
+
+function injectMutant() {
+  const genome = randomGenome();
+  population.push({ id: `M${generation}-X`, genome, fitness: fitness(genome), gen: generation, elite: false, dead: false });
+  log('🧪 Injected random mutant!');
+  render();
+}
+
+function massExtinction() {
+  const survivor = population.reduce((a, b) => a.fitness > b.fitness ? a : b);
+  population = [survivor];
+  log('☄️ Mass extinction! Only the fittest survives.');
+  render();
+}
+
+function generateInsights() {
+  const el = document.getElementById('insights');
+  const tips = [];
+  const best = population.reduce((a, b) => a.fitness > b.fitness ? a : b);
+  
+  if (stagnationCount > 3) tips.push('⚠️ Population is stagnating. Try injecting a mutant or increasing mutation rate.');
+  if (parseFloat(calcDiversity(population)) < 15) tips.push('🔬 Low genetic diversity — consider a mass extinction event to force exploration.');
+  if (best.genome.noise > 70 && best.genome.contrast < 40) tips.push('🤖 Current best is bot-resistant but may frustrate humans (high noise + low contrast).');
+  if (best.genome.frameRate < 5) tips.push('🐌 Very low frame rate may make CAPTCHAs too hard to read.');
+  if (best.fitness > 75) tips.push('🎯 Strong candidate found! Consider exporting this genome for production testing.');
+  if (generation > 20 && history.best[history.best.length - 1] < 50) tips.push('📉 Fitness remains low after many generations. Try softer selection pressure.');
+  if (tips.length === 0) tips.push('✅ Evolution progressing normally. Keep running generations.');
+  
+  el.innerHTML = tips.map(t => `<div class="insight-card">${t}</div>`).join('');
+}
+
+function render() {
+  document.getElementById('genNum').textContent = generation;
+  document.getElementById('stagnation').textContent = stagnationCount;
+  
+  if (population.length === 0) return;
+  
+  const best = population.reduce((a, b) => a.fitness > b.fitness ? a : b);
+  const avg = (population.reduce((s, p) => s + p.fitness, 0) / population.length).toFixed(1);
+  const div = calcDiversity(population);
+  
+  document.getElementById('bestFitness').textContent = best.fitness.toFixed(1);
+  document.getElementById('bestFitness').className = best.fitness > 65 ? 'fitness-good' : best.fitness > 40 ? 'fitness-mid' : 'fitness-bad';
+  document.getElementById('avgFit').textContent = avg;
+  document.getElementById('avgFit').className = 'stat-val ' + (avg > 65 ? 'fitness-good' : avg > 40 ? 'fitness-mid' : 'fitness-bad');
+  document.getElementById('diversity').textContent = div + '%';
+  
+  // Best genes display
+  document.getElementById('bestGenes').innerHTML = GENES.map(gene => {
+    const val = best.genome[gene.name];
+    const pct = ((val - gene.min) / (gene.max - gene.min)) * 100;
+    const color = pct > 66 ? 'var(--green)' : pct > 33 ? 'var(--yellow)' : 'var(--red)';
+    return `<div class="gene-row"><span class="gene-label">${gene.label}</span><div class="gene-bar"><div class="gene-fill" style="width:${pct}%;background:${color}"></div></div><span class="gene-value">${val.toFixed(1)}${gene.unit}</span></div>`;
+  }).join('');
+  
+  // Population grid
+  const sorted = [...population].sort((a, b) => b.fitness - a.fitness);
+  document.getElementById('popGrid').innerHTML = sorted.map(s => {
+    const fc = s.fitness > 65 ? 'fitness-good' : s.fitness > 40 ? 'fitness-mid' : 'fitness-bad';
+    const cls = s.elite ? 'elite' : s.dead ? 'dead' : '';
+    return `<div class="specimen ${cls}" onclick="inspectSpecimen('${s.id}')">
+      <div class="specimen-id">${s.id} ${s.elite ? '👑' : ''}</div>
+      <div class="specimen-fitness ${fc}">${s.fitness.toFixed(1)}</div>
+      <div class="specimen-genes">${GENES.slice(0, 5).map(g => `<span class="gene-chip">${g.label.slice(0, 4)}: ${s.genome[g.name].toFixed(0)}</span>`).join('')}</div>
+    </div>`;
+  }).join('');
+  
+  drawFitnessChart();
+  drawGeneChart();
+}
+
+function drawFitnessChart() {
+  const canvas = document.getElementById('fitnessChart');
+  const ctx = canvas.getContext('2d');
+  canvas.width = canvas.offsetWidth * 2; canvas.height = canvas.offsetHeight * 2;
+  ctx.scale(2, 2);
+  const w = canvas.offsetWidth, h = canvas.offsetHeight;
+  ctx.clearRect(0, 0, w, h);
+  
+  if (history.best.length < 2) return;
+  const maxV = Math.max(100, ...history.best);
+  const pts = history.best.length;
+  const step = w / Math.max(pts - 1, 1);
+  
+  // Avg line
+  ctx.beginPath(); ctx.strokeStyle = 'rgba(88,166,255,.3)'; ctx.lineWidth = 1.5;
+  history.avg.forEach((v, i) => { const x = i * step, y = h - (v / maxV) * (h - 20) - 10; i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); });
+  ctx.stroke();
+  
+  // Best line
+  ctx.beginPath(); ctx.strokeStyle = '#3fb950'; ctx.lineWidth = 2;
+  history.best.forEach((v, i) => { const x = i * step, y = h - (v / maxV) * (h - 20) - 10; i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); });
+  ctx.stroke();
+  
+  // Labels
+  ctx.fillStyle = '#8b949e'; ctx.font = '10px sans-serif';
+  ctx.fillText('Best', 5, 12); ctx.fillStyle = '#3fb950'; ctx.fillRect(35, 6, 12, 3);
+  ctx.fillStyle = '#8b949e'; ctx.fillText('Avg', 55, 12); ctx.fillStyle = 'rgba(88,166,255,.5)'; ctx.fillRect(80, 6, 12, 3);
+}
+
+function drawGeneChart() {
+  const canvas = document.getElementById('geneChart');
+  const ctx = canvas.getContext('2d');
+  canvas.width = canvas.offsetWidth * 2; canvas.height = canvas.offsetHeight * 2;
+  ctx.scale(2, 2);
+  const w = canvas.offsetWidth, h = canvas.offsetHeight;
+  ctx.clearRect(0, 0, w, h);
+  
+  if (population.length === 0) return;
+  const barW = (w - 20) / GENES.length;
+  const colors = ['#58a6ff', '#3fb950', '#d29922', '#f85149', '#bc8cff', '#39d2c0', '#f0883e', '#58a6ff', '#3fb950', '#d29922'];
+  
+  GENES.forEach((gene, i) => {
+    const vals = population.map(s => (s.genome[gene.name] - gene.min) / (gene.max - gene.min));
+    const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+    const min = Math.min(...vals);
+    const max = Math.max(...vals);
+    const x = 10 + i * barW;
+    const barH = h - 30;
+    
+    // Range bar
+    ctx.fillStyle = colors[i] + '30';
+    ctx.fillRect(x + 2, barH - max * barH + 10, barW - 4, (max - min) * barH);
+    
+    // Avg marker
+    ctx.fillStyle = colors[i];
+    ctx.fillRect(x + 2, barH - avg * barH + 8, barW - 4, 4);
+    
+    // Label
+    ctx.save(); ctx.fillStyle = '#8b949e'; ctx.font = '8px sans-serif';
+    ctx.translate(x + barW / 2, h - 2); ctx.rotate(-0.5);
+    ctx.fillText(gene.label.slice(0, 6), -15, 0);
+    ctx.restore();
+  });
+}
+
+function inspectSpecimen(id) {
+  const s = population.find(p => p.id === id);
+  if (!s) return;
+  alert(`Specimen ${s.id}\nFitness: ${s.fitness.toFixed(2)}\nGeneration: ${s.gen}\n\n${GENES.map(g => `${g.label}: ${s.genome[g.name].toFixed(2)}${g.unit}`).join('\n')}`);
+}
+
+function exportPop() {
+  const data = { generation, population, history, exported: new Date().toISOString() };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `mutation-lab-gen${generation}.json`; a.click();
+}
+
+function importPop() {
+  const input = document.createElement('input'); input.type = 'file'; input.accept = '.json';
+  input.onchange = e => {
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        generation = data.generation || 0;
+        population = data.population || [];
+        history = data.history || { best: [], avg: [], diversity: [] };
+        render();
+        log('📤 Imported population successfully');
+      } catch { alert('Invalid file'); }
+    };
+    reader.readAsText(e.target.files[0]);
+  };
+  input.click();
+}
+
+function resetLab() {
+  if (!confirm('Reset everything?')) return;
+  generation = 0; population = []; history = { best: [], avg: [], diversity: [] };
+  stagnationCount = 0; lastBestFitness = 0;
+  if (autoMode) toggleAuto();
+  document.getElementById('mutLog').innerHTML = '';
+  document.getElementById('insights').innerHTML = '<span style="font-size:.8rem;color:var(--muted)">Run a few generations to see insights...</span>';
+  render();
+}
+
+// Init
+initPopulation();
+render();
+</script>
+</body>
+</html>

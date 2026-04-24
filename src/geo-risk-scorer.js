@@ -52,8 +52,15 @@ var VELOCITY_WINDOW_MS = 3600000; // 1 hour
 function createGeoRiskScorer(options) {
   options = options || {};
 
-  var highRisk = options.highRiskCountries || DEFAULT_HIGH_RISK;
-  var mediumRisk = options.mediumRiskCountries || DEFAULT_MEDIUM_RISK;
+  var highRiskArr = options.highRiskCountries || DEFAULT_HIGH_RISK;
+  var mediumRiskArr = options.mediumRiskCountries || DEFAULT_MEDIUM_RISK;
+
+  // Build O(1) lookup sets from the risk arrays — _countryRiskFactor is
+  // called per score() invocation and previously paid O(n) indexOf cost.
+  var highRisk = Object.create(null);
+  var mediumRisk = Object.create(null);
+  for (var _hr = 0; _hr < highRiskArr.length; _hr++) highRisk[highRiskArr[_hr]] = true;
+  for (var _mr = 0; _mr < mediumRiskArr.length; _mr++) mediumRisk[mediumRiskArr[_mr]] = true;
   var impossibleSpeedKmh = options.impossibleTravelSpeedKmh || IMPOSSIBLE_TRAVEL_SPEED_KMH;
   var suspiciousSpeedKmh = options.suspiciousTravelSpeedKmh || SUSPICIOUS_TRAVEL_SPEED_KMH;
   var velocityWindowMs = options.velocityWindowMs || VELOCITY_WINDOW_MS;
@@ -128,8 +135,8 @@ function createGeoRiskScorer(options) {
   function _countryRiskFactor(country) {
     if (!country) return { name: "country_unknown", score: 0.3, detail: "No country data" };
     var cc = country.toUpperCase();
-    if (highRisk.indexOf(cc) !== -1) return { name: "country_high_risk", score: 0.4, detail: cc + " is high-risk" };
-    if (mediumRisk.indexOf(cc) !== -1) return { name: "country_medium_risk", score: 0.2, detail: cc + " is medium-risk" };
+    if (highRisk[cc]) return { name: "country_high_risk", score: 0.4, detail: cc + " is high-risk" };
+    if (mediumRisk[cc]) return { name: "country_medium_risk", score: 0.2, detail: cc + " is medium-risk" };
     return { name: "country_ok", score: 0, detail: cc + " is low-risk" };
   }
 

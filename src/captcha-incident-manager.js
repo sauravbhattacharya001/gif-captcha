@@ -383,22 +383,19 @@ function createIncidentManager(opts) {
 
   function listAll(filterOpts) {
     filterOpts = filterOpts || {};
-    var list = Object.keys(incidents).map(function (k) { return incidents[k]; });
+    var list = [];
+    var keys = Object.keys(incidents);
 
-    if (filterOpts.severity) {
-      list = list.filter(function (inc) { return inc.severity === filterOpts.severity; });
-    }
-    if (filterOpts.state) {
-      list = list.filter(function (inc) { return inc.state === filterOpts.state; });
-    }
-    if (filterOpts.source) {
-      list = list.filter(function (inc) { return inc.source === filterOpts.source; });
-    }
-    if (filterOpts.since) {
-      list = list.filter(function (inc) { return inc.createdAt >= filterOpts.since; });
-    }
-    if (filterOpts.until) {
-      list = list.filter(function (inc) { return inc.createdAt <= filterOpts.until; });
+    // Single-pass filtering instead of chained .filter() calls
+    // that each create intermediate arrays and iterate the full list.
+    for (var i = 0; i < keys.length; i++) {
+      var inc = incidents[keys[i]];
+      if (filterOpts.severity && inc.severity !== filterOpts.severity) continue;
+      if (filterOpts.state && inc.state !== filterOpts.state) continue;
+      if (filterOpts.source && inc.source !== filterOpts.source) continue;
+      if (filterOpts.since && inc.createdAt < filterOpts.since) continue;
+      if (filterOpts.until && inc.createdAt > filterOpts.until) continue;
+      list.push(inc);
     }
 
     list.sort(function (a, b) { return b.createdAt - a.createdAt; });

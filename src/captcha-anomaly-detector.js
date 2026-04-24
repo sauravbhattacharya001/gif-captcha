@@ -127,10 +127,13 @@ function createAnomalyDetector(options) {
   // deduplication step in analyze() keeps at most one anomaly per
   // method+metric anyway.  This avoids allocating O(n) anomaly objects
   // when many values exceed the threshold (e.g. during a bot attack).
-  function _zScoreCheck(values, label) {
+  //
+  // Accepts optional pre-computed mean/stddev to avoid redundant
+  // O(n) passes when the caller already has them (e.g. analyze()).
+  function _zScoreCheck(values, label, precomputedMean, precomputedSd) {
     if (values.length < minSamples) return [];
-    var avg = _mean(values);
-    var sd = _stddev(values, avg);
+    var avg = precomputedMean !== undefined ? precomputedMean : _mean(values);
+    var sd  = precomputedSd  !== undefined ? precomputedSd  : _stddev(values, avg);
     if (sd === 0) return [];
 
     var maxAbsZ = 0;
@@ -161,9 +164,12 @@ function createAnomalyDetector(options) {
   // Like _zScoreCheck, only report the most extreme outlier since
   // dedup keeps one per method+metric.  Uses the already-sorted array
   // endpoints instead of scanning all values.
-  function _iqrCheck(values, label) {
+  //
+  // Accepts an optional pre-sorted array to skip the O(n log n) sort
+  // when the caller already has one (e.g. analyze()).
+  function _iqrCheck(values, label, preSorted) {
     if (values.length < minSamples) return [];
-    var sorted = _sortedCopy(values);
+    var sorted = preSorted || _sortedCopy(values);
     var q1 = _percentile(sorted, 25);
     var q3 = _percentile(sorted, 75);
     var iqr = q3 - q1;
@@ -375,15 +381,22 @@ function createAnomalyDetector(options) {
     var solveRate = windowEvts.length > 0 ? successes / windowEvts.length : 0;
     var avgDuration = _mean(durations);
 
+    // Pre-compute duration stats once — these are reused by both the
+    // anomaly detectors (_zScoreCheck, _iqrCheck) and the metrics
+    // output, avoiding redundant O(n) mean/stddev passes and an
+    // extra O(n log n) sort.
+    var sdDuration = _stddev(durations, avgDuration);
+    var sortedDurations = _sortedCopy(durations);
+
     // Update EMAs
     _updateEma("solveRate", solveRate);
     _updateEma("avgDuration", avgDuration);
     _updateEma("trafficRate", windowEvts.length);
 
-    // Run all detectors
+    // Run all detectors — pass pre-computed stats to avoid redundant work
     var allAnomalies = [];
-    allAnomalies = allAnomalies.concat(_zScoreCheck(durations, "response_time"));
-    allAnomalies = allAnomalies.concat(_iqrCheck(durations, "response_time"));
+    allAnomalies = allAnomalies.concat(_zScoreCheck(durations, "response_time", avgDuration, sdDuration));
+    allAnomalies = allAnomalies.concat(_iqrCheck(durations, "response_time", sortedDurations));
     allAnomalies = allAnomalies.concat(_detectBursts(windowEvts, now));
     allAnomalies = allAnomalies.concat(_detectGeoShift(windowEvts));
     allAnomalies = allAnomalies.concat(_detectSolveRateChange(windowEvts));
@@ -426,8 +439,6 @@ function createAnomalyDetector(options) {
       if (alertHistory.length > 100) alertHistory = alertHistory.slice(-100);
     }
 
-    var sortedDurations = _sortedCopy(durations);
-
     return {
       anomalies: deduped,
       metrics: {
@@ -437,7 +448,7 @@ function createAnomalyDetector(options) {
         medianDuration: Math.round(_median(sortedDurations) * 100) / 100,
         p95Duration: Math.round(_percentile(sortedDurations, 95) * 100) / 100,
         p99Duration: Math.round(_percentile(sortedDurations, 99) * 100) / 100,
-        stddevDuration: Math.round(_stddev(durations, avgDuration) * 100) / 100,
+        stddevDuration: Math.round(sdDuration * 100) / 100,
         emaSolveRate: emaValues.solveRate !== null ? Math.round(emaValues.solveRate * 1000) / 1000 : null,
         emaAvgDuration: emaValues.avgDuration !== null ? Math.round(emaValues.avgDuration * 100) / 100 : null,
         emaTrafficRate: emaValues.trafficRate !== null ? Math.round(emaValues.trafficRate * 100) / 100 : null,

@@ -1,5 +1,10 @@
 'use strict';
 
+var _shared = require('./shared-utils');
+var _now = _shared._now;
+var _cosineSimilarity = _shared._cosineSimilarity;
+var _decayFactor = _shared._decayFactor;
+
 /**
  * createFraudRingDetector — detects coordinated CAPTCHA-solving rings by
  * clustering sessions that exhibit suspiciously similar behavioral patterns
@@ -68,22 +73,7 @@ function createFraudRingDetector(options) {
     return 'ring_' + nextRingId++;
   }
 
-  function _now() { return Date.now(); }
-
-  /**
-   * Compute cosine similarity between two numeric arrays.
-   */
-  function _cosineSimilarity(a, b) {
-    if (!a || !b || a.length !== b.length || a.length === 0) return 0;
-    var dot = 0, magA = 0, magB = 0;
-    for (var i = 0; i < a.length; i++) {
-      dot += a[i] * b[i];
-      magA += a[i] * a[i];
-      magB += b[i] * b[i];
-    }
-    if (magA === 0 || magB === 0) return 0;
-    return dot / (Math.sqrt(magA) * Math.sqrt(magB));
-  }
+  // _now, _cosineSimilarity, _decayFactor imported from shared-utils
 
   /**
    * Build a timing distribution vector from solve timestamps.
@@ -242,7 +232,7 @@ function createFraudRingDetector(options) {
    */
   function _decayedConfidence(confidence, ageMs) {
     if (decayHalfLifeMs <= 0) return confidence;
-    return confidence * Math.pow(0.5, ageMs / decayHalfLifeMs);
+    return confidence * _decayFactor(ageMs, decayHalfLifeMs);
   }
 
   // ── Public API ───────────────────────────────────────────────────

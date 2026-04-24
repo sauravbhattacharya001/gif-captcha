@@ -61,6 +61,7 @@ var _shared = require("./shared-utils");
 var _clamp = _shared._clamp;
 var _now = _shared._now;
 var _percentile = _shared._percentile;
+var _decayFactor = _shared._decayFactor;
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -129,10 +130,7 @@ function _weightedAverage(values, weights) {
   return totalWeight > 0 ? sum / totalWeight : 0;
 }
 
-function _decayFactor(ageMs, halfLifeMs) {
-  if (ageMs <= 0) return 1;
-  return Math.pow(0.5, ageMs / halfLifeMs);
-}
+// _decayFactor imported from shared-utils above
 
 // _percentile imported from shared-utils above
 

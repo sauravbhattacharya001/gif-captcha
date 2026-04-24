@@ -215,6 +215,40 @@ function _constantTimeEqual(a, b) {
  */
 function _clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
 
+/**
+ * Compute an exponential decay factor based on age and half-life.
+ * Returns 1.0 for age <= 0, 0.5 at age === halfLifeMs, approaching 0 as age grows.
+ * Used for time-weighted signal scoring (session-risk-aggregator, fraud-ring-detector).
+ *
+ * @param {number} ageMs      - Age of the signal in milliseconds
+ * @param {number} halfLifeMs - Half-life in milliseconds
+ * @returns {number} Decay multiplier in (0, 1]
+ */
+function _decayFactor(ageMs, halfLifeMs) {
+  if (ageMs <= 0) return 1;
+  return Math.pow(0.5, ageMs / halfLifeMs);
+}
+
+/**
+ * Compute cosine similarity between two equal-length numeric arrays.
+ * Returns 0 for empty, mismatched-length, or zero-magnitude arrays.
+ *
+ * @param {number[]} a
+ * @param {number[]} b
+ * @returns {number} Similarity in [0, 1] (or negative for opposing vectors)
+ */
+function _cosineSimilarity(a, b) {
+  if (!a || !b || a.length !== b.length || a.length === 0) return 0;
+  var dot = 0, magA = 0, magB = 0;
+  for (var i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+    magA += a[i] * a[i];
+    magB += b[i] * b[i];
+  }
+  if (magA === 0 || magB === 0) return 0;
+  return dot / (Math.sqrt(magA) * Math.sqrt(magB));
+}
+
 /** Numeric ascending comparator for Array.sort(). */
 function _numAsc(a, b) { return a - b; }
 
@@ -834,6 +868,8 @@ module.exports = {
   _now: _now,
   _constantTimeEqual: _constantTimeEqual,
   _clamp: _clamp,
+  _decayFactor: _decayFactor,
+  _cosineSimilarity: _cosineSimilarity,
   _numAsc: _numAsc,
   _mean: _mean,
   _median: _median,

@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CAPTCHA Threat Index — gif-captcha</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+.ti-layout{display:grid;grid-template-columns:340px 1fr;gap:1.5rem;margin:1.5rem 0}
+@media(max-width:900px){.ti-layout{grid-template-columns:1fr}}
+.gauge-panel{display:flex;flex-direction:column;align-items:center;gap:1rem}
+.gauge-wrap{position:relative;width:280px;height:280px}
+canvas#gauge{width:100%;height:100%}
+.gauge-value{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center}
+.gauge-num{font-size:3rem;font-weight:800;line-height:1}
+.gauge-label{font-size:.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-top:.2rem}
+.threat-badge{display:inline-block;padding:.3rem 1rem;border-radius:20px;font-weight:700;font-size:.85rem;letter-spacing:1px;text-transform:uppercase}
+.badge-low{background:var(--green-bg);color:var(--green)}
+.badge-guarded{background:var(--yellow-bg);color:var(--yellow)}
+.badge-elevated{background:var(--orange-bg);color:var(--orange)}
+.badge-severe{background:var(--red-bg);color:var(--red)}
+.badge-critical{background:var(--red-bg);color:var(--red);animation:pulse-badge 1s infinite}
+@keyframes pulse-badge{0%,100%{opacity:1}50%{opacity:.5}}
+.right-col{display:flex;flex-direction:column;gap:1rem}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:1rem}
+.panel h3{margin:0 0 .6rem;font-size:.9rem;color:var(--muted)}
+.signal-table{width:100%;border-collapse:collapse;font-size:.8rem}
+.signal-table th{text-align:left;color:var(--muted);padding:.3rem .4rem;border-bottom:1px solid var(--border);font-weight:600}
+.signal-table td{padding:.35rem .4rem;border-bottom:1px solid rgba(48,54,61,.4)}
+.signal-name{display:flex;align-items:center;gap:.4rem}
+.signal-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.trend-up{color:var(--red)}
+.trend-down{color:var(--green)}
+.trend-flat{color:var(--muted)}
+canvas.sparkline{width:80px;height:20px;vertical-align:middle}
+canvas#timeline{width:100%;height:160px;border-radius:8px;background:var(--bg)}
+.controls{display:flex;gap:.5rem;flex-wrap:wrap;justify-content:center;margin:1rem 0}
+.controls button,.controls select{background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.4rem .9rem;border-radius:8px;cursor:pointer;font-size:.8rem;transition:all .2s}
+.controls button:hover,.controls button.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.controls input[type=range]{accent-color:var(--accent);width:80px}
+.scenario-btns{display:flex;gap:.5rem;flex-wrap:wrap;justify-content:center;margin:.5rem 0}
+.scenario-btns button{background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.35rem .8rem;border-radius:8px;cursor:pointer;font-size:.75rem;transition:all .2s}
+.scenario-btns button:hover{border-color:var(--accent);color:var(--accent)}
+.escalation-list{max-height:200px;overflow-y:auto}
+.esc-item{display:flex;gap:.5rem;align-items:flex-start;padding:.4rem;border-radius:6px;margin-bottom:.3rem;background:var(--bg);font-size:.8rem}
+.esc-time{color:var(--muted);font-size:.7rem;white-space:nowrap;min-width:55px}
+.defense-bar{display:flex;align-items:center;gap:.5rem;margin-top:.5rem}
+.defense-fill{height:10px;border-radius:5px;transition:width .5s,background .5s}
+.corr-wrap{display:flex;justify-content:center}
+canvas#corrMatrix{width:220px;height:220px;border-radius:8px}
+.bottom-row{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:1rem}
+@media(max-width:900px){.bottom-row{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+<h1>🎯 CAPTCHA Threat Index</h1>
+<p>Composite real-time threat scoring with autonomous escalation</p>
+</header>
+<nav class="controls">
+<button id="btnToggle" onclick="toggleMonitor()">▶ Start</button>
+<label style="display:flex;align-items:center;gap:.3rem;font-size:.8rem;color:var(--muted)">Speed <input type="range" id="speedSlider" min="1" max="10" value="3"><span id="speedVal">3x</span></label>
+<button onclick="resetAll()">↺ Reset</button>
+<button onclick="exportJSON()">📥 Export JSON</button>
+<label style="display:flex;align-items:center;gap:.4rem;font-size:.8rem;color:var(--muted)"><input type="checkbox" id="autoEsc" checked> Auto-Escalate</label>
+</nav>
+<div class="scenario-btns">
+<span style="font-size:.75rem;color:var(--muted)">Inject Attack:</span>
+<button onclick="injectScenario('cred')">🔑 Credential Stuffing</button>
+<button onclick="injectScenario('swarm')">🤖 Bot Swarm</button>
+<button onclick="injectScenario('ddos')">💥 DDoS Probe</button>
+</div>
+
+<div class="ti-layout">
+<!-- Left: Gauge -->
+<div class="gauge-panel">
+<div class="panel" style="width:100%;text-align:center">
+<h3>Composite Threat Index</h3>
+<div class="gauge-wrap"><canvas id="gauge" width="280" height="280"></canvas>
+<div class="gauge-value"><div class="gauge-num" id="gaugeNum">0</div><div class="gauge-label">Threat Index</div></div>
+</div>
+<div id="threatBadge" class="threat-badge badge-low">LOW</div>
+</div>
+<div class="panel" style="width:100%">
+<h3>🛡️ Auto-Defense Level</h3>
+<div class="defense-bar"><span style="font-size:.8rem;color:var(--muted)">1</span><div style="flex:1;background:var(--bg);border-radius:5px;height:10px"><div id="defenseFill" class="defense-fill" style="width:20%;background:var(--green)"></div></div><span style="font-size:.8rem;color:var(--muted)">5</span></div>
+<div style="text-align:center;margin-top:.3rem;font-size:.85rem;font-weight:600" id="defenseLabel">Level 1 — Normal</div>
+</div>
+</div>
+<!-- Right: Signals + Timeline -->
+<div class="right-col">
+<div class="panel">
+<h3>📊 Signal Breakdown</h3>
+<table class="signal-table">
+<thead><tr><th>Signal</th><th>Raw</th><th>Weighted</th><th>Trend</th><th>History</th></tr></thead>
+<tbody id="signalBody"></tbody>
+</table>
+</div>
+<div class="panel">
+<h3>📈 Threat Timeline (last 60 readings)</h3>
+<canvas id="timeline" width="800" height="160"></canvas>
+</div>
+</div>
+</div>
+
+<div class="bottom-row">
+<div class="panel">
+<h3>⚡ Escalation Log</h3>
+<div class="escalation-list" id="escLog"><div style="color:var(--muted);font-size:.8rem">No escalations yet.</div></div>
+</div>
+<div class="panel">
+<h3>🔗 Signal Correlation Matrix</h3>
+<div class="corr-wrap"><canvas id="corrMatrix" width="220" height="220"></canvas></div>
+</div>
+</div>
+
+<footer><a href="index.html">← Back to Directory</a></footer>
+
+<script src="shared.js"></script>
+<script>
+/* ===== Signal Definitions ===== */
+const SIGNALS=[
+{name:'Bot Traffic Rate',weight:.20,color:'#f85149',value:0,history:[]},
+{name:'Solve Speed Anomaly',weight:.15,color:'#f0883e',value:0,history:[]},
+{name:'Failure Burst Rate',weight:.15,color:'#d29922',value:0,history:[]},
+{name:'Geo Dispersion',weight:.10,color:'#bc8cff',value:0,history:[]},
+{name:'Replay Attack Rate',weight:.10,color:'#58a6ff',value:0,history:[]},
+{name:'Headless Browser',weight:.10,color:'#39d2c0',value:0,history:[]},
+{name:'API Abuse Rate',weight:.10,color:'#3fb950',value:0,history:[]},
+{name:'Credential Stuffing',weight:.10,color:'#ff7b72',value:0,history:[]}
+];
+
+const LEVELS=[
+{name:'LOW',max:25,cls:'badge-low',color:'#3fb950'},
+{name:'GUARDED',max:50,cls:'badge-guarded',color:'#d29922'},
+{name:'ELEVATED',max:75,cls:'badge-elevated',color:'#f0883e'},
+{name:'SEVERE',max:90,cls:'badge-severe',color:'#f85149'},
+{name:'CRITICAL',max:100,cls:'badge-critical',color:'#f85149'}
+];
+
+const DEFENSE_LABELS=['Normal','Heightened','Alert','Lockdown Prep','Emergency Lockdown'];
+const ESC_ACTIONS=[
+'Increase CAPTCHA difficulty',
+'Enable proof-of-work challenge',
+'Activate rate limiting + block suspicious IPs',
+'Prepare emergency lockdown procedures',
+'Emergency lockdown — block all non-verified sessions'
+];
+
+let running=false,tick=0,compositeHistory=[],defenseLevel=1,escEntries=[];
+let attackBoost=[0,0,0,0,0,0,0,0]; // per-signal boost from scenarios
+
+/* ===== Simulation ===== */
+function genSignalValue(idx){
+  // Base: random walk with mean reversion
+  const s=SIGNALS[idx];
+  const prev=s.value;
+  const drift=(30-prev)*0.02; // mean revert to 30
+  const noise=(Math.random()-0.5)*12;
+  const boost=attackBoost[idx];
+  attackBoost[idx]*=0.92; // decay
+  return Math.max(0,Math.min(100,prev+drift+noise+boost));
+}
+
+function computeComposite(){
+  let c=0;
+  SIGNALS.forEach(s=>{c+=s.value*s.weight});
+  return Math.round(Math.min(100,Math.max(0,c)));
+}
+
+function getLevel(v){
+  for(const l of LEVELS) if(v<=l.max) return l;
+  return LEVELS[LEVELS.length-1];
+}
+
+/* ===== Gauge Drawing ===== */
+function drawGauge(value){
+  const cv=document.getElementById('gauge'),ctx=cv.getContext('2d');
+  const w=cv.width,h=cv.height,cx=w/2,cy=h/2,r=120;
+  ctx.clearRect(0,0,w,h);
+  // Background arc
+  const startA=0.75*Math.PI,endA=2.25*Math.PI;
+  ctx.beginPath();ctx.arc(cx,cy,r,startA,endA);
+  ctx.lineWidth=18;ctx.strokeStyle='#21262d';ctx.lineCap='round';ctx.stroke();
+  // Value arc
+  const frac=value/100;
+  const valEnd=startA+frac*(endA-startA);
+  const grad=ctx.createConicGradient(startA,cx,cy);
+  grad.addColorStop(0,'#3fb950');grad.addColorStop(0.33,'#d29922');
+  grad.addColorStop(0.66,'#f0883e');grad.addColorStop(1,'#f85149');
+  ctx.beginPath();ctx.arc(cx,cy,r,startA,valEnd);
+  ctx.lineWidth=18;ctx.strokeStyle=grad;ctx.lineCap='round';ctx.stroke();
+  // Ticks
+  for(let i=0;i<=10;i++){
+    const a=startA+i/10*(endA-startA);
+    const x1=cx+Math.cos(a)*(r+14),y1=cy+Math.sin(a)*(r+14);
+    const x2=cx+Math.cos(a)*(r+22),y2=cy+Math.sin(a)*(r+22);
+    ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);
+    ctx.strokeStyle='#484f58';ctx.lineWidth=i%5===0?2:1;ctx.stroke();
+    if(i%5===0){
+      const tx=cx+Math.cos(a)*(r+32),ty=cy+Math.sin(a)*(r+32);
+      ctx.font='bold 10px system-ui';ctx.fillStyle='#8b949e';ctx.textAlign='center';ctx.textBaseline='middle';
+      ctx.fillText(String(i*10),tx,ty);
+    }
+  }
+}
+
+/* ===== Timeline Drawing ===== */
+function drawTimeline(){
+  const cv=document.getElementById('timeline'),ctx=cv.getContext('2d');
+  const w=cv.width,h=cv.height;
+  ctx.clearRect(0,0,w,h);
+  // Background bands
+  const bands=[[0,25,'rgba(63,185,80,0.06)'],[25,50,'rgba(210,153,34,0.06)'],[50,75,'rgba(240,136,62,0.08)'],[75,100,'rgba(248,81,73,0.08)']];
+  bands.forEach(([lo,hi,c])=>{
+    const y1=h-(hi/100)*h,y2=h-(lo/100)*h;
+    ctx.fillStyle=c;ctx.fillRect(0,y1,w,y2-y1);
+  });
+  // Grid
+  ctx.strokeStyle='rgba(48,54,61,.5)';ctx.lineWidth=1;
+  for(let v=25;v<100;v+=25){const y=h-(v/100)*h;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}
+  // Line
+  if(compositeHistory.length<2)return;
+  const step=w/(60-1);
+  const data=compositeHistory.slice(-60);
+  ctx.beginPath();
+  data.forEach((v,i)=>{const x=i*step,y=h-(v/100)*h;i===0?ctx.moveTo(x,y):ctx.lineTo(x,y)});
+  ctx.strokeStyle='var(--accent)';ctx.lineWidth=2;ctx.stroke();
+  // Fill under
+  const last=data.length-1;
+  ctx.lineTo(last*step,h);ctx.lineTo(0,h);ctx.closePath();
+  ctx.fillStyle='rgba(88,166,255,0.1)';ctx.fill();
+}
+
+/* ===== Sparklines ===== */
+function drawSparkline(canvas,history,color){
+  const ctx=canvas.getContext('2d'),w=canvas.width,h=canvas.height;
+  ctx.clearRect(0,0,w,h);
+  const data=history.slice(-20);if(data.length<2)return;
+  const step=w/(20-1);
+  ctx.beginPath();
+  data.forEach((v,i)=>{const x=i*step,y=h-(v/100)*h;i===0?ctx.moveTo(x,y):ctx.lineTo(x,y)});
+  ctx.strokeStyle=color;ctx.lineWidth=1.5;ctx.stroke();
+}
+
+/* ===== Correlation Matrix ===== */
+function drawCorrelation(){
+  const cv=document.getElementById('corrMatrix'),ctx=cv.getContext('2d');
+  const n=SIGNALS.length,w=cv.width,h=cv.height;
+  const cellW=w/n,cellH=h/n;
+  ctx.clearRect(0,0,w,h);
+  // Compute Pearson correlations
+  for(let i=0;i<n;i++){
+    for(let j=0;j<n;j++){
+      const corr=pearson(SIGNALS[i].history.slice(-30),SIGNALS[j].history.slice(-30));
+      // Color: blue for negative, red for positive
+      const abs=Math.abs(corr);
+      if(corr>=0){ctx.fillStyle=`rgba(248,81,73,${abs*0.8})`}
+      else{ctx.fillStyle=`rgba(88,166,255,${abs*0.8})`}
+      ctx.fillRect(i*cellW,j*cellH,cellW-1,cellH-1);
+      // Label
+      if(abs>0.3){
+        ctx.font='bold 9px system-ui';ctx.fillStyle='#e6edf3';ctx.textAlign='center';ctx.textBaseline='middle';
+        ctx.fillText(corr.toFixed(1),i*cellW+cellW/2,j*cellH+cellH/2);
+      }
+    }
+  }
+  // Axis labels (abbreviated)
+  ctx.font='7px system-ui';ctx.fillStyle='#8b949e';ctx.textAlign='center';
+  const abbr=['Bot','Spd','Fail','Geo','Rply','Hdls','API','Cred'];
+  abbr.forEach((a,i)=>{
+    ctx.save();ctx.translate(i*cellW+cellW/2,h+0);ctx.fillText(a,0,0);ctx.restore();
+  });
+}
+
+function pearson(a,b){
+  const n=Math.min(a.length,b.length);if(n<3)return 0;
+  const ax=a.slice(-n),bx=b.slice(-n);
+  const ma=ax.reduce((s,v)=>s+v,0)/n,mb=bx.reduce((s,v)=>s+v,0)/n;
+  let num=0,da=0,db=0;
+  for(let i=0;i<n;i++){const ai=ax[i]-ma,bi=bx[i]-mb;num+=ai*bi;da+=ai*ai;db+=bi*bi;}
+  const denom=Math.sqrt(da*db);return denom===0?0:num/denom;
+}
+
+/* ===== Signal Table ===== */
+function renderSignals(){
+  const body=document.getElementById('signalBody');
+  body.innerHTML='';
+  SIGNALS.forEach((s,idx)=>{
+    const trend=s.history.length<2?'→':s.value>s.history[s.history.length-2]?'↑':'↓';
+    const trendCls=trend==='↑'?'trend-up':trend==='↓'?'trend-down':'trend-flat';
+    const weighted=(s.value*s.weight).toFixed(1);
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td><span class="signal-name"><span class="signal-dot" style="background:${sanitize(s.color)}"></span>${sanitize(s.name)}</span></td>
+      <td>${sanitize(s.value.toFixed(1))}</td><td>${sanitize(weighted)}</td>
+      <td class="${sanitize(trendCls)}" style="font-weight:700">${sanitize(trend)}</td>
+      <td><canvas class="sparkline" id="spark${idx}" width="80" height="20"></canvas></td>`;
+    body.appendChild(tr);
+  });
+  // Draw sparklines
+  SIGNALS.forEach((s,idx)=>{
+    const cv=document.getElementById('spark'+idx);
+    if(cv)drawSparkline(cv,s.history,s.color);
+  });
+}
+
+/* ===== Escalation ===== */
+function checkEscalation(composite){
+  if(!document.getElementById('autoEsc').checked)return;
+  const targetDef=composite<=25?1:composite<=50?2:composite<=75?3:composite<=90?4:5;
+  if(targetDef>defenseLevel){
+    defenseLevel=targetDef;
+    const msg=ESC_ACTIONS[defenseLevel-1];
+    addEscalation('⬆️ '+msg);
+  }else if(targetDef<defenseLevel-1){
+    // Hysteresis: only de-escalate if 2 levels below
+    defenseLevel=targetDef+1;
+    addEscalation('⬇️ De-escalated to Level '+defenseLevel);
+  }
+  // Update defense UI
+  const fill=document.getElementById('defenseFill');
+  fill.style.width=(defenseLevel/5*100)+'%';
+  const colors=['#3fb950','#d29922','#f0883e','#f85149','#f85149'];
+  fill.style.background=colors[defenseLevel-1];
+  document.getElementById('defenseLabel').textContent='Level '+defenseLevel+' — '+DEFENSE_LABELS[defenseLevel-1];
+}
+
+function addEscalation(msg){
+  const now=new Date();
+  const ts=now.toLocaleTimeString();
+  escEntries.unshift({time:ts,msg:msg});
+  if(escEntries.length>50)escEntries.length=50;
+  const el=document.getElementById('escLog');
+  el.innerHTML=escEntries.map(e=>`<div class="esc-item"><span class="esc-time">${sanitize(e.time)}</span><span>${sanitize(e.msg)}</span></div>`).join('');
+}
+
+/* ===== Attack Scenarios ===== */
+function injectScenario(type){
+  const boost=40+Math.random()*20;
+  if(type==='cred'){attackBoost[0]+=boost;attackBoost[4]+=boost;attackBoost[7]+=boost;addEscalation('🔑 Credential stuffing wave injected')}
+  else if(type==='swarm'){attackBoost[0]+=boost;attackBoost[1]+=boost;attackBoost[5]+=boost;addEscalation('🤖 Bot swarm injected')}
+  else if(type==='ddos'){attackBoost[2]+=boost;attackBoost[3]+=boost;attackBoost[6]+=boost;addEscalation('💥 DDoS probe injected')}
+}
+
+/* ===== Controls ===== */
+let intervalId=null;
+function toggleMonitor(){
+  running=!running;
+  document.getElementById('btnToggle').textContent=running?'⏸ Stop':'▶ Start';
+  document.getElementById('btnToggle').classList.toggle('active',running);
+  if(running)startLoop();else stopLoop();
+}
+function startLoop(){stopLoop();const spd=parseInt(document.getElementById('speedSlider').value);intervalId=setInterval(step,1000/spd)}
+function stopLoop(){if(intervalId){clearInterval(intervalId);intervalId=null}}
+document.getElementById('speedSlider').addEventListener('input',e=>{
+  document.getElementById('speedVal').textContent=e.target.value+'x';
+  if(running)startLoop();
+});
+
+function step(){
+  tick++;
+  SIGNALS.forEach((s,i)=>{s.value=genSignalValue(i);s.history.push(s.value);if(s.history.length>60)s.history.shift()});
+  const composite=computeComposite();
+  compositeHistory.push(composite);if(compositeHistory.length>60)compositeHistory.shift();
+  // Update gauge
+  drawGauge(composite);
+  document.getElementById('gaugeNum').textContent=composite;
+  const lvl=getLevel(composite);
+  const badge=document.getElementById('threatBadge');
+  badge.textContent=lvl.name;badge.className='threat-badge '+lvl.cls;
+  document.getElementById('gaugeNum').style.color=lvl.color;
+  renderSignals();drawTimeline();drawCorrelation();
+  checkEscalation(composite);
+}
+
+function resetAll(){
+  stopLoop();running=false;tick=0;compositeHistory=[];defenseLevel=1;escEntries=[];
+  attackBoost=[0,0,0,0,0,0,0,0];
+  SIGNALS.forEach(s=>{s.value=0;s.history=[]});
+  document.getElementById('btnToggle').textContent='▶ Start';
+  document.getElementById('btnToggle').classList.remove('active');
+  document.getElementById('gaugeNum').textContent='0';document.getElementById('gaugeNum').style.color='var(--green)';
+  document.getElementById('threatBadge').textContent='LOW';document.getElementById('threatBadge').className='threat-badge badge-low';
+  document.getElementById('defenseFill').style.width='20%';document.getElementById('defenseFill').style.background='var(--green)';
+  document.getElementById('defenseLabel').textContent='Level 1 — Normal';
+  document.getElementById('escLog').innerHTML='<div style="color:var(--muted);font-size:.8rem">No escalations yet.</div>';
+  drawGauge(0);renderSignals();drawTimeline();drawCorrelation();
+}
+
+function exportJSON(){
+  const data={timestamp:new Date().toISOString(),composite:compositeHistory,signals:SIGNALS.map(s=>({name:s.name,weight:s.weight,value:s.value,history:s.history})),defenseLevel:defenseLevel,escalations:escEntries};
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='threat-index-'+Date.now()+'.json';a.click();URL.revokeObjectURL(a.href);
+}
+
+/* ===== Init ===== */
+drawGauge(0);renderSignals();drawTimeline();drawCorrelation();
+</script>
+</body>
+</html>

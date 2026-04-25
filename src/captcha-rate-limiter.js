@@ -222,6 +222,87 @@ function createCaptchaRateLimiter(options) {
     return null;
   }
 
+  /**
+   * Check if a key is whitelisted (fast-path bypass).
+   * @param {string} key
+   * @returns {boolean}
+   */
+  function _isWhitelisted(key) {
+    return !!whitelist[key];
+  }
+
+  /**
+   * Build an "allowed" result for whitelisted keys.
+   * Centralises the whitelist fast-path return shape that was previously
+   * duplicated in check() and consume().
+   * @param {string} key
+   * @param {number} [consumed] - For batch consume; omit for single check
+   * @returns {Object}
+   */
+  function _whitelistResult(key, consumed) {
+    var r = {
+      allowed: true, remaining: Infinity, retryAfterMs: 0,
+      whitelisted: true, algorithm: algorithm, key: key
+    };
+    if (consumed !== undefined) {
+      r.consumed = consumed;
+      r.requested = consumed;
+    }
+    return r;
+  }
+
+  /**
+   * Build a ban-rejection result.  Centralises the ban response shape
+   * that was previously duplicated in check() and consume().
+   * @param {Object} banResult - From _checkBanStatus
+   * @param {string} key
+   * @param {number} [requested] - For batch consume
+   * @returns {Object}
+   */
+  function _banRejectionResult(banResult, key, requested) {
+    var r = {
+      allowed: false, remaining: 0,
+      retryAfterMs: banResult.retryAfterMs,
+      banned: true, banExpiresAt: banResult.expiresAt,
+      reason: "Temporarily banned after " + banThreshold + " consecutive rejections",
+      algorithm: algorithm, key: key
+    };
+    if (requested !== undefined) {
+      r.consumed = 0;
+      r.requested = requested;
+    }
+    return r;
+  }
+
+  /**
+   * Handle strike tracking after a rejection.  If the strike count
+   * reaches banThreshold, bans the key and decorates the result.
+   * Previously this 6-line block was copy-pasted in check(), consume()
+   * token-bucket, and consume() leaky-bucket paths.
+   * @param {string} key
+   * @param {number} now
+   * @param {Object} result - Mutated in-place if ban is triggered
+   */
+  function _trackRejection(key, now, result) {
+    if (!enableBans) return;
+    strikes[key] = (strikes[key] || 0) + 1;
+    if (strikes[key] >= banThreshold) {
+      bans[key] = { expiresAt: now + banDurationMs, bannedAt: now };
+      totalBanned++;
+      result.banned = true;
+      result.banExpiresAt = now + banDurationMs;
+      result.reason = "Banned after " + banThreshold + " consecutive rejections";
+    }
+  }
+
+  /**
+   * Clear strikes for a key after a successful request.
+   * @param {string} key
+   */
+  function _clearStrikes(key) {
+    if (enableBans) delete strikes[key];
+  }
+
   // ── Sliding Window ──────────────────────────────────────────────
   // Uses a startIdx pointer to avoid allocating a new array on every
   // check().  The timestamps array is only compacted when the dead
@@ -389,6 +470,7 @@ function createCaptchaRateLimiter(options) {
    */
   function check(key, now) {
     _validateKey(key);
+    if (_isWhitelisted(key)) return _whitelistResult(key);
     now = now || Date.now();
     checkCount++;
 
@@ -401,41 +483,19 @@ function createCaptchaRateLimiter(options) {
     var banResult = _checkBanStatus(key, now);
     if (banResult) {
       totalRejected++;
-      return {
-        allowed: false,
-        remaining: 0,
-        retryAfterMs: banResult.retryAfterMs,
-        banned: true,
-        banExpiresAt: banResult.expiresAt,
-        reason: "Temporarily banned after " + banThreshold + " consecutive rejections"
-      };
+      return _banRejectionResult(banResult, key);
     }
 
     // Run algorithm check
     var result = checkers[algorithm](key, now);
 
-    // Track bans
-    if (enableBans) {
-      if (!result.allowed) {
-        strikes[key] = (strikes[key] || 0) + 1;
-        if (strikes[key] >= banThreshold) {
-          bans[key] = { expiresAt: now + banDurationMs, bannedAt: now };
-          totalBanned++;
-          result.banned = true;
-          result.banExpiresAt = now + banDurationMs;
-          result.reason = "Banned after " + banThreshold + " consecutive rejections";
-        }
-      } else {
-        // Reset strikes on successful request
-        delete strikes[key];
-      }
-    }
-
-    // Stats
-    if (result.allowed) {
-      totalAllowed++;
-    } else {
+    // Track bans / stats
+    if (!result.allowed) {
       totalRejected++;
+      _trackRejection(key, now, result);
+    } else {
+      totalAllowed++;
+      _clearStrikes(key);
     }
 
     result.algorithm = algorithm;
@@ -457,34 +517,34 @@ function createCaptchaRateLimiter(options) {
    * @param {number} [now] - Current timestamp
    * @returns {Object} Result for the batch
    */
+  /**
+   * Consume multiple tokens/requests at once (batch check).
+   *
+   * For token-bucket and leaky-bucket algorithms this runs in O(1) by
+   * doing the arithmetic directly instead of looping N times through
+   * check().  Sliding-window still loops because each request needs its
+   * own timestamp recorded, but the per-iteration cost is lower thanks
+   * to the startIdx optimisation above.
+   *
+   * @param {string} key - Identifier
+   * @param {number} count - Number of requests to consume
+   * @param {number} [now] - Current timestamp
+   * @returns {Object} Result for the batch
+   */
   function consume(key, count, now) {
     if (count < 1 || !Number.isFinite(count)) {
       throw new Error("Count must be a positive finite number");
     }
-    now = now || Date.now();
-
-    // Whitelist fast-path
-    if (whitelist[key]) {
-      return {
-        allowed: true, remaining: Infinity, retryAfterMs: 0,
-        whitelisted: true, algorithm: algorithm, key: key,
-        consumed: count, requested: count
-      };
-    }
-
+    if (_isWhitelisted(key)) return _whitelistResult(key, count);
     _validateKey(key);
+    now = now || Date.now();
     checkCount++;
     if (checkCount % cleanupInterval === 0) _cleanup(now);
 
     var banResult = _checkBanStatus(key, now);
     if (banResult) {
       totalRejected++;
-      return {
-        allowed: false, remaining: 0, retryAfterMs: banResult.retryAfterMs,
-        banned: true, banExpiresAt: banResult.expiresAt,
-        reason: "Temporarily banned after " + banThreshold + " consecutive rejections",
-        consumed: 0, requested: count, algorithm: algorithm, key: key
-      };
+      return _banRejectionResult(banResult, key, count);
     }
 
     // ── O(1) path for token-bucket ──
@@ -499,27 +559,20 @@ function createCaptchaRateLimiter(options) {
       entry.lastRefill = now;
       entry.lastSeen = now;
 
-      var canConsume = Math.min(count, Math.floor(entry.tokens));
-      if (canConsume < count) {
-        // Not enough tokens — reject without draining any tokens
+      if (Math.floor(entry.tokens) < count) {
         var retryMs = Math.ceil(((count - entry.tokens) / refillRate) * 1000);
         totalRejected++;
-        if (enableBans) {
-          strikes[key] = (strikes[key] || 0) + 1;
-          if (strikes[key] >= banThreshold) {
-            bans[key] = { expiresAt: now + banDurationMs, bannedAt: now };
-            totalBanned++;
-          }
-        }
-        return {
+        var tbReject = {
           allowed: false, remaining: Math.floor(entry.tokens), retryAfterMs: Math.max(0, retryMs),
           tokens: Math.floor(entry.tokens), capacity: capacity, refillRate: refillRate,
           consumed: 0, requested: count, algorithm: algorithm, key: key
         };
+        _trackRejection(key, now, tbReject);
+        return tbReject;
       }
       entry.tokens -= count;
       totalAllowed++;
-      if (enableBans) delete strikes[key];
+      _clearStrikes(key);
       return {
         allowed: true, remaining: Math.floor(entry.tokens), retryAfterMs: 0,
         tokens: Math.floor(entry.tokens), capacity: capacity, refillRate: refillRate,
@@ -540,25 +593,20 @@ function createCaptchaRateLimiter(options) {
       entryL.lastSeen = now;
 
       if (entryL.water + count > queueSize) {
-        totalRejected++;
-        if (enableBans) {
-          strikes[key] = (strikes[key] || 0) + 1;
-          if (strikes[key] >= banThreshold) {
-            bans[key] = { expiresAt: now + banDurationMs, bannedAt: now };
-            totalBanned++;
-          }
-        }
         var excess = entryL.water + count - queueSize;
-        return {
+        totalRejected++;
+        var lbReject = {
           allowed: false, remaining: 0,
           retryAfterMs: Math.ceil((excess / leakRate) * 1000),
           queueLevel: Math.floor(entryL.water), queueSize: queueSize, leakRate: leakRate,
           consumed: 0, requested: count, algorithm: algorithm, key: key
         };
+        _trackRejection(key, now, lbReject);
+        return lbReject;
       }
       entryL.water += count;
       totalAllowed++;
-      if (enableBans) delete strikes[key];
+      _clearStrikes(key);
       return {
         allowed: true, remaining: Math.floor(queueSize - entryL.water), retryAfterMs: 0,
         queueLevel: Math.floor(entryL.water), queueSize: queueSize, leakRate: leakRate,
@@ -567,11 +615,9 @@ function createCaptchaRateLimiter(options) {
     }
 
     // ── Sliding window: loop (each request needs its own timestamp) ──
-    // Use _originalCheck to avoid double-counting checkCount (consume
-    // already incremented it once for this batch).
     var lastResult;
     for (var i = 0; i < count; i++) {
-      lastResult = _originalCheck(key, now);
+      lastResult = check(key, now);
       if (!lastResult.allowed) {
         lastResult.consumed = i;
         lastResult.requested = count;
@@ -844,8 +890,7 @@ function createCaptchaRateLimiter(options) {
   }
 
   /**
-   * Add a key to a whitelist — whitelisted keys are always allowed.
-   * Returns a function to manage the whitelist.
+   * Per-key whitelist — whitelisted keys bypass all rate limiting.
    */
   var whitelist = Object.create(null);
 
@@ -879,22 +924,6 @@ function createCaptchaRateLimiter(options) {
   function isWhitelisted(key) {
     return !!whitelist[key];
   }
-
-  // Override check to respect whitelist
-  var _originalCheck = check;
-  check = function (key, now) {
-    if (whitelist[key]) {
-      return {
-        allowed: true,
-        remaining: Infinity,
-        retryAfterMs: 0,
-        whitelisted: true,
-        algorithm: algorithm,
-        key: key
-      };
-    }
-    return _originalCheck(key, now);
-  };
 
   // ── Cleanup ───────────────────────────────────────────────────
 

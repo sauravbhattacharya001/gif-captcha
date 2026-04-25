@@ -13,6 +13,8 @@
 
 "use strict";
 
+var _sharedUtils = require("./shared-utils");
+
 // ── Defaults ────────────────────────────────────────────────────────
 
 var DEFAULT_OPTIONS = {
@@ -213,30 +215,13 @@ function createAdaptiveDifficultyTuner(options) {
   var history = new AdjustmentHistory(opts.maxHistory);
   var lastAdjustmentTs = 0;
   var evaluationTimer = null;
-  var listeners = Object.create(null);
+  var _emitter = _sharedUtils.createEmitter();
+  var on = _emitter.on;
+  var off = _emitter.off;
+  var emit = _emitter.emit;
   var totalSolves = 0;
   var totalFails = 0;
   var paused = false;
-
-  // ── Event emitter (minimal) ─────────────────────────────────────
-
-  function on(event, fn) {
-    if (!listeners[event]) listeners[event] = [];
-    listeners[event].push(fn);
-  }
-
-  function off(event, fn) {
-    if (!listeners[event]) return;
-    listeners[event] = listeners[event].filter(function (f) { return f !== fn; });
-  }
-
-  function emit(event, data) {
-    var fns = listeners[event];
-    if (!fns) return;
-    for (var i = 0; i < fns.length; i++) {
-      try { fns[i](data); } catch (e) { /* swallow listener errors */ }
-    }
-  }
 
   // ── Core logic ──────────────────────────────────────────────────
 

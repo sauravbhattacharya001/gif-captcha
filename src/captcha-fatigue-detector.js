@@ -113,29 +113,15 @@ function createCaptchaFatigueDetector(options) {
 
   var sessions = Object.create(null);
   var sessionCount = 0;
-  var listeners = Object.create(null);
+  var _emitter = _sharedUtils.createEmitter();
+  var on = _emitter.on;
+  var off = _emitter.off;
+  var emit = _emitter.emit;
   var globalStats = {
     totalEvents: 0, totalSessions: 0,
     fatigueDetections: { none: 0, mild: 0, moderate: 0, severe: 0 },
     recommendationsIssued: 0
   };
-
-  function on(event, fn) {
-    if (!listeners[event]) listeners[event] = [];
-    listeners[event].push(fn);
-  }
-
-  function off(event, fn) {
-    if (!listeners[event]) return;
-    listeners[event] = listeners[event].filter(function (f) { return f !== fn; });
-  }
-
-  function emit(event, data) {
-    if (!listeners[event]) return;
-    for (var i = 0; i < listeners[event].length; i++) {
-      try { listeners[event][i](data); } catch (e) { /* swallow */ }
-    }
-  }
 
   function getOrCreateSession(sessionId, timestamp) {
     var ts = timestamp != null ? timestamp : tsNow();

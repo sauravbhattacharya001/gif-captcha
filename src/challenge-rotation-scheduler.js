@@ -29,6 +29,8 @@
 
 "use strict";
 
+var _sharedUtils = require("./shared-utils");
+
 var DEFAULT_OPTIONS = {
   // Rotation strategy: 'round-robin' | 'weighted-random' | 'performance-based'
   strategy: "round-robin",
@@ -130,8 +132,10 @@ function createChallengeRotationScheduler(options) {
   /** @type {number|null} */
   var _timerHandle = null;
 
-  /** @type {Object<string, Array<function>>} */
-  var _listeners = Object.create(null);
+  var _emitter = _sharedUtils.createEmitter();
+  var on = _emitter.on;
+  var off = _emitter.off;
+  var _emit = _emitter.emit;
 
 
   // ── Challenge type management ───────────────────────────────────
@@ -542,37 +546,6 @@ function createChallengeRotationScheduler(options) {
     return _running;
   }
 
-
-  // ── Event system ────────────────────────────────────────────────
-
-  /**
-   * Subscribe to an event.
-   * Events: 'rotation', 'start', 'stop', 'emergency'
-   * @param {string} event
-   * @param {function} handler
-   */
-  function on(event, handler) {
-    if (typeof handler !== "function") throw new Error("Handler must be a function");
-    if (!_listeners[event]) _listeners[event] = [];
-    _listeners[event].push(handler);
-  }
-
-  /**
-   * Unsubscribe from an event.
-   * @param {string} event
-   * @param {function} handler
-   */
-  function off(event, handler) {
-    if (!_listeners[event]) return;
-    _listeners[event] = _listeners[event].filter(function (h) { return h !== handler; });
-  }
-
-  function _emit(event, data) {
-    var handlers = _listeners[event] || [];
-    for (var i = 0; i < handlers.length; i++) {
-      try { handlers[i](data); } catch (e) { /* swallow listener errors */ }
-    }
-  }
 
 
   // ── State persistence ───────────────────────────────────────────

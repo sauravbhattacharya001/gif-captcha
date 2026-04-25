@@ -859,8 +859,36 @@ function installRoundRectPolyfill() {
   }
 }
 
+// ── Minimal Event Emitter ────────────────────────────────────────
+
+/**
+ * Create a minimal event emitter with on/off/emit.
+ * Listener errors are swallowed to prevent one bad subscriber from
+ * breaking the emitter host.  Returns { on, off, emit }.
+ */
+function createEmitter() {
+  var listeners = Object.create(null);
+  function on(event, fn) {
+    if (!listeners[event]) listeners[event] = [];
+    listeners[event].push(fn);
+  }
+  function off(event, fn) {
+    if (!listeners[event]) return;
+    listeners[event] = listeners[event].filter(function (f) { return f !== fn; });
+  }
+  function emit(event, data) {
+    var fns = listeners[event];
+    if (!fns) return;
+    for (var i = 0; i < fns.length; i++) {
+      try { fns[i](data); } catch (e) { /* swallow listener errors */ }
+    }
+  }
+  return { on: on, off: off, emit: emit };
+}
+
 // ── Exports ─────────────────────────────────────────────────────
 module.exports = {
+  createEmitter: createEmitter,
   _posOpt: _posOpt,
   _nnOpt: _nnOpt,
   LruTracker: LruTracker,

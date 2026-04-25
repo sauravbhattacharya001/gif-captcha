@@ -60,8 +60,9 @@ var DEFAULT_SESSION_TTL_MS = 1800000; // 30 minutes
 var _shared = require("./shared-utils");
 var _clamp = _shared._clamp;
 var _now = _shared._now;
-var _percentile = _shared._percentile;
+var _percentileSorted = _shared._percentileSorted;
 var _decayFactor = _shared._decayFactor;
+var _numAsc = function (a, b) { return a - b; };
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -529,17 +530,27 @@ function createSessionRiskAggregator(options) {
     // Sort by score descending
     results.sort(function (a, b) { return b.score - a.score; });
 
-    var scores = results.map(function (r) { return r.score; });
+    // results are already sorted by score descending; reverse-copy for
+    // ascending order so we can use _percentileSorted (avoids 3 redundant
+    // Array.slice().sort() calls from the generic _percentile helper).
+    var n = results.length;
+    var sorted = new Array(n);
+    var sum = 0;
+    for (var si = 0; si < n; si++) {
+      var sc = results[n - 1 - si].score;
+      sorted[si] = sc;
+      sum += sc;
+    }
 
     return {
       sessions: results,
       summary: {
-        total: results.length,
+        total: n,
         levels: levels,
-        avgScore: scores.length > 0 ? Math.round(_weightedAverage(scores, scores.map(function () { return 1; })) * 1000) / 1000 : 0,
-        p50Score: _percentile(scores, 50),
-        p90Score: _percentile(scores, 90),
-        p99Score: _percentile(scores, 99)
+        avgScore: n > 0 ? Math.round((sum / n) * 1000) / 1000 : 0,
+        p50Score: _percentileSorted(sorted, 50),
+        p90Score: _percentileSorted(sorted, 90),
+        p99Score: _percentileSorted(sorted, 99)
       }
     };
   }

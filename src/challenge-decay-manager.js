@@ -42,14 +42,14 @@ function createChallengeDecayManager(options) {
 
   // ── Freshness Calculation ────────────────────────────────────────
 
-  /**
-   * Exponential decay: returns value between 0 and 1.
-   * f(t) = 2^(-t / halfLife)
-   */
-  function _decay(value, halfLife) {
-    if (halfLife <= 0) return 0;
-    return Math.pow(2, -(value / halfLife));
-  }
+  // Precompute decay rate constants: Math.LN2 / halfLife.
+  // Using Math.exp(-value * k) is faster than Math.pow(2, -value / halfLife)
+  // because exp() is a single FPU instruction on modern CPUs, while pow()
+  // must handle the general a^b case.  The precomputation also eliminates
+  // a division per call.
+  var _timeDecayK = halfLifeMs > 0 ? Math.LN2 / halfLifeMs : 0;
+  var _solveDecayK = solveHalfLife > 0 ? Math.LN2 / solveHalfLife : 0;
+  var _exposureDecayK = solveHalfLife > 0 ? Math.LN2 / (solveHalfLife * 2) : 0;
 
   /**
    * Calculate the freshness score (0–1) for a challenge.
@@ -61,18 +61,24 @@ function createChallengeDecayManager(options) {
    *
    * A challenge that exceeds maxAge, maxSolves, or maxExposures
    * immediately gets 0 freshness in that dimension.
+   *
+   * @param {object} entry - Challenge entry.
+   * @param {number} [now] - Current timestamp.  When supplied (e.g. from
+   *   sweep/getPoolHealth), avoids a redundant _now() call per challenge.
+   *   Previously every call in an N-challenge loop triggered its own
+   *   _now(), adding N-1 unnecessary syscalls.
    */
-  function _computeFreshness(entry) {
-    var age = _now() - entry.addedAt;
+  function _computeFreshness(entry, now) {
+    var age = (now !== undefined ? now : _now()) - entry.addedAt;
 
     // Time dimension (40% weight)
-    var timeFreshness = age >= maxAge ? 0 : _decay(age, halfLifeMs);
+    var timeFreshness = age >= maxAge ? 0 : Math.exp(-age * _timeDecayK);
 
     // Solve dimension (35% weight)
-    var solveFreshness = entry.solves >= maxSolves ? 0 : _decay(entry.solves, solveHalfLife);
+    var solveFreshness = entry.solves >= maxSolves ? 0 : Math.exp(-entry.solves * _solveDecayK);
 
     // Exposure dimension (25% weight)
-    var exposureFreshness = entry.exposures >= maxExposures ? 0 : _decay(entry.exposures, solveHalfLife * 2);
+    var exposureFreshness = entry.exposures >= maxExposures ? 0 : Math.exp(-entry.exposures * _exposureDecayK);
 
     return timeFreshness * 0.40 + solveFreshness * 0.35 + exposureFreshness * 0.25;
   }
@@ -125,7 +131,7 @@ function createChallengeDecayManager(options) {
 
     mutate(entry);
 
-    var freshness = _computeFreshness(entry);
+    var freshness = _computeFreshness(entry, _now());
     if (freshness < freshnessThreshold) {
       _retire(challengeId, entry);
       return { freshness: freshness, retired: true };
@@ -243,6 +249,7 @@ function createChallengeDecayManager(options) {
   function sweep() {
     var newlyRetired = [];
     var keys = Object.keys(challenges);
+    var now = _now();
 
     // Single-pass: compute freshness, retire stale entries, and aggregate
     // pool health stats simultaneously.
@@ -257,7 +264,7 @@ function createChallengeDecayManager(options) {
     for (var i = 0; i < keys.length; i++) {
       var entry = challenges[keys[i]];
       if (entry.retired) continue;
-      var f = _computeFreshness(entry);
+      var f = _computeFreshness(entry, now);
       if (f < freshnessThreshold) {
         _retire(keys[i], entry);
         newlyRetired.push(keys[i]);
@@ -302,11 +309,12 @@ function createChallengeDecayManager(options) {
     var oldest = null;
     var mostSolved = null;
 
+    var now = _now();
     for (var i = 0; i < keys.length; i++) {
       var entry = challenges[keys[i]];
       if (entry.retired) continue;
       active++;
-      var f = _computeFreshness(entry);
+      var f = _computeFreshness(entry, now);
       totalFreshness += f;
 
       if (f >= 0.7) fresh++;
@@ -341,10 +349,11 @@ function createChallengeDecayManager(options) {
     n = n != null && n > 0 ? n : 10;
     var scored = [];
     var keys = Object.keys(challenges);
+    var now = _now();
     for (var i = 0; i < keys.length; i++) {
       var entry = challenges[keys[i]];
       if (entry.retired) continue;
-      scored.push({ id: keys[i], freshness: _computeFreshness(entry) });
+      scored.push({ id: keys[i], freshness: _computeFreshness(entry, now) });
     }
     scored.sort(ascending
       ? function(a, b) { return a.freshness - b.freshness; }

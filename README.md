@@ -471,8 +471,18 @@ gif-captcha/
 ├── API.md                # API reference (Markdown)
 ├── SECURITY.md           # Security policy
 ├── CONTRIBUTING.md       # Contribution guidelines
+├── TESTING.md            # Comprehensive testing guide
 ├── README.md             # This file
 └── LICENSE               # MIT License
+```
+
+## 🧪 Testing
+
+The project has **96 test files** covering all modules. See **[TESTING.md](TESTING.md)** for the full testing guide.
+
+```bash
+npm test                # Run all tests
+npm run test:coverage   # Run with coverage (80% lines, 70% functions, 90% branches)
 ```
 
 ## 📖 API Reference

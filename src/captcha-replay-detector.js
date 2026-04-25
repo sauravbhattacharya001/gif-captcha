@@ -12,6 +12,8 @@
 
 var EventEmitter = require("events");
 var crypto = require("crypto");
+var _shared = require("./shared-utils");
+var _clamp = _shared._clamp;
 
 // ── Defaults ────────────────────────────────────────────────────────
 var DEFAULTS = {
@@ -45,14 +47,6 @@ function _hash(s) {
  */
 function _now() { return Date.now(); }
 
-/**
- * Clamp value between min and max.
- * @param {number} v
- * @param {number} lo
- * @param {number} hi
- * @returns {number}
- */
-function _clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
 // ── CaptchaReplayDetector ───────────────────────────────────────────
 

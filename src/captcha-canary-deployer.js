@@ -5,7 +5,7 @@
 // Canaries act as sentinel challenges that detect when bots develop
 // new solving capabilities before they impact production CAPTCHAs.
 
-const crypto = require("crypto");
+const { secureRandomHex } = require("./crypto-utils");
 const _shared = require("./shared-utils");
 const _clamp = _shared._clamp;
 
@@ -50,7 +50,7 @@ class CanaryDeployer {
    * @returns {Canary}
    */
   deployCanary(config = {}) {
-    const id = crypto.randomBytes(8).toString("hex");
+    const id = secureRandomHex(16);
     const canary = {
       id,
       name: config.name || `canary-${id.slice(0, 6)}`,
@@ -143,7 +143,7 @@ class CanaryDeployer {
         retired.push(c.id);
         // Spawn harder replacement
         const newCanary = this.deployCanary({
-          name: `canary-${crypto.randomBytes(3).toString("hex")}`,
+          name: `canary-${secureRandomHex(6)}`,
           frameCount: Math.min(12, c.config.frameCount + 1),
           noiseLevel: Math.min(1, c.config.noiseLevel + 0.1),
           distortion: Math.min(1, c.config.distortion + 0.05),

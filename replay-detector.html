@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Replay Attack Detector — gif-captcha</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+.detector-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+.detector-full{grid-column:1/-1}
+.gauge-wrap{display:flex;align-items:center;justify-content:center;padding:24px}
+.gauge-canvas{width:220px;height:220px}
+.timeline{max-height:280px;overflow-y:auto;font-size:13px}
+.timeline-entry{padding:8px 12px;border-bottom:1px solid var(--border);display:flex;gap:12px;align-items:center}
+.timeline-entry .badge{padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;white-space:nowrap}
+.badge-replay{background:var(--red-bg);color:var(--red)}
+.badge-timing{background:var(--yellow-bg);color:var(--yellow)}
+.badge-pattern{background:var(--purple-bg);color:var(--purple)}
+.badge-cluster{background:var(--cyan,#39d2c0);background:rgba(57,210,192,.15);color:var(--cyan,#39d2c0)}
+.badge-block{background:var(--red-bg);color:var(--red);border:1px solid var(--red)}
+.stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:16px}
+.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;text-align:center}
+.stat-card .val{font-size:28px;font-weight:700;color:var(--accent)}
+.stat-card .lbl{font-size:12px;color:var(--muted);margin-top:4px}
+.controls-bar{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
+.controls-bar button{padding:8px 16px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer;font-size:13px}
+.controls-bar button:hover{background:var(--surface-hover)}
+.controls-bar button.active{background:var(--accent);color:#000;border-color:var(--accent)}
+.slider-group{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+.slider-group input[type=range]{width:120px}
+.heatmap-canvas{width:100%;height:200px;border-radius:6px}
+.particle-canvas{width:100%;height:200px;border-radius:6px}
+.session-inspector{font-size:13px;max-height:260px;overflow-y:auto}
+.session-inspector table{width:100%;border-collapse:collapse}
+.session-inspector th,.session-inspector td{padding:6px 8px;text-align:left;border-bottom:1px solid var(--border)}
+.session-inspector th{color:var(--muted);font-size:11px;text-transform:uppercase}
+</style>
+</head>
+<body>
+<header>
+  <h1>🛡️ Replay Attack Detector</h1>
+  <p>Real-time detection of token replay, timing anomalies, credential stuffing, and distributed replay attacks</p>
+</header>
+<main>
+
+<!-- Stats Row -->
+<div class="stats-row" id="stats-row">
+  <div class="stat-card"><div class="val" id="stat-total">0</div><div class="lbl">Total Solves</div></div>
+  <div class="stat-card"><div class="val" id="stat-replays" style="color:var(--red)">0</div><div class="lbl">Replays Detected</div></div>
+  <div class="stat-card"><div class="val" id="stat-rate">0%</div><div class="lbl">Replay Rate</div></div>
+  <div class="stat-card"><div class="val" id="stat-blocked" style="color:var(--yellow)">0</div><div class="lbl">Sessions Blocked</div></div>
+  <div class="stat-card"><div class="val" id="stat-avg">0</div><div class="lbl">Avg Threat Score</div></div>
+  <div class="stat-card"><div class="val" id="stat-sessions">0</div><div class="lbl">Active Sessions</div></div>
+</div>
+
+<!-- Controls -->
+<div class="controls-bar">
+  <button onclick="injectScenario('normal')">▶ Normal Traffic</button>
+  <button onclick="injectScenario('token-replay')" style="color:var(--red)">🔁 Token Replay</button>
+  <button onclick="injectScenario('timing-attack')" style="color:var(--yellow)">⏱ Timing Attack</button>
+  <button onclick="injectScenario('credential-stuff')" style="color:var(--purple)">🔑 Credential Stuffing</button>
+  <button onclick="injectScenario('distributed')" style="color:var(--orange)">🌐 Distributed Replay</button>
+  <button onclick="resetAll()" style="color:var(--muted)">🗑 Reset</button>
+  <div class="slider-group">
+    <label>Auto-Block</label>
+    <input type="checkbox" id="auto-block-toggle" onchange="toggleAutoBlock()">
+    <label>Threshold:</label>
+    <input type="range" id="threshold-slider" min="10" max="100" value="70" oninput="updateThreshold()">
+    <span id="threshold-val">70</span>
+  </div>
+  <button onclick="exportData()" style="margin-left:auto">📥 Export JSON</button>
+</div>
+
+<!-- Main Grid -->
+<div class="detector-grid">
+  <!-- Threat Gauge -->
+  <div class="card">
+    <h3>Threat Level</h3>
+    <div class="gauge-wrap"><canvas id="gauge-canvas" class="gauge-canvas" width="220" height="220"></canvas></div>
+  </div>
+
+  <!-- Particle Visualization -->
+  <div class="card">
+    <h3>Live Traffic Flow</h3>
+    <canvas id="particle-canvas" class="particle-canvas" width="600" height="200"></canvas>
+  </div>
+
+  <!-- Attack Timeline -->
+  <div class="card">
+    <h3>Attack Timeline</h3>
+    <div class="timeline" id="timeline"></div>
+  </div>
+
+  <!-- Solve-Time Heatmap -->
+  <div class="card">
+    <h3>Solve-Time Heatmap</h3>
+    <canvas id="heatmap-canvas" class="heatmap-canvas" width="600" height="200"></canvas>
+  </div>
+
+  <!-- Session Inspector -->
+  <div class="card detector-full">
+    <h3>Session Inspector</h3>
+    <div class="session-inspector" id="session-inspector">
+      <table><thead><tr><th>Session</th><th>Solves</th><th>Avg Threat</th><th>Max Threat</th><th>Flags</th><th>Status</th></tr></thead><tbody id="session-tbody"></tbody></table>
+    </div>
+  </div>
+</div>
+
+</main>
+<footer><p>gif-captcha — Replay Attack Detector</p></footer>
+
+<script src="shared.js"></script>
+<script>
+(function(){
+"use strict";
+
+// ── State ──
+var tokens = {};       // hash → ts
+var sessions = {};     // id → { solves, flags, blocked, threatScores }
+var ipAnswers = {};    // hash → Set<ip>
+var fpClusters = {};   // hash → Set<sid>
+var stats = { total:0, replays:0, timing:0, patterns:0, blocked:0 };
+var timelineEntries = [];
+var particles = [];
+var solveTimeBuckets = new Array(60).fill(0); // 0-6000ms in 100ms buckets
+var autoBlock = false;
+var threshold = 70;
+var currentThreat = 0;
+var allScores = [];
+
+function hash(s){ var h=0; s=String(s); for(var i=0;i<s.length;i++){h=((h<<5)-h)+s.charCodeAt(i);h|=0;} return "h"+Math.abs(h); }
+function clamp(v,lo,hi){return Math.max(lo,Math.min(hi,v));}
+function randInt(a,b){return Math.floor(Math.random()*(b-a+1))+a;}
+function randIP(){return randInt(1,254)+"."+randInt(0,255)+"."+randInt(0,255)+"."+randInt(1,254);}
+function randSID(){return "sess-"+randInt(1000,9999);}
+function randToken(){return "tok-"+Math.random().toString(36).slice(2,10);}
+function ts(){var d=new Date();return d.toLocaleTimeString();}
+
+// ── Core Detection ──
+function recordSolve(sid, token, solveMs, ip, fp){
+  stats.total++;
+  if(!sessions[sid]) sessions[sid]={solves:[],flags:[],blocked:false,threatScores:[]};
+  var sess=sessions[sid];
+  var flags=[], signals={replay:0,timing:0,pattern:0,cluster:0};
+  var th=hash(token);
+
+  // Token replay
+  if(tokens[th]){signals.replay=1;flags.push("token-replay");stats.replays++;
+    addTimeline("token-replay","Token replay: "+token.slice(0,12)+"… (session "+sid+")",sid);}
+  tokens[th]=Date.now();
+
+  // Timing
+  if(solveMs<800){signals.timing=1;flags.push("timing-anomaly");stats.timing++;
+    addTimeline("timing-anomaly","Fast solve: "+solveMs+"ms (session "+sid+")",sid);
+  } else if(sess.solves.length>=2){
+    var r=sess.solves.slice(-4).map(function(s){return s.ms;});r.push(solveMs);
+    if(r.length>=3){var m=r.reduce(function(a,b){return a+b;},0)/r.length;
+      var v=r.reduce(function(a,b){return a+(b-m)*(b-m);},0)/r.length;
+      if(v<100){signals.timing=0.7;flags.push("timing-anomaly");stats.timing++;
+        addTimeline("timing-anomaly","Identical timing pattern detected (session "+sid+")",sid);}}}
+
+  // Pattern
+  var ah=hash(token+":"+solveMs);
+  if(!ipAnswers[ah])ipAnswers[ah]={};
+  ipAnswers[ah][ip]=true;
+  var ipCount=Object.keys(ipAnswers[ah]).length;
+  if(ipCount>1){signals.pattern=Math.min(ipCount/5,1);flags.push("pattern-match");stats.patterns++;
+    addTimeline("pattern-match","Same solution from "+ipCount+" IPs (session "+sid+")",sid);}
+
+  // Fingerprint
+  if(fp){var fh=hash(fp);if(!fpClusters[fh])fpClusters[fh]={};fpClusters[fh][sid]=true;
+    var cs=Object.keys(fpClusters[fh]).length;
+    if(cs>3){signals.cluster=Math.min((cs-3)/7,1);flags.push("fingerprint-cluster");
+      addTimeline("cluster","Fingerprint cluster: "+cs+" sessions",sid);}}
+
+  // Score
+  var score=clamp(Math.round(signals.replay*40+signals.timing*25+signals.pattern*25+signals.cluster*10),0,100);
+  allScores.push(score);
+
+  // Heatmap bucket
+  var bucket=clamp(Math.floor(solveMs/100),0,59);
+  solveTimeBuckets[bucket]++;
+
+  sess.solves.push({token:token.slice(0,12),ms:solveMs,ip:ip,score:score,ts:Date.now()});
+  sess.flags=sess.flags.concat(flags);
+  sess.threatScores.push(score);
+
+  var allowed=true;
+  if(sess.blocked){allowed=false;}
+  else if(autoBlock&&score>=threshold){sess.blocked=true;allowed=false;stats.blocked++;
+    addTimeline("block","AUTO-BLOCKED session "+sid+" (score: "+score+")",sid);}
+
+  // Particle
+  addParticle(flags.length>0?(flags.indexOf("token-replay")!==-1?"#f85149":flags.indexOf("timing-anomaly")!==-1?"#d29922":"#bc8cff"):"#3fb950",score);
+
+  currentThreat=score;
+  updateUI();
+  return {allowed:allowed,score:score,flags:flags};
+}
+
+// ── Timeline ──
+function addTimeline(type,msg,sid){
+  timelineEntries.unshift({type:type,msg:msg,sid:sid,time:ts()});
+  if(timelineEntries.length>200)timelineEntries.length=200;
+}
+
+// ── Particles ──
+function addParticle(color,score){
+  particles.push({x:0,y:randInt(20,180),vx:2+Math.random()*3,color:color,size:3+score/20,alpha:1,age:0});
+  if(particles.length>150)particles.shift();
+}
+
+// ── Scenarios ──
+var scenarioInterval=null;
+function injectScenario(type){
+  if(scenarioInterval)clearInterval(scenarioInterval);
+  var count=0,max=30;
+  scenarioInterval=setInterval(function(){
+    if(count++>=max){clearInterval(scenarioInterval);scenarioInterval=null;return;}
+    switch(type){
+      case"normal":recordSolve(randSID(),randToken(),randInt(1200,5000),randIP(),null);break;
+      case"token-replay":
+        var t=count<5?randToken():"replay-token-"+randInt(1,3);
+        recordSolve("bot-"+randInt(1,3),t,randInt(900,2000),randIP(),null);break;
+      case"timing-attack":
+        recordSolve("fast-bot-"+randInt(1,2),randToken(),randInt(50,400),randIP(),"bot-fp-fast");break;
+      case"credential-stuff":
+        var ct="cred-tok-"+randInt(1,3);
+        recordSolve(randSID(),ct,2000+randInt(-50,50),randIP(),null);break;
+      case"distributed":
+        var dt="dist-tok-"+(count%2);
+        recordSolve(randSID(),dt,randInt(1000,3000),randIP(),"dist-fp");break;
+    }
+  },200);
+}
+
+window.injectScenario=injectScenario;
+window.resetAll=function(){
+  if(scenarioInterval)clearInterval(scenarioInterval);
+  tokens={};sessions={};ipAnswers={};fpClusters={};
+  stats={total:0,replays:0,timing:0,patterns:0,blocked:0};
+  timelineEntries=[];particles=[];solveTimeBuckets=new Array(60).fill(0);
+  allScores=[];currentThreat=0;updateUI();
+};
+window.toggleAutoBlock=function(){autoBlock=document.getElementById("auto-block-toggle").checked;};
+window.updateThreshold=function(){threshold=+document.getElementById("threshold-slider").value;document.getElementById("threshold-val").textContent=threshold;};
+window.exportData=function(){
+  var d={stats:stats,sessions:sessions,timeline:timelineEntries.slice(0,50),solveTimeBuckets:solveTimeBuckets};
+  var b=new Blob([JSON.stringify(d,null,2)],{type:"application/json"});
+  var a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="replay-detector-export.json";a.click();
+};
+
+// ── UI Updates ──
+function updateUI(){
+  document.getElementById("stat-total").textContent=stats.total;
+  document.getElementById("stat-replays").textContent=stats.replays;
+  document.getElementById("stat-rate").textContent=stats.total?(stats.replays/stats.total*100).toFixed(1)+"%":"0%";
+  document.getElementById("stat-blocked").textContent=stats.blocked;
+  var avg=allScores.length?Math.round(allScores.reduce(function(a,b){return a+b;},0)/allScores.length):0;
+  document.getElementById("stat-avg").textContent=avg;
+  document.getElementById("stat-sessions").textContent=Object.keys(sessions).length;
+
+  // Timeline
+  var tl=document.getElementById("timeline");
+  var html="";
+  for(var i=0;i<Math.min(timelineEntries.length,50);i++){
+    var e=timelineEntries[i];
+    var bc=e.type==="token-replay"?"badge-replay":e.type==="timing-anomaly"?"badge-timing":e.type==="pattern-match"?"badge-pattern":e.type==="block"?"badge-block":"badge-cluster";
+    html+='<div class="timeline-entry"><span class="badge '+bc+'">'+e.type+'</span><span style="color:var(--muted);min-width:70px">'+e.time+'</span><span>'+e.msg+'</span></div>';
+  }
+  tl.innerHTML=html||'<div style="padding:20px;color:var(--muted);text-align:center">No attacks detected yet. Run a scenario above.</div>';
+
+  // Session table
+  var tb=document.getElementById("session-tbody");
+  var shtml="";
+  var sids=Object.keys(sessions);
+  for(var j=0;j<sids.length;j++){
+    var s=sessions[sids[j]];
+    var sc=s.threatScores;
+    var savg=sc.length?Math.round(sc.reduce(function(a,b){return a+b;},0)/sc.length):0;
+    var smax=sc.length?Math.max.apply(null,sc):0;
+    var uf=[];for(var k=0;k<s.flags.length;k++){if(uf.indexOf(s.flags[k])===-1)uf.push(s.flags[k]);}
+    var statusColor=s.blocked?"var(--red)":smax>=50?"var(--yellow)":"var(--green)";
+    shtml+="<tr><td>"+sids[j]+"</td><td>"+s.solves.length+"</td><td>"+savg+"</td><td>"+smax+"</td><td>"+uf.join(", ")+"</td><td style='color:"+statusColor+"'>"+(s.blocked?"BLOCKED":"Active")+"</td></tr>";
+  }
+  tb.innerHTML=shtml||"<tr><td colspan=6 style='text-align:center;color:var(--muted)'>No sessions yet</td></tr>";
+}
+
+// ── Canvas: Gauge ──
+var gaugeCanvas=document.getElementById("gauge-canvas");
+var gCtx=gaugeCanvas.getContext("2d");
+function drawGauge(){
+  var w=220,h=220,cx=110,cy=120,r=80;
+  gCtx.clearRect(0,0,w,h);
+
+  // Background arc
+  gCtx.beginPath();gCtx.arc(cx,cy,r,-Math.PI,0);gCtx.lineWidth=16;gCtx.strokeStyle="#30363d";gCtx.lineCap="round";gCtx.stroke();
+
+  // Value arc
+  var pct=currentThreat/100;
+  var angle=-Math.PI+pct*Math.PI;
+  var grad=gCtx.createLinearGradient(cx-r,cy,cx+r,cy);
+  grad.addColorStop(0,"#3fb950");grad.addColorStop(0.5,"#d29922");grad.addColorStop(1,"#f85149");
+  gCtx.beginPath();gCtx.arc(cx,cy,r,-Math.PI,angle);gCtx.lineWidth=16;gCtx.strokeStyle=grad;gCtx.lineCap="round";gCtx.stroke();
+
+  // Score text
+  gCtx.fillStyle=currentThreat>=70?"#f85149":currentThreat>=40?"#d29922":"#3fb950";
+  gCtx.font="bold 42px system-ui";gCtx.textAlign="center";gCtx.fillText(currentThreat,cx,cy+10);
+  gCtx.fillStyle="#8b949e";gCtx.font="12px system-ui";gCtx.fillText("THREAT SCORE",cx,cy+30);
+  gCtx.fillText(currentThreat>=70?"CRITICAL":currentThreat>=40?"ELEVATED":"NORMAL",cx,cy+46);
+
+  requestAnimationFrame(drawGauge);
+}
+drawGauge();
+
+// ── Canvas: Particles ──
+var pCanvas=document.getElementById("particle-canvas");
+var pCtx=pCanvas.getContext("2d");
+function drawParticles(){
+  pCtx.fillStyle="rgba(13,17,23,0.15)";pCtx.fillRect(0,0,600,200);
+  for(var i=particles.length-1;i>=0;i--){
+    var p=particles[i];
+    p.x+=p.vx;p.alpha-=0.005;p.age++;
+    if(p.x>620||p.alpha<=0){particles.splice(i,1);continue;}
+    pCtx.globalAlpha=p.alpha;pCtx.fillStyle=p.color;
+    pCtx.beginPath();pCtx.arc(p.x,p.y,p.size,0,Math.PI*2);pCtx.fill();
+  }
+  pCtx.globalAlpha=1;
+  // Legend
+  pCtx.font="11px system-ui";
+  var legend=[["#3fb950","Normal"],["#f85149","Replay"],["#d29922","Timing"],["#bc8cff","Pattern"]];
+  for(var j=0;j<legend.length;j++){
+    pCtx.fillStyle=legend[j][0];pCtx.fillRect(10+j*90,185,8,8);
+    pCtx.fillStyle="#8b949e";pCtx.fillText(legend[j][1],22+j*90,193);
+  }
+  requestAnimationFrame(drawParticles);
+}
+drawParticles();
+
+// ── Canvas: Heatmap ──
+var hmCanvas=document.getElementById("heatmap-canvas");
+var hmCtx=hmCanvas.getContext("2d");
+function drawHeatmap(){
+  hmCtx.clearRect(0,0,600,200);
+  var max=Math.max.apply(null,solveTimeBuckets)||1;
+  var bw=600/60;
+  for(var i=0;i<60;i++){
+    var pct=solveTimeBuckets[i]/max;
+    var r=Math.round(248*pct);var g=Math.round(185*(1-pct));var b=Math.round(80*(1-pct));
+    hmCtx.fillStyle="rgb("+r+","+g+","+b+")";
+    hmCtx.fillRect(i*bw,0,bw-1,200);
+  }
+  // Labels
+  hmCtx.fillStyle="#8b949e";hmCtx.font="10px system-ui";
+  for(var j=0;j<=6;j++){hmCtx.fillText(j+"s",j*100-6,196);}
+  hmCtx.fillStyle="#e6edf3";hmCtx.font="11px system-ui";hmCtx.fillText("Solve-Time Distribution (red = concentrated = suspicious)",10,14);
+  // Danger zone
+  hmCtx.strokeStyle="rgba(248,81,73,0.5)";hmCtx.setLineDash([4,4]);
+  hmCtx.beginPath();hmCtx.moveTo(bw*8,0);hmCtx.lineTo(bw*8,200);hmCtx.stroke();
+  hmCtx.fillStyle="#f85149";hmCtx.font="10px system-ui";hmCtx.fillText("< 800ms danger zone",2,30);
+  hmCtx.setLineDash([]);
+  requestAnimationFrame(drawHeatmap);
+}
+drawHeatmap();
+
+})();
+</script>
+</body>
+</html>

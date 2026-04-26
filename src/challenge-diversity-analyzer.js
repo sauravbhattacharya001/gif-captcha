@@ -19,11 +19,11 @@
  * Compute normalized Shannon entropy (0–1) for a set of category counts.
  *
  * @param {number[]} counts - Array of counts per category
+ * @param {number} [precomputedTotal] - Optional pre-summed total to avoid redundant O(n) pass
  * @returns {number} Normalized entropy (1 = perfectly uniform)
  */
-function shannonEntropy(counts) {
-    var total = 0;
-    for (var i = 0; i < counts.length; i++) total += counts[i];
+function shannonEntropy(counts, precomputedTotal) {
+    var total = precomputedTotal != null ? precomputedTotal : _sumArray(counts);
     if (total === 0) return 0;
     var maxE = Math.log2(counts.length);
     if (maxE === 0) return 1;
@@ -42,11 +42,11 @@ function shannonEntropy(counts) {
  * Probability that two randomly chosen challenges are different types.
  *
  * @param {number[]} counts - Array of counts per category
+ * @param {number} [precomputedTotal] - Optional pre-summed total to avoid redundant O(n) pass
  * @returns {number} Simpson's index (0–1, higher = more diverse)
  */
-function simpsonsIndex(counts) {
-    var total = 0;
-    for (var i = 0; i < counts.length; i++) total += counts[i];
+function simpsonsIndex(counts, precomputedTotal) {
+    var total = precomputedTotal != null ? precomputedTotal : _sumArray(counts);
     if (total <= 1) return 0;
     var d = 0;
     for (var i = 0; i < counts.length; i++) {
@@ -59,11 +59,11 @@ function simpsonsIndex(counts) {
  * Compute Gini-Simpson index.
  *
  * @param {number[]} counts - Array of counts per category
+ * @param {number} [precomputedTotal] - Optional pre-summed total to avoid redundant O(n) pass
  * @returns {number} Gini-Simpson index (0–1)
  */
-function giniSimpson(counts) {
-    var total = 0;
-    for (var i = 0; i < counts.length; i++) total += counts[i];
+function giniSimpson(counts, precomputedTotal) {
+    var total = precomputedTotal != null ? precomputedTotal : _sumArray(counts);
     if (total === 0) return 0;
     var sum = 0;
     for (var i = 0; i < counts.length; i++) {
@@ -71,6 +71,19 @@ function giniSimpson(counts) {
         sum += p * p;
     }
     return 1 - sum;
+}
+
+/**
+ * Sum an array of numbers.  Extracted so that callers (index functions)
+ * can share a precomputed total instead of each computing their own O(n) sum.
+ *
+ * @param {number[]} arr
+ * @returns {number}
+ */
+function _sumArray(arr) {
+    var s = 0;
+    for (var i = 0; i < arr.length; i++) s += arr[i];
+    return s;
 }
 
 // ── Dimension Analyzers ──────────────────────────────────────────
@@ -122,36 +135,66 @@ function analyzeDiversity(categories) {
         };
     }
 
-    var counts = categories.map(function(c) { return c.count; });
-    var total = counts.reduce(function(a, b) { return a + b; }, 0);
+    // Single-pass extraction of all per-category metrics — replaces
+    // 5 separate .map() allocations + 5 .reduce() iterations (10×N)
+    // with one O(N) loop that collects counts, running min/max/sum for
+    // complexity, color variance, motion diversity, difficulty, and
+    // duration.  The counts array is still needed for the index functions.
+    var n = categories.length;
+    var counts = new Array(n);
+    var total = 0;
+    var cSum = 0, cMin = Infinity, cMax = -Infinity;
+    var colorSum = 0;
+    var motionSum = 0;
+    var dMin = Infinity, dMax = -Infinity;
+    var durSum = 0;
+
+    for (var ci = 0; ci < n; ci++) {
+        var cat = categories[ci];
+        counts[ci] = cat.count;
+        total += cat.count;
+
+        var complexity = cat.avgComplexity || 0;
+        cSum += complexity;
+        if (complexity < cMin) cMin = complexity;
+        if (complexity > cMax) cMax = complexity;
+
+        colorSum += (cat.colorVariance || 0);
+        motionSum += (cat.motionDiversity || 0);
+
+        var diff = cat.avgDifficulty || 5;
+        if (diff < dMin) dMin = diff;
+        if (diff > dMax) dMax = diff;
+
+        durSum += (cat.avgDuration || 3);
+    }
 
     // Dimension 1: Category Balance
-    var catBalance = shannonEntropy(counts) * 100;
+    var catBalance = shannonEntropy(counts, total) * 100;
 
     // Dimension 2: Visual Complexity spread
-    var complexities = categories.map(function(c) { return c.avgComplexity || 0; });
-    var cMax = Math.max.apply(null, complexities);
-    var cMin = Math.min.apply(null, complexities);
-    var cMean = complexities.reduce(function(a, b) { return a + b; }, 0) / complexities.length;
+    var cMean = cSum / n;
     var visualComplexity = Math.min(100, ((cMax - cMin) * 0.5 + cMean * 0.5) * 100);
 
     // Dimension 3: Color Distribution
-    var colorVars = categories.map(function(c) { return c.colorVariance || 0; });
-    var colorDist = (colorVars.reduce(function(a, b) { return a + b; }, 0) / colorVars.length) * 100;
+    var colorDist = (colorSum / n) * 100;
 
     // Dimension 4: Motion Patterns
-    var motions = categories.map(function(c) { return c.motionDiversity || 0; });
-    var motionScore = (motions.reduce(function(a, b) { return a + b; }, 0) / motions.length) * 100;
+    var motionScore = (motionSum / n) * 100;
 
     // Dimension 5: Difficulty Spread
-    var diffs = categories.map(function(c) { return c.avgDifficulty || 5; });
-    var dRange = Math.max.apply(null, diffs) - Math.min.apply(null, diffs);
-    var diffSpread = Math.min(100, dRange / 9 * 100);
+    var diffSpread = Math.min(100, (dMax - dMin) / 9 * 100);
 
-    // Dimension 6: Temporal Variance
-    var durations = categories.map(function(c) { return c.avgDuration || 3; });
-    var dMean = durations.reduce(function(a, b) { return a + b; }, 0) / durations.length;
-    var dVar = durations.reduce(function(a, d) { return a + (d - dMean) * (d - dMean); }, 0) / durations.length;
+    // Dimension 6: Temporal Variance — second pass for variance
+    // (needs the mean first, so two passes is mathematically necessary,
+    //  but the first pass is merged into the main loop above).
+    var dMean = durSum / n;
+    var dVar = 0;
+    for (var dvi = 0; dvi < n; dvi++) {
+        var dur = categories[dvi].avgDuration || 3;
+        dVar += (dur - dMean) * (dur - dMean);
+    }
+    dVar /= n;
     var temporalVariance = Math.min(100, Math.sqrt(dVar) / 3 * 100);
 
     // Weighted overall
@@ -184,9 +227,9 @@ function analyzeDiversity(categories) {
             temporalVariance: Math.round(temporalVariance)
         },
         indices: {
-            shannon: shannonEntropy(counts),
-            simpson: simpsonsIndex(counts),
-            giniSimpson: giniSimpson(counts)
+            shannon: shannonEntropy(counts, total),
+            simpson: simpsonsIndex(counts, total),
+            giniSimpson: giniSimpson(counts, total)
         },
         warnings: warnings
     };

@@ -16,6 +16,7 @@
 var _sharedUtils = require("./shared-utils");
 var _clamp = _sharedUtils._clamp;
 var _mean = _sharedUtils._mean;
+var _linearRegression = _sharedUtils._linearRegression;
 
 // ── Defaults ────────────────────────────────────────────────────────
 
@@ -71,13 +72,7 @@ function mean(arr) {
 }
 
 function linearRegSlope(vals) {
-  if (vals.length < 2) return 0;
-  var n = vals.length, sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
-  for (var i = 0; i < n; i++) {
-    sumX += i; sumY += vals[i]; sumXY += i * vals[i]; sumX2 += i * i;
-  }
-  var denom = n * sumX2 - sumX * sumX;
-  return denom === 0 ? 0 : (n * sumXY - sumX * sumY) / denom;
+  return _linearRegression(vals).slope;
 }
 
 function createSession(sessionId, timestamp) {

@@ -5,6 +5,7 @@ var _shared = require('./shared-utils');
 var LruTracker = _shared.LruTracker;
 var _now = _shared._now;
 var _clamp = _shared._clamp;
+var _linearRegression = _shared._linearRegression;
 
 
 
@@ -334,16 +335,9 @@ function createTrustScoreEngine(options) {
     }
     var avg = sum / scores.length;
 
-    // Simple linear regression for slope
-    var n = scores.length;
-    var sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
-    for (var j = 0; j < n; j++) {
-      sumX += j;
-      sumY += scores[j];
-      sumXY += j * scores[j];
-      sumXX += j * j;
-    }
-    var slope = n > 1 ? (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX) : 0;
+    // Linear regression for slope (delegated to shared-utils)
+    var reg = _linearRegression(scores);
+    var slope = reg.slope;
 
     var trend = "stable";
     if (slope > 0.01) trend = "improving";

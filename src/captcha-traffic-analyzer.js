@@ -6,6 +6,7 @@ var sharedUtils = require('./shared-utils');
 var _sharedMean = sharedUtils._mean;
 var _sharedStddev = sharedUtils._stddev;
 var _sharedMedian = sharedUtils._median;
+var _sharedLinearRegression = sharedUtils._linearRegression;
 
 /**
  * Captcha Traffic Analyzer — monitors aggregate CAPTCHA traffic patterns
@@ -574,29 +575,12 @@ function createCaptchaTrafficAnalyzer(options) {
       else return null;
     }
 
-    // Simple linear regression: y = slope * x + intercept
+    // Linear regression (delegated to shared-utils)
+    var reg = _sharedLinearRegression(values);
     var n = values.length;
-    var sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0, sumY2 = 0;
-    for (var j = 0; j < n; j++) {
-      sumX += j;
-      sumY += values[j];
-      sumXY += j * values[j];
-      sumX2 += j * j;
-      sumY2 += values[j] * values[j];
-    }
-    var denom = n * sumX2 - sumX * sumX;
-    var slope = denom === 0 ? 0 : (n * sumXY - sumX * sumY) / denom;
-    var intercept = (sumY - slope * sumX) / n;
-
-    // R-squared
-    var yMean = sumY / n;
-    var ssTot = 0, ssRes = 0;
-    for (var k = 0; k < n; k++) {
-      var predicted = slope * k + intercept;
-      ssTot += (values[k] - yMean) * (values[k] - yMean);
-      ssRes += (values[k] - predicted) * (values[k] - predicted);
-    }
-    var rSquared = ssTot === 0 ? 0 : 1 - ssRes / ssTot;
+    var slope = reg.slope;
+    var intercept = reg.intercept;
+    var rSquared = reg.r2;
 
     var direction = 'stable';
     var absSlope = Math.abs(slope);

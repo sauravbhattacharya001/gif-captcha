@@ -58,30 +58,7 @@ var _percentileSorted = _shared._percentileSorted;
 var _stddev = _shared._stddev;
 var _clamp = _shared._clamp;
 var _numAsc = _shared._numAsc;
-
-function _linearRegression(xs, ys) {
-  var n = xs.length;
-  if (n < 2) return { slope: 0, intercept: ys[0] || 0, r2: 0 };
-  var sx = 0, sy = 0, sxy = 0, sxx = 0, syy = 0;
-  for (var i = 0; i < n; i++) {
-    sx += xs[i]; sy += ys[i];
-    sxy += xs[i] * ys[i];
-    sxx += xs[i] * xs[i];
-    syy += ys[i] * ys[i];
-  }
-  var denom = n * sxx - sx * sx;
-  if (denom === 0) return { slope: 0, intercept: sy / n, r2: 0 };
-  var slope = (n * sxy - sx * sy) / denom;
-  var intercept = (sy - slope * sx) / n;
-  var ssTot = syy - (sy * sy) / n;
-  var ssRes = 0;
-  for (var j = 0; j < n; j++) {
-    var pred = slope * xs[j] + intercept;
-    ssRes += (ys[j] - pred) * (ys[j] - pred);
-  }
-  var r2 = ssTot > 0 ? 1 - ssRes / ssTot : 0;
-  return { slope: slope, intercept: intercept, r2: r2 };
-}
+var _linearRegression = _shared._linearRegression;
 
 // ── Factory ─────────────────────────────────────────────────────────
 

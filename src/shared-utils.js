@@ -886,8 +886,62 @@ function createEmitter() {
   return { on: on, off: off, emit: emit };
 }
 
+// ── Linear Regression ────────────────────────────────────────────
+
+/**
+ * Compute simple linear regression: y = slope * x + intercept.
+ *
+ * Accepts either (xs, ys) parallel arrays or a single ys array
+ * (in which case x = 0, 1, 2, …).  Returns slope, intercept, and
+ * R² (coefficient of determination).
+ *
+ * Consolidated from captcha-capacity-planner, captcha-fatigue-detector,
+ * captcha-traffic-analyzer, and trust-score-engine which all carried
+ * their own copy of essentially the same algorithm.
+ *
+ * @param {number[]} xsOrYs  Either x-values (when ys is provided) or y-values.
+ * @param {number[]} [ys]    y-values. When omitted, xsOrYs is treated as ys.
+ * @returns {{ slope: number, intercept: number, r2: number }}
+ */
+function _linearRegression(xsOrYs, ys) {
+  var xs, vals;
+  if (ys) {
+    xs = xsOrYs; vals = ys;
+  } else {
+    vals = xsOrYs; xs = null;
+  }
+  var n = vals.length;
+  if (n === 0) return { slope: 0, intercept: 0, r2: 0 };
+  if (n === 1) return { slope: 0, intercept: vals[0], r2: 0 };
+
+  var sx = 0, sy = 0, sxy = 0, sxx = 0;
+  for (var i = 0; i < n; i++) {
+    var x = xs ? xs[i] : i;
+    sx += x; sy += vals[i];
+    sxy += x * vals[i];
+    sxx += x * x;
+  }
+  var denom = n * sxx - sx * sx;
+  if (denom === 0) return { slope: 0, intercept: sy / n, r2: 0 };
+  var slope = (n * sxy - sx * sy) / denom;
+  var intercept = (sy - slope * sx) / n;
+
+  // R² — coefficient of determination
+  var yMean = sy / n;
+  var ssTot = 0, ssRes = 0;
+  for (var j = 0; j < n; j++) {
+    var xj = xs ? xs[j] : j;
+    var pred = slope * xj + intercept;
+    ssTot += (vals[j] - yMean) * (vals[j] - yMean);
+    ssRes += (vals[j] - pred) * (vals[j] - pred);
+  }
+  var r2 = ssTot > 0 ? 1 - ssRes / ssTot : 0;
+  return { slope: slope, intercept: intercept, r2: r2 };
+}
+
 // ── Exports ─────────────────────────────────────────────────────
 module.exports = {
+  _linearRegression: _linearRegression,
   createEmitter: createEmitter,
   _posOpt: _posOpt,
   _nnOpt: _nnOpt,
@@ -917,5 +971,5 @@ module.exports = {
   createChallenge: createChallenge,
   pickChallenges: pickChallenges,
   createAttemptTracker: createAttemptTracker,
-  installRoundRectPolyfill: installRoundRectPolyfill,
+  installRoundRectPolyfill: installRoundRectPolyfill
 };

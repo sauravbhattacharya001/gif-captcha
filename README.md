@@ -28,6 +28,22 @@ A research case study exploring GIF-based CAPTCHAs as a human-verification mecha
 
 ---
 
+## 📑 Table of Contents
+
+- [Overview](#-overview)
+- [Methodology](#-methodology)
+- [Results](#-results)
+- [Key Findings](#-key-findings)
+- [Live Demo](#-live-demo)
+- [Tech Stack](#-tech-stack)
+- [Installation](#-installation)
+- [Quick Start](#-quick-start)
+- [Project Structure](#-project-structure)
+- [Testing](#-testing)
+- [API Reference](#-api-reference)
+- [Future Research Directions](#-future-research-directions)
+- [License](#-license)
+
 ## 📖 Overview
 
 This case study tests whether GIF-based CAPTCHAs — specifically those requiring comprehension of unexpected events in animated sequences — can serve as an effective human-verification mechanism against LLMs.
@@ -69,13 +85,14 @@ GPT-4 responded identically to every test:
 ### 2023: GIF CAPTCHAs Were Effective
 Text-only LLMs had zero ability to process animated visual content. GIF-based CAPTCHAs requiring narrative comprehension of animated sequences were a **100% effective** human-verification mechanism.
 
-### 2025 Update: The Landscape Has Changed
-Multimodal LLMs (GPT-4V, GPT-4o, Claude 3.5, Gemini 1.5 Pro) can now:
-- Describe static frames extracted from GIFs
-- Infer likely motion from visual context clues
-- Identify objects, people, and scenes
+### 2025–2026 Update: The Landscape Has Changed
+Multimodal LLMs (GPT-4o, Claude 3.5/4, Gemini 2.0/2.5, Llama 4) can now:
+- Process animated GIFs and short video clips natively
+- Describe motion, temporal sequences, and scene transitions
+- Identify objects, people, scenes, and infer basic narrative context
+- Some models achieve partial scores on surprise/twist detection
 
-**Simple visual recognition CAPTCHAs are no longer sufficient.** However, CAPTCHAs requiring understanding of **timing**, **narrative surprise**, and **comedic subversion** may still challenge AI systems that process frames independently rather than as continuous sequences.
+**Simple visual recognition CAPTCHAs are no longer sufficient.** Even temporal-sequence CAPTCHAs face growing pressure as models gain native video understanding. However, CAPTCHAs requiring understanding of **comedic timing**, **cultural subversion**, and **why something is unexpected** (not just *what* happened) remain the hardest frontier for AI systems.
 
 ## 🚀 Live Demo
 
@@ -307,11 +324,41 @@ Benchmark CAPTCHA generation across configurations:
 
 ## 📦 Installation
 
-Install as an npm package for programmatic access to the CAPTCHA utilities:
+### Prerequisites
+
+- **Node.js** ≥ 18
+- **npm** ≥ 9
+
+### Install
 
 ```bash
 npm install gif-captcha
 ```
+
+## 🚀 Quick Start
+
+```javascript
+const gifCaptcha = require("gif-captcha");
+
+// 1. Create a challenge
+const challenge = gifCaptcha.createChallenge({
+  id: 1,
+  title: "Surprise Ending",
+  gifUrl: "https://example.com/twist.gif",
+  humanAnswer: "The cat fell off the table unexpectedly",
+});
+
+// 2. Validate the user's answer
+const result = gifCaptcha.validateAnswer(userAnswer, challenge.humanAnswer, {
+  threshold: 0.3,
+  requiredKeywords: ["cat", "fell"],
+});
+console.log(result.passed); // true or false
+```
+
+See the full [API Reference](API.md) for all available functions.
+
+### Programmatic Usage
 
 ```javascript
 const gifCaptcha = require("gif-captcha");
@@ -496,10 +543,11 @@ See **[API.md](API.md)** for complete documentation of all 13 factory functions 
 
 ## 🔮 Future Research Directions
 
-- **Temporal sequence CAPTCHAs** — Require understanding of event ordering across frames
 - **Narrative surprise detection** — Test whether AI can identify *why* something is unexpected, not just *what* happened
-- **Multi-model benchmarking** — Extend testing to GPT-4o, Claude 3.5 Opus, Gemini 2.0 with video input
+- **Multi-model benchmarking** — Extend testing to GPT-4o, Claude 4, Gemini 2.5 Pro with native video input
 - **Adversarial GIF generation** — Create GIFs specifically designed to exploit frame-by-frame vs. continuous processing gaps
+- **Cultural context CAPTCHAs** — Leverage culture-specific humor and expectations that require lived experience
+- **Real-time generation** — Procedurally generate unique animated challenges per session to prevent lookup attacks
 
 ## 📄 License
 

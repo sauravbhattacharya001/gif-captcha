@@ -393,13 +393,28 @@ function createCaptchaTrafficAnalyzer(options) {
     }
 
     var anomalies = [];
+    // O(1) anomaly-type deduplication — replaces repeated O(n) linear
+    // scans that checked whether a type was already reported.
+    var reportedTypes = Object.create(null);
+
+    /**
+     * Push an anomaly and register its type.  Returns false (and skips)
+     * if the type was already reported, avoiding duplicate entries from
+     * overlapping detection heuristics.
+     */
+    function _pushAnomaly(anomaly) {
+      if (reportedTypes[anomaly.type]) return false;
+      anomalies.push(anomaly);
+      reportedTypes[anomaly.type] = true;
+      return true;
+    }
 
     // 1. Traffic volume anomaly (spike or drop)
     if (baseline.traffic.stddev > 0) {
       var trafficZ = _zScore(latest.count, baseline.traffic.mean, baseline.traffic.stddev);
       if (Math.abs(trafficZ) > zScoreThreshold) {
         var direction = trafficZ > 0 ? 'spike' : 'drop';
-        anomalies.push({
+        _pushAnomaly({
           type: 'traffic_' + direction,
           severity: Math.abs(trafficZ) > zScoreThreshold * 1.5 ? 'critical' : 'warning',
           zScore: _r(trafficZ, 3),
@@ -410,29 +425,23 @@ function createCaptchaTrafficAnalyzer(options) {
       }
     }
 
-    // Check multiplier-based spike
+    // Check multiplier-based spike (skipped if z-score already flagged it)
     if (baseline.traffic.mean > 0 && latest.count > baseline.traffic.mean * trafficSpikeMultiplier) {
-      var alreadyReported = false;
-      for (var a = 0; a < anomalies.length; a++) {
-        if (anomalies[a].type === 'traffic_spike') { alreadyReported = true; break; }
-      }
-      if (!alreadyReported) {
-        anomalies.push({
-          type: 'traffic_spike',
-          severity: 'critical',
-          multiplier: _r(latest.count / baseline.traffic.mean, 1),
-          current: latest.count,
-          baseline: _r(baseline.traffic.mean),
-          detail: 'Traffic is ' + _r(latest.count / baseline.traffic.mean, 1) + 'x the baseline'
-        });
-      }
+      _pushAnomaly({
+        type: 'traffic_spike',
+        severity: 'critical',
+        multiplier: _r(latest.count / baseline.traffic.mean, 1),
+        current: latest.count,
+        baseline: _r(baseline.traffic.mean),
+        detail: 'Traffic is ' + _r(latest.count / baseline.traffic.mean, 1) + 'x the baseline'
+      });
     }
 
     // 2. Solve rate anomaly
     if (baseline.solveRate.stddev > 0) {
       var solveZ = _zScore(latest.solveRate, baseline.solveRate.mean, baseline.solveRate.stddev);
       if (solveZ < -zScoreThreshold || (baseline.solveRate.mean - latest.solveRate) > solveRateDropThreshold) {
-        anomalies.push({
+        _pushAnomaly({
           type: 'solve_rate_drop',
           severity: (baseline.solveRate.mean - latest.solveRate) > solveRateDropThreshold * 2 ? 'critical' : 'warning',
           zScore: _r(solveZ, 3),
@@ -443,7 +452,7 @@ function createCaptchaTrafficAnalyzer(options) {
         });
       }
     } else if (baseline.solveRate.mean > 0 && (baseline.solveRate.mean - latest.solveRate) > solveRateDropThreshold) {
-      anomalies.push({
+      _pushAnomaly({
         type: 'solve_rate_drop',
         severity: 'warning',
         current: _r(latest.solveRate, 3),
@@ -457,7 +466,7 @@ function createCaptchaTrafficAnalyzer(options) {
     if (baseline.responseTime.stddev > 0) {
       var rtZ = _zScore(latest.meanResponseMs, baseline.responseTime.mean, baseline.responseTime.stddev);
       if (Math.abs(rtZ) > zScoreThreshold) {
-        anomalies.push({
+        _pushAnomaly({
           type: rtZ > 0 ? 'response_time_increase' : 'response_time_decrease',
           severity: Math.abs(rtZ) > zScoreThreshold * 1.5 ? 'critical' : 'warning',
           zScore: _r(rtZ, 3),
@@ -468,29 +477,21 @@ function createCaptchaTrafficAnalyzer(options) {
       }
     }
 
-    // Absolute threshold check
+    // Absolute threshold check (skipped if z-score already flagged response time)
     if (Math.abs(latest.meanResponseMs - baseline.responseTime.mean) > responseTimeDeviationMs) {
-      var hasRtAnomaly = false;
-      for (var b = 0; b < anomalies.length; b++) {
-        if (anomalies[b].type === 'response_time_increase' || anomalies[b].type === 'response_time_decrease') {
-          hasRtAnomaly = true; break;
-        }
-      }
-      if (!hasRtAnomaly) {
-        anomalies.push({
-          type: latest.meanResponseMs > baseline.responseTime.mean ? 'response_time_increase' : 'response_time_decrease',
-          severity: 'warning',
-          currentMs: latest.meanResponseMs,
-          baselineMs: baseline.responseTime.mean,
-          deviationMs: _r(Math.abs(latest.meanResponseMs - baseline.responseTime.mean)),
-          detail: 'Response time deviated by ' + _r(Math.abs(latest.meanResponseMs - baseline.responseTime.mean)) + 'ms from baseline'
-        });
-      }
+      _pushAnomaly({
+        type: latest.meanResponseMs > baseline.responseTime.mean ? 'response_time_increase' : 'response_time_decrease',
+        severity: 'warning',
+        currentMs: latest.meanResponseMs,
+        baselineMs: baseline.responseTime.mean,
+        deviationMs: _r(Math.abs(latest.meanResponseMs - baseline.responseTime.mean)),
+        detail: 'Response time deviated by ' + _r(Math.abs(latest.meanResponseMs - baseline.responseTime.mean)) + 'ms from baseline'
+      });
     }
 
     // 4. Geographic concentration anomaly
     if (latest.regionConcentration > regionConcentrationThreshold && latest.count >= 5) {
-      anomalies.push({
+      _pushAnomaly({
         type: 'region_concentration',
         severity: latest.regionConcentration > 0.95 ? 'critical' : 'warning',
         concentration: latest.regionConcentration,
@@ -504,7 +505,7 @@ function createCaptchaTrafficAnalyzer(options) {
     if (baseline.regionDiversity.stddev > 0 && baseline.regionDiversity.mean > 1) {
       var regZ = _zScore(latest.uniqueRegions, baseline.regionDiversity.mean, baseline.regionDiversity.stddev);
       if (regZ < -zScoreThreshold && latest.uniqueRegions < baseline.regionDiversity.mean * 0.5) {
-        anomalies.push({
+        _pushAnomaly({
           type: 'region_diversity_drop',
           severity: 'warning',
           zScore: _r(regZ, 3),

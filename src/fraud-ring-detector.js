@@ -342,7 +342,8 @@ function createFraudRingDetector(options) {
       adj[parts[1]].push({ id: parts[0], sim: similarities[simKeys[s]] });
     }
 
-    // Connected components via BFS
+    // Connected components via BFS (index-based dequeue avoids O(n)
+    // Array.shift(); total BFS is now O(V + E) instead of O(V² + E)).
     var visited = Object.create(null);
     var detectedRings = [];
 
@@ -352,10 +353,11 @@ function createFraudRingDetector(options) {
 
       var component = [];
       var queue = [sid];
+      var qHead = 0;          // pointer-based dequeue: O(1) per iteration
       visited[sid] = true;
 
-      while (queue.length > 0) {
-        var current = queue.shift();
+      while (qHead < queue.length) {
+        var current = queue[qHead++];
         component.push(current);
         var neighbors = adj[current] || [];
         for (var nb = 0; nb < neighbors.length; nb++) {
@@ -367,20 +369,33 @@ function createFraudRingDetector(options) {
       }
 
       if (component.length >= minRingSize) {
-        // Calculate ring confidence
+        // Calculate ring confidence using adjacency list directly.
+        // Previous approach rebuilt 'idA|idB' pair-key strings for every
+        // O(component²) pair and looked them up in the similarities map.
+        // Using the adjacency list we only visit edges that actually exist
+        // (O(E_component) instead of O(V_component²)) and avoid string
+        // concatenation entirely.
         var totalSim = 0, pairCount = 0;
         var evidence = { timing: 0, responseTime: 0, successRate: 0, activityOverlap: 0 };
+        var componentSet = Object.create(null);
+        for (var cs = 0; cs < component.length; cs++) componentSet[component[cs]] = true;
+
+        // Walk each component member's adjacency edges; since each edge
+        // appears in both directions, count only when neighbor id > current
+        // to avoid double-counting.
         for (var ci = 0; ci < component.length; ci++) {
-          for (var cj = ci + 1; cj < component.length; cj++) {
-            var pairKey = component[ci] < component[cj]
-              ? component[ci] + '|' + component[cj]
-              : component[cj] + '|' + component[ci];
-            if (similarities[pairKey]) {
-              totalSim += similarities[pairKey].overall;
-              evidence.timing += similarities[pairKey].timing;
-              evidence.responseTime += similarities[pairKey].responseTime;
-              evidence.successRate += similarities[pairKey].successRate;
-              evidence.activityOverlap += similarities[pairKey].activityOverlap;
+          var cid = component[ci];
+          var cNeighbors = adj[cid] || [];
+          for (var cj = 0; cj < cNeighbors.length; cj++) {
+            var nid = cNeighbors[cj].id;
+            // Only count each undirected edge once (lexicographic tie-break)
+            if (nid > cid && componentSet[nid]) {
+              var edgeSim = cNeighbors[cj].sim;
+              totalSim += edgeSim.overall;
+              evidence.timing += edgeSim.timing;
+              evidence.responseTime += edgeSim.responseTime;
+              evidence.successRate += edgeSim.successRate;
+              evidence.activityOverlap += edgeSim.activityOverlap;
               pairCount++;
             }
           }

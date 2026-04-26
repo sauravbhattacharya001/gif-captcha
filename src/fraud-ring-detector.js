@@ -631,6 +631,12 @@ function createFraudRingDetector(options) {
     }
     if (data.sessions && typeof data.sessions === 'object' && !Array.isArray(data.sessions)) {
       var skeys = Object.keys(data.sessions);
+      // Sort by addedAt so we keep the most recent sessions when truncating
+      skeys.sort(function (a, b) {
+        var ta = (data.sessions[a] && data.sessions[a].addedAt) || 0;
+        var tb = (data.sessions[b] && data.sessions[b].addedAt) || 0;
+        return ta - tb;
+      });
       for (var i = 0; i < skeys.length; i++) {
         if (!_isSafeKey(skeys[i])) continue;
         var imported = data.sessions[skeys[i]];
@@ -640,9 +646,23 @@ function createFraudRingDetector(options) {
         sessionInsertionOrder.push(skeys[i]);
       }
       sessionCount = Object.keys(sessions).length;
+      // Enforce maxSessions: evict oldest entries to honour the limit
+      while (sessionCount > maxSessions && sessionInsertionOrder.length > 0) {
+        var evictId = sessionInsertionOrder.shift();
+        if (sessions[evictId]) {
+          if (sessionToRings[evictId]) delete sessionToRings[evictId];
+          delete sessions[evictId];
+          sessionCount--;
+        }
+      }
     }
     if (data.rings && typeof data.rings === 'object' && !Array.isArray(data.rings)) {
       var rkeys = Object.keys(data.rings);
+      // Advance nextRingId past any imported ring IDs to prevent collisions
+      for (var ri = 0; ri < rkeys.length; ri++) {
+        var num = parseInt(rkeys[ri].replace('ring_', ''), 10);
+        if (!isNaN(num) && num >= nextRingId) nextRingId = num + 1;
+      }
       for (var j = 0; j < rkeys.length; j++) {
         if (!_isSafeKey(rkeys[j])) continue;
         var ring = data.rings[rkeys[j]];

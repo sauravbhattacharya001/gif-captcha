@@ -17,3 +17,9 @@ security:
   - '(security|vulnerability|exploit|xss|injection|csp|cors)'
 documentation:
   - '(docs|documentation|readme|typo|spelling|grammar)'
+performance:
+  - '(slow|performance|latency|speed|timeout|optimization|memory|cpu)'
+infrastructure:
+  - '(docker|deploy|ci|cd|pipeline|workflow|nginx|kubernetes|k8s|scaling)'
+testing:
+  - '(test|coverage|unit test|integration test|e2e|flaky)'

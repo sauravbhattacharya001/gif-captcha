@@ -73,3 +73,76 @@ dependencies:
       - any-glob-to-any-file:
           - 'package.json'
           - 'package-lock.json'
+
+# Core captcha engine
+core:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/index.js'
+          - 'src/crypto-utils.js'
+          - 'src/shared-utils.js'
+          - 'src/config-validator.js'
+
+# Bot detection & anti-fraud
+bot-detection:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/bot-signature-database.js'
+          - 'src/fraud-ring-detector.js'
+          - 'src/honeypot-injector.js'
+          - 'src/solve-pattern-fingerprinter.js'
+          - 'src/behavioral-biometrics.js'
+          - 'src/captcha-replay-detector.js'
+          - 'src/trust-score-engine.js'
+          - 'src/session-risk-aggregator.js'
+          - 'src/geo-risk-scorer.js'
+
+# Analytics & monitoring
+analytics:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/captcha-stats-collector.js'
+          - 'src/captcha-health-monitor.js'
+          - 'src/captcha-anomaly-detector.js'
+          - 'src/solve-funnel-analyzer.js'
+          - 'src/response-time-profiler.js'
+          - 'src/captcha-traffic-analyzer.js'
+          - 'src/captcha-audit-log.js'
+
+# Challenge management
+challenges:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/challenge-pool-manager.js'
+          - 'src/challenge-rotation-scheduler.js'
+          - 'src/challenge-template-engine.js'
+          - 'src/challenge-decay-manager.js'
+          - 'src/challenge-diversity-analyzer.js'
+          - 'src/adaptive-difficulty-tuner.js'
+          - 'src/captcha-strength-scorer.js'
+
+# Operations & deployment
+operations:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/captcha-capacity-planner.js'
+          - 'src/captcha-load-tester.js'
+          - 'src/captcha-canary-deployer.js'
+          - 'src/captcha-rate-limiter.js'
+          - 'src/captcha-incident-manager.js'
+          - 'src/webhook-dispatcher.js'
+
+# A/B testing & experiments
+experimentation:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/ab-experiment-runner.js'
+          - 'src/compliance-reporter.js'
+          - 'src/captcha-fatigue-detector.js'
+
+# Internationalization
+i18n:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/i18n.js'
+          - 'src/captcha-localization-manager.js'

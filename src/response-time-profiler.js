@@ -56,7 +56,8 @@ function createResponseTimeProfiler(options) {
   var sessionCount = 0;
   var sessionLru = new LruTracker();
 
-  function _sortedCopy(a) { return a.slice().sort(function(x,y){return x-y}); }
+  var _numAsc = _sharedUtils._numAsc;
+  var _sortedCopy = _sharedUtils._sortedCopy;
   function _pctSorted(s,p) { return _percentileSorted(s, p); }
   function _pct(a,p) { return _percentile(a, p); }
   function _r(v,d) { var f=Math.pow(10,d||2); return Math.round(v*f)/f; }

@@ -7,6 +7,8 @@ var _median = sharedUtils._median;
 var _percentile = sharedUtils._percentile;
 var _medianSorted = sharedUtils._medianSorted;
 var _percentileSorted = sharedUtils._percentileSorted;
+var _cosineSimilarity = sharedUtils._cosineSimilarity;
+var _sortedCopy = sharedUtils._sortedCopy;
 
 /**
  * createSolvePatternFingerprinter — builds behavioral fingerprints from CAPTCHA
@@ -48,20 +50,7 @@ function createSolvePatternFingerprinter(options) {
   // _mean, _stddev, _median, _percentile, _medianSorted, _percentileSorted
   // are imported from shared-utils.js (module-level) to eliminate duplication.
 
-  /**
-   * Cosine similarity between two equal-length arrays.
-   */
-  function _cosineSimilarity(a, b) {
-    if (a.length !== b.length || a.length === 0) return 0;
-    var dot = 0, magA = 0, magB = 0;
-    for (var i = 0; i < a.length; i++) {
-      dot += a[i] * b[i];
-      magA += a[i] * a[i];
-      magB += b[i] * b[i];
-    }
-    var denom = Math.sqrt(magA) * Math.sqrt(magB);
-    return denom > 0 ? dot / denom : 0;
-  }
+  // _cosineSimilarity imported from shared-utils (module-level) — issue #91 dedup
 
   /**
    * Normalized difference: 1 - |a-b| / max(|a|,|b|,1)

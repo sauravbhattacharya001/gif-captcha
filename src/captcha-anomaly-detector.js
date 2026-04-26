@@ -27,10 +27,7 @@ var _stddev = _shared._stddev;
 var _median = _shared._median;
 var _percentile = _shared._percentile;
 var _numAsc = _shared._numAsc;
-
-function _sortedCopy(arr) {
-  return arr.slice().sort(_numAsc);
-}
+var _sortedCopy = _shared._sortedCopy;
 
 // ── Sensitivity presets ─────────────────────────────────────────────
 var SENSITIVITY_PRESETS = {

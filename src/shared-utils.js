@@ -253,6 +253,16 @@ function _cosineSimilarity(a, b) {
 function _numAsc(a, b) { return a - b; }
 
 /**
+ * Return a sorted copy of a numeric array (ascending).
+ * Avoids mutating the original and centralises the sort comparator.
+ * @param {number[]} arr
+ * @returns {number[]}
+ */
+function _sortedCopy(arr) {
+  return arr.slice().sort(_numAsc);
+}
+
+/**
  * Compute the arithmetic mean of a numeric array.
  * @param {number[]} arr
  * @returns {number} Mean, or 0 for empty arrays
@@ -953,6 +963,7 @@ module.exports = {
   _decayFactor: _decayFactor,
   _cosineSimilarity: _cosineSimilarity,
   _numAsc: _numAsc,
+  _sortedCopy: _sortedCopy,
   _mean: _mean,
   _median: _median,
   _stddev: _stddev,

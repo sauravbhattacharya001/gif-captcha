@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="GIF CAPTCHA Deployment Guide — production setup, scaling, Docker, monitoring, and operational runbooks">
+    <title>GIF CAPTCHA — Deployment Guide</title>
+    <link rel="stylesheet" href="../shared.css">
+    <style>
+        body { padding: 2rem; max-width: 960px; margin: 0 auto; }
+        h1 { font-size: 2rem; margin-bottom: 0.3rem; }
+        h2 { font-size: 1.5rem; margin: 2.5rem 0 1rem; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 0.3rem; }
+        h3 { font-size: 1.15rem; margin: 1.8rem 0 0.5rem; }
+        p, li { color: var(--muted); line-height: 1.65; }
+        .subtitle { color: var(--muted); font-size: 1rem; margin-bottom: 1.5rem; }
+        code { background: var(--surface); padding: 0.15rem 0.4rem; border-radius: 3px; font-size: 0.88em; color: var(--accent); }
+        pre { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 1rem; overflow-x: auto; margin: 1rem 0; }
+        pre code { background: none; padding: 0; color: var(--text); }
+        .nav { display: flex; gap: 1.5rem; margin-bottom: 2rem; flex-wrap: wrap; }
+        .nav a { color: var(--accent); text-decoration: none; font-size: 0.9rem; }
+        .nav a:hover { text-decoration: underline; }
+        .callout { background: var(--surface); border-left: 3px solid var(--accent); padding: 1rem 1.2rem; border-radius: 0 6px 6px 0; margin: 1.5rem 0; }
+        .callout p { margin: 0; }
+        .callout-warn { border-left-color: #f59e0b; }
+        .callout-danger { border-left-color: #ef4444; }
+        .callout-success { border-left-color: #22c55e; }
+        .toc { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.5rem; margin: 1.5rem 0; }
+        .toc h3 { margin-top: 0; font-size: 1rem; }
+        .toc ul { margin: 0; padding-left: 1.2rem; }
+        .toc li { margin: 0.3rem 0; }
+        .toc a { color: var(--accent); text-decoration: none; font-size: 0.9rem; }
+        .toc a:hover { text-decoration: underline; }
+        table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.9rem; }
+        th, td { padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border); }
+        th { color: var(--text); font-weight: 600; }
+        td { color: var(--muted); }
+    </style>
+</head>
+<body>
+    <div class="nav">
+        <a href="../index.html">← Case Study</a>
+        <a href="index.html">API Reference</a>
+        <a href="getting-started.html">Getting Started</a>
+        <a href="architecture.html">Architecture</a>
+        <a href="security-guide.html">Security Guide</a>
+        <a href="module-reference.html">Module Reference</a>
+        <a href="deployment-guide.html"><strong>Deployment Guide</strong></a>
+    </div>
+
+    <h1>Deployment Guide</h1>
+    <p class="subtitle">Production setup, scaling strategies, Docker configuration, monitoring, and operational runbooks for gif-captcha.</p>
+
+    <div class="toc">
+        <h3>Contents</h3>
+        <ul>
+            <li><a href="#prerequisites">Prerequisites</a></li>
+            <li><a href="#environment">Environment Configuration</a></li>
+            <li><a href="#docker">Docker Deployment</a></li>
+            <li><a href="#reverse-proxy">Reverse Proxy Setup</a></li>
+            <li><a href="#scaling">Scaling Strategies</a></li>
+            <li><a href="#monitoring">Monitoring &amp; Alerting</a></li>
+            <li><a href="#health-checks">Health Checks</a></li>
+            <li><a href="#backup">Backup &amp; Recovery</a></li>
+            <li><a href="#runbooks">Operational Runbooks</a></li>
+            <li><a href="#checklist">Production Checklist</a></li>
+        </ul>
+    </div>
+
+    <!-- Prerequisites -->
+    <h2 id="prerequisites">Prerequisites</h2>
+    <p>Before deploying gif-captcha in production, ensure you have:</p>
+    <ul>
+        <li><strong>Node.js 18+</strong> (LTS recommended; 20.x or 22.x preferred)</li>
+        <li><strong>npm 9+</strong> or <strong>yarn 1.22+</strong></li>
+        <li>At least <strong>256 MB RAM</strong> per instance (512 MB recommended for high traffic)</li>
+        <li>Disk space for session data, audit logs, and GIF challenge assets</li>
+        <li>A reverse proxy (nginx, Caddy, or cloud load balancer) for TLS termination</li>
+    </ul>
+
+    <div class="callout">
+        <p><strong>Note:</strong> gif-captcha is a library — it runs embedded in your application server. These instructions cover deploying an app that uses gif-captcha, not a standalone service.</p>
+    </div>
+
+    <!-- Environment Configuration -->
+    <h2 id="environment">Environment Configuration</h2>
+    <p>gif-captcha reads configuration through its <code>ConfigValidator</code>. For production, set these via environment variables or a config file:</p>
+
+    <table>
+        <thead>
+            <tr><th>Variable</th><th>Description</th><th>Default</th><th>Production Recommendation</th></tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><code>GIF_CAPTCHA_SECRET</code></td>
+                <td>HMAC secret for session tokens</td>
+                <td><em>none (required)</em></td>
+                <td>32+ byte random string. Rotate quarterly.</td>
+            </tr>
+            <tr>
+                <td><code>GIF_CAPTCHA_TTL</code></td>
+                <td>Challenge expiry in seconds</td>
+                <td><code>300</code></td>
+                <td>120–300s depending on UX needs</td>
+            </tr>
+            <tr>
+                <td><code>GIF_CAPTCHA_MAX_ATTEMPTS</code></td>
+                <td>Max solve attempts per session</td>
+                <td><code>5</code></td>
+                <td>3–5; lower for high-security flows</td>
+            </tr>
+            <tr>
+                <td><code>GIF_CAPTCHA_DIFFICULTY</code></td>
+                <td>Base difficulty level (1–10)</td>
+                <td><code>5</code></td>
+                <td>5–7; adaptive-difficulty-tuner adjusts per-session</td>
+            </tr>
+            <tr>
+                <td><code>GIF_CAPTCHA_RATE_LIMIT</code></td>
+                <td>Requests per minute per IP</td>
+                <td><code>30</code></td>
+                <td>10–30 depending on traffic pattern</td>
+            </tr>
+            <tr>
+                <td><code>GIF_CAPTCHA_LOG_LEVEL</code></td>
+                <td>Logging verbosity</td>
+                <td><code>info</code></td>
+                <td><code>warn</code> in prod; <code>debug</code> only for incident triage</td>
+            </tr>
+            <tr>
+                <td><code>GIF_CAPTCHA_WEBHOOK_URL</code></td>
+                <td>Webhook endpoint for events</td>
+                <td><em>none</em></td>
+                <td>Set to receive solve/fail/anomaly events</td>
+            </tr>
+            <tr>
+                <td><code>NODE_ENV</code></td>
+                <td>Node.js environment</td>
+                <td><code>development</code></td>
+                <td><strong>Always</strong> set to <code>production</code></td>
+            </tr>
+        </tbody>
+    </table>
+
+    <pre><code># Example .env for production
+NODE_ENV=production
+GIF_CAPTCHA_SECRET=your-32-byte-random-secret-here
+GIF_CAPTCHA_TTL=180
+GIF_CAPTCHA_MAX_ATTEMPTS=3
+GIF_CAPTCHA_DIFFICULTY=6
+GIF_CAPTCHA_RATE_LIMIT=20
+GIF_CAPTCHA_LOG_LEVEL=warn</code></pre>
+
+    <div class="callout callout-danger">
+        <p><strong>Security:</strong> Never commit <code>GIF_CAPTCHA_SECRET</code> to version control. Use your platform's secrets manager (AWS Secrets Manager, Vault, Kubernetes Secrets, etc.).</p>
+    </div>
+
+    <!-- Docker Deployment -->
+    <h2 id="docker">Docker Deployment</h2>
+    <p>The repository includes a multi-stage Dockerfile. Build and run:</p>
+
+    <pre><code># Build the image
+docker build -t gif-captcha:latest .
+
+# Run with environment variables
+docker run -d \
+  --name gif-captcha \
+  -p 3000:3000 \
+  -e NODE_ENV=production \
+  -e GIF_CAPTCHA_SECRET="$(openssl rand -hex 32)" \
+  -e GIF_CAPTCHA_LOG_LEVEL=warn \
+  --memory=512m \
+  --cpus=1 \
+  --restart=unless-stopped \
+  gif-captcha:latest</code></pre>
+
+    <h3>Docker Compose</h3>
+    <p>For multi-service deployments with a reverse proxy:</p>
+
+    <pre><code>version: "3.8"
+services:
+  captcha:
+    build: .
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      GIF_CAPTCHA_SECRET: ${CAPTCHA_SECRET}
+      GIF_CAPTCHA_RATE_LIMIT: 20
+      GIF_CAPTCHA_LOG_LEVEL: warn
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', r => { process.exit(r.statusCode === 200 ? 0 : 1) })"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    ports:
+      - "3000:3000"
+
+  nginx:
+    image: nginx:alpine
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    ports:
+      - "443:443"
+      - "80:80"
+    depends_on:
+      captcha:
+        condition: service_healthy</code></pre>
+
+    <!-- Reverse Proxy -->
+    <h2 id="reverse-proxy">Reverse Proxy Setup</h2>
+    <p>Always run gif-captcha behind a reverse proxy that handles TLS, compression, and rate limiting at the edge.</p>
+
+    <h3>nginx</h3>
+    <pre><code>upstream captcha_backend {
+    server 127.0.0.1:3000;
+    keepalive 32;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name captcha.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/captcha.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/captcha.example.com/privkey.pem;
+
+    # Security headers
+    add_header X-Content-Type-Options nosniff always;
+    add_header X-Frame-Options DENY always;
+    add_header Referrer-Policy strict-origin-when-cross-origin always;
+    add_header Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'" always;
+
+    # Rate limiting at edge
+    limit_req_zone $binary_remote_addr zone=captcha:10m rate=10r/s;
+
+    location / {
+        limit_req zone=captcha burst=20 nodelay;
+        proxy_pass http://captcha_backend;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Timeouts
+        proxy_connect_timeout 5s;
+        proxy_send_timeout 10s;
+        proxy_read_timeout 30s;
+    }
+
+    # Cache static challenge assets
+    location /assets/ {
+        proxy_pass http://captcha_backend;
+        proxy_cache_valid 200 1h;
+        add_header Cache-Control "public, max-age=3600";
+    }
+}</code></pre>
+
+    <h3>Caddy (simpler alternative)</h3>
+    <pre><code>captcha.example.com {
+    reverse_proxy localhost:3000 {
+        header_up X-Real-IP {remote_host}
+    }
+    header X-Content-Type-Options nosniff
+    header X-Frame-Options DENY
+    rate_limit {remote.ip} 10r/s
+}</code></pre>
+
+    <!-- Scaling -->
+    <h2 id="scaling">Scaling Strategies</h2>
+
+    <h3>Horizontal Scaling</h3>
+    <p>gif-captcha is stateless by default — session data is stored in-memory per instance. For multi-instance deployments:</p>
+    <ul>
+        <li><strong>Sticky sessions:</strong> Route the same client IP to the same instance (simplest). Configure at the load balancer level.</li>
+        <li><strong>Shared session store:</strong> Plug a Redis or Memcached backend into the session layer so any instance can validate any token.</li>
+        <li><strong>Stateless tokens:</strong> Use the HMAC-based token mode where the challenge answer is encrypted in the token itself — no server-side session needed.</li>
+    </ul>
+
+    <h3>Capacity Planning</h3>
+    <p>Use the built-in <code>captcha-capacity-planner</code> module to estimate resource needs:</p>
+    <pre><code>const { CapacityPlanner } = require('gif-captcha/src/captcha-capacity-planner');
+
+const planner = new CapacityPlanner();
+const estimate = planner.estimate({
+    peakRequestsPerSecond: 500,
+    avgChallengeSizeKB: 150,
+    sessionTTLSeconds: 180,
+    targetLatencyP99Ms: 200
+});
+
+console.log(estimate);
+// { instances: 3, memoryPerInstanceMB: 384, bandwidthMbps: 60, ... }</code></pre>
+
+    <h3>Auto-Scaling Signals</h3>
+    <table>
+        <thead>
+            <tr><th>Metric</th><th>Scale-Up Threshold</th><th>Scale-Down Threshold</th></tr>
+        </thead>
+        <tbody>
+            <tr><td>CPU utilization</td><td>&gt; 70% for 2 min</td><td>&lt; 30% for 10 min</td></tr>
+            <tr><td>Response latency (p95)</td><td>&gt; 500ms for 1 min</td><td>&lt; 100ms for 5 min</td></tr>
+            <tr><td>Request queue depth</td><td>&gt; 50 pending</td><td>0 pending for 5 min</td></tr>
+            <tr><td>Memory usage</td><td>&gt; 80%</td><td>&lt; 40%</td></tr>
+        </tbody>
+    </table>
+
+    <!-- Monitoring -->
+    <h2 id="monitoring">Monitoring &amp; Alerting</h2>
+
+    <h3>Key Metrics to Track</h3>
+    <p>Use <code>captcha-stats-collector</code> and <code>captcha-health-monitor</code> to emit these metrics:</p>
+    <ul>
+        <li><strong>Solve rate:</strong> Percentage of challenges solved successfully. Normal: 85–95%. Below 70% may indicate difficulty is too high or a UX problem.</li>
+        <li><strong>Bot detection rate:</strong> Challenges flagged by behavioral biometrics. Spikes indicate an attack wave.</li>
+        <li><strong>Latency (p50/p95/p99):</strong> Challenge generation and verification response times.</li>
+        <li><strong>Anomaly score:</strong> From <code>captcha-anomaly-detector</code>. Sustained scores &gt; 0.7 warrant investigation.</li>
+        <li><strong>Session volume:</strong> Active sessions. Used for capacity planning.</li>
+        <li><strong>Rate limit triggers:</strong> How often the rate limiter fires. High counts = possible DDoS or scraping.</li>
+    </ul>
+
+    <h3>Webhook Integration</h3>
+    <p>Configure <code>webhook-dispatcher</code> to push events to your monitoring stack:</p>
+    <pre><code>const { WebhookDispatcher } = require('gif-captcha/src/webhook-dispatcher');
+
+const dispatcher = new WebhookDispatcher({
+    url: process.env.GIF_CAPTCHA_WEBHOOK_URL,
+    events: ['solve.success', 'solve.failure', 'anomaly.detected', 'rate.limited'],
+    batchSize: 10,
+    flushIntervalMs: 5000
+});</code></pre>
+
+    <h3>Alert Thresholds</h3>
+    <table>
+        <thead>
+            <tr><th>Alert</th><th>Condition</th><th>Severity</th><th>Action</th></tr>
+        </thead>
+        <tbody>
+            <tr><td>Solve rate drop</td><td>&lt; 70% over 5 min</td><td>Warning</td><td>Check difficulty settings, review challenge pool</td></tr>
+            <tr><td>Anomaly spike</td><td>Score &gt; 0.8 sustained 3 min</td><td>Critical</td><td>Enable enhanced biometrics, consider emergency difficulty increase</td></tr>
+            <tr><td>High error rate</td><td>&gt; 5% 5xx responses</td><td>Critical</td><td>Check logs, restart unhealthy instances</td></tr>
+            <tr><td>Memory pressure</td><td>&gt; 85% for 5 min</td><td>Warning</td><td>Scale up or reduce session TTL</td></tr>
+            <tr><td>Challenge pool exhaustion</td><td>&lt; 10 unique challenges</td><td>Warning</td><td>Regenerate challenge pool, check asset pipeline</td></tr>
+        </tbody>
+    </table>
+
+    <!-- Health Checks -->
+    <h2 id="health-checks">Health Checks</h2>
+    <p>Expose a <code>/health</code> endpoint for load balancers and orchestrators. The <code>captcha-health-monitor</code> module provides a comprehensive check:</p>
+
+    <pre><code>const { HealthMonitor } = require('gif-captcha/src/captcha-health-monitor');
+
+const monitor = new HealthMonitor();
+
+app.get('/health', (req, res) => {
+    const status = monitor.check();
+    res.status(status.healthy ? 200 : 503).json(status);
+});
+
+// Response format:
+// {
+//   "healthy": true,
+//   "uptime": 86400,
+//   "checks": {
+//     "challengePool": { "status": "ok", "available": 150 },
+//     "sessionStore": { "status": "ok", "activeSessions": 42 },
+//     "memory": { "status": "ok", "usedMB": 128, "limitMB": 512 }
+//   }
+// }</code></pre>
+
+    <div class="callout callout-warn">
+        <p><strong>Kubernetes:</strong> Use <code>/health</code> for both liveness and readiness probes. Set <code>initialDelaySeconds: 5</code> and <code>periodSeconds: 15</code>.</p>
+    </div>
+
+    <!-- Backup & Recovery -->
+    <h2 id="backup">Backup &amp; Recovery</h2>
+
+    <h3>What to Back Up</h3>
+    <ul>
+        <li><strong>Challenge assets (GIFs):</strong> Store in a versioned S3 bucket or equivalent. These are your core content.</li>
+        <li><strong>Configuration:</strong> Keep in version control or secrets manager. Never in the container image.</li>
+        <li><strong>Audit logs:</strong> From <code>captcha-audit-log</code>. Ship to a log aggregator (ELK, Loki, CloudWatch).</li>
+        <li><strong>Trust score data:</strong> From <code>trust-score-engine</code>. Export periodically if you need historical trust analysis.</li>
+    </ul>
+
+    <h3>Recovery Procedure</h3>
+    <ol>
+        <li>Deploy a fresh instance with the same environment configuration.</li>
+        <li>Restore challenge assets from backup to the assets directory.</li>
+        <li>The challenge pool, session data, and trust scores will rebuild automatically from live traffic.</li>
+        <li>Verify with <code>/health</code> endpoint and check solve rates return to normal within 5–10 minutes.</li>
+    </ol>
+
+    <!-- Operational Runbooks -->
+    <h2 id="runbooks">Operational Runbooks</h2>
+
+    <h3>🚨 Bot Attack Wave</h3>
+    <ol>
+        <li>Check <code>captcha-anomaly-detector</code> dashboard for attack pattern.</li>
+        <li>Increase base difficulty: <code>GIF_CAPTCHA_DIFFICULTY=8</code></li>
+        <li>Lower rate limit: <code>GIF_CAPTCHA_RATE_LIMIT=5</code></li>
+        <li>Enable enhanced biometrics in <code>behavioral-biometrics</code> config.</li>
+        <li>Review <code>fraud-ring-detector</code> output — block identified IP ranges at the edge (nginx/WAF).</li>
+        <li>Monitor solve rate; relax settings once attack subsides.</li>
+    </ol>
+
+    <h3>📉 Solve Rate Drop</h3>
+    <ol>
+        <li>Check if a recent deployment changed difficulty or challenge content.</li>
+        <li>Review <code>adaptive-difficulty-tuner</code> logs — it may have over-corrected.</li>
+        <li>Test challenges manually in a browser.</li>
+        <li>Check <code>challenge-diversity-analyzer</code> — low diversity can cause repetitive hard challenges.</li>
+        <li>Temporarily lower <code>GIF_CAPTCHA_DIFFICULTY</code> and redeploy.</li>
+    </ol>
+
+    <h3>💾 High Memory Usage</h3>
+    <ol>
+        <li>Check active session count via <code>/health</code>.</li>
+        <li>Reduce <code>GIF_CAPTCHA_TTL</code> to expire sessions faster.</li>
+        <li>Check for session leaks — <code>captcha-session-replay</code> keeps session data; disable replay in production if not needed.</li>
+        <li>Scale horizontally to distribute load.</li>
+        <li>Restart instances if memory doesn't recover (Node.js GC may need a nudge under extreme fragmentation).</li>
+    </ol>
+
+    <!-- Production Checklist -->
+    <h2 id="checklist">Production Checklist</h2>
+    <p>Before going live, verify each item:</p>
+
+    <table>
+        <thead>
+            <tr><th>✓</th><th>Item</th><th>Notes</th></tr>
+        </thead>
+        <tbody>
+            <tr><td>☐</td><td><code>NODE_ENV=production</code></td><td>Enables optimizations, disables dev logging</td></tr>
+            <tr><td>☐</td><td><code>GIF_CAPTCHA_SECRET</code> is random and stored securely</td><td>32+ bytes, not in source control</td></tr>
+            <tr><td>☐</td><td>TLS enabled via reverse proxy</td><td>Never serve CAPTCHA over plain HTTP</td></tr>
+            <tr><td>☐</td><td>Rate limiting configured at edge + application</td><td>Defense in depth</td></tr>
+            <tr><td>☐</td><td><code>/health</code> endpoint exposed and monitored</td><td>Load balancer and alerting</td></tr>
+            <tr><td>☐</td><td>Audit logging enabled and shipping to aggregator</td><td>Compliance and forensics</td></tr>
+            <tr><td>☐</td><td>Challenge assets backed up</td><td>S3, GCS, or equivalent</td></tr>
+            <tr><td>☐</td><td>Memory limits set (container or systemd)</td><td>Prevent OOM from taking down the host</td></tr>
+            <tr><td>☐</td><td>Graceful shutdown handles in-flight challenges</td><td>SIGTERM → drain → exit</td></tr>
+            <tr><td>☐</td><td>Accessibility tested</td><td>Run <code>captcha-accessibility-analyzer</code></td></tr>
+            <tr><td>☐</td><td>Load tested with <code>captcha-load-tester</code></td><td>Verify p99 latency under peak</td></tr>
+            <tr><td>☐</td><td>Webhook/alerting configured</td><td>Get notified on anomalies</td></tr>
+        </tbody>
+    </table>
+
+    <div class="callout callout-success">
+        <p><strong>Ready to deploy?</strong> Start with a single instance, monitor for 24 hours, then scale based on real traffic data from <code>captcha-capacity-planner</code>.</p>
+    </div>
+
+    <hr style="margin-top: 3rem; border-color: var(--border);">
+    <p style="font-size: 0.85rem; color: var(--muted);">
+        See also: <a href="security-guide.html">Security Guide</a> · <a href="architecture.html">Architecture</a> · <a href="module-reference.html">Module Reference</a>
+    </p>
+</body>
+</html>

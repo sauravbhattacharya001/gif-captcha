@@ -2,6 +2,7 @@
 
 // ── Shared utilities (from shared-utils.js — issue #91) ──────────────
 var _sharedUtils = require("./shared-utils");
+var _cryptoUtils = require("./crypto-utils");
 var LruTracker = _sharedUtils.LruTracker;
 var _posOpt = _sharedUtils._posOpt;
 var _mean = _sharedUtils._mean;
@@ -256,7 +257,7 @@ function createResponseTimeProfiler(options) {
     var reservoir=[];var seen=0;
     var sk=Object.keys(sessions);for(var i=0;i<sk.length;i++){var s=sessions[sk[i]];ts+=s.solves.length;for(var j=0;j<s.solves.length;j++){var t=s.solves[j].time;timeSum+=t;if(s.solves[j].solved)td++;
         // Reservoir sampling: uniform random sample of up to _RESERVOIR_CAP values
-        seen++;if(reservoir.length<_RESERVOIR_CAP){reservoir.push(t);}else{var ri=Math.floor(Math.random()*seen);if(ri<_RESERVOIR_CAP)reservoir[ri]=t;}}
+        seen++;if(reservoir.length<_RESERVOIR_CAP){reservoir.push(t);}else{var ri=_cryptoUtils.secureRandomInt(seen);if(ri<_RESERVOIR_CAP)reservoir[ri]=t;}}
       // Use cached classification when available (set by classifySession,
       // cleared to null by record). Avoids redundant O(solves) anomaly
       // detection for sessions whose data hasn't changed since last classify.

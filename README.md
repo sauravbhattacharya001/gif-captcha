@@ -4,7 +4,7 @@
 
 **Can animated GIFs distinguish humans from AI?**
 
-A research case study exploring GIF-based CAPTCHAs as a human-verification mechanism against large language models.
+A research case study and full-stack CAPTCHA system exploring GIF-based human verification against large language models.
 
 [![CI](https://github.com/sauravbhattacharya001/gif-captcha/actions/workflows/ci.yml/badge.svg)](https://github.com/sauravbhattacharya001/gif-captcha/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/sauravbhattacharya001/gif-captcha/graph/badge.svg)](https://codecov.io/gh/sauravbhattacharya001/gif-captcha)
@@ -13,59 +13,37 @@ A research case study exploring GIF-based CAPTCHAs as a human-verification mecha
 [![GitHub Pages](https://github.com/sauravbhattacharya001/gif-captcha/actions/workflows/pages.yml/badge.svg)](https://github.com/sauravbhattacharya001/gif-captcha/actions/workflows/pages.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![npm](https://img.shields.io/npm/v/gif-captcha)](https://www.npmjs.com/package/gif-captcha)
-![HTML](https://img.shields.io/badge/Built%20with-HTML%2FCSS%2FJS-orange)
-![GitHub repo size](https://img.shields.io/github/repo-size/sauravbhattacharya001/gif-captcha)
-![GitHub last commit](https://img.shields.io/github/last-commit/sauravbhattacharya001/gif-captcha)
-![GitHub issues](https://img.shields.io/github/issues/sauravbhattacharya001/gif-captcha)
-![GitHub stars](https://img.shields.io/github/stars/sauravbhattacharya001/gif-captcha)
 [![npm downloads](https://img.shields.io/npm/dm/gif-captcha)](https://www.npmjs.com/package/gif-captcha)
 ![Node.js](https://img.shields.io/badge/node-%3E%3D18-brightgreen)
+![GitHub repo size](https://img.shields.io/github/repo-size/sauravbhattacharya001/gif-captcha)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-[**View Live Demo →**](https://sauravbhattacharya001.github.io/gif-captcha/) · [**API Docs →**](https://sauravbhattacharya001.github.io/gif-captcha/docs/)
+[**Live Demo →**](https://sauravbhattacharya001.github.io/gif-captcha/) · [**API Docs →**](API.md) · [**npm →**](https://www.npmjs.com/package/gif-captcha)
 
 </div>
 
 ---
 
-## 📑 Table of Contents
+## Overview
 
-- [Overview](#-overview)
-- [Methodology](#-methodology)
-- [Results](#-results)
-- [Key Findings](#-key-findings)
-- [Live Demo](#-live-demo)
-- [Tech Stack](#-tech-stack)
-- [Installation](#-installation)
-- [Quick Start](#-quick-start)
-- [Project Structure](#-project-structure)
-- [Testing](#-testing)
-- [API Reference](#-api-reference)
-- [Future Research Directions](#-future-research-directions)
-- [License](#-license)
+This project started as a simple question: *can GPT-4 describe what happens in a GIF?* The answer in 2023 was a resounding **no** — text-only LLMs scored 0/10 on GIF CAPTCHAs requiring narrative comprehension of animated sequences.
 
-## 📖 Overview
+What began as a research case study has grown into a **full CAPTCHA platform** with 40+ interactive tools, a Node.js/browser library, bot detection, trust scoring, session management, and a comprehensive security stack.
 
-This case study tests whether GIF-based CAPTCHAs — specifically those requiring comprehension of unexpected events in animated sequences — can serve as an effective human-verification mechanism against LLMs.
+### Research Timeline
 
-GPT-4 was given 10 GIFs, each containing a narrative twist or unexpected event, and asked to *"describe the unexpected event."* Human responses were collected as a baseline.
+| Year | Finding |
+|------|---------|
+| **2023** | GPT-4 (text-only) scored **0/10** — could not process animated visual content at all |
+| **2025–26** | Multimodal LLMs (GPT-4o, Claude 3.5/4, Gemini 2.x) can now process GIFs and describe basic events |
+| **Frontier** | CAPTCHAs requiring **comedic timing**, **cultural subversion**, and understanding *why something is unexpected* remain the hardest challenge for AI |
 
-## 🔬 Methodology
+### Original Experiment Results
 
-| Component | Details |
-|-----------|---------|
-| **Model Tested** | GPT-4 (text-only, pre-vision) |
-| **Test Set** | 10 animated GIFs with unexpected narrative twists |
-| **Prompt** | *"Describe the unexpected event"* |
-| **Baseline** | Human descriptions collected for each GIF |
-| **Success Criteria** | AI must produce a semantically accurate description of the animated event |
+10 GIFs with narrative twists were presented to GPT-4. Humans described the unexpected events easily. GPT-4 couldn't process any of them:
 
-## 📊 Results
-
-**Score: 10/10 CAPTCHAs successfully blocked GPT-4**
-
-| # | GIF | Human Could Describe? | GPT-4 Could Describe? |
-|---|-----|:---:|:---:|
+| # | GIF Description | Human | GPT-4 |
+|---|----------------|:-----:|:-----:|
 | 1 | Duel plot twist | ✅ | ❌ |
 | 2 | Rappers roller skating | ✅ | ❌ |
 | 3 | Flying skateboarder | ✅ | ❌ |
@@ -77,288 +55,34 @@ GPT-4 was given 10 GIFs, each containing a narrative twist or unexpected event, 
 | 9 | Road rage hug | ✅ | ❌ |
 | 10 | Birthday cake face cover | ✅ | ❌ |
 
-GPT-4 responded identically to every test:
-> *"I currently cannot view animations, including animated GIFs, so I can't provide real-time descriptions of events within them."*
+> GPT-4's response to every test: *"I currently cannot view animations, including animated GIFs, so I can't provide real-time descriptions of events within them."*
 
-## 🔑 Key Findings
+## Installation
 
-### 2023: GIF CAPTCHAs Were Effective
-Text-only LLMs had zero ability to process animated visual content. GIF-based CAPTCHAs requiring narrative comprehension of animated sequences were a **100% effective** human-verification mechanism.
-
-### 2025–2026 Update: The Landscape Has Changed
-Multimodal LLMs (GPT-4o, Claude 3.5/4, Gemini 2.0/2.5, Llama 4) can now:
-- Process animated GIFs and short video clips natively
-- Describe motion, temporal sequences, and scene transitions
-- Identify objects, people, scenes, and infer basic narrative context
-- Some models achieve partial scores on surprise/twist detection
-
-**Simple visual recognition CAPTCHAs are no longer sufficient.** Even temporal-sequence CAPTCHAs face growing pressure as models gain native video understanding. However, CAPTCHAs requiring understanding of **comedic timing**, **cultural subversion**, and **why something is unexpected** (not just *what* happened) remain the hardest frontier for AI systems.
-
-## 🚀 Live Demo
-
-The interactive case study is deployed as a static page:
-
-**[sauravbhattacharya001.github.io/gif-captcha](https://sauravbhattacharya001.github.io/gif-captcha/)**
-
-### 🎮 Interactive CAPTCHA Demo
-
-**[Try the Demo →](https://sauravbhattacharya001.github.io/gif-captcha/demo.html)**
-
-Take the GIF CAPTCHA challenge yourself! The interactive demo:
-- Shows you each of the 10 GIFs with unexpected twists
-- Lets you type your own description of the unexpected event
-- Reveals how humans and GPT-4 answered after you submit
-- Tracks your "humanity score" across all challenges
-- Provides a detailed results summary comparing you to GPT-4's 0/10
-
-### 📊 Research Analysis Dashboard
-
-**[View Analysis →](https://sauravbhattacharya001.github.io/gif-captcha/analysis.html)**
-
-Deep dive into the research data with interactive visualizations:
-- **CAPTCHA Taxonomy** — 6 cognitive categories (Narrative Twist, Physical Comedy, Animal Behavior, Visual Trick, Social Subversion, Optical Illusion) with filter tabs
-- **Category & Difficulty Charts** — Canvas-rendered bar charts showing distribution and AI difficulty ratings (2023 vs 2025 estimates)
-- **Human vs AI Radar Chart** — 6-axis cognitive capability comparison (Temporal Sequencing, Narrative Surprise, Cultural Context, Motion Tracking, Humor Detection, Object Recognition)
-- **Multi-Model Comparison** — GPT-4, GPT-4o, Claude 3.5, and Gemini 1.5 Pro estimated scores per category
-- **AI Capability Timeline** — Evolution from 0/10 (2023) to projected future performance
-- **Per-GIF Analysis Cards** — Expandable breakdowns with difficulty meters, cognitive skills, and explanations of why each CAPTCHA works
-
-### 🛠️ CAPTCHA Workshop
-
-**[Open Workshop →](https://sauravbhattacharya001.github.io/gif-captcha/generator.html)**
-
-Create your own custom GIF CAPTCHA challenge sets:
-- **Build** — Add GIF challenges with titles, URLs, expected answers, categories, and difficulty ratings
-- **Preview** — Test your CAPTCHA set as a user would experience it, with answer submission and reveal
-- **Export/Import** — Export as JSON, download as file, or generate shareable URL links
-- **Local Storage** — Auto-saves your work in the browser so you never lose progress
-- **Sample Set** — Load a pre-built set of 5 challenges to get started quickly
-
-### 🤖 AI Response Simulator
-
-**[Try Simulator →](https://sauravbhattacharya001.github.io/gif-captcha/simulator.html)**
-
-Explore how different AI models respond to each GIF CAPTCHA:
-- **5 AI Models** — GPT-4 (2023), GPT-4V (2023 Q4), GPT-4o (2024), Claude 3.5 (2024), Gemini 1.5 Pro (2024)
-- **Simulated Responses** — See exactly what each model would say for each CAPTCHA
-- **Capability Breakdown** — Per-CAPTCHA analysis of model capabilities vs. requirements (frame analysis, motion tracking, narrative comprehension, cultural context, humor detection, object recognition)
-- **Reasoning Explanations** — Why each model succeeds, partially succeeds, or fails
-- **Model × CAPTCHA Heatmap** — Pass/fail matrix across all models and CAPTCHAs
-- **Comparative Charts** — Stacked effectiveness bar chart and capability radar overlay
-- **Interactive Model Switching** — Click any model to see its full response set
-
-### ⏱️ Temporal Sequence Challenge
-
-**[Try Temporal Challenge →](https://sauravbhattacharya001.github.io/gif-captcha/temporal.html)**
-
-A harder CAPTCHA format testing temporal event ordering:
-- **Event Sequencing** — Watch each GIF and arrange 4 events in correct chronological order
-- **Drag & Drop + Buttons** — Reorder events by dragging or using arrow buttons (mobile-friendly)
-- **Kendall Tau Scoring** — Pairwise concordance scoring (0–100%) for partial credit on near-correct orderings
-- **Per-Challenge AI Analysis** — Why frame-by-frame AI processing fails at temporal sequencing
-- **Research Context** — Explores temporal CAPTCHAs as a next-generation human verification approach
-- **Results Dashboard** — Overall score, per-challenge breakdown with score bars, research implications
-
-### Case Study Page
-
-Features a dark-themed UI with:
-- Full results table with CAPTCHA pass/fail badges
-- Linked GIF sources for manual verification
-- Key findings with visual callouts
-
-### ⚡ Response Time Benchmark
-
-**[Try Benchmark →](https://sauravbhattacharya001.github.io/gif-captcha/benchmark.html)**
-
-Measure how fast you can decode GIF CAPTCHAs with precision timing:
-- **Timed Challenges** — Each CAPTCHA is timed from display to correct answer submission
-- **Performance Metrics** — Track your average, best, and worst response times
-- **Speed Distribution** — See where your performance falls on the curve
-
-### 🧠 Cognitive Load Analyzer
-
-**[View Cognitive Load →](https://sauravbhattacharya001.github.io/gif-captcha/cognitive-load.html)**
-
-Measure the cognitive complexity of GIF CAPTCHAs across 6 dimensions:
-- **6 Cognitive Dimensions** — Temporal sequencing, narrative surprise, cultural context, motion tracking, humor detection, object recognition
-- **Per-CAPTCHA Breakdown** — How cognitively demanding each challenge is
-- **Human vs AI Cognitive Profiles** — Compare what humans and AI find difficult
-
-### 📊 Multi-Model Comparison
-
-**[View Comparison →](https://sauravbhattacharya001.github.io/gif-captcha/comparison.html)**
-
-Compare AI model performance against GIF CAPTCHAs side by side:
-- **Multiple AI Models** — GPT-4, GPT-4V, GPT-4o, Claude 3.5, Gemini 1.5 Pro
-- **Per-Challenge Scoring** — Pass/fail breakdown for each model × CAPTCHA pair
-- **Capability Radar** — Visual overlay of model strengths and weaknesses
-
-### 📈 Effectiveness Dashboard
-
-**[View Effectiveness →](https://sauravbhattacharya001.github.io/gif-captcha/effectiveness.html)**
-
-How well do GIF CAPTCHAs distinguish humans from AI models?
-- **Detection Rate Charts** — Human pass rate vs AI pass rate over time
-- **Effectiveness Metrics** — True positive, false positive, and discrimination power
-- **Model Evolution** — How AI capabilities have changed from 2023 to 2025
-
-### 🔥 Interaction Heatmap
-
-**[View Heatmap →](https://sauravbhattacharya001.github.io/gif-captcha/heatmap.html)**
-
-Visualize user interaction patterns during CAPTCHA solving:
-- **Click Heatmaps** — Where users click on GIFs during evaluation
-- **Mouse Trails** — Movement patterns revealing attention flow
-- **Timing Overlays** — Heat-coded response time data per region
-
-### 🧪 A/B Testing Configurator
-
-**[Open A/B Configurator →](https://sauravbhattacharya001.github.io/gif-captcha/abtest.html)**
-
-Plan and analyze CAPTCHA A/B experiments with statistical rigor:
-- **Experiment Design** — Configure test/control groups, sample sizes, and duration
-- **Statistical Analysis** — Chi-squared tests, confidence intervals, effect sizes
-- **Results Visualization** — Charts comparing variant performance
-
-### ♿ Accessibility Audit
-
-**[View Accessibility Audit →](https://sauravbhattacharya001.github.io/gif-captcha/accessibility.html)**
-
-Evaluate GIF CAPTCHA accessibility against WCAG 2.1 criteria:
-- **WCAG Compliance Checklist** — Perceivable, operable, understandable, robust
-- **Accessibility Scores** — Per-CAPTCHA accessibility ratings
-- **Remediation Suggestions** — How to improve CAPTCHA accessibility
-
-### 📋 Batch Validator
-
-**[Open Batch Validator →](https://sauravbhattacharya001.github.io/gif-captcha/batch.html)**
-
-Import response data and validate against challenges in bulk:
-- **Bulk Import** — Paste or upload JSON response datasets
-- **Automated Scoring** — Run all responses against challenge answer keys
-- **Pattern Analysis** — Identify common failure patterns and outliers
-
-### 🎯 Daily Challenge
-
-**[Play Daily Challenge →](https://sauravbhattacharya001.github.io/gif-captcha/daily.html)**
-
-A new GIF CAPTCHA challenge every day:
-- **Daily Rotation** — Fresh challenge each day from the full pool
-- **Streak Tracking** — Track your consecutive-day solving record
-- **Performance History** — Review your past daily challenge results
-
-### 🔗 Embed Widget Generator
-
-**[Create Embed →](https://sauravbhattacharya001.github.io/gif-captcha/embed.html)**
-
-Generate embeddable GIF CAPTCHA widgets for your website:
-- **Configuration UI** — Set challenge count, difficulty, appearance, and callback URLs
-- **Code Generation** — Copy-paste HTML/JS embed snippets
-- **Preview** — See exactly how the widget will look before deploying
-
-### 🔍 Frame Inspector
-
-**[Open Frame Inspector →](https://sauravbhattacharya001.github.io/gif-captcha/frame-inspector.html)**
-
-Analyze individual frames from GIF CAPTCHAs:
-- **Frame-by-Frame Scrubbing** — Step through each frame of a GIF animation
-- **Frame Metadata** — Display timing, dimensions, and pixel data
-- **AI Perspective** — See what an AI model "sees" when processing frames independently
-
-### 🏆 Leaderboard
-
-**[View Leaderboard →](https://sauravbhattacharya001.github.io/gif-captcha/leaderboard.html)**
-
-Your personal GIF CAPTCHA performance dashboard:
-- **Score Tracking** — Cumulative accuracy and speed scores
-- **Ranking System** — Compare against community benchmarks
-- **Achievement Badges** — Unlock badges for CAPTCHA-solving milestones
-
-### 🎲 Challenge Playground
-
-**[Open Playground →](https://sauravbhattacharya001.github.io/gif-captcha/playground.html)**
-
-Create, test, and export custom GIF CAPTCHA challenge sets:
-- **Build Mode** — Add challenges with GIF URLs, answers, categories, and difficulty
-- **Test Mode** — Run through your challenge set as a user would
-- **Export** — Download as JSON or generate shareable links
-
-### 🔥 Streak Mode
-
-**[Play Streak Mode →](https://sauravbhattacharya001.github.io/gif-captcha/streak.html)**
-
-How many GIFs can you describe in a row?
-- **Continuous Challenge** — Each wrong answer or timeout breaks your streak
-- **Increasing Difficulty** — Harder CAPTCHAs as your streak grows
-- **High Score Tracking** — Local storage persistence for best streaks
-
-### ⏱️ Response Time Analyzer
-
-**[View Timing Analysis →](https://sauravbhattacharya001.github.io/gif-captcha/timing.html)**
-
-Analyze response time patterns across CAPTCHA types:
-- **Per-Category Timing** — Average solve times by cognitive category
-- **Time Distribution Charts** — Histogram of response times
-- **Outlier Detection** — Flag unusually fast (bot?) or slow responses
-
-### ⚡ Performance Profiler
-
-**[Open Profiler →](https://sauravbhattacharya001.github.io/gif-captcha/performance-profiler.html)**
-
-Benchmark CAPTCHA generation across configurations:
-- **Configurable Parameters** — Difficulty, frame count, image dimensions, noise level, text length
-- **Render Time Distribution** — Color-coded bar chart with P25/P75 quartile highlighting
-- **Key Metrics** — Average render time, P95 latency, file size, throughput (CAPTCHAs/sec), standard deviation
-- **Difficulty Comparison** — Side-by-side render time and file size charts across all difficulty levels
-- **Profile History** — Track and compare results from multiple benchmark runs with performance ratings
-
-## 🛠️ Tech Stack
-
-| Technology | Purpose |
-|-----------|---------|
-| HTML5 | Page structure |
-| CSS3 (Custom Properties) | Dark theme, responsive design |
-| JavaScript | Core CAPTCHA library (UMD, browser + Node.js) |
-| GitHub Pages | Hosting |
-| npm | Package distribution |
-
-## 📦 Installation
-
-### Prerequisites
-
-- **Node.js** ≥ 18
-- **npm** ≥ 9
-
-### Install
+### npm
 
 ```bash
 npm install gif-captcha
 ```
 
-## 🚀 Quick Start
+### Docker
 
-```javascript
-const gifCaptcha = require("gif-captcha");
-
-// 1. Create a challenge
-const challenge = gifCaptcha.createChallenge({
-  id: 1,
-  title: "Surprise Ending",
-  gifUrl: "https://example.com/twist.gif",
-  humanAnswer: "The cat fell off the table unexpectedly",
-});
-
-// 2. Validate the user's answer
-const result = gifCaptcha.validateAnswer(userAnswer, challenge.humanAnswer, {
-  threshold: 0.3,
-  requiredKeywords: ["cat", "fell"],
-});
-console.log(result.passed); // true or false
+```bash
+docker run -p 8080:80 ghcr.io/sauravbhattacharya001/gif-captcha
 ```
 
-See the full [API Reference](API.md) for all available functions.
+### From Source
 
-### Programmatic Usage
+```bash
+git clone https://github.com/sauravbhattacharya001/gif-captcha.git
+cd gif-captcha
+npm install
+npm test
+```
+
+## Quick Start
+
+### Node.js
 
 ```javascript
 const gifCaptcha = require("gif-captcha");
@@ -371,189 +95,169 @@ const challenge = gifCaptcha.createChallenge({
   humanAnswer: "The cat fell off the table unexpectedly",
 });
 
-// Pick 5 random challenges from a pool
-const selected = gifCaptcha.pickChallenges(challengePool, 5);
-
-// Validate a user's answer (fuzzy matching with Jaccard similarity)
-const result = gifCaptcha.validateAnswer(
-  userAnswer,
-  challenge.humanAnswer,
-  { threshold: 0.3, requiredKeywords: ["cat", "fell"] }
-);
+// Validate user answer (fuzzy matching with Jaccard similarity)
+const result = gifCaptcha.validateAnswer(userAnswer, challenge.humanAnswer, {
+  threshold: 0.3,
+  requiredKeywords: ["cat", "fell"],
+});
 console.log(result); // { passed: true, score: 0.75, hasKeywords: true }
-
-// Sanitize untrusted input for safe HTML rendering
-const safe = gifCaptcha.sanitize('<script>alert("XSS")</script>');
 ```
 
-Or use via CDN in the browser:
+### Browser (CDN)
 
 ```html
 <script src="https://unpkg.com/gif-captcha/src/index.js"></script>
 <script>
-  const challenge = gifCaptcha.createChallenge({ ... });
+  const challenge = gifCaptcha.createChallenge({ /* ... */ });
   gifCaptcha.loadGifWithRetry(container, challenge);
 </script>
 ```
 
-## 📂 Project Structure
+### CLI
 
-```
-gif-captcha/
-├── src/
-│   ├── index.js                    # Core library (UMD — browser + Node.js)
-│   ├── shared-utils.js             # Shared utility functions (sanitize, LRU, etc.)
-│   ├── challenge-pool-manager.js   # Challenge pool lifecycle management
-│   ├── challenge-decay-manager.js  # Time-based challenge expiration
-│   ├── challenge-diversity-analyzer.js  # Pool diversity scoring
-│   ├── challenge-rotation-scheduler.js  # Automated rotation scheduling
-│   ├── challenge-template-engine.js     # Challenge template system
-│   ├── ab-experiment-runner.js     # A/B experiment runner
-│   ├── adaptive-difficulty-tuner.js # Dynamic difficulty adjustment
-│   ├── behavioral-biometrics.js    # Mouse/keyboard behavioral analysis
-│   ├── bot-signature-database.js   # Known bot signature matching
-│   ├── captcha-accessibility-analyzer.js # WCAG compliance analysis
-│   ├── captcha-anomaly-detector.js # Anomaly detection in solve patterns
-│   ├── captcha-audit-log.js        # Tamper-evident audit logging
-│   ├── captcha-capacity-planner.js # Load capacity planning
-│   ├── captcha-export-formatter.js # Multi-format data export
-│   ├── captcha-fatigue-detector.js # User fatigue detection
-│   ├── captcha-health-monitor.js   # System health monitoring
-│   ├── captcha-incident-manager.js # Security incident management
-│   ├── captcha-load-tester.js      # Load/stress testing
-│   ├── captcha-localization-manager.js # i18n locale management
-│   ├── captcha-rate-limiter.js     # Rate limiting
-│   ├── captcha-session-replay.js   # Session recording/replay
-│   ├── captcha-stats-collector.js  # Statistics collection
-│   ├── captcha-strength-scorer.js  # Challenge strength scoring
-│   ├── captcha-traffic-analyzer.js # Traffic pattern analysis
-│   ├── compliance-reporter.js      # Regulatory compliance reporting
-│   ├── config-validator.js         # Configuration validation
-│   ├── crypto-utils.js             # Cryptographic utilities
-│   ├── csv-utils.js                # CSV import/export
-│   ├── fraud-ring-detector.js      # Coordinated fraud detection
-│   ├── geo-risk-scorer.js          # Geographic risk scoring
-│   ├── honeypot-injector.js        # Honeypot field injection
-│   ├── i18n.js                     # Internationalization
-│   ├── response-time-profiler.js   # Response time analysis
-│   ├── session-risk-aggregator.js  # Session risk aggregation
-│   ├── solve-funnel-analyzer.js    # Solve funnel analysis
-│   ├── solve-pattern-fingerprinter.js # Solve pattern fingerprinting
-│   ├── trust-score-engine.js       # Trust score computation
-│   └── webhook-dispatcher.js       # Webhook event dispatch
-├── docs/
-│   ├── index.html                  # API reference (HTML)
-│   ├── getting-started.html        # Getting started guide
-│   └── architecture.html           # Architecture documentation
-├── tests/                          # Test suite (Node.js built-in test runner)
-│
-│   ── Interactive Pages ──
-├── index.html            # Interactive case study page
-├── demo.html             # Interactive CAPTCHA demo
-├── analysis.html         # Research analysis dashboard
-├── generator.html        # CAPTCHA Workshop — create challenge sets
-├── simulator.html        # AI Response Simulator
-├── temporal.html         # Temporal Sequence Challenge
-│
-│   ── Tools & Configurators ──
-├── abtest.html           # A/B Testing Configurator
-├── config.html           # Configuration editor
-├── designer.html         # CAPTCHA visual designer
-├── difficulty-planner.html # Difficulty planning tool
-├── embed.html            # Embed Widget Generator
-├── integration-wizard.html # Integration setup wizard
-├── playground.html       # Challenge Playground
-├── rotation-scheduler.html # Challenge rotation scheduler
-├── theme-builder.html    # Visual theme builder
-│
-│   ── Analytics & Dashboards ──
-├── dashboard.html        # Main analytics dashboard
-├── trust-dashboard.html  # Trust score dashboard
-├── effectiveness.html    # Effectiveness Dashboard
-├── cognitive-load.html   # Cognitive Load Analyzer
-├── comparison.html       # Multi-Model Comparison
-├── diversity-analyzer.html # Challenge diversity analysis
-├── heatmap.html          # Interaction Heatmap
-├── solve-histogram.html  # Solve time histogram
-├── timing.html           # Response Time Analyzer
-├── funnel.html           # Solve funnel visualization
-├── my-stats.html         # Personal statistics
-│
-│   ── Security & Monitoring ──
-├── audit-log.html        # Audit Log — browse, search & export records
-├── bot-or-human.html     # Bot-or-human classifier
-├── bot-signatures.html   # Bot signature database browser
-├── compliance.html       # Compliance reporting
-├── entropy.html          # Entropy/randomness analysis
-├── fleet.html            # Fleet management overview
-├── fraud-rings.html      # Fraud ring detection
-├── geo-risk-map.html     # Geographic risk visualization
-├── incident-timeline.html # Security incident timeline
-├── load-tester.html      # Load testing interface
-├── queue-manager.html    # Challenge queue management
-├── rate-limiter.html     # Rate limiter configuration
-├── resistance.html       # AI resistance scoring
-├── threat-feed.html      # Threat intelligence feed
-├── honeypot-designer.html # Honeypot trap designer with bot simulation & intel
-│
-│   ── User-Facing Features ──
-├── accessibility.html    # Accessibility Audit (WCAG 2.1)
-├── batch.html            # Batch Validator — bulk response analysis
-├── benchmark.html        # Response Time Benchmark
-├── competitive.html      # Competitive mode
-├── cost-calculator.html  # Cost estimation calculator
-├── daily.html            # Daily Challenge mode
-├── feedback.html         # User feedback collection
-├── fingerprint-explorer.html # Fingerprint Explorer
-├── frame-inspector.html  # GIF Frame Inspector
-├── gallery.html          # GIF gallery browser
-├── journey-map.html      # User journey visualization
-├── leaderboard.html      # Performance Leaderboard
-├── performance-profiler.html # Performance Profiler
-├── streak.html           # Streak Mode
-│
-│   ── Shared Assets ──
-├── shared.js             # Browser-specific shared utilities
-├── shared.css            # Shared dark theme styles
-├── API.md                # API reference (Markdown)
-├── SECURITY.md           # Security policy
-├── CONTRIBUTING.md       # Contribution guidelines
-├── TESTING.md            # Comprehensive testing guide
-├── README.md             # This file
-└── LICENSE               # MIT License
+```bash
+npx gif-captcha serve    # Launch local demo server
+npx gif-captcha validate # Validate challenge JSON files
 ```
 
-## 🧪 Testing
+## API Reference
 
-The project has **96 test files** covering all modules. See **[TESTING.md](TESTING.md)** for the full testing guide.
+The library exports 13 factory functions. See [API.md](API.md) for full documentation.
+
+| Function | Purpose |
+|----------|---------|
+| `createChallenge` | Build a CAPTCHA challenge object |
+| `validateAnswer` | Fuzzy-match user answer against expected answer |
+| `createPoolManager` | Manage challenge pool lifecycle |
+| `createSessionManager` | Track user sessions with risk scoring |
+| `createBotDetector` | Behavioral bot detection (timing, mouse, keyboard) |
+| `createTokenVerifier` | Cryptographic CAPTCHA token verification |
+| `createReputationTracker` | Track user reputation across sessions |
+| `createChallengeRouter` | Route challenges by difficulty and risk |
+| `createSetAnalyzer` | Analyze challenge set quality and coverage |
+| `createDifficultyCalibrator` | Auto-calibrate challenge difficulty |
+| `createSecurityScorer` | Score CAPTCHA security posture |
+| `createAttemptTracker` | Track and rate-limit solve attempts |
+| `pickChallenges` | Randomly select N challenges from a pool |
+| `sanitize` | Sanitize untrusted input for safe HTML rendering |
+
+## Interactive Platform
+
+The [live site](https://sauravbhattacharya001.github.io/gif-captcha/) hosts **40+ interactive tools** organized into four categories:
+
+### 🔬 Research & Analysis
+
+| Tool | Description |
+|------|-------------|
+| [Case Study](https://sauravbhattacharya001.github.io/gif-captcha/) | Full results table, findings, and methodology |
+| [Analysis Dashboard](https://sauravbhattacharya001.github.io/gif-captcha/analysis.html) | Taxonomy, radar charts, multi-model comparison, AI timeline |
+| [AI Simulator](https://sauravbhattacharya001.github.io/gif-captcha/simulator.html) | See how 5 AI models respond to each CAPTCHA |
+| [Multi-Model Comparison](https://sauravbhattacharya001.github.io/gif-captcha/comparison.html) | Side-by-side model performance with capability radar |
+| [Effectiveness Dashboard](https://sauravbhattacharya001.github.io/gif-captcha/effectiveness.html) | Detection rates, discrimination power over time |
+| [Cognitive Load Analyzer](https://sauravbhattacharya001.github.io/gif-captcha/cognitive-load.html) | 6-dimension cognitive complexity per CAPTCHA |
+| [Research Paper](https://sauravbhattacharya001.github.io/gif-captcha/research-paper.html) | Formal write-up of findings |
+
+### 🎮 Interactive Challenges
+
+| Tool | Description |
+|------|-------------|
+| [Demo](https://sauravbhattacharya001.github.io/gif-captcha/demo.html) | Take the GIF CAPTCHA challenge yourself |
+| [Temporal Challenge](https://sauravbhattacharya001.github.io/gif-captcha/temporal.html) | Drag-and-drop event ordering with Kendall Tau scoring |
+| [Daily Challenge](https://sauravbhattacharya001.github.io/gif-captcha/daily.html) | Fresh challenge every day with streak tracking |
+| [Streak Mode](https://sauravbhattacharya001.github.io/gif-captcha/streak.html) | How many GIFs can you describe in a row? |
+| [Benchmark](https://sauravbhattacharya001.github.io/gif-captcha/benchmark.html) | Timed solve challenge with precision metrics |
+| [Competitive Mode](https://sauravbhattacharya001.github.io/gif-captcha/competitive.html) | Head-to-head CAPTCHA solving |
+| [Escape Room](https://sauravbhattacharya001.github.io/gif-captcha/escape-room.html) | Puzzle-style CAPTCHA challenges |
+| [Speed Arena](https://sauravbhattacharya001.github.io/gif-captcha/speed-arena.html) | Race against the clock |
+
+### 🛠️ Configuration & Development
+
+| Tool | Description |
+|------|-------------|
+| [CAPTCHA Workshop](https://sauravbhattacharya001.github.io/gif-captcha/generator.html) | Create, test, and export custom challenge sets |
+| [Playground](https://sauravbhattacharya001.github.io/gif-captcha/playground.html) | Experiment with challenge configurations |
+| [A/B Configurator](https://sauravbhattacharya001.github.io/gif-captcha/abtest.html) | Design experiments with statistical rigor |
+| [Theme Builder](https://sauravbhattacharya001.github.io/gif-captcha/theme-builder.html) | Visual CAPTCHA theme customization |
+| [Embed Generator](https://sauravbhattacharya001.github.io/gif-captcha/embed.html) | Generate copy-paste HTML/JS embed snippets |
+| [Integration Wizard](https://sauravbhattacharya001.github.io/gif-captcha/integration-wizard.html) | Step-by-step integration setup |
+| [Frame Inspector](https://sauravbhattacharya001.github.io/gif-captcha/frame-inspector.html) | Frame-by-frame GIF analysis with AI perspective |
+| [Difficulty Planner](https://sauravbhattacharya001.github.io/gif-captcha/difficulty-planner.html) | Plan challenge difficulty curves |
+| [Cost Calculator](https://sauravbhattacharya001.github.io/gif-captcha/cost-calculator.html) | Estimate deployment costs |
+
+### 🔒 Security & Monitoring
+
+| Tool | Description |
+|------|-------------|
+| [Trust Dashboard](https://sauravbhattacharya001.github.io/gif-captcha/trust-dashboard.html) | Trust score monitoring |
+| [Bot Signatures](https://sauravbhattacharya001.github.io/gif-captcha/bot-signatures.html) | Known bot signature database |
+| [Fraud Ring Detector](https://sauravbhattacharya001.github.io/gif-captcha/fraud-rings.html) | Coordinated fraud visualization |
+| [Geo Risk Map](https://sauravbhattacharya001.github.io/gif-captcha/geo-risk-map.html) | Geographic risk heatmap |
+| [Audit Log](https://sauravbhattacharya001.github.io/gif-captcha/audit-log.html) | Tamper-evident audit trail browser |
+| [Honeypot Designer](https://sauravbhattacharya001.github.io/gif-captcha/honeypot-designer.html) | Honeypot trap designer with bot simulation |
+| [Threat Radar](https://sauravbhattacharya001.github.io/gif-captcha/threat-radar.html) | Real-time threat visualization |
+| [Incident Timeline](https://sauravbhattacharya001.github.io/gif-captcha/incident-timeline.html) | Security incident history |
+| [Rate Limiter](https://sauravbhattacharya001.github.io/gif-captcha/rate-limiter.html) | Rate limiting configuration |
+| [Compliance](https://sauravbhattacharya001.github.io/gif-captcha/compliance.html) | Regulatory compliance reporting |
+| [Accessibility Audit](https://sauravbhattacharya001.github.io/gif-captcha/accessibility.html) | WCAG 2.1 compliance evaluation |
+
+## Tech Stack
+
+| Technology | Purpose |
+|-----------|---------|
+| **JavaScript** | Core CAPTCHA library (UMD — browser + Node.js) |
+| **HTML5 / CSS3** | 40+ interactive tool pages, dark theme |
+| **GitHub Pages** | Static site hosting |
+| **Docker** | Containerized deployment (nginx-alpine) |
+| **npm** | Package distribution |
+| **GitHub Actions** | CI, CodeQL, Docker build, Pages deploy |
+
+## Testing
+
+96 test files covering all modules. See [TESTING.md](TESTING.md) for the full guide.
 
 ```bash
 npm test                # Run all tests
-npm run test:coverage   # Run with coverage (80% lines, 70% functions, 90% branches)
+npm run test:coverage   # Coverage (80% lines, 70% functions, 90% branches)
 ```
 
-## 📖 API Reference
+## Project Structure
 
-See **[API.md](API.md)** for complete documentation of all 13 factory functions and utility exports, including:
+```
+gif-captcha/
+├── src/                 # Core library (40+ modules)
+│   ├── index.js         # Main entry point (UMD)
+│   ├── shared-utils.js  # Shared utilities
+│   └── ...              # Bot detection, trust scoring, session management, etc.
+├── tests/               # 96 test files
+├── docs/                # HTML documentation site
+├── bin/                 # CLI entry point
+├── *.html               # 40+ interactive tool pages
+├── shared.css           # Dark theme styles
+├── shared.js            # Browser shared utilities
+├── Dockerfile           # Production container
+└── nginx-security.conf  # Hardened nginx config
+```
 
-- **Challenge Management** — `createChallenge`, `createAttemptTracker`, `createPoolManager`
-- **Analysis & Calibration** — `createSetAnalyzer`, `createDifficultyCalibrator`, `createSecurityScorer`
-- **Session & Security** — `createSessionManager`, `createTokenVerifier`
-- **Bot Detection & Reputation** — `createBotDetector`, `createReputationTracker`, `createChallengeRouter`
+## Future Research
 
-## 🔮 Future Research Directions
+- **Narrative surprise detection** — Can AI identify *why* something is unexpected, not just *what* happened?
+- **Adversarial GIF generation** — Procedurally create GIFs that exploit frame-by-frame vs. continuous processing gaps
+- **Cultural context CAPTCHAs** — Leverage culture-specific humor requiring lived experience
+- **Real-time generation** — Unique animated challenges per session to prevent lookup attacks
+- **Multi-model benchmarking** — Extend testing to latest multimodal models with native video input
 
-- **Narrative surprise detection** — Test whether AI can identify *why* something is unexpected, not just *what* happened
-- **Multi-model benchmarking** — Extend testing to GPT-4o, Claude 4, Gemini 2.5 Pro with native video input
-- **Adversarial GIF generation** — Create GIFs specifically designed to exploit frame-by-frame vs. continuous processing gaps
-- **Cultural context CAPTCHAs** — Leverage culture-specific humor and expectations that require lived experience
-- **Real-time generation** — Procedurally generate unique animated challenges per session to prevent lookup attacks
+## Contributing
 
-## 📄 License
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, coding standards, and PR guidelines.
+
+## License
 
 [MIT](LICENSE) — Saurav Bhattacharya
 
-## 👤 Author
+---
 
-**Saurav Bhattacharya**
-- GitHub: [@sauravbhattacharya001](https://github.com/sauravbhattacharya001)
+<div align="center">
+
+**[Live Demo](https://sauravbhattacharya001.github.io/gif-captcha/)** · **[npm Package](https://www.npmjs.com/package/gif-captcha)** · **[API Docs](API.md)** · **[Report Issue](https://github.com/sauravbhattacharya001/gif-captcha/issues)**
+
+</div>

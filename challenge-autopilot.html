@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Challenge Autopilot — gif-captcha</title>
+    <link rel="stylesheet" href="shared.css">
+    <style>
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1.2rem;
+            margin-bottom: 2rem;
+        }
+        @media (max-width: 900px) { .dashboard-grid { grid-template-columns: 1fr 1fr; } }
+        @media (max-width: 500px) { .dashboard-grid { grid-template-columns: 1fr; } }
+        .stat-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1.2rem;
+            text-align: center;
+        }
+        .stat-card h3 { margin: 0 0 .4rem; color: var(--muted); font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; }
+        .stat-value { font-size: 2rem; font-weight: 700; }
+        .stat-value.green { color: #22c55e; }
+        .stat-value.yellow { color: #eab308; }
+        .stat-value.red { color: #ef4444; }
+        .stat-value.blue { color: #3b82f6; }
+
+        .section { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; }
+        .section h2 { margin: 0 0 1rem; font-size: 1.1rem; }
+
+        .decision-feed { max-height: 320px; overflow-y: auto; }
+        .decision-item { display: flex; gap: .8rem; align-items: flex-start; padding: .6rem 0; border-bottom: 1px solid var(--border); }
+        .decision-item:last-child { border-bottom: none; }
+        .decision-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: .75rem; font-weight: 600; text-transform: uppercase; white-space: nowrap; }
+        .badge-retire { background: #fecaca; color: #991b1b; }
+        .badge-quarantine { background: #fef08a; color: #854d0e; }
+        .badge-promote { background: #bbf7d0; color: #166534; }
+        .badge-boost { background: #bfdbfe; color: #1e40af; }
+        .badge-demote { background: #e5e7eb; color: #374151; }
+
+        .challenge-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; }
+        .challenge-card { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; position: relative; }
+        .challenge-card h4 { margin: 0 0 .5rem; font-size: .9rem; font-family: monospace; }
+        .challenge-card .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+        .dot-active { background: #22c55e; }
+        .dot-quarantined { background: #eab308; }
+        .dot-retired { background: #ef4444; }
+        .mini-bar { display: flex; height: 6px; border-radius: 3px; overflow: hidden; margin: 4px 0; background: var(--border); }
+        .mini-bar-fill { height: 100%; }
+
+        .sparkline { display: inline-block; vertical-align: middle; }
+
+        .controls { display: flex; gap: .5rem; margin-top: .6rem; flex-wrap: wrap; }
+        .controls button { font-size: .7rem; padding: 3px 8px; border-radius: 4px; border: 1px solid var(--border); background: var(--surface); cursor: pointer; }
+        .controls button:hover { background: var(--border); }
+
+        .gauge-row { display: flex; gap: 2rem; align-items: center; flex-wrap: wrap; margin-bottom: 1rem; }
+        .gauge-item { text-align: center; }
+        .gauge-ring { width: 80px; height: 80px; position: relative; }
+        .gauge-ring svg { transform: rotate(-90deg); }
+        .gauge-label { font-size: .75rem; color: var(--muted); margin-top: 4px; }
+        .gauge-center { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); font-size: 1rem; font-weight: 700; }
+
+        .actions-list { list-style: none; padding: 0; margin: 0; }
+        .actions-list li { padding: .4rem 0; border-bottom: 1px solid var(--border); font-size: .9rem; }
+        .actions-list li:last-child { border-bottom: none; }
+        .actions-list li::before { content: "⚠️ "; }
+
+        .config-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .8rem; }
+        @media (max-width: 600px) { .config-grid { grid-template-columns: 1fr; } }
+        .config-grid label { font-size: .85rem; display: flex; flex-direction: column; gap: .3rem; }
+        .config-grid input { padding: 4px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--text); }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>🤖 Challenge Autopilot</h1>
+        <p>Autonomous challenge lifecycle controller — monitor, quarantine, retire, and select optimal CAPTCHA challenges in real time.</p>
+    </header>
+    <main>
+        <!-- Fleet Overview -->
+        <div class="dashboard-grid" id="fleet-stats">
+            <div class="stat-card"><h3>Active</h3><div class="stat-value green" id="stat-active">0</div></div>
+            <div class="stat-card"><h3>Quarantined</h3><div class="stat-value yellow" id="stat-quarantined">0</div></div>
+            <div class="stat-card"><h3>Retired</h3><div class="stat-value red" id="stat-retired">0</div></div>
+            <div class="stat-card"><h3>Decision Accuracy</h3><div class="stat-value blue" id="stat-accuracy">—</div></div>
+        </div>
+
+        <!-- Self-Monitoring Gauges -->
+        <div class="section">
+            <h2>📊 Self-Monitoring</h2>
+            <div class="gauge-row" id="gauges"></div>
+            <div id="self-recommendations" style="margin-top:1rem;"></div>
+        </div>
+
+        <!-- Decision Feed -->
+        <div class="section">
+            <h2>⚡ Recent Decisions</h2>
+            <div class="decision-feed" id="decision-feed">
+                <p style="color:var(--muted)">Run the autopilot to see decisions here…</p>
+            </div>
+        </div>
+
+        <!-- Challenge Health Cards -->
+        <div class="section">
+            <h2>🏥 Challenge Health</h2>
+            <div class="challenge-grid" id="challenge-grid"></div>
+        </div>
+
+        <!-- Situation Report -->
+        <div class="section">
+            <h2>📋 Situation Report</h2>
+            <div id="sitrep-threats"></div>
+            <h3 style="margin-top:1rem;">Recommended Actions</h3>
+            <ul class="actions-list" id="sitrep-actions"><li style="color:var(--muted)">No actions needed</li></ul>
+        </div>
+
+        <!-- Controls -->
+        <div class="section">
+            <h2>🎛️ Configuration</h2>
+            <div class="config-grid">
+                <label>Target Solve Rate Min <input type="number" id="cfg-min" step="0.05" min="0" max="1" value="0.55"></label>
+                <label>Target Solve Rate Max <input type="number" id="cfg-max" step="0.05" min="0" max="1" value="0.75"></label>
+                <label>Bot Solve Threshold <input type="number" id="cfg-bot" step="0.05" min="0" max="1" value="0.4"></label>
+                <label>Min Observations <input type="number" id="cfg-obs" min="1" value="20"></label>
+                <label>Max Quarantine <input type="number" id="cfg-qmax" min="1" value="50"></label>
+                <label>Auto-Act <select id="cfg-auto"><option value="false">Off</option><option value="true">On</option></select></label>
+            </div>
+            <div style="margin-top:1rem;display:flex;gap:.5rem;flex-wrap:wrap;">
+                <button onclick="resetDemo()">🔄 Reset Demo</button>
+                <button onclick="runSimulation()">▶️ Simulate Traffic</button>
+                <button onclick="runEvaluate()">🧠 Evaluate Now</button>
+                <button onclick="addChallenge()">➕ Add Challenge</button>
+            </div>
+        </div>
+    </main>
+    <script src="shared.js"></script>
+    <script>
+    (function() {
+        "use strict";
+        /* ── Minimal in-page autopilot (mirrors src/challenge-autopilot.js API) ── */
+        var challenges = {};
+        var decisions = [];
+        var cfg = { targetMin: 0.55, targetMax: 0.75, botThreshold: 0.4, minObs: 20, maxQ: 50, autoAct: false };
+        var nextId = 1;
+
+        function readCfg() {
+            cfg.targetMin = parseFloat(document.getElementById("cfg-min").value) || 0.55;
+            cfg.targetMax = parseFloat(document.getElementById("cfg-max").value) || 0.75;
+            cfg.botThreshold = parseFloat(document.getElementById("cfg-bot").value) || 0.4;
+            cfg.minObs = parseInt(document.getElementById("cfg-obs").value, 10) || 20;
+            cfg.maxQ = parseInt(document.getElementById("cfg-qmax").value, 10) || 50;
+            cfg.autoAct = document.getElementById("cfg-auto").value === "true";
+        }
+
+        function rng() { return Math.random(); }
+
+        function ensure(id) {
+            if (!challenges[id]) challenges[id] = { id: id, status: "active", humanTotal: 0, botTotal: 0, humanSolves: 0, botSolves: 0, weight: 1, quarantinedAt: null };
+            return challenges[id];
+        }
+
+        function record(id, solved, isBot) {
+            var c = ensure(id);
+            if (isBot) { c.botTotal++; if (solved) c.botSolves++; }
+            else { c.humanTotal++; if (solved) c.humanSolves++; }
+        }
+
+        function hRate(c) { return c.humanTotal > 0 ? c.humanSolves / c.humanTotal : null; }
+        function bRate(c) { return c.botTotal > 0 ? c.botSolves / c.botTotal : null; }
+
+        function evaluate() {
+            readCfg();
+            var newDec = [];
+            var ids = Object.keys(challenges);
+            for (var i = 0; i < ids.length; i++) {
+                var c = challenges[ids[i]];
+                if (c.status === "retired") continue;
+                if (c.humanTotal + c.botTotal < cfg.minObs) continue;
+                var br = bRate(c), hr = hRate(c), d = null;
+                if (br !== null && br >= cfg.botThreshold && c.botTotal >= 5) {
+                    if (c.status === "quarantined") d = { id: c.id, action: "retire", reason: "Bot rate " + (br*100).toFixed(1) + "% while quarantined", confidence: Math.min(.6+c.botTotal/100,.95) };
+                    else d = { id: c.id, action: "quarantine", reason: "Bot rate " + (br*100).toFixed(1) + "% exceeds " + (cfg.botThreshold*100) + "%", confidence: Math.min(.5+c.botTotal/50,.9) };
+                } else if (c.status === "quarantined" && br !== null && br < cfg.botThreshold * 0.5) {
+                    d = { id: c.id, action: "promote", reason: "Bot rate recovered to " + (br*100).toFixed(1) + "%", confidence: .75 };
+                } else if (hr !== null && c.humanTotal >= cfg.minObs) {
+                    if (hr < cfg.targetMin) d = { id: c.id, action: "demote", reason: "Human rate " + (hr*100).toFixed(1) + "% below " + (cfg.targetMin*100) + "%", confidence: .65 };
+                    else if (hr > cfg.targetMax && (br === null || br < cfg.botThreshold*.3)) d = { id: c.id, action: "boost", reason: "Effective — human " + (hr*100).toFixed(1) + "%, low bot rate", confidence: .7 };
+                }
+                if (d) {
+                    d.ts = Date.now();
+                    newDec.push(d);
+                    if (cfg.autoAct) applyDec(d);
+                }
+            }
+            decisions = newDec.concat(decisions).slice(0, 200);
+            render();
+            return newDec;
+        }
+
+        function applyDec(d) {
+            var c = challenges[d.id]; if (!c) return;
+            if (d.action === "retire") { c.status = "retired"; }
+            else if (d.action === "quarantine") { c.status = "quarantined"; c.quarantinedAt = Date.now(); }
+            else if (d.action === "promote") { c.status = "active"; c.quarantinedAt = null; c.weight = Math.min(c.weight+.2,2); }
+            else if (d.action === "boost") { c.weight = Math.min(c.weight+.3,3); }
+            else if (d.action === "demote") { c.weight = Math.max(c.weight-.2,.1); }
+        }
+
+        function manualAction(id, action) {
+            var d = { id: id, action: action, reason: "Manual", confidence: 1, ts: Date.now() };
+            applyDec(d);
+            decisions.unshift(d);
+            render();
+        }
+
+        /* ── Rendering ── */
+        function render() {
+            var ids = Object.keys(challenges);
+            var active = 0, quarantined = 0, retired = 0;
+            for (var i = 0; i < ids.length; i++) {
+                var s = challenges[ids[i]].status;
+                if (s === "active") active++;
+                else if (s === "quarantined") quarantined++;
+                else retired++;
+            }
+            document.getElementById("stat-active").textContent = active;
+            document.getElementById("stat-quarantined").textContent = quarantined;
+            document.getElementById("stat-retired").textContent = retired;
+
+            // Accuracy approximation
+            var correct = 0, total = 0;
+            for (var di = 0; di < decisions.length && di < 50; di++) {
+                var dd = decisions[di], cc = challenges[dd.id];
+                if (!cc) continue;
+                var br = bRate(cc);
+                if (dd.action === "retire" || dd.action === "quarantine") {
+                    total++; if (br !== null && br >= cfg.botThreshold * .8) correct++;
+                } else if (dd.action === "promote" || dd.action === "boost") {
+                    total++; if (br === null || br < cfg.botThreshold) correct++;
+                }
+            }
+            var acc = total > 0 ? correct / total : null;
+            document.getElementById("stat-accuracy").textContent = acc !== null ? (acc*100).toFixed(0) + "%" : "—";
+
+            // Gauges
+            var gaugeHtml = "";
+            var gaugeData = [
+                { label: "Accuracy", value: acc, color: "#3b82f6" },
+                { label: "Active %", value: ids.length > 0 ? active/ids.length : 0, color: "#22c55e" },
+                { label: "Quarantine Load", value: cfg.maxQ > 0 ? quarantined/cfg.maxQ : 0, color: "#eab308" }
+            ];
+            for (var gi = 0; gi < gaugeData.length; gi++) {
+                var g = gaugeData[gi], pct = g.value !== null ? Math.round(g.value * 100) : 0;
+                var r = 34, circ = 2 * Math.PI * r, offset = circ * (1 - (pct/100));
+                gaugeHtml += '<div class="gauge-item"><div class="gauge-ring"><svg width="80" height="80"><circle cx="40" cy="40" r="'+r+'" fill="none" stroke="var(--border)" stroke-width="8"/><circle cx="40" cy="40" r="'+r+'" fill="none" stroke="'+g.color+'" stroke-width="8" stroke-dasharray="'+circ+'" stroke-dashoffset="'+offset+'" stroke-linecap="round"/></svg><div class="gauge-center">'+pct+'%</div></div><div class="gauge-label">'+g.label+'</div></div>';
+            }
+            document.getElementById("gauges").innerHTML = gaugeHtml;
+
+            // Decisions feed
+            var feedHtml = "";
+            for (var fi = 0; fi < Math.min(decisions.length, 50); fi++) {
+                var fd = decisions[fi];
+                var badgeClass = "badge-" + fd.action;
+                feedHtml += '<div class="decision-item"><span class="decision-badge '+badgeClass+'">'+fd.action+'</span><div><strong>'+fd.id+'</strong> — '+fd.reason+'<br><small style="color:var(--muted)">Confidence: '+(fd.confidence*100).toFixed(0)+'% · '+new Date(fd.ts).toLocaleTimeString()+'</small></div></div>';
+            }
+            document.getElementById("decision-feed").innerHTML = feedHtml || '<p style="color:var(--muted)">No decisions yet</p>';
+
+            // Challenge cards
+            var cardHtml = "";
+            for (var ci = 0; ci < ids.length; ci++) {
+                var ch = challenges[ids[ci]];
+                var hr = hRate(ch), br2 = bRate(ch);
+                var dotClass = "dot-" + ch.status;
+                var hrPct = hr !== null ? (hr*100).toFixed(1) : "—";
+                var brPct = br2 !== null ? (br2*100).toFixed(1) : "—";
+                var hrW = hr !== null ? Math.round(hr*100) : 0;
+                var brW = br2 !== null ? Math.round(br2*100) : 0;
+                cardHtml += '<div class="challenge-card"><h4><span class="status-dot '+dotClass+'"></span>'+ch.id+'</h4>';
+                cardHtml += '<div style="font-size:.8rem;color:var(--muted)">Status: '+ch.status+' · Weight: '+ch.weight.toFixed(1)+'</div>';
+                cardHtml += '<div style="margin-top:.5rem;font-size:.8rem">Human solve: '+hrPct+'% ('+ch.humanSolves+'/'+ch.humanTotal+')</div>';
+                cardHtml += '<div class="mini-bar"><div class="mini-bar-fill" style="width:'+hrW+'%;background:#22c55e"></div></div>';
+                cardHtml += '<div style="font-size:.8rem">Bot solve: '+brPct+'% ('+ch.botSolves+'/'+ch.botTotal+')</div>';
+                cardHtml += '<div class="mini-bar"><div class="mini-bar-fill" style="width:'+brW+'%;background:#ef4444"></div></div>';
+                cardHtml += '<div class="controls">';
+                if (ch.status !== "quarantined") cardHtml += '<button onclick="manualAction(\''+ch.id+'\',\'quarantine\')">🔒 Quarantine</button>';
+                if (ch.status === "quarantined") cardHtml += '<button onclick="manualAction(\''+ch.id+'\',\'promote\')">✅ Promote</button>';
+                if (ch.status !== "retired") cardHtml += '<button onclick="manualAction(\''+ch.id+'\',\'retire\')">🗑️ Retire</button>';
+                cardHtml += '</div></div>';
+            }
+            document.getElementById("challenge-grid").innerHTML = cardHtml || '<p style="color:var(--muted)">No challenges registered</p>';
+
+            // Situation report threats
+            var threats = [];
+            for (var ti = 0; ti < ids.length; ti++) {
+                var tc = challenges[ids[ti]], tbr = bRate(tc);
+                if (tbr !== null && tbr > 0.1 && tc.botTotal >= 3) threats.push({ id: tc.id, rate: tbr, total: tc.botTotal });
+            }
+            threats.sort(function(a,b) { return b.rate - a.rate; });
+            var threatHtml = threats.length > 0 ? "<h3>Top Threats</h3><table style='width:100%;font-size:.85rem'><tr><th>Challenge</th><th>Bot Rate</th><th>Bot Attempts</th></tr>" : "<p style='color:var(--muted)'>No active threats</p>";
+            for (var tti = 0; tti < Math.min(threats.length, 10); tti++) {
+                threatHtml += "<tr><td>"+threats[tti].id+"</td><td>"+(threats[tti].rate*100).toFixed(1)+"%</td><td>"+threats[tti].total+"</td></tr>";
+            }
+            if (threats.length > 0) threatHtml += "</table>";
+            document.getElementById("sitrep-threats").innerHTML = threatHtml;
+
+            // Actions
+            var actionItems = [];
+            if (quarantined > cfg.maxQ * .8) actionItems.push("Quarantine nearing capacity ("+quarantined+"/"+cfg.maxQ+")");
+            if (active < 5 && ids.length > 0) actionItems.push("Low active challenges ("+active+") — add more");
+            var actHtml = "";
+            for (var ai2 = 0; ai2 < actionItems.length; ai2++) actHtml += "<li>"+actionItems[ai2]+"</li>";
+            document.getElementById("sitrep-actions").innerHTML = actHtml || "<li style='color:var(--muted)'>No actions needed</li>";
+        }
+
+        /* ── Demo functions ── */
+        window.resetDemo = function() {
+            challenges = {}; decisions = [];
+            var names = ["gif-twist","gif-banana","gif-skateboard","gif-mirror","gif-drift","gif-hug","gif-cake","gif-dog","gif-duel","gif-skate"];
+            for (var i = 0; i < names.length; i++) ensure(names[i]);
+            render();
+        };
+
+        window.runSimulation = function() {
+            readCfg();
+            var ids = Object.keys(challenges);
+            if (ids.length === 0) { window.resetDemo(); ids = Object.keys(challenges); }
+            for (var round = 0; round < 5; round++) {
+                for (var i = 0; i < ids.length; i++) {
+                    var c = challenges[ids[i]];
+                    if (c.status === "retired") continue;
+                    // Simulate varied traffic patterns
+                    var botStrength = rng(); // some challenges easier for bots
+                    for (var j = 0; j < 8; j++) {
+                        var isBot = rng() < 0.25;
+                        var solved;
+                        if (isBot) solved = rng() < botStrength * 0.6;
+                        else solved = rng() < 0.65;
+                        record(ids[i], solved, isBot);
+                    }
+                }
+            }
+            render();
+        };
+
+        window.runEvaluate = function() { evaluate(); };
+
+        window.addChallenge = function() {
+            var id = "gif-new-" + (nextId++);
+            ensure(id);
+            render();
+        };
+
+        window.manualAction = manualAction;
+
+        // Initialize
+        window.resetDemo();
+    })();
+    </script>
+</body>
+</html>

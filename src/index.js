@@ -9571,6 +9571,7 @@ var _funnelModule = require("./solve-funnel-analyzer");
 var createFunnelAnalyzer = _funnelModule.createFunnelAnalyzer;
 var createSolvePatternFingerprinter = require("./solve-pattern-fingerprinter").createSolvePatternFingerprinter;
 var _webhookModule = require("./webhook-dispatcher");
+var _autopilotModule = require("./challenge-autopilot");
 var WebhookDispatcher = _webhookModule.WebhookDispatcher;
 var gifCaptcha = {
   sanitize: sanitize,
@@ -9651,6 +9652,7 @@ var gifCaptcha = {
   createFunnelAnalyzer: createFunnelAnalyzer,
   createSolvePatternFingerprinter: createSolvePatternFingerprinter,
   WebhookDispatcher: WebhookDispatcher,
+  createChallengeAutopilot: _autopilotModule.createChallengeAutopilot,
 };
 
 // UMD export — works in Node.js, AMD, and browser globals

@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trust Network — gif-captcha</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+:root{--bg:#0a0e17;--surface:#111827;--surface2:#1e293b;--border:#334155;--text:#e2e8f0;--text2:#94a3b8;--accent:#6366f1;--accent2:#818cf8;--green:#22c55e;--yellow:#eab308;--red:#ef4444;--cyan:#06b6d4;--orange:#f97316;--pink:#ec4899}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-apple-system,sans-serif;min-height:100vh;padding:20px}
+h1{font-size:1.8rem;font-weight:700;margin-bottom:4px}
+.subtitle{color:var(--text2);font-size:.9rem;margin-bottom:20px}
+.grid{display:grid;gap:16px;margin-bottom:16px}
+.grid-4{grid-template-columns:repeat(4,1fr)}
+.grid-2{grid-template-columns:1fr 1fr}
+.grid-3{grid-template-columns:1fr 1fr 1fr}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px}
+.card h2{font-size:1rem;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.metric{text-align:center}
+.metric .value{font-size:2rem;font-weight:700;line-height:1.2}
+.metric .label{font-size:.75rem;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin-top:4px}
+.badge{display:inline-block;padding:2px 8px;border-radius:99px;font-size:.7rem;font-weight:600}
+.badge-ok{background:rgba(34,197,94,.15);color:var(--green)}
+.badge-warn{background:rgba(234,179,8,.15);color:var(--yellow)}
+.badge-crit{background:rgba(239,68,68,.15);color:var(--red)}
+.badge-info{background:rgba(99,102,241,.15);color:var(--accent2)}
+canvas{display:block;width:100%;border-radius:8px;background:var(--bg)}
+.btn{padding:8px 16px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:.8rem;cursor:pointer;transition:all .2s}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn-primary:hover{background:var(--accent2)}
+.btn-danger{border-color:var(--red);color:var(--red)}
+.btn-danger:hover{background:rgba(239,68,68,.15)}
+.controls{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;align-items:center}
+.select{padding:6px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:.8rem}
+.slider-group{display:flex;align-items:center;gap:8px;font-size:.8rem}
+.slider-group input[type=range]{width:120px;accent-color:var(--accent)}
+.log-list{max-height:200px;overflow-y:auto;font-size:.75rem;font-family:'Cascadia Code',monospace}
+.log-entry{padding:4px 8px;border-bottom:1px solid var(--border);display:flex;gap:8px}
+.log-entry .time{color:var(--text2);min-width:65px}
+.log-entry .type{font-weight:600;min-width:80px}
+.log-entry.sybil .type{color:var(--red)}
+.log-entry.alert .type{color:var(--orange)}
+.log-entry.propagation .type{color:var(--cyan)}
+.log-entry.monitor .type{color:var(--accent2)}
+.rec-list{display:flex;flex-direction:column;gap:8px}
+.rec{padding:10px 12px;border-radius:8px;font-size:.8rem;border-left:3px solid}
+.rec.critical{background:rgba(239,68,68,.08);border-color:var(--red)}
+.rec.warning{background:rgba(234,179,8,.08);border-color:var(--yellow)}
+.rec.info{background:rgba(99,102,241,.08);border-color:var(--accent)}
+.rec.ok{background:rgba(34,197,94,.08);border-color:var(--green)}
+.rec .msg{font-weight:600;margin-bottom:2px}
+.rec .detail{color:var(--text2);font-size:.75rem}
+.cluster-card{padding:10px;background:var(--bg);border-radius:8px;margin-bottom:8px;border:1px solid rgba(239,68,68,.3)}
+.cluster-card h3{font-size:.85rem;display:flex;justify-content:space-between;align-items:center}
+.cluster-meta{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-top:6px;font-size:.75rem;color:var(--text2)}
+.node-table{width:100%;font-size:.75rem;border-collapse:collapse}
+.node-table th{text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.05em}
+.node-table td{padding:5px 8px;border-bottom:1px solid rgba(51,65,85,.4)}
+.node-table tr:hover td{background:rgba(99,102,241,.05)}
+.trust-bar{width:60px;height:8px;background:var(--surface2);border-radius:4px;overflow:hidden;display:inline-block;vertical-align:middle}
+.trust-bar-fill{height:100%;border-radius:4px;transition:width .3s}
+.flagged{color:var(--red)}
+.healthy{color:var(--green)}
+.tooltip{position:absolute;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:.75rem;pointer-events:none;z-index:100;box-shadow:0 4px 12px rgba(0,0,0,.5)}
+@media(max-width:900px){.grid-4{grid-template-columns:repeat(2,1fr)}.grid-2,.grid-3{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<h1>🕸️ Trust Network</h1>
+<p class="subtitle">Session trust graph · Sybil detection · Autonomous defense propagation</p>
+
+<div class="controls">
+  <button class="btn btn-primary" onclick="runSimulation()">▶ Simulate Network</button>
+  <button class="btn" onclick="propagate()">🔄 Propagate Trust</button>
+  <button class="btn" onclick="detectSybil()">🔍 Detect Sybil</button>
+  <button class="btn" onclick="toggleAutoMonitor()"><span id="monitorLabel">⚡ Start Auto-Monitor</span></button>
+  <button class="btn btn-danger" onclick="resetNetwork()">✕ Reset</button>
+  <select class="select" id="scenario" onchange="loadScenario()">
+    <option value="organic">🌿 Organic Traffic</option>
+    <option value="botnet">🤖 Botnet Attack</option>
+    <option value="sybil">👥 Sybil Ring</option>
+    <option value="mixed">🎭 Mixed Traffic</option>
+    <option value="coordinated">🎯 Coordinated Assault</option>
+  </select>
+  <div class="slider-group">
+    <label>Sybil Threshold:</label>
+    <input type="range" id="sybilThresh" min="0.3" max="0.95" step="0.05" value="0.75" oninput="updateThreshold()">
+    <span id="threshVal">0.75</span>
+  </div>
+</div>
+
+<div class="grid grid-4">
+  <div class="card metric"><div class="value" id="nodeCount">0</div><div class="label">Active Sessions</div></div>
+  <div class="card metric"><div class="value" id="edgeCount">0</div><div class="label">Trust Edges</div></div>
+  <div class="card metric"><div class="value" id="avgTrust">—</div><div class="label">Avg Trust Score</div></div>
+  <div class="card metric"><div class="value" id="healthScore">—</div><div class="label">Network Health</div></div>
+</div>
+
+<div class="grid grid-2">
+  <div class="card">
+    <h2>🕸️ Network Graph</h2>
+    <canvas id="graphCanvas" width="600" height="400"></canvas>
+    <div id="graphTooltip" class="tooltip" style="display:none"></div>
+  </div>
+  <div class="card">
+    <h2>📊 Trust Distribution</h2>
+    <canvas id="distCanvas" width="600" height="400"></canvas>
+  </div>
+</div>
+
+<div class="grid grid-3">
+  <div class="card">
+    <h2>🚨 Sybil Clusters <span class="badge badge-crit" id="clusterBadge" style="display:none">0</span></h2>
+    <div id="clusterList"><p style="color:var(--text2);font-size:.8rem">No clusters detected. Run Sybil detection to scan.</p></div>
+  </div>
+  <div class="card">
+    <h2>💡 Recommendations</h2>
+    <div class="rec-list" id="recList"><div class="rec ok"><div class="msg">Network idle</div><div class="detail">Simulate traffic to begin analysis</div></div></div>
+  </div>
+  <div class="card">
+    <h2>📋 Event Log</h2>
+    <div class="log-list" id="eventLog"><div class="log-entry"><span class="time">—</span><span class="type">init</span><span>Trust Network ready</span></div></div>
+  </div>
+</div>
+
+<div class="card" style="margin-top:16px">
+  <h2>📑 Session Table</h2>
+  <div style="max-height:300px;overflow-y:auto">
+    <table class="node-table" id="nodeTable">
+      <thead><tr><th>Session</th><th>Trust</th><th>IP</th><th>Fingerprint</th><th>Solves</th><th>Avg Time</th><th>Edges</th><th>Status</th></tr></thead>
+      <tbody id="nodeTableBody"><tr><td colspan="8" style="color:var(--text2);text-align:center;padding:20px">No sessions. Click "Simulate Network" to generate data.</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="controls" style="margin-top:16px">
+  <button class="btn" onclick="exportJSON()">📥 Export JSON</button>
+  <button class="btn" onclick="exportCSV()">📥 Export CSV</button>
+</div>
+
+<script src="shared.js"></script>
+<script>
+// ── Simulation Engine (mirrors backend trust-network-analyzer.js) ──
+
+const state = {
+  nodes: new Map(),
+  clusters: [],
+  eventLog: [],
+  autoMonitor: false,
+  monitorTimer: null,
+  config: { sybilThreshold: 0.75, propagationRounds: 5, dampingFactor: 0.85, decayPerHour: 0.02, minClusterSize: 3 },
+  hoveredNode: null,
+  animFrame: null
+};
+
+const ips = ['192.168.1.','10.0.0.','172.16.0.','45.33.32.','104.16.89.','203.0.113.','198.51.100.'];
+const fps = [];
+for(let i=0;i<30;i++) fps.push('fp-'+Math.random().toString(36).slice(2,10));
+
+function rng(min,max){return Math.random()*(max-min)+min}
+function pick(arr){return arr[Math.floor(Math.random()*arr.length)]}
+function genId(){return 'sess-'+Math.random().toString(36).slice(2,8)}
+
+function addNode(id, opts={}){
+  const n = {
+    id, trust: opts.trust??0.5, ip: opts.ip||pick(ips)+Math.floor(rng(1,255)),
+    fingerprint: opts.fingerprint||pick(fps), solves: 0, timing: [],
+    behavioral: {avgSolveMs:0, mouseEntropy:rng(0.1,1), keystrokePattern:rng(0.1,1), scrollBehavior:rng(0.1,1)},
+    edges: [], lastSeen: Date.now(), flagged: false, x: rng(50,550), y: rng(50,350), vx:0, vy:0
+  };
+  state.nodes.set(id, n);
+  return n;
+}
+
+function recordSolve(id, data={}){
+  let n = state.nodes.get(id);
+  if(!n) return;
+  n.solves++;
+  n.lastSeen = Date.now();
+  if(data.solveMs>0){
+    n.timing.push(data.solveMs);
+    if(n.timing.length>50) n.timing.shift();
+    n.behavioral.avgSolveMs = n.timing.reduce((a,b)=>a+b,0)/n.timing.length;
+  }
+  if(data.mouseEntropy!=null) n.behavioral.mouseEntropy=data.mouseEntropy;
+  if(data.keystrokePattern!=null) n.behavioral.keystrokePattern=data.keystrokePattern;
+  if(data.scrollBehavior!=null) n.behavioral.scrollBehavior=data.scrollBehavior;
+}
+
+function cosineSim(a,b){
+  const dims=['avgSolveMs','mouseEntropy','keystrokePattern','scrollBehavior'];
+  let dot=0,ma=0,mb=0;
+  for(const d of dims){let va=a.behavioral[d]||0,vb=b.behavioral[d]||0;dot+=va*vb;ma+=va*va;mb+=vb*vb}
+  ma=Math.sqrt(ma);mb=Math.sqrt(mb);
+  return(ma===0||mb===0)?0:dot/(ma*mb);
+}
+
+function computeSimilarity(a,b){
+  let score=0, factors=0;
+  score+=(a.ip&&b.ip&&a.ip===b.ip)?0.9:0; factors++;
+  score+=(a.fingerprint&&b.fingerprint&&a.fingerprint===b.fingerprint)?0.95:0; factors++;
+  score+=cosineSim(a,b); factors++;
+  return factors>0?score/factors:0;
+}
+
+function discoverEdges(){
+  const arr=[...state.nodes.values()];
+  // Clear old edges
+  for(const n of arr) n.edges=[];
+  const thresh = state.config.sybilThreshold * 0.5;
+  for(let i=0;i<arr.length;i++){
+    for(let j=i+1;j<arr.length;j++){
+      const sim=computeSimilarity(arr[i],arr[j]);
+      if(sim>=thresh){
+        arr[i].edges.push({target:arr[j].id,weight:sim});
+        arr[j].edges.push({target:arr[i].id,weight:sim});
+      }
+    }
+  }
+}
+
+function propagate(){
+  const ids=[...state.nodes.keys()];
+  const {propagationRounds:rounds, dampingFactor:df}=state.config;
+  for(let r=0;r<rounds;r++){
+    const newT=new Map();
+    for(const id of ids){
+      const n=state.nodes.get(id);
+      if(n.edges.length===0){newT.set(id,n.trust);continue}
+      let nSum=0,wSum=0;
+      for(const e of n.edges){const nb=state.nodes.get(e.target);if(nb){nSum+=nb.trust*e.weight;wSum+=e.weight}}
+      const nAvg=wSum>0?nSum/wSum:n.trust;
+      newT.set(id, df*nAvg+(1-df)*n.trust);
+    }
+    for(const [id,t] of newT){const n=state.nodes.get(id);if(n)n.trust=Math.max(0,Math.min(1,t))}
+  }
+  logEvent('propagation','Trust propagated across '+ids.length+' nodes');
+  updateUI();
+}
+
+function detectSybil(){
+  const visited=new Set();
+  state.clusters=[];
+  // Unflag all first
+  for(const n of state.nodes.values()) n.flagged=false;
+
+  for(const [id] of state.nodes){
+    if(visited.has(id))continue;
+    const cluster=[];
+    const queue=[id];
+    visited.add(id);
+    while(queue.length>0){
+      const cur=queue.shift();
+      const n=state.nodes.get(cur);
+      if(!n)continue;
+      cluster.push(cur);
+      for(const e of n.edges){
+        if(!visited.has(e.target)&&e.weight>=state.config.sybilThreshold){
+          visited.add(e.target);
+          queue.push(e.target);
+        }
+      }
+    }
+    if(cluster.length>=state.config.minClusterSize){
+      let avgT=0,avgS=0,ec=0;
+      const ipSet=new Set(),fpSet=new Set();
+      for(const cid of cluster){
+        const cn=state.nodes.get(cid);
+        if(!cn)continue;
+        avgT+=cn.trust;
+        if(cn.ip)ipSet.add(cn.ip);
+        if(cn.fingerprint)fpSet.add(cn.fingerprint);
+        for(const ce of cn.edges){
+          if(cluster.includes(ce.target)){avgS+=ce.weight;ec++}
+        }
+      }
+      avgT/=cluster.length;
+      avgS=ec>0?avgS/ec:0;
+      const maxE=cluster.length*(cluster.length-1);
+      const density=maxE>0?ec/maxE:0;
+      const confidence=Math.min(1,avgS*0.6+density*0.4);
+      state.clusters.push({id:'sybil-'+Date.now()+'-'+state.clusters.length,nodes:cluster,size:cluster.length,avgTrust:+avgT.toFixed(3),avgSimilarity:+avgS.toFixed(3),density:+density.toFixed(3),confidence:+confidence.toFixed(3),sharedIPs:[...ipSet].length<cluster.length?[...ipSet]:[],sharedFingerprints:[...fpSet].length<cluster.length?[...fpSet]:[]});
+      for(const cid of cluster){const cn=state.nodes.get(cid);if(cn){cn.flagged=true;cn.trust=Math.max(0,cn.trust*(1-confidence*0.5))}}
+      logEvent('sybil','Sybil cluster: '+cluster.length+' nodes, confidence='+confidence.toFixed(2));
+    }
+  }
+  if(state.clusters.length===0) logEvent('info','No Sybil clusters found');
+  updateUI();
+}
+
+function getHealth(){
+  const nodes=[...state.nodes.values()];
+  if(nodes.length===0) return{nodeCount:0,edgeCount:0,avgTrust:0,flaggedCount:0,density:0,clusters:0,healthScore:1};
+  let totalT=0,totalE=0,flagged=0;
+  for(const n of nodes){totalT+=n.trust;totalE+=n.edges.length;if(n.flagged)flagged++}
+  const ec=totalE/2;const maxE=nodes.length*(nodes.length-1)/2;
+  const density=maxE>0?ec/maxE:0;const avgT=totalT/nodes.length;
+  const fr=flagged/nodes.length;
+  const hs=Math.max(0,Math.min(1,avgT*0.4+(1-fr)*0.4+(1-Math.min(density*5,1))*0.2));
+  return{nodeCount:nodes.length,edgeCount:Math.round(ec),avgTrust:+avgT.toFixed(3),flaggedCount:flagged,density:+density.toFixed(3),clusters:state.clusters.length,healthScore:+hs.toFixed(3)};
+}
+
+function getRecommendations(){
+  const h=getHealth();
+  const recs=[];
+  if(h.flaggedCount>0) recs.push({severity:h.flaggedCount>h.nodeCount*0.3?'critical':'warning',msg:h.flaggedCount+' sessions flagged as potential Sybil nodes.',detail:'Flagged ratio: '+Math.round(h.flaggedCount/Math.max(h.nodeCount,1)*100)+'%'});
+  if(h.density>0.5) recs.push({severity:'warning',msg:'Network density unusually high ('+Math.round(h.density*100)+'%).',detail:'Expected <10% for organic traffic'});
+  if(h.avgTrust<0.3) recs.push({severity:'critical',msg:'Average trust critically low ('+Math.round(h.avgTrust*100)+'%).',detail:'Consider increasing CAPTCHA difficulty'});
+  if(state.clusters.length>3) recs.push({severity:'critical',msg:state.clusters.length+' Sybil clusters detected.',detail:'Enable rate limiting and IP throttling'});
+  if(recs.length===0) recs.push({severity:'ok',msg:'Trust network healthy.',detail:'Trust avg: '+Math.round(h.avgTrust*100)+'%, '+h.nodeCount+' sessions'});
+  return recs;
+}
+
+function logEvent(type,msg){
+  state.eventLog.push({ts:Date.now(),type,msg});
+  if(state.eventLog.length>200) state.eventLog.shift();
+}
+
+// ── Scenarios ──────────────────────────────────────────────────
+
+function loadScenario(){
+  resetNetwork();
+  const sc=document.getElementById('scenario').value;
+  const builders={
+    organic(){
+      for(let i=0;i<30;i++){
+        const n=addNode(genId(),{trust:rng(0.5,0.95)});
+        for(let s=0;s<Math.floor(rng(1,8));s++) recordSolve(n.id,{solveMs:rng(2000,8000),mouseEntropy:rng(0.4,1),keystrokePattern:rng(0.3,0.9),scrollBehavior:rng(0.3,0.8)});
+      }
+    },
+    botnet(){
+      // Some organic
+      for(let i=0;i<10;i++){
+        const n=addNode(genId(),{trust:rng(0.5,0.9)});
+        for(let s=0;s<3;s++) recordSolve(n.id,{solveMs:rng(2000,6000),mouseEntropy:rng(0.5,1),keystrokePattern:rng(0.4,0.9),scrollBehavior:rng(0.3,0.8)});
+      }
+      // Bot cluster - same IP, similar behavior
+      const botIp='45.33.32.'+Math.floor(rng(1,255));
+      const botFp=pick(fps);
+      for(let i=0;i<15;i++){
+        const n=addNode(genId(),{trust:rng(0.1,0.4),ip:botIp,fingerprint:botFp});
+        for(let s=0;s<5;s++) recordSolve(n.id,{solveMs:rng(200,500),mouseEntropy:rng(0.01,0.1),keystrokePattern:rng(0.01,0.05),scrollBehavior:rng(0,0.05)});
+      }
+    },
+    sybil(){
+      // Organic
+      for(let i=0;i<12;i++){
+        const n=addNode(genId(),{trust:rng(0.5,0.9)});
+        for(let s=0;s<3;s++) recordSolve(n.id,{solveMs:rng(2500,7000),mouseEntropy:rng(0.5,1),keystrokePattern:rng(0.4,0.9),scrollBehavior:rng(0.3,0.8)});
+      }
+      // Sybil ring - different IPs but same fingerprint + similar timing
+      const sybilFp=pick(fps);
+      const baseSolve=rng(1000,2000);
+      for(let i=0;i<8;i++){
+        const n=addNode(genId(),{trust:rng(0.3,0.6),fingerprint:sybilFp});
+        for(let s=0;s<4;s++) recordSolve(n.id,{solveMs:baseSolve+rng(-100,100),mouseEntropy:rng(0.2,0.35),keystrokePattern:rng(0.15,0.3),scrollBehavior:rng(0.1,0.2)});
+      }
+    },
+    mixed(){
+      // Organic
+      for(let i=0;i<15;i++){
+        const n=addNode(genId(),{trust:rng(0.5,0.95)});
+        for(let s=0;s<4;s++) recordSolve(n.id,{solveMs:rng(2000,8000),mouseEntropy:rng(0.4,1),keystrokePattern:rng(0.3,0.9),scrollBehavior:rng(0.3,0.8)});
+      }
+      // Small bot cluster
+      const botIp2='198.51.100.'+Math.floor(rng(1,255));
+      for(let i=0;i<5;i++){
+        const n=addNode(genId(),{trust:rng(0.15,0.35),ip:botIp2});
+        for(let s=0;s<3;s++) recordSolve(n.id,{solveMs:rng(150,400),mouseEntropy:rng(0.01,0.08),keystrokePattern:rng(0.01,0.06),scrollBehavior:rng(0,0.04)});
+      }
+      // Sybil pair
+      const sf=pick(fps);
+      for(let i=0;i<4;i++){
+        const n=addNode(genId(),{trust:rng(0.3,0.5),fingerprint:sf});
+        for(let s=0;s<3;s++) recordSolve(n.id,{solveMs:rng(1200,1500),mouseEntropy:rng(0.2,0.3),keystrokePattern:rng(0.2,0.3),scrollBehavior:rng(0.15,0.25)});
+      }
+    },
+    coordinated(){
+      // Few organic
+      for(let i=0;i<8;i++){
+        const n=addNode(genId(),{trust:rng(0.6,0.95)});
+        for(let s=0;s<5;s++) recordSolve(n.id,{solveMs:rng(3000,8000),mouseEntropy:rng(0.5,1),keystrokePattern:rng(0.5,1),scrollBehavior:rng(0.4,0.9)});
+      }
+      // 3 coordinated bot clusters
+      for(let c=0;c<3;c++){
+        const cIp=pick(ips)+Math.floor(rng(1,255));
+        const cFp=pick(fps);
+        const cSolve=rng(100,600);
+        for(let i=0;i<6;i++){
+          const n=addNode(genId(),{trust:rng(0.05,0.25),ip:cIp,fingerprint:cFp});
+          for(let s=0;s<4;s++) recordSolve(n.id,{solveMs:cSolve+rng(-50,50),mouseEntropy:rng(0.01,0.06),keystrokePattern:rng(0.01,0.04),scrollBehavior:rng(0,0.03)});
+        }
+      }
+    }
+  };
+  (builders[sc]||builders.organic)();
+  discoverEdges();
+  logEvent('scenario','Loaded scenario: '+sc+' ('+state.nodes.size+' sessions)');
+  updateUI();
+  drawGraph();
+}
+
+function runSimulation(){loadScenario()}
+
+function updateThreshold(){
+  const v=parseFloat(document.getElementById('sybilThresh').value);
+  state.config.sybilThreshold=v;
+  document.getElementById('threshVal').textContent=v.toFixed(2);
+}
+
+function toggleAutoMonitor(){
+  if(state.autoMonitor){
+    clearInterval(state.monitorTimer);
+    state.autoMonitor=false;
+    document.getElementById('monitorLabel').textContent='⚡ Start Auto-Monitor';
+    logEvent('monitor','Auto-monitor stopped');
+  } else {
+    state.autoMonitor=true;
+    document.getElementById('monitorLabel').textContent='⏸ Stop Auto-Monitor';
+    logEvent('monitor','Auto-monitor started');
+    state.monitorTimer=setInterval(()=>{
+      // Add some new sessions
+      for(let i=0;i<Math.floor(rng(1,4));i++){
+        const n=addNode(genId(),{trust:rng(0.3,0.8)});
+        recordSolve(n.id,{solveMs:rng(500,5000),mouseEntropy:rng(0.1,1),keystrokePattern:rng(0.1,1),scrollBehavior:rng(0.1,1)});
+      }
+      discoverEdges();
+      propagate();
+      detectSybil();
+    },3000);
+  }
+  updateUI();
+}
+
+function resetNetwork(){
+  if(state.monitorTimer) clearInterval(state.monitorTimer);
+  state.nodes.clear();
+  state.clusters=[];
+  state.eventLog=[];
+  state.autoMonitor=false;
+  document.getElementById('monitorLabel').textContent='⚡ Start Auto-Monitor';
+  logEvent('reset','Network reset');
+  updateUI();
+  drawGraph();
+}
+
+// ── UI Updates ─────────────────────────────────────────────────
+
+function updateUI(){
+  const h=getHealth();
+  document.getElementById('nodeCount').textContent=h.nodeCount;
+  document.getElementById('edgeCount').textContent=h.edgeCount;
+  const avgEl=document.getElementById('avgTrust');
+  avgEl.textContent=h.nodeCount>0?Math.round(h.avgTrust*100)+'%':'—';
+  avgEl.style.color=h.avgTrust>0.6?'var(--green)':h.avgTrust>0.3?'var(--yellow)':'var(--red)';
+  const hsEl=document.getElementById('healthScore');
+  hsEl.textContent=h.nodeCount>0?Math.round(h.healthScore*100)+'%':'—';
+  hsEl.style.color=h.healthScore>0.7?'var(--green)':h.healthScore>0.4?'var(--yellow)':'var(--red)';
+
+  // Clusters
+  const cl=document.getElementById('clusterList');
+  const cb=document.getElementById('clusterBadge');
+  if(state.clusters.length>0){
+    cb.style.display='inline';cb.textContent=state.clusters.length;
+    cl.innerHTML=state.clusters.map(c=>`<div class="cluster-card"><h3><span>🔴 ${c.id.slice(0,20)}</span><span class="badge badge-crit">${c.size} nodes</span></h3><div class="cluster-meta"><span>Similarity: ${Math.round(c.avgSimilarity*100)}%</span><span>Density: ${Math.round(c.density*100)}%</span><span>Confidence: ${Math.round(c.confidence*100)}%</span></div></div>`).join('');
+  } else {
+    cb.style.display='none';
+    cl.innerHTML='<p style="color:var(--text2);font-size:.8rem">No Sybil clusters detected.</p>';
+  }
+
+  // Recommendations
+  const rl=document.getElementById('recList');
+  const recs=getRecommendations();
+  rl.innerHTML=recs.map(r=>`<div class="rec ${r.severity}"><div class="msg">${r.msg}</div><div class="detail">${r.detail}</div></div>`).join('');
+
+  // Event log
+  const el=document.getElementById('eventLog');
+  el.innerHTML=state.eventLog.slice(-50).reverse().map(e=>{
+    const t=new Date(e.ts);
+    return `<div class="log-entry ${e.type}"><span class="time">${t.toLocaleTimeString()}</span><span class="type">${e.type}</span><span>${e.msg}</span></div>`;
+  }).join('');
+
+  // Node table
+  const tb=document.getElementById('nodeTableBody');
+  const nodes=[...state.nodes.values()].sort((a,b)=>a.trust-b.trust);
+  if(nodes.length===0){
+    tb.innerHTML='<tr><td colspan="8" style="color:var(--text2);text-align:center;padding:20px">No sessions.</td></tr>';
+  } else {
+    tb.innerHTML=nodes.map(n=>{
+      const tc=n.trust>0.6?'var(--green)':n.trust>0.3?'var(--yellow)':'var(--red)';
+      return `<tr><td>${n.id}</td><td><div class="trust-bar"><div class="trust-bar-fill" style="width:${n.trust*100}%;background:${tc}"></div></div> ${Math.round(n.trust*100)}%</td><td>${n.ip||'—'}</td><td>${(n.fingerprint||'—').slice(0,12)}</td><td>${n.solves}</td><td>${n.behavioral.avgSolveMs?Math.round(n.behavioral.avgSolveMs)+'ms':'—'}</td><td>${n.edges.length}</td><td>${n.flagged?'<span class="flagged">⛔ Flagged</span>':'<span class="healthy">✅ OK</span>'}</td></tr>`;
+    }).join('');
+  }
+
+  drawDistribution();
+  drawGraph();
+}
+
+// ── Graph Visualization (Canvas) ───────────────────────────────
+
+function drawGraph(){
+  const canvas=document.getElementById('graphCanvas');
+  const ctx=canvas.getContext('2d');
+  const W=canvas.width=canvas.clientWidth;
+  const H=canvas.height=400;
+  ctx.clearRect(0,0,W,H);
+
+  const nodes=[...state.nodes.values()];
+  if(nodes.length===0){
+    ctx.fillStyle='#94a3b8';ctx.font='14px system-ui';ctx.textAlign='center';
+    ctx.fillText('No data. Simulate a network to visualize.',W/2,H/2);
+    return;
+  }
+
+  // Simple force layout (one pass for static layout)
+  // Assign positions if not set
+  for(const n of nodes){
+    if(!n.x||!n.y){n.x=rng(40,W-40);n.y=rng(40,H-40)}
+  }
+
+  // Quick force simulation (10 iterations)
+  for(let iter=0;iter<15;iter++){
+    // Repulsion
+    for(let i=0;i<nodes.length;i++){
+      for(let j=i+1;j<nodes.length;j++){
+        let dx=nodes[j].x-nodes[i].x;
+        let dy=nodes[j].y-nodes[i].y;
+        let d=Math.sqrt(dx*dx+dy*dy)||1;
+        let f=200/d;
+        nodes[i].x-=dx/d*f*0.05;
+        nodes[i].y-=dy/d*f*0.05;
+        nodes[j].x+=dx/d*f*0.05;
+        nodes[j].y+=dy/d*f*0.05;
+      }
+    }
+    // Attraction (edges)
+    for(const n of nodes){
+      for(const e of n.edges){
+        const t=state.nodes.get(e.target);
+        if(!t)continue;
+        let dx=t.x-n.x;
+        let dy=t.y-n.y;
+        let d=Math.sqrt(dx*dx+dy*dy)||1;
+        let f=(d-80)*0.01*e.weight;
+        n.x+=dx/d*f;
+        n.y+=dy/d*f;
+      }
+    }
+    // Bounds
+    for(const n of nodes){
+      n.x=Math.max(30,Math.min(W-30,n.x));
+      n.y=Math.max(30,Math.min(H-30,n.y));
+    }
+  }
+
+  // Draw edges
+  for(const n of nodes){
+    for(const e of n.edges){
+      const t=state.nodes.get(e.target);
+      if(!t)continue;
+      ctx.beginPath();
+      ctx.moveTo(n.x,n.y);
+      ctx.lineTo(t.x,t.y);
+      const isSybil=e.weight>=state.config.sybilThreshold;
+      ctx.strokeStyle=isSybil?'rgba(239,68,68,0.4)':'rgba(99,102,241,0.15)';
+      ctx.lineWidth=isSybil?2:1;
+      ctx.stroke();
+    }
+  }
+
+  // Draw nodes
+  for(const n of nodes){
+    const r=Math.max(5,Math.min(14,n.solves*1.5+4));
+    ctx.beginPath();
+    ctx.arc(n.x,n.y,r,0,Math.PI*2);
+    if(n.flagged){
+      ctx.fillStyle='rgba(239,68,68,0.8)';
+      ctx.strokeStyle='#ef4444';ctx.lineWidth=2;ctx.stroke();
+    } else {
+      const g=Math.round(n.trust*255);
+      ctx.fillStyle=`rgba(${255-g},${g},100,0.8)`;
+      ctx.strokeStyle='rgba(255,255,255,0.2)';ctx.lineWidth=1;ctx.stroke();
+    }
+    ctx.fill();
+    // Label
+    ctx.fillStyle='rgba(255,255,255,0.6)';
+    ctx.font='9px system-ui';
+    ctx.textAlign='center';
+    ctx.fillText(n.id.slice(-6),n.x,n.y+r+10);
+  }
+
+  // Cluster highlights
+  for(const c of state.clusters){
+    // Find bounding box
+    let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+    for(const nid of c.nodes){
+      const cn=state.nodes.get(nid);
+      if(!cn)continue;
+      minX=Math.min(minX,cn.x);minY=Math.min(minY,cn.y);
+      maxX=Math.max(maxX,cn.x);maxY=Math.max(maxY,cn.y);
+    }
+    const pad=20;
+    ctx.strokeStyle='rgba(239,68,68,0.5)';
+    ctx.lineWidth=2;
+    ctx.setLineDash([5,5]);
+    ctx.strokeRect(minX-pad,minY-pad,maxX-minX+pad*2,maxY-minY+pad*2);
+    ctx.setLineDash([]);
+    ctx.fillStyle='rgba(239,68,68,0.6)';
+    ctx.font='10px system-ui';
+    ctx.fillText('⚠ Sybil Cluster ('+c.size+')',minX-pad+5,minY-pad-5);
+  }
+}
+
+function drawDistribution(){
+  const canvas=document.getElementById('distCanvas');
+  const ctx=canvas.getContext('2d');
+  const W=canvas.width=canvas.clientWidth;
+  const H=canvas.height=400;
+  ctx.clearRect(0,0,W,H);
+
+  const nodes=[...state.nodes.values()];
+  if(nodes.length===0){
+    ctx.fillStyle='#94a3b8';ctx.font='14px system-ui';ctx.textAlign='center';
+    ctx.fillText('No data.',W/2,H/2);
+    return;
+  }
+
+  // Trust histogram
+  const bins=20;
+  const counts=new Array(bins).fill(0);
+  const flaggedCounts=new Array(bins).fill(0);
+  for(const n of nodes){
+    const b=Math.min(bins-1,Math.floor(n.trust*bins));
+    counts[b]++;
+    if(n.flagged) flaggedCounts[b]++;
+  }
+  const maxC=Math.max(...counts,1);
+  const barW=(W-80)/bins;
+  const chartH=H-80;
+
+  // Grid
+  ctx.strokeStyle='rgba(51,65,85,0.3)';
+  ctx.lineWidth=1;
+  for(let i=0;i<=4;i++){
+    const y=40+chartH*(1-i/4);
+    ctx.beginPath();ctx.moveTo(50,y);ctx.lineTo(W-20,y);ctx.stroke();
+    ctx.fillStyle='#94a3b8';ctx.font='10px system-ui';ctx.textAlign='right';
+    ctx.fillText(Math.round(maxC*i/4),45,y+3);
+  }
+
+  // Bars
+  for(let i=0;i<bins;i++){
+    const x=60+i*barW;
+    const h=counts[i]/maxC*chartH;
+    const fh=flaggedCounts[i]/maxC*chartH;
+
+    // Normal bar
+    ctx.fillStyle='rgba(99,102,241,0.6)';
+    ctx.fillRect(x,40+chartH-h,barW-2,h-fh);
+
+    // Flagged portion
+    if(flaggedCounts[i]>0){
+      ctx.fillStyle='rgba(239,68,68,0.7)';
+      ctx.fillRect(x,40+chartH-fh,barW-2,fh);
+    }
+
+    // X label
+    ctx.fillStyle='#94a3b8';ctx.font='9px system-ui';ctx.textAlign='center';
+    ctx.fillText((i/bins*100).toFixed(0)+'%',x+barW/2-1,H-20);
+  }
+
+  // Title
+  ctx.fillStyle='var(--text)';ctx.font='12px system-ui';ctx.textAlign='center';
+  ctx.fillText('Trust Score Distribution',W/2,25);
+
+  // Legend
+  ctx.fillStyle='rgba(99,102,241,0.6)';ctx.fillRect(W-180,10,12,12);
+  ctx.fillStyle='#e2e8f0';ctx.font='10px system-ui';ctx.textAlign='left';ctx.fillText('Normal',W-164,20);
+  ctx.fillStyle='rgba(239,68,68,0.7)';ctx.fillRect(W-100,10,12,12);
+  ctx.fillStyle='#e2e8f0';ctx.fillText('Flagged',W-84,20);
+}
+
+// ── Export ──────────────────────────────────────────────────────
+
+function exportJSON(){
+  const data={
+    nodes:[...state.nodes.values()].map(n=>({id:n.id,trust:n.trust,ip:n.ip,fingerprint:n.fingerprint,solves:n.solves,behavioral:n.behavioral,edges:n.edges,flagged:n.flagged})),
+    clusters:state.clusters,
+    health:getHealth(),
+    recommendations:getRecommendations(),
+    exportedAt:new Date().toISOString()
+  };
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='trust-network-export.json';a.click();
+}
+
+function exportCSV(){
+  const rows=[['Session','Trust','IP','Fingerprint','Solves','AvgSolveMs','Edges','Flagged']];
+  for(const n of state.nodes.values()){
+    rows.push([n.id,n.trust.toFixed(3),n.ip||'',n.fingerprint||'',n.solves,Math.round(n.behavioral.avgSolveMs||0),n.edges.length,n.flagged?'Yes':'No']);
+  }
+  const csv=rows.map(r=>r.join(',')).join('\n');
+  const blob=new Blob([csv],{type:'text/csv'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='trust-network-export.csv';a.click();
+}
+
+// ── Init ───────────────────────────────────────────────────────
+logEvent('init','Trust Network ready');
+updateUI();
+</script>
+</body>
+</html>

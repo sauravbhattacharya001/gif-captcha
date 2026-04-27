@@ -369,19 +369,29 @@ function createCaptchaRateLimiter(options) {
 
   // ── Token Bucket ────────────────────────────────────────────────
 
-  function _checkTokenBucket(key, now) {
+  /**
+   * Initialise (if absent) and refill a token-bucket entry.
+   * Extracted so both check() and consume() share the same init + refill
+   * logic instead of duplicating it.
+   * @param {string} key
+   * @param {number} now
+   * @returns {Object} The entry (store[key])
+   */
+  function _refreshTokenBucket(key, now) {
     var entry = store[key];
     if (!entry) {
       entry = { tokens: capacity, lastRefill: now, lastSeen: now };
       store[key] = entry;
     }
-
-    // Refill tokens based on elapsed time
     var elapsed = (now - entry.lastRefill) / 1000;
-    var newTokens = elapsed * refillRate;
-    entry.tokens = Math.min(capacity, entry.tokens + newTokens);
+    entry.tokens = Math.min(capacity, entry.tokens + elapsed * refillRate);
     entry.lastRefill = now;
     entry.lastSeen = now;
+    return entry;
+  }
+
+  function _checkTokenBucket(key, now) {
+    var entry = _refreshTokenBucket(key, now);
 
     if (entry.tokens < 1) {
       // Rejected — compute wait until 1 token available
@@ -411,19 +421,29 @@ function createCaptchaRateLimiter(options) {
 
   // ── Leaky Bucket ────────────────────────────────────────────────
 
-  function _checkLeakyBucket(key, now) {
+  /**
+   * Initialise (if absent) and drain a leaky-bucket entry.
+   * Extracted so both check() and consume() share the same init + leak
+   * logic instead of duplicating it.
+   * @param {string} key
+   * @param {number} now
+   * @returns {Object} The entry (store[key])
+   */
+  function _refreshLeakyBucket(key, now) {
     var entry = store[key];
     if (!entry) {
       entry = { water: 0, lastLeak: now, lastSeen: now };
       store[key] = entry;
     }
-
-    // Leak water based on elapsed time
     var elapsed = (now - entry.lastLeak) / 1000;
-    var leaked = elapsed * leakRate;
-    entry.water = Math.max(0, entry.water - leaked);
+    entry.water = Math.max(0, entry.water - elapsed * leakRate);
     entry.lastLeak = now;
     entry.lastSeen = now;
+    return entry;
+  }
+
+  function _checkLeakyBucket(key, now) {
+    var entry = _refreshLeakyBucket(key, now);
 
     if (entry.water + 1 > queueSize) {
       // Queue full — reject (use +1 to prevent fractional water overflow,
@@ -512,19 +532,8 @@ function createCaptchaRateLimiter(options) {
    * own timestamp recorded, but the per-iteration cost is lower thanks
    * to the startIdx optimisation above.
    *
-   * @param {string} key - Identifier
-   * @param {number} count - Number of requests to consume
-   * @param {number} [now] - Current timestamp
-   * @returns {Object} Result for the batch
-   */
-  /**
-   * Consume multiple tokens/requests at once (batch check).
-   *
-   * For token-bucket and leaky-bucket algorithms this runs in O(1) by
-   * doing the arithmetic directly instead of looping N times through
-   * check().  Sliding-window still loops because each request needs its
-   * own timestamp recorded, but the per-iteration cost is lower thanks
-   * to the startIdx optimisation above.
+   * Uses the shared _refreshTokenBucket / _refreshLeakyBucket helpers
+   * to avoid duplicating init + refill/leak logic from check().
    *
    * @param {string} key - Identifier
    * @param {number} count - Number of requests to consume
@@ -549,15 +558,7 @@ function createCaptchaRateLimiter(options) {
 
     // ── O(1) path for token-bucket ──
     if (algorithm === "token-bucket") {
-      var entry = store[key];
-      if (!entry) {
-        entry = { tokens: capacity, lastRefill: now, lastSeen: now };
-        store[key] = entry;
-      }
-      var elapsed = (now - entry.lastRefill) / 1000;
-      entry.tokens = Math.min(capacity, entry.tokens + elapsed * refillRate);
-      entry.lastRefill = now;
-      entry.lastSeen = now;
+      var entry = _refreshTokenBucket(key, now);
 
       if (Math.floor(entry.tokens) < count) {
         var retryMs = Math.ceil(((count - entry.tokens) / refillRate) * 1000);
@@ -582,15 +583,7 @@ function createCaptchaRateLimiter(options) {
 
     // ── O(1) path for leaky-bucket ──
     if (algorithm === "leaky-bucket") {
-      var entryL = store[key];
-      if (!entryL) {
-        entryL = { water: 0, lastLeak: now, lastSeen: now };
-        store[key] = entryL;
-      }
-      var elapsedL = (now - entryL.lastLeak) / 1000;
-      entryL.water = Math.max(0, entryL.water - elapsedL * leakRate);
-      entryL.lastLeak = now;
-      entryL.lastSeen = now;
+      var entryL = _refreshLeakyBucket(key, now);
 
       if (entryL.water + count > queueSize) {
         var excess = entryL.water + count - queueSize;

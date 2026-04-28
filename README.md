@@ -120,26 +120,198 @@ npx gif-captcha serve    # Launch local demo server
 npx gif-captcha validate # Validate challenge JSON files
 ```
 
+## Architecture
+
+The library is organized into five functional layers, each composable and independently usable:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                  Application Layer                       │
+│  Express/Fastify middleware · Browser widget · CLI       │
+├─────────────────────────────────────────────────────────┤
+│                  Orchestration Layer                     │
+│  ChallengeRouter · ChallengeAutopilot · ABExperiment    │
+│  ChallengeRotationScheduler · ChallengePoolManager      │
+├─────────────────────────────────────────────────────────┤
+│               Security & Trust Layer                    │
+│  BotDetector · TrustScoreEngine · FraudRingDetector     │
+│  GeoRiskScorer · RateLimiter · HoneypotInjector         │
+│  TokenVerifier · ReplayDetector · ProofOfWork           │
+├─────────────────────────────────────────────────────────┤
+│              Analytics & Monitoring Layer                │
+│  MetricsAggregator · HealthMonitor · TrafficAnalyzer    │
+│  AuditTrail · IncidentManager · ComplianceReporter      │
+│  StatsCollector · FunnelAnalyzer · ResponseTimeProfiler  │
+├─────────────────────────────────────────────────────────┤
+│                    Core Layer                           │
+│  createChallenge · validateAnswer · pickChallenges       │
+│  sanitize · textSimilarity · loadGifWithRetry            │
+└─────────────────────────────────────────────────────────┘
+```
+
+See [docs/architecture.html](https://sauravbhattacharya001.github.io/gif-captcha/docs/architecture.html) for detailed module interactions and data flow diagrams.
+
 ## API Reference
 
-The library exports 13 factory functions. See [API.md](API.md) for full documentation.
+The library exports **80+ functions and factories** across seven domains. See [API.md](API.md) for full documentation.
+
+### Core — Challenge Lifecycle
 
 | Function | Purpose |
 |----------|---------|
-| `createChallenge` | Build a CAPTCHA challenge object |
-| `validateAnswer` | Fuzzy-match user answer against expected answer |
-| `createPoolManager` | Manage challenge pool lifecycle |
-| `createSessionManager` | Track user sessions with risk scoring |
-| `createBotDetector` | Behavioral bot detection (timing, mouse, keyboard) |
-| `createTokenVerifier` | Cryptographic CAPTCHA token verification |
-| `createReputationTracker` | Track user reputation across sessions |
-| `createChallengeRouter` | Route challenges by difficulty and risk |
-| `createSetAnalyzer` | Analyze challenge set quality and coverage |
-| `createDifficultyCalibrator` | Auto-calibrate challenge difficulty |
-| `createSecurityScorer` | Score CAPTCHA security posture |
-| `createAttemptTracker` | Track and rate-limit solve attempts |
+| `createChallenge` | Build a CAPTCHA challenge object with metadata |
+| `validateAnswer` | Fuzzy-match user answer via Jaccard similarity + keyword matching |
 | `pickChallenges` | Randomly select N challenges from a pool |
+| `textSimilarity` | Compute Jaccard similarity between two text strings |
 | `sanitize` | Sanitize untrusted input for safe HTML rendering |
+| `createSanitizer` | Create a reusable sanitizer with custom allow-lists |
+| `isSafeUrl` | Validate URLs against protocol and domain allow-lists |
+| `loadGifWithRetry` | Load a GIF into a DOM container with exponential backoff |
+| `secureRandomInt` | Cryptographically secure random integer generation |
+| `installRoundRectPolyfill` | Canvas roundRect polyfill for older browsers |
+
+### Challenge Management
+
+| Function | Purpose |
+|----------|---------|
+| `createPoolManager` | Manage challenge pool lifecycle (add, retire, refresh) |
+| `createChallengePoolManager` | Extended pool management with capacity planning |
+| `createChallengeRouter` | Route challenges by difficulty, risk level, and user history |
+| `createChallengeRotationScheduler` | Schedule automatic challenge rotation and retirement |
+| `createChallengeAutopilot` | Autonomous challenge selection with adaptive difficulty |
+| `createChallengeDecayManager` | Track challenge effectiveness decay over time |
+| `createChallengeTemplateEngine` | Generate challenges from parameterized templates |
+| `createSetAnalyzer` | Analyze challenge set quality, diversity, and coverage |
+| `createDifficultyCalibrator` | Auto-calibrate challenge difficulty from solve data |
+| `createAdaptiveDifficultyTuner` | Real-time difficulty tuning based on user performance |
+| `analyzeDiversity` / `shannonEntropy` / `simpsonsIndex` / `giniSimpson` | Statistical diversity metrics for challenge sets |
+
+### Security & Bot Detection
+
+| Function | Purpose |
+|----------|---------|
+| `createBotDetector` | Behavioral bot detection (timing, mouse, keyboard patterns) |
+| `createTokenVerifier` | Cryptographic CAPTCHA token generation and verification |
+| `createRateLimiter` | Token-bucket rate limiting for solve attempts |
+| `createCaptchaRateLimiter` | Advanced rate limiting with sliding windows and IP tracking |
+| `createFraudRingDetector` | Detect coordinated fraud via session correlation |
+| `createGeoRiskScorer` | Geographic risk scoring by country and region |
+| `createHoneypotInjector` | Inject hidden honeypot fields to trap bots |
+| `createProofOfWork` | Proof-of-work challenge generation and verification |
+| `createClientFingerprinter` | Browser/device fingerprinting for session binding |
+| `createBotSignatureDatabase` | Known bot signature matching and updates |
+| `createSecurityScorer` | Score overall CAPTCHA security posture |
+| `createCaptchaStrengthScorer` | Score individual challenge cryptographic strength |
+| `createReplayDetector` | Detect replayed or reused challenge tokens |
+
+### Session & Trust
+
+| Function | Purpose |
+|----------|---------|
+| `createSessionManager` | Track user sessions with risk scoring |
+| `createReputationTracker` | Track user reputation across sessions |
+| `createTrustScoreEngine` | Multi-signal trust scoring (behavior, history, geo) |
+| `createSessionRiskAggregator` | Aggregate risk signals across a session |
+| `createAttemptTracker` | Track and rate-limit per-user solve attempts |
+| `createBehavioralBiometrics` | Mouse/keyboard/touch biometric profiling |
+| `createDeviceCohortAnalyzer` | Group and analyze sessions by device characteristics |
+| `createSolvePatternFingerprinter` | Fingerprint solve patterns to detect automation |
+| `createAdaptiveTimeout` | Dynamic timeout adjustment based on challenge complexity |
+
+### Analytics & Monitoring
+
+| Function | Purpose |
+|----------|---------|
+| `createMetricsAggregator` | Aggregate solve rates, timing, and error metrics |
+| `createCaptchaHealthMonitor` | Monitor system health with alerting thresholds |
+| `createCaptchaTrafficAnalyzer` | Analyze traffic patterns and detect anomalies |
+| `createAnomalyDetector` | Statistical anomaly detection in CAPTCHA metrics |
+| `createStatsCollector` | Collect and export per-challenge statistics |
+| `createResponseAnalyzer` | Analyze user response quality and patterns |
+| `createResponseTimeProfiler` | Profile solve time distributions |
+| `createFunnelAnalyzer` | Track conversion through the solve funnel |
+| `createChallengeAnalytics` | Per-challenge performance analytics |
+| `createCaptchaFatigueDetector` | Detect user fatigue from repeated challenges |
+| `createCapacityPlanner` | Forecast infrastructure capacity needs |
+| `createLoadTester` / `createCaptchaLoadTester` | Simulate load and measure throughput |
+
+### Compliance & Audit
+
+| Function | Purpose |
+|----------|---------|
+| `createAuditTrail` | Tamper-evident audit trail with hash chaining |
+| `createAuditLog` | Structured audit logging with retention policies |
+| `createComplianceReporter` | GDPR/CCPA/SOC2 compliance report generation |
+| `createAccessibilityAuditor` | WCAG 2.1 compliance evaluation |
+| `createAccessibilityAnalyzer` | Detailed accessibility gap analysis |
+| `createIncidentManager` | Security incident tracking and response |
+| `createIncidentCorrelator` | Correlate incidents across sessions and time |
+| `createSessionRecorder` / `createSessionReplay` | Record and replay user sessions |
+| `WebhookDispatcher` | Send event notifications to external webhooks |
+
+### Experimentation & Operations
+
+| Function | Purpose |
+|----------|---------|
+| `createABExperimentRunner` | Run A/B experiments with statistical significance |
+| `createI18n` | Internationalization for challenge text and UI |
+| `createCaptchaLocalizationManager` | Locale-aware challenge localization |
+| `createConfigValidator` | Validate configuration objects against schemas |
+| `createExportFormatter` | Export data in CSV, JSON, and Markdown formats |
+| `createEventEmitter` | Internal pub/sub event bus for module communication |
+| `csvEscape` / `csvRow` | CSV formatting utilities |
+
+## Server Integration
+
+### Express Middleware
+
+```javascript
+const express = require("express");
+const gifCaptcha = require("gif-captcha");
+
+const app = express();
+const sessions = gifCaptcha.createSessionManager({ maxSessions: 10000 });
+const rateLimiter = gifCaptcha.createRateLimiter({ maxAttempts: 5, windowMs: 60000 });
+const tokenVerifier = gifCaptcha.createTokenVerifier({ secret: process.env.CAPTCHA_SECRET });
+
+// Issue a challenge
+app.get("/captcha/challenge", (req, res) => {
+  const session = sessions.create(req.ip);
+  const challenge = gifCaptcha.pickChallenges(pool, 1)[0];
+  const token = tokenVerifier.sign({ sessionId: session.id, challengeId: challenge.id });
+  res.json({ gifUrl: challenge.gifUrl, token });
+});
+
+// Validate the answer
+app.post("/captcha/verify", express.json(), (req, res) => {
+  if (!rateLimiter.check(req.ip)) return res.status(429).json({ error: "Too many attempts" });
+  const payload = tokenVerifier.verify(req.body.token);
+  if (!payload) return res.status(400).json({ error: "Invalid token" });
+  const result = gifCaptcha.validateAnswer(req.body.answer, challenges[payload.challengeId].humanAnswer);
+  res.json({ passed: result.passed, score: result.score });
+});
+```
+
+### Fastify Plugin
+
+```javascript
+const gifCaptcha = require("gif-captcha");
+
+async function captchaPlugin(fastify) {
+  const botDetector = gifCaptcha.createBotDetector({ honeypotFields: ["email2"] });
+  const trust = gifCaptcha.createTrustScoreEngine();
+
+  fastify.addHook("preHandler", async (request, reply) => {
+    if (request.routeOptions.config?.captcha) {
+      const botScore = botDetector.analyze(request.body?._behavioral);
+      const trustScore = trust.evaluate(request.ip, request.headers);
+      if (botScore.isBot || trustScore < 0.3) {
+        reply.code(403).send({ error: "Blocked" });
+      }
+    }
+  });
+}
+```
 
 ## Interactive Platform
 

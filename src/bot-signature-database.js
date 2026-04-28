@@ -40,7 +40,13 @@ function createBotSignatureDatabase(options) {
   // ── Storage ─────────────────────────────────────────────────────
   var signatures = Object.create(null);   // id → signature
   var signatureCount = 0;
-  var history = [];                        // match results
+  // Ring buffer for match history — avoids O(n) Array.shift() on
+  // every matchSession call when history is full.  With maxHistory=1000
+  // and high request volume, the original shift() moved 999 pointers
+  // per call; the ring buffer overwrites in O(1).
+  var _historyBuf = new Array(maxHistory);
+  var _historyLen = 0;       // entries written (capped at maxHistory)
+  var _historyWriteIdx = 0;  // next write slot (wraps around)
   var stats = { totalMatches: 0, totalChecks: 0, byCategory: Object.create(null) };
 
   // ── Bot Categories ──────────────────────────────────────────────
@@ -392,31 +398,94 @@ function createBotSignatureDatabase(options) {
       checkedAt: Date.now()
     };
 
-    // Record history
-    history.push({
+    // Record history (ring buffer — O(1) insert vs O(n) shift)
+    _historyBuf[_historyWriteIdx] = {
       sessionProfile: Object.assign({}, sessionProfile),
       result: result,
       timestamp: Date.now()
-    });
-    if (history.length > maxHistory) history.shift();
+    };
+    _historyWriteIdx = (_historyWriteIdx + 1) % maxHistory;
+    if (_historyLen < maxHistory) _historyLen++;
 
     return result;
   }
 
+  /**
+   * Batch-match multiple session profiles against the signature database.
+   *
+   * Optimised: pre-computes the signature id list and passes it through
+   * to an internal match path, avoiding Object.keys(signatures) allocation
+   * per profile (previously O(batchSize × signatureCount) key-array allocs).
+   * Also computes matched count inline instead of a second .filter() pass.
+   */
   function batchMatch(sessionProfiles, opts) {
     if (!Array.isArray(sessionProfiles)) throw new Error('Expected array of session profiles');
+    opts = opts || {};
+    var threshold = opts.threshold != null ? opts.threshold : matchThreshold;
+    var topN = opts.topN != null && opts.topN > 0 ? opts.topN : 5;
+    var categoryFilter = opts.category || null;
+
+    // Pre-compute signature id list once for the entire batch
+    var ids = Object.keys(signatures);
+
     var results = [];
+    var matchedCount = 0;
+
     for (var i = 0; i < sessionProfiles.length; i++) {
-      results.push({
-        index: i,
-        result: matchSession(sessionProfiles[i], opts)
-      });
+      var sessionProfile = sessionProfiles[i];
+      var matches = [];
+
+      for (var j = 0; j < ids.length; j++) {
+        var sig = signatures[ids[j]];
+        if (categoryFilter && sig.category !== categoryFilter) continue;
+
+        var similarity = profileSimilarity(sessionProfile, sig.profile);
+        if (similarity >= threshold) {
+          matches.push({
+            signatureId: sig.id,
+            signatureName: sig.name,
+            category: sig.category,
+            severity: sig.severity,
+            similarity: Math.round(similarity * 1000) / 1000,
+            description: sig.description
+          });
+          sig.matchCount++;
+          sig.lastMatchedAt = Date.now();
+          stats.totalMatches++;
+          stats.byCategory[sig.category] = (stats.byCategory[sig.category] || 0) + 1;
+        }
+      }
+
+      stats.totalChecks++;
+
+      matches.sort(function (a, b) { return b.similarity - a.similarity; });
+      if (matches.length > topN) matches = matches.slice(0, topN);
+
+      var result = {
+        matched: matches.length > 0,
+        matchCount: matches.length,
+        topMatch: matches.length > 0 ? matches[0] : null,
+        matches: matches,
+        checkedAt: Date.now()
+      };
+
+      // Ring-buffer history write
+      _historyBuf[_historyWriteIdx] = {
+        sessionProfile: Object.assign({}, sessionProfile),
+        result: result,
+        timestamp: Date.now()
+      };
+      _historyWriteIdx = (_historyWriteIdx + 1) % maxHistory;
+      if (_historyLen < maxHistory) _historyLen++;
+
+      if (result.matched) matchedCount++;
+      results.push({ index: i, result: result });
     }
-    var matched = results.filter(function (r) { return r.result.matched; });
+
     return {
       total: results.length,
-      matchedCount: matched.length,
-      matchRate: results.length > 0 ? Math.round((matched.length / results.length) * 1000) / 1000 : 0,
+      matchedCount: matchedCount,
+      matchRate: results.length > 0 ? Math.round((matchedCount / results.length) * 1000) / 1000 : 0,
       results: results
     };
   }
@@ -439,22 +508,33 @@ function createBotSignatureDatabase(options) {
       matchesByCategory: Object.assign({}, stats.byCategory),
       signaturesByCategory: categoryCounts,
       signaturesBySeverity: severityCounts,
-      historySize: history.length
+      historySize: _historyLen
     };
   }
 
+  /**
+   * Get match history in chronological order.
+   * Reads from the ring buffer without copying the entire array.
+   */
   function getHistory(opts) {
     opts = opts || {};
-    var limit = opts.limit != null && opts.limit > 0 ? opts.limit : history.length;
+    var limit = opts.limit != null && opts.limit > 0 ? opts.limit : _historyLen;
     var onlyMatched = opts.onlyMatched === true;
-    var result = history;
-    if (onlyMatched) {
-      result = result.filter(function (h) { return h.result.matched; });
+
+    // Reconstruct chronological order from ring buffer
+    var ordered = [];
+    var start = _historyLen < maxHistory ? 0 : _historyWriteIdx;
+    for (var i = 0; i < _historyLen; i++) {
+      var idx = (start + i) % maxHistory;
+      var entry = _historyBuf[idx];
+      if (onlyMatched && !entry.result.matched) continue;
+      ordered.push(entry);
     }
-    if (limit < result.length) {
-      result = result.slice(result.length - limit);
+
+    if (limit < ordered.length) {
+      ordered = ordered.slice(ordered.length - limit);
     }
-    return result;
+    return ordered;
   }
 
   function exportDatabase() {
@@ -506,7 +586,9 @@ function createBotSignatureDatabase(options) {
   function reset() {
     signatures = Object.create(null);
     signatureCount = 0;
-    history = [];
+    _historyBuf = new Array(maxHistory);
+    _historyLen = 0;
+    _historyWriteIdx = 0;
     stats = { totalMatches: 0, totalChecks: 0, byCategory: Object.create(null) };
     if (loadDefaults) {
       for (var i = 0; i < defaults.length; i++) {

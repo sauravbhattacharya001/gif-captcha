@@ -14,17 +14,30 @@ on:
 permissions:
   contents: read
   id-token: write
+  packages: write
 
 jobs:
-  publish:
+  publish-npm:
+    name: Publish to npm Registry
     runs-on: ubuntu-latest
+    environment: npm
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v4
         with:
           node-version: "22"
           registry-url: "https://registry.npmjs.org"
+
+      - name: Validate version matches tag
+        if: github.event_name == 'release'
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          PKG_VERSION="v$(node -p "require('./package.json').version")"
+          if [ "$TAG" != "$PKG_VERSION" ]; then
+            echo "::error::Tag $TAG does not match package.json version $PKG_VERSION"
+            exit 1
+          fi
 
       - name: Install dependencies
         run: npm ci
@@ -33,10 +46,68 @@ jobs:
         run: npm test
 
       - name: Verify package contents
-        run: npm pack --dry-run
+        run: |
+          npm pack --dry-run 2>&1 | tee /tmp/pack-output.txt
+          echo "### 📦 Package Contents" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat /tmp/pack-output.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
 
-      - name: Publish to npm
-        if: ${{ github.event.inputs.dry-run != 'true' }}
-        run: npm publish --access public
+      - name: Check package size
+        run: |
+          TARBALL=$(npm pack 2>/dev/null)
+          SIZE=$(wc -c < "$TARBALL")
+          SIZE_KB=$((SIZE / 1024))
+          echo "Package size: ${SIZE_KB}KB"
+          echo "### 📏 Package Size: ${SIZE_KB}KB" >> $GITHUB_STEP_SUMMARY
+          rm -f "$TARBALL"
+          # Warn if package exceeds 500KB
+          if [ "$SIZE" -gt 512000 ]; then
+            echo "::warning::Package is ${SIZE_KB}KB — consider reviewing included files"
+          fi
+
+      - name: Publish to npm (with provenance)
+        if: github.event.inputs.dry-run != 'true'
+        run: npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish dry-run
+        if: github.event.inputs.dry-run == 'true'
+        run: |
+          echo "::notice::Dry run — skipping actual publish"
+          npm publish --access public --dry-run
+
+  publish-gpr:
+    name: Publish to GitHub Packages
+    runs-on: ubuntu-latest
+    needs: publish-npm
+    if: github.event_name == 'release'
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://npm.pkg.github.com"
+          scope: "@sauravbhattacharya001"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Scope package for GitHub Packages
+        run: |
+          node -e "
+            const pkg = require('./package.json');
+            pkg.name = '@sauravbhattacharya001/gif-captcha';
+            pkg.publishConfig = { registry: 'https://npm.pkg.github.com' };
+            require('fs').writeFileSync('package.json', JSON.stringify(pkg, null, 4) + '\n');
+          "
+
+      - name: Publish to GitHub Packages
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

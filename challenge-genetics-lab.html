@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Challenge Genetics Lab — gif-captcha</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+:root { --accent: #8b5cf6; --accent2: #06b6d4; --danger: #ef4444; --success: #22c55e; --warn: #f59e0b; }
+body { font-family: system-ui, -apple-system, sans-serif; margin: 0; padding: 20px; background: #0f172a; color: #e2e8f0; }
+h1 { color: #f8fafc; margin-bottom: 4px; }
+h1 span { font-size: 0.5em; color: #94a3b8; font-weight: normal; }
+.subtitle { color: #94a3b8; margin-bottom: 24px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-bottom: 24px; }
+.card { background: #1e293b; border-radius: 12px; padding: 20px; border: 1px solid #334155; }
+.card h2 { margin: 0 0 12px; font-size: 1.1em; color: #f1f5f9; }
+.card h3 { margin: 8px 0; font-size: 0.95em; color: #cbd5e1; }
+.controls { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+button { background: var(--accent); color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 0.9em; }
+button:hover { opacity: 0.85; }
+button.secondary { background: #475569; }
+button.danger { background: var(--danger); }
+table { width: 100%; border-collapse: collapse; font-size: 0.85em; }
+th, td { padding: 6px 10px; text-align: left; border-bottom: 1px solid #334155; }
+th { color: #94a3b8; font-weight: 600; }
+.mono { font-family: 'SF Mono', 'Cascadia Code', monospace; font-size: 0.85em; }
+.gauge-container { display: flex; align-items: center; gap: 12px; }
+.gauge { width: 120px; height: 120px; position: relative; }
+.gauge svg { width: 100%; height: 100%; }
+.gauge-label { font-size: 1.8em; font-weight: 700; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); }
+.risk-low { color: var(--success); }
+.risk-medium { color: var(--warn); }
+.risk-high { color: #f97316; }
+.risk-critical { color: var(--danger); }
+.bar { height: 6px; background: #334155; border-radius: 3px; overflow: hidden; margin: 2px 0; }
+.bar-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
+.trait-row { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+.trait-name { width: 120px; font-size: 0.85em; color: #94a3b8; }
+.trait-bar { flex: 1; }
+.trait-val { width: 40px; text-align: right; font-size: 0.85em; color: #cbd5e1; }
+.chart { width: 100%; height: 200px; position: relative; }
+.chart svg { width: 100%; height: 100%; }
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+.stat { text-align: center; }
+.stat-value { font-size: 1.6em; font-weight: 700; color: var(--accent); }
+.stat-label { font-size: 0.8em; color: #94a3b8; }
+.log { max-height: 200px; overflow-y: auto; font-size: 0.82em; color: #94a3b8; padding: 8px; background: #0f172a; border-radius: 8px; }
+.log-entry { padding: 2px 0; border-bottom: 1px solid #1e293b; }
+#lineage-tree { font-family: monospace; font-size: 0.82em; white-space: pre; color: #cbd5e1; max-height: 300px; overflow-y: auto; }
+</style>
+</head>
+<body>
+<h1>🧬 Challenge Genetics Lab <span>gif-captcha</span></h1>
+<p class="subtitle">Autonomous CAPTCHA challenge evolution via genetic algorithms</p>
+
+<div class="controls">
+  <button onclick="doSeed()">🌱 Seed Population</button>
+  <button onclick="doSimulate()">📊 Simulate Outcomes</button>
+  <button onclick="doEvolve()">🧬 Evolve Generation</button>
+  <button onclick="doEvolve5()">⚡ Evolve ×5</button>
+  <button class="secondary" onclick="doInjectMutant()">💉 Inject Mutant</button>
+  <button class="secondary" onclick="doExport()">💾 Export State</button>
+  <button class="danger" onclick="doReset()">🔄 Reset</button>
+</div>
+
+<div class="stats-grid" id="top-stats">
+  <div class="stat"><div class="stat-value" id="gen-count">0</div><div class="stat-label">Generation</div></div>
+  <div class="stat"><div class="stat-value" id="pop-count">0</div><div class="stat-label">Population</div></div>
+  <div class="stat"><div class="stat-value" id="avg-fitness">—</div><div class="stat-label">Avg Fitness</div></div>
+  <div class="stat"><div class="stat-value" id="best-fitness">—</div><div class="stat-label">Best Fitness</div></div>
+  <div class="stat"><div class="stat-value" id="diversity-val">—</div><div class="stat-label">Diversity</div></div>
+</div>
+
+<div class="grid" style="margin-top: 20px;">
+  <!-- Extinction Risk -->
+  <div class="card">
+    <h2>🛡️ Extinction Risk</h2>
+    <div class="gauge-container">
+      <div class="gauge">
+        <svg viewBox="0 0 120 120">
+          <circle cx="60" cy="60" r="50" fill="none" stroke="#334155" stroke-width="10"/>
+          <circle id="risk-arc" cx="60" cy="60" r="50" fill="none" stroke="var(--success)" stroke-width="10"
+            stroke-dasharray="314" stroke-dashoffset="314" stroke-linecap="round"
+            transform="rotate(-90 60 60)" style="transition: all 0.5s;"/>
+        </svg>
+        <div class="gauge-label" id="risk-label">—</div>
+      </div>
+      <div>
+        <div id="risk-level" style="font-size: 1.1em; font-weight: 600;">—</div>
+        <div id="risk-rec" style="font-size: 0.82em; color: #94a3b8; margin-top: 4px;">Seed a population to begin</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Trait Distributions -->
+  <div class="card">
+    <h2>📐 Trait Distributions</h2>
+    <div id="trait-dist"></div>
+  </div>
+
+  <!-- Fitness Chart -->
+  <div class="card" style="grid-column: span 2;">
+    <h2>📈 Fitness Over Generations</h2>
+    <div class="chart" id="fitness-chart"></div>
+  </div>
+
+  <!-- Population Table -->
+  <div class="card" style="grid-column: span 2;">
+    <h2>👥 Population</h2>
+    <div style="max-height: 400px; overflow-y: auto;">
+      <table>
+        <thead><tr>
+          <th>ID</th><th>Gen</th><th>Fitness</th><th>Human%</th><th>Bot Fail%</th><th>Trials</th><th>Lineage</th>
+        </tr></thead>
+        <tbody id="pop-table"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Lineage Explorer -->
+  <div class="card">
+    <h2>🌳 Lineage Explorer</h2>
+    <div id="lineage-tree">Select a challenge from the population table</div>
+  </div>
+
+  <!-- Event Log -->
+  <div class="card">
+    <h2>📋 Evolution Log</h2>
+    <div class="log" id="evo-log"></div>
+  </div>
+</div>
+
+<script src="shared.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  // ── Minimal in-browser ChallengeGeneticsLab ──────────────────────
+
+  var TRAITS = ["complexity","distraction","timeWindow","ambiguity","frameCount","colorEntropy","motionIntensity","textObfuscation"];
+
+  function rand() { var a = new Uint32Array(1); crypto.getRandomValues(a); return a[0] / 4294967296; }
+  function randInt(n) { return Math.floor(rand() * n); }
+  function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+  function mean(arr) { if (!arr.length) return 0; var s = 0; for (var i = 0; i < arr.length; i++) s += arr[i]; return s / arr.length; }
+  function stddev(arr) { if (arr.length < 2) return 0; var m = mean(arr); var s = 0; for (var i = 0; i < arr.length; i++) { var d = arr[i] - m; s += d * d; } return Math.sqrt(s / (arr.length - 1)); }
+  function genId() { var c = "0123456789abcdef", s = ""; for (var i = 0; i < 12; i++) s += c[randInt(16)]; return s; }
+  function gaussian() { var u1 = rand() || 1e-10; return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * rand()); }
+  function dist(a, b) { var s = 0; for (var i = 0; i < TRAITS.length; i++) { var d = (a[TRAITS[i]]||0) - (b[TRAITS[i]]||0); s += d*d; } return Math.sqrt(s); }
+  function rndGenome() { var g = {}; for (var i = 0; i < TRAITS.length; i++) g[TRAITS[i]] = rand(); return g; }
+  function cloneG(g) { var c = {}; for (var i = 0; i < TRAITS.length; i++) c[TRAITS[i]] = g[TRAITS[i]]; return c; }
+
+  var lab = {
+    popSize: 30, elite: 3, tournSize: 3, mutRate: 0.15, mutStr: 0.1, crossRate: 0.7,
+    minTrials: 5, targetHP: 0.82, targetTime: 8000,
+    wBot: 0.4, wHuman: 0.3, wTime: 0.2, wDiv: 0.1,
+    gen: 0, challenges: {}, outcomes: {}, population: [], history: []
+  };
+
+  function seed() {
+    lab.challenges = {}; lab.outcomes = {}; lab.population = []; lab.gen = 0; lab.history = [];
+    for (var i = 0; i < lab.popSize; i++) {
+      var id = genId();
+      lab.challenges[id] = { id: id, genome: rndGenome(), gen: 0, parents: [], ts: Date.now() };
+      lab.outcomes[id] = { human: [], bot: [] };
+      lab.population.push(id);
+    }
+    logMsg("🌱 Seeded " + lab.popSize + " challenges");
+  }
+
+  function simulate() {
+    for (var i = 0; i < lab.population.length; i++) {
+      var id = lab.population[i];
+      var g = lab.challenges[id].genome;
+      var n = 5 + randInt(10);
+      for (var j = 0; j < n; j++) {
+        var isHuman = rand() < 0.7;
+        var passed;
+        if (isHuman) {
+          var diff = g.complexity * 0.3 + g.ambiguity * 0.3 + g.textObfuscation * 0.2 + g.distraction * 0.2;
+          passed = rand() < (0.95 - diff * 0.4);
+        } else {
+          var hard = g.motionIntensity * 0.25 + g.colorEntropy * 0.2 + g.frameCount * 0.2 + g.distraction * 0.15 + g.complexity * 0.2;
+          passed = rand() < (0.3 - hard * 0.25);
+        }
+        var time = isHuman ? 3000 + rand() * 15000 : 200 + rand() * 2000;
+        var bucket = isHuman ? "human" : "bot";
+        lab.outcomes[id][bucket].push({ passed: passed, time: time });
+      }
+    }
+    logMsg("📊 Simulated outcomes for " + lab.population.length + " challenges");
+  }
+
+  function fitness(id) {
+    var o = lab.outcomes[id];
+    if (!o) return null;
+    var total = o.human.length + o.bot.length;
+    if (total < lab.minTrials) return null;
+    var hp = 0, ht = [];
+    for (var i = 0; i < o.human.length; i++) { if (o.human[i].passed) hp++; ht.push(o.human[i].time); }
+    var hpr = o.human.length > 0 ? hp / o.human.length : 0;
+    var bf = 0;
+    for (var j = 0; j < o.bot.length; j++) { if (!o.bot[j].passed) bf++; }
+    var bfr = o.bot.length > 0 ? bf / o.bot.length : 1;
+    var avgT = ht.length > 0 ? mean(ht) : lab.targetTime;
+    var sBot = clamp(bfr, 0, 1);
+    var dH = Math.abs(hpr - lab.targetHP);
+    var sHuman = Math.exp(-dH * dH / 0.08);
+    var dT = (avgT - lab.targetTime) / lab.targetTime;
+    var sTime = Math.exp(-dT * dT / 0.5);
+    var sDiv = divContrib(id);
+    var f = lab.wBot * sBot + lab.wHuman * sHuman + lab.wTime * sTime + lab.wDiv * sDiv;
+    return { fitness: clamp(f, 0, 1), hpr: hpr, bfr: bfr, avgT: avgT, trials: total };
+  }
+
+  function divContrib(id) {
+    if (lab.population.length < 2) return 0.5;
+    var cent = {}; for (var t = 0; t < TRAITS.length; t++) cent[TRAITS[t]] = 0;
+    for (var i = 0; i < lab.population.length; i++) {
+      var g = lab.challenges[lab.population[i]].genome;
+      for (var t2 = 0; t2 < TRAITS.length; t2++) cent[TRAITS[t2]] += g[TRAITS[t2]];
+    }
+    for (var t3 = 0; t3 < TRAITS.length; t3++) cent[TRAITS[t3]] /= lab.population.length;
+    return clamp(dist(lab.challenges[id].genome, cent) / 2.83, 0, 1);
+  }
+
+  function diversity() {
+    if (lab.population.length < 2) return 0;
+    var total = 0, pairs = 0;
+    var n = Math.min(lab.population.length, 30);
+    for (var i = 0; i < n; i++) for (var j = i+1; j < n; j++) {
+      total += dist(lab.challenges[lab.population[i]].genome, lab.challenges[lab.population[j]].genome);
+      pairs++;
+    }
+    return pairs > 0 ? clamp(total / pairs / 2.83, 0, 1) : 0;
+  }
+
+  function evolve() {
+    lab.gen++;
+    var scored = [];
+    for (var i = 0; i < lab.population.length; i++) {
+      var f = fitness(lab.population[i]);
+      if (f) scored.push({ id: lab.population[i], f: f.fitness });
+    }
+    scored.sort(function(a,b){ return b.f - a.f; });
+    if (scored.length < 3) { logMsg("⚠️ Gen " + lab.gen + ": insufficient data"); return; }
+    var newPop = [];
+    for (var e = 0; e < Math.min(lab.elite, scored.length); e++) newPop.push(scored[e].id);
+    while (newPop.length < lab.popSize) {
+      var pA = tournament(scored), pB = tournament(scored);
+      var childG;
+      var parents;
+      if (rand() < lab.crossRate && pA.id !== pB.id) {
+        childG = {}; parents = [pA.id, pB.id];
+        for (var t = 0; t < TRAITS.length; t++) childG[TRAITS[t]] = rand() < 0.5 ? lab.challenges[pA.id].genome[TRAITS[t]] : lab.challenges[pB.id].genome[TRAITS[t]];
+      } else {
+        childG = cloneG(lab.challenges[pA.id].genome); parents = [pA.id];
+      }
+      for (var m = 0; m < TRAITS.length; m++) {
+        if (rand() < lab.mutRate) childG[TRAITS[m]] = clamp(childG[TRAITS[m]] + gaussian() * lab.mutStr, 0, 1);
+      }
+      var cid = genId();
+      lab.challenges[cid] = { id: cid, genome: childG, gen: lab.gen, parents: parents, ts: Date.now() };
+      lab.outcomes[cid] = { human: [], bot: [] };
+      newPop.push(cid);
+    }
+    lab.population = newPop;
+    var fits = scored.map(function(s){ return s.f; });
+    lab.history.push({ gen: lab.gen, avg: mean(fits), best: fits[0], div: diversity(), ts: Date.now() });
+    logMsg("🧬 Gen " + lab.gen + ": avg=" + mean(fits).toFixed(3) + " best=" + fits[0].toFixed(3) + " pop=" + newPop.length);
+  }
+
+  function tournament(scored) {
+    var best = scored[randInt(scored.length)];
+    for (var i = 1; i < lab.tournSize; i++) { var c = scored[randInt(scored.length)]; if (c.f > best.f) best = c; }
+    return best;
+  }
+
+  // ── UI Updates ────────────────────────────────────────────────────
+
+  var logEntries = [];
+
+  function logMsg(msg) {
+    logEntries.unshift({ ts: new Date().toLocaleTimeString(), msg: msg });
+    if (logEntries.length > 100) logEntries.length = 100;
+    renderLog();
+  }
+
+  function renderLog() {
+    var el = document.getElementById("evo-log");
+    el.innerHTML = logEntries.map(function(e) { return '<div class="log-entry"><span style="color:#64748b">' + e.ts + '</span> ' + e.msg + '</div>'; }).join("");
+  }
+
+  function renderAll() {
+    // Stats
+    document.getElementById("gen-count").textContent = lab.gen;
+    document.getElementById("pop-count").textContent = lab.population.length;
+
+    var fits = [];
+    for (var i = 0; i < lab.population.length; i++) {
+      var f = fitness(lab.population[i]);
+      if (f) fits.push(f.fitness);
+    }
+    document.getElementById("avg-fitness").textContent = fits.length > 0 ? mean(fits).toFixed(3) : "—";
+    document.getElementById("best-fitness").textContent = fits.length > 0 ? Math.max.apply(null, fits).toFixed(3) : "—";
+
+    var div = diversity();
+    document.getElementById("diversity-val").textContent = div.toFixed(3);
+
+    // Risk gauge
+    var riskLevel, riskColor;
+    if (div < 0.05) { riskLevel = "CRITICAL"; riskColor = "var(--danger)"; }
+    else if (div < 0.15) { riskLevel = "HIGH"; riskColor = "#f97316"; }
+    else if (div < 0.30) { riskLevel = "MEDIUM"; riskColor = "var(--warn)"; }
+    else { riskLevel = "LOW"; riskColor = "var(--success)"; }
+
+    var arc = document.getElementById("risk-arc");
+    var pct = 1 - clamp(div, 0, 1);
+    arc.setAttribute("stroke-dashoffset", String(314 * (1 - pct)));
+    arc.setAttribute("stroke", riskColor);
+    document.getElementById("risk-label").textContent = (pct * 100).toFixed(0) + "%";
+    document.getElementById("risk-label").style.color = riskColor;
+    document.getElementById("risk-level").textContent = "Risk: " + riskLevel;
+    document.getElementById("risk-level").className = "risk-" + riskLevel.toLowerCase();
+
+    var recTexts = {
+      CRITICAL: "Population converged! Inject mutants immediately.",
+      HIGH: "Diversity dangerously low. Increase mutation or inject fresh genomes.",
+      MEDIUM: "Diversity declining. Monitor and consider intervention.",
+      LOW: "Healthy diversity. Population exploring well."
+    };
+    document.getElementById("risk-rec").textContent = recTexts[riskLevel];
+
+    // Trait distributions
+    var traitHtml = "";
+    for (var t = 0; t < TRAITS.length; t++) {
+      var vals = [];
+      for (var j = 0; j < lab.population.length; j++) {
+        var ch = lab.challenges[lab.population[j]];
+        if (ch) vals.push(ch.genome[TRAITS[t]]);
+      }
+      var m = vals.length > 0 ? mean(vals) : 0;
+      var colors = ["#8b5cf6","#06b6d4","#f59e0b","#ef4444","#22c55e","#ec4899","#3b82f6","#f97316"];
+      traitHtml += '<div class="trait-row"><span class="trait-name">' + TRAITS[t] + '</span>' +
+        '<div class="trait-bar"><div class="bar"><div class="bar-fill" style="width:' + (m*100) + '%;background:' + colors[t] + '"></div></div></div>' +
+        '<span class="trait-val">' + m.toFixed(2) + '</span></div>';
+    }
+    document.getElementById("trait-dist").innerHTML = traitHtml;
+
+    // Fitness chart
+    renderChart();
+
+    // Population table
+    var popHtml = "";
+    var popData = [];
+    for (var pi = 0; pi < lab.population.length; pi++) {
+      var pid = lab.population[pi];
+      var pf = fitness(pid);
+      popData.push({ id: pid, ch: lab.challenges[pid], f: pf });
+    }
+    popData.sort(function(a,b) { return (b.f ? b.f.fitness : -1) - (a.f ? a.f.fitness : -1); });
+    for (var pd = 0; pd < popData.length; pd++) {
+      var d = popData[pd];
+      popHtml += '<tr onclick="showLineage(\'' + d.id + '\')" style="cursor:pointer">' +
+        '<td class="mono">' + d.id.slice(0,8) + '</td>' +
+        '<td>' + d.ch.gen + '</td>' +
+        '<td>' + (d.f ? d.f.fitness.toFixed(3) : "—") + '</td>' +
+        '<td>' + (d.f ? (d.f.hpr*100).toFixed(1) + '%' : "—") + '</td>' +
+        '<td>' + (d.f ? (d.f.bfr*100).toFixed(1) + '%' : "—") + '</td>' +
+        '<td>' + (d.f ? d.f.trials : 0) + '</td>' +
+        '<td>' + d.ch.parents.length + ' parent' + (d.ch.parents.length !== 1 ? 's' : '') + '</td></tr>';
+    }
+    document.getElementById("pop-table").innerHTML = popHtml;
+  }
+
+  function renderChart() {
+    var container = document.getElementById("fitness-chart");
+    if (lab.history.length < 1) { container.innerHTML = '<div style="color:#64748b;text-align:center;padding:80px 0">Evolve to see fitness trends</div>'; return; }
+    var w = container.clientWidth || 600, h = 200;
+    var pts = lab.history;
+    var maxGen = pts[pts.length - 1].gen || 1;
+    var svg = '<svg viewBox="0 0 ' + w + ' ' + h + '">';
+    // Grid
+    for (var gy = 0; gy <= 4; gy++) {
+      var yy = 10 + (h - 20) * (1 - gy / 4);
+      svg += '<line x1="40" y1="' + yy + '" x2="' + (w-10) + '" y2="' + yy + '" stroke="#1e293b" stroke-width="1"/>';
+      svg += '<text x="36" y="' + (yy+4) + '" fill="#64748b" font-size="10" text-anchor="end">' + (gy*0.25).toFixed(2) + '</text>';
+    }
+    // Lines
+    var avgPath = "", bestPath = "", divPath = "";
+    for (var i = 0; i < pts.length; i++) {
+      var x = 40 + (w - 50) * (pts[i].gen / maxGen);
+      var yA = 10 + (h - 20) * (1 - pts[i].avg);
+      var yB = 10 + (h - 20) * (1 - pts[i].best);
+      var yD = 10 + (h - 20) * (1 - pts[i].div);
+      avgPath += (i === 0 ? "M" : "L") + x.toFixed(1) + "," + yA.toFixed(1);
+      bestPath += (i === 0 ? "M" : "L") + x.toFixed(1) + "," + yB.toFixed(1);
+      divPath += (i === 0 ? "M" : "L") + x.toFixed(1) + "," + yD.toFixed(1);
+    }
+    svg += '<path d="' + avgPath + '" fill="none" stroke="' + "var(--accent)" + '" stroke-width="2"/>';
+    svg += '<path d="' + bestPath + '" fill="none" stroke="' + "var(--success)" + '" stroke-width="2"/>';
+    svg += '<path d="' + divPath + '" fill="none" stroke="' + "var(--accent2)" + '" stroke-width="1.5" stroke-dasharray="4,4"/>';
+    // Legend
+    svg += '<circle cx="' + (w-200) + '" cy="15" r="4" fill="var(--accent)"/><text x="' + (w-192) + '" y="19" fill="#94a3b8" font-size="11">Avg Fitness</text>';
+    svg += '<circle cx="' + (w-120) + '" cy="15" r="4" fill="var(--success)"/><text x="' + (w-112) + '" y="19" fill="#94a3b8" font-size="11">Best</text>';
+    svg += '<circle cx="' + (w-60) + '" cy="15" r="4" fill="var(--accent2)"/><text x="' + (w-52) + '" y="19" fill="#94a3b8" font-size="11">Diversity</text>';
+    svg += '</svg>';
+    container.innerHTML = svg;
+  }
+
+  // ── Lineage ───────────────────────────────────────────────────────
+
+  window.showLineage = function (id) {
+    var lines = [];
+    var visited = {};
+    function trace(cid, depth) {
+      if (visited[cid] || depth > 10) return;
+      visited[cid] = true;
+      var ch = lab.challenges[cid];
+      if (!ch) return;
+      var indent = "";
+      for (var i = 0; i < depth; i++) indent += "  ";
+      var f = fitness(cid);
+      lines.push(indent + (depth > 0 ? "└─ " : "") + ch.id.slice(0,8) + " (gen " + ch.gen + ", fit=" + (f ? f.fitness.toFixed(3) : "?") + ")");
+      for (var p = 0; p < ch.parents.length; p++) trace(ch.parents[p], depth + 1);
+    }
+    trace(id, 0);
+    document.getElementById("lineage-tree").textContent = lines.join("\n") || "No lineage data";
+  };
+
+  // ── Actions ───────────────────────────────────────────────────────
+
+  window.doSeed = function () { seed(); renderAll(); };
+  window.doSimulate = function () { simulate(); renderAll(); };
+  window.doEvolve = function () { if (lab.population.length === 0) { logMsg("⚠️ Seed first"); return; } simulate(); evolve(); renderAll(); };
+  window.doEvolve5 = function () { if (lab.population.length === 0) { logMsg("⚠️ Seed first"); return; } for (var i = 0; i < 5; i++) { simulate(); evolve(); } renderAll(); };
+  window.doInjectMutant = function () {
+    var id = genId();
+    lab.challenges[id] = { id: id, genome: rndGenome(), gen: lab.gen, parents: [], ts: Date.now() };
+    lab.outcomes[id] = { human: [], bot: [] };
+    lab.population.push(id);
+    logMsg("💉 Injected mutant " + id.slice(0,8));
+    renderAll();
+  };
+  window.doExport = function () {
+    var blob = new Blob([JSON.stringify({ gen: lab.gen, pop: lab.population.length, history: lab.history }, null, 2)], { type: "application/json" });
+    var a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "genetics-lab-state.json"; a.click();
+    logMsg("💾 State exported");
+  };
+  window.doReset = function () {
+    lab.challenges = {}; lab.outcomes = {}; lab.population = []; lab.gen = 0; lab.history = [];
+    logMsg("🔄 Lab reset");
+    renderAll();
+  };
+
+  // Initial render
+  renderAll();
+})();
+</script>
+</body>
+</html>

@@ -403,7 +403,9 @@ ChallengeGeneticsLab.prototype.evolve = function evolve() {
 
   // If not enough scored challenges, just keep population and add random ones
   if (scored.length < 3) {
-    var newOnes = this.seedPopulation(Math.max(5, this.populationSize - this._population.length));
+    // Only add new challenges if population is below target size
+    var deficit = this.populationSize - this._population.length;
+    var newOnes = deficit > 0 ? this.seedPopulation(deficit) : [];
     var stats = {
       generation: this._generation,
       populationSize: this._population.length,
@@ -491,14 +493,20 @@ ChallengeGeneticsLab.prototype.evolve = function evolve() {
     newChallenges.push(child);
   }
 
-  // Count extinct (those in old population but not new)
+  // Count extinct (those in old population but not new) and clean up
   var newSet = {};
   for (var ns = 0; ns < newPopulation.length; ns++) {
     newSet[newPopulation[ns]] = true;
   }
   for (var oi = 0; oi < this._population.length; oi++) {
-    if (!newSet[this._population[oi]]) {
+    var oldId = this._population[oi];
+    if (!newSet[oldId]) {
       extinctCount++;
+      // Free memory from extinct challenges no longer in the population
+      // or referenced by any surviving challenge's lineage (parentIds).
+      // Keep outcomes/challenges only if they appear in a living lineage.
+      delete this._challenges[oldId];
+      delete this._outcomes[oldId];
     }
   }
 

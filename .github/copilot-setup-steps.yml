@@ -1,6 +1,6 @@
 # Copilot Coding Agent Setup Steps
-# This workflow configures the environment for GitHub Copilot coding agents
-# (Claude, Codex, etc.) to autonomously work on issues and PRs.
+# Configures the environment for GitHub Copilot coding agents (Claude, Codex)
+# to work on issues and PRs in the gif-captcha repository.
 
 name: "Copilot Setup Steps"
 
@@ -12,39 +12,61 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Install validation tools
-      - name: Install HTML validation tools
-        run: npm install -g htmlhint
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
 
-      # Validate all HTML pages
-      - name: Validate HTML files
-        run: |
-          echo "=== Validating index.html ==="
-          htmlhint index.html || true
-          echo ""
-          echo "=== Validating demo.html ==="
-          htmlhint demo.html || true
-          echo ""
-          echo "=== Validating analysis.html ==="
-          htmlhint analysis.html || true
+      - name: Install dependencies
+        run: npm ci
 
-      # Show project structure and key file info
-      - name: Project overview
+      - name: Run test suite
         run: |
-          echo "=== Project Structure ==="
-          find . -not -path './.git/*' -type f | sort
+          echo "=== Running tests (node:test runner) ==="
+          node --test tests/*.test.js 2>&1 || true
           echo ""
-          echo "=== HTML file sizes ==="
-          wc -l index.html demo.html analysis.html
+          echo "Note: Some pre-existing test failures are expected."
+          echo "Agents should ensure their changes do not introduce NEW failures."
+
+      - name: Run coverage check
+        run: |
+          npx c8 --reporter=text node --test tests/*.test.js 2>&1 || true
+
+      - name: Validate HTML pages
+        run: |
+          npx htmlhint index.html demo.html analysis.html 2>&1 || true
+
+      - name: Syntax-check all source files
+        run: |
+          echo "=== Syntax-checking src/ ==="
+          for f in src/*.js; do
+            node -c "$f" && echo "✓ $f" || echo "✗ $f FAILED"
+          done
           echo ""
-          echo "=== Dockerfile check ==="
-          cat Dockerfile
+          echo "=== Syntax-checking bin/ ==="
+          for f in bin/*.js; do
+            node -c "$f" && echo "✓ $f" || echo "✗ $f FAILED"
+          done
+
+      - name: Project structure overview
+        run: |
+          echo "=== Source modules (src/) ==="
+          ls -1 src/
+          echo ""
+          echo "=== Test files (tests/) ==="
+          ls -1 tests/
+          echo ""
+          echo "=== Static HTML pages (root) ==="
+          ls -1 *.html | head -20
+          echo "... ($(ls -1 *.html | wc -l) total HTML pages)"
           echo ""
           echo "=== GitHub workflows ==="
-          ls -la .github/workflows/
+          ls -1 .github/workflows/
+          echo ""
+          echo "=== package.json scripts ==="
+          node -e "const p=require('./package.json');Object.entries(p.scripts).forEach(([k,v])=>console.log(k+': '+v))"
 
-      # Verify Docker build works
       - name: Verify Docker build
         run: |
-          docker build -t gif-captcha-test .
-          echo "Docker build successful"
+          docker build -t gif-captcha-test . && echo "Docker build successful"

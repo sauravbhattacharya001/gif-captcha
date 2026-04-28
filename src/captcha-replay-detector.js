@@ -80,7 +80,9 @@ function CaptchaReplayDetector(opts) {
   this._tokens = new Map();        // hash → timestamp of first use
   this._sessions = new Map();      // sessionId → { solves[], flags[], threatScores[], blocked }
   this._ipAnswers = new Map();     // answerHash → Set<ip>
+  this._ipAnswerTimestamps = new Map(); // answerHash → timestamp (for sliding-window expiry)
   this._fingerprints = new Map();  // fpHash → Set<sessionId>
+  this._fingerprintTimestamps = new Map(); // fpHash → timestamp (for sliding-window expiry)
   this._stats = { totalSolves: 0, replaysDetected: 0, timingAnomalies: 0, patternsMatched: 0, sessionsBlocked: 0 };
 }
 
@@ -88,16 +90,64 @@ CaptchaReplayDetector.prototype = Object.create(EventEmitter.prototype);
 CaptchaReplayDetector.prototype.constructor = CaptchaReplayDetector;
 
 /**
- * Prune expired tokens outside the sliding window.
+ * Prune expired tokens, IP-answer correlations, and fingerprint clusters
+ * outside the sliding window.
+ *
+ * Previously only pruned tokens when `maxTokens` was exceeded, which
+ * meant expired tokens persisted indefinitely in low-traffic scenarios.
+ * This caused:
+ *  - False positive replay detection: a token used hours ago (well
+ *    outside windowMs) would still be flagged as a "replay" if the
+ *    same token hash appeared again (CWE-754: Improper Check).
+ *  - Unbounded memory growth for _ipAnswers and _fingerprints maps
+ *    which were never pruned at all (CWE-400).
+ *  - Stale pattern-match and fingerprint-cluster data from outside
+ *    the analysis window inflating threat scores.
+ *
+ * Now always prunes time-expired entries from all three data structures,
+ * then enforces the maxTokens cap as a secondary eviction.
  * @private
  */
 CaptchaReplayDetector.prototype._prune = function () {
   var cutoff = _now() - this.windowMs;
+
+  // 1. Expire tokens outside the sliding window
   var tokens = this._tokens;
-  if (tokens.size <= this.maxTokens) return;
-  var keys = Array.from(tokens.keys());
-  for (var i = 0; i < keys.length; i++) {
-    if (tokens.get(keys[i]) < cutoff) tokens.delete(keys[i]);
+  var tokenKeys = Array.from(tokens.keys());
+  for (var i = 0; i < tokenKeys.length; i++) {
+    if (tokens.get(tokenKeys[i]) < cutoff) tokens.delete(tokenKeys[i]);
+  }
+
+  // 2. Enforce maxTokens cap after time-based expiry (evict oldest first)
+  if (tokens.size > this.maxTokens) {
+    var entries = Array.from(tokens.entries());
+    entries.sort(function (a, b) { return a[1] - b[1]; });
+    var excess = tokens.size - this.maxTokens;
+    for (var j = 0; j < excess; j++) {
+      tokens.delete(entries[j][0]);
+    }
+  }
+
+  // 3. Expire stale IP-answer correlations
+  //    _ipAnswers entries older than windowMs accumulate unbounded IPs
+  //    from unrelated traffic, causing false pattern-match signals.
+  var ipAnswerKeys = Array.from(this._ipAnswers.keys());
+  for (var k = 0; k < ipAnswerKeys.length; k++) {
+    var ts = this._ipAnswerTimestamps.get(ipAnswerKeys[k]);
+    if (ts !== undefined && ts < cutoff) {
+      this._ipAnswers.delete(ipAnswerKeys[k]);
+      this._ipAnswerTimestamps.delete(ipAnswerKeys[k]);
+    }
+  }
+
+  // 4. Expire stale fingerprint clusters
+  var fpKeys = Array.from(this._fingerprints.keys());
+  for (var m = 0; m < fpKeys.length; m++) {
+    var fpTs = this._fingerprintTimestamps.get(fpKeys[m]);
+    if (fpTs !== undefined && fpTs < cutoff) {
+      this._fingerprints.delete(fpKeys[m]);
+      this._fingerprintTimestamps.delete(fpKeys[m]);
+    }
   }
 };
 
@@ -172,6 +222,7 @@ CaptchaReplayDetector.prototype.recordSolve = function (sessionId, token, solveT
   var answerHash = _hash(token + ":" + solveTimeMs);
   if (!this._ipAnswers.has(answerHash)) this._ipAnswers.set(answerHash, new Set());
   this._ipAnswers.get(answerHash).add(ip);
+  this._ipAnswerTimestamps.set(answerHash, _now());
   if (this._ipAnswers.get(answerHash).size > 1) {
     signals.patternMatch = Math.min(this._ipAnswers.get(answerHash).size / 5, 1);
     flags.push("pattern-match");
@@ -185,6 +236,7 @@ CaptchaReplayDetector.prototype.recordSolve = function (sessionId, token, solveT
     var fpHash = _hash(fingerprint);
     if (!this._fingerprints.has(fpHash)) this._fingerprints.set(fpHash, new Set());
     this._fingerprints.get(fpHash).add(sessionId);
+    this._fingerprintTimestamps.set(fpHash, _now());
     if (this._fingerprints.get(fpHash).size > 3) {
       signals.fingerprintCluster = Math.min((this._fingerprints.get(fpHash).size - 3) / 7, 1);
       flags.push("fingerprint-cluster");
@@ -255,6 +307,8 @@ CaptchaReplayDetector.prototype.getStats = function () {
   return Object.assign({}, this._stats, {
     activeSessions: this._sessions.size,
     trackedTokens: this._tokens.size,
+    trackedAnswerPatterns: this._ipAnswers.size,
+    trackedFingerprints: this._fingerprints.size,
     replayRate: this._stats.totalSolves ? +(this._stats.replaysDetected / this._stats.totalSolves * 100).toFixed(2) : 0
   });
 };
@@ -266,7 +320,9 @@ CaptchaReplayDetector.prototype.reset = function () {
   this._tokens.clear();
   this._sessions.clear();
   this._ipAnswers.clear();
+  this._ipAnswerTimestamps.clear();
   this._fingerprints.clear();
+  this._fingerprintTimestamps.clear();
   this._stats = { totalSolves: 0, replaysDetected: 0, timingAnomalies: 0, patternsMatched: 0, sessionsBlocked: 0 };
 };
 

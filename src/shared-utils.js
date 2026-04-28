@@ -879,6 +879,9 @@ function installRoundRectPolyfill() {
 function createEmitter() {
   var listeners = Object.create(null);
   function on(event, fn) {
+    if (typeof fn !== "function") {
+      throw new Error("Handler must be a function, got " + typeof fn);
+    }
     if (!listeners[event]) listeners[event] = [];
     listeners[event].push(fn);
   }
@@ -893,7 +896,10 @@ function createEmitter() {
       try { fns[i](data); } catch (e) { /* swallow listener errors */ }
     }
   }
-  return { on: on, off: off, emit: emit };
+  function reset() {
+    listeners = Object.create(null);
+  }
+  return { on: on, off: off, emit: emit, reset: reset };
 }
 
 // ── Linear Regression ────────────────────────────────────────────

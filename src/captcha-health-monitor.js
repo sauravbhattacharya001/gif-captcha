@@ -535,63 +535,60 @@ function createCaptchaHealthMonitor(options) {
 
   // ── Public: Record Events ────────────────────────────────────────
 
+  /**
+   * Append an event to `arr`, prune to `limit`, and optionally also
+   * record a totalOps entry (for event types that count as operations).
+   */
+  function _recordEvent(arr, event, limit, countAsOp) {
+    arr.push(event);
+    _pruneToMax(arr, limit);
+    if (countAsOp) {
+      totalOps.push({ ts: event.ts });
+      _pruneToMax(totalOps, maxEvents * 2);
+    }
+  }
+
   function recordSolve(entry) {
     if (!entry || typeof entry !== "object") return;
-    var ts = nowFn();
-    solves.push({
-      ts: ts,
+    _recordEvent(solves, {
+      ts: nowFn(),
       solved: !!entry.solved,
       timeMs: entry.timeMs != null ? entry.timeMs : null
-    });
-    totalOps.push({ ts: ts });
-    _pruneToMax(solves, maxEvents);
-    _pruneToMax(totalOps, maxEvents * 2);
+    }, maxEvents, true);
   }
 
   function recordBotDetection(entry) {
     if (!entry || typeof entry !== "object") return;
-    var ts = nowFn();
-    botChecks.push({
-      ts: ts,
+    _recordEvent(botChecks, {
+      ts: nowFn(),
       blocked: !!entry.blocked
-    });
-    totalOps.push({ ts: ts });
-    _pruneToMax(botChecks, maxEvents);
-    _pruneToMax(totalOps, maxEvents * 2);
+    }, maxEvents, true);
   }
 
   function recordPoolLevel(entry) {
     if (!entry || typeof entry !== "object") return;
-    var ts = nowFn();
-    poolSnapshots.push({
-      ts: ts,
+    _recordEvent(poolSnapshots, {
+      ts: nowFn(),
       available: Math.max(0, entry.available || 0),
       total: Math.max(0, entry.total || 0)
-    });
-    _pruneToMax(poolSnapshots, maxEvents);
+    }, maxEvents, false);
   }
 
   function recordRateLimitHit(entry) {
     if (!entry || typeof entry !== "object") return;
-    var ts = nowFn();
-    rateLimitHits.push({
-      ts: ts,
+    _recordEvent(rateLimitHits, {
+      ts: nowFn(),
       key: entry.key || "unknown"
-    });
-    _pruneToMax(rateLimitHits, maxEvents);
+    }, maxEvents, false);
   }
 
   function recordError(entry) {
     if (!entry || typeof entry !== "object") return;
-    var ts = nowFn();
-    errors.push({
-      ts: ts,
+    _recordEvent(errors, {
+      ts: nowFn(),
       code: entry.code || "UNKNOWN",
       message: entry.message || ""
-    });
-    totalOps.push({ ts: ts });
-    _pruneToMax(errors, maxEvents);
-    _pruneToMax(totalOps, maxEvents * 2);
+    }, maxEvents, true);
   }
 
   function recordOperation() {
@@ -782,6 +779,17 @@ function createCaptchaHealthMonitor(options) {
     });
   }
 
+  /**
+   * Replace the contents of `target` with `source` if it is an array.
+   * Reuses the existing array reference (important for closures that
+   * capture it) instead of reassigning the variable.
+   */
+  function _restoreArray(target, source) {
+    if (!Array.isArray(source)) return;
+    target.length = 0;
+    for (var i = 0; i < source.length; i++) target.push(source[i]);
+  }
+
   function importJSON(json) {
     var data;
     try {
@@ -791,38 +799,14 @@ function createCaptchaHealthMonitor(options) {
     }
     if (!data || data.version !== 1) return;
 
-    if (Array.isArray(data.solves)) {
-      solves.length = 0;
-      for (var i = 0; i < data.solves.length; i++) solves.push(data.solves[i]);
-    }
-    if (Array.isArray(data.botChecks)) {
-      botChecks.length = 0;
-      for (var j = 0; j < data.botChecks.length; j++) botChecks.push(data.botChecks[j]);
-    }
-    if (Array.isArray(data.poolSnapshots)) {
-      poolSnapshots.length = 0;
-      for (var k = 0; k < data.poolSnapshots.length; k++) poolSnapshots.push(data.poolSnapshots[k]);
-    }
-    if (Array.isArray(data.rateLimitHits)) {
-      rateLimitHits.length = 0;
-      for (var m = 0; m < data.rateLimitHits.length; m++) rateLimitHits.push(data.rateLimitHits[m]);
-    }
-    if (Array.isArray(data.errors)) {
-      errors.length = 0;
-      for (var n = 0; n < data.errors.length; n++) errors.push(data.errors[n]);
-    }
-    if (Array.isArray(data.totalOps)) {
-      totalOps.length = 0;
-      for (var p = 0; p < data.totalOps.length; p++) totalOps.push(data.totalOps[p]);
-    }
-    if (Array.isArray(data.alerts)) {
-      alerts.length = 0;
-      for (var q = 0; q < data.alerts.length; q++) alerts.push(data.alerts[q]);
-    }
-    if (Array.isArray(data.checkHistory)) {
-      checkHistory.length = 0;
-      for (var r = 0; r < data.checkHistory.length; r++) checkHistory.push(data.checkHistory[r]);
-    }
+    _restoreArray(solves, data.solves);
+    _restoreArray(botChecks, data.botChecks);
+    _restoreArray(poolSnapshots, data.poolSnapshots);
+    _restoreArray(rateLimitHits, data.rateLimitHits);
+    _restoreArray(errors, data.errors);
+    _restoreArray(totalOps, data.totalOps);
+    _restoreArray(alerts, data.alerts);
+    _restoreArray(checkHistory, data.checkHistory);
     if (typeof data.checksPerformed === "number") checksPerformed = data.checksPerformed;
     if (typeof data.startedAt === "number") startedAt = data.startedAt;
   }

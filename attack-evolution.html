@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Attack Evolution Tracker — gif-captcha</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+:root { --bg: #0a0a0f; --surface: #12121a; --border: #1e1e2e; --text: #e0e0e8; --muted: #888; --accent: #6c5ce7; --danger: #e74c3c; --warn: #f39c12; --success: #2ecc71; --info: #3498db; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+.container { max-width: 1400px; margin: 0 auto; padding: 24px; }
+h1 { font-size: 1.8rem; margin-bottom: 8px; }
+h1 span { color: var(--accent); }
+.subtitle { color: var(--muted); margin-bottom: 24px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+.card h3 { font-size: 0.85rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+.card .value { font-size: 2rem; font-weight: 700; }
+.card .label { font-size: 0.8rem; color: var(--muted); margin-top: 4px; }
+.section { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; margin-bottom: 24px; }
+.section h2 { font-size: 1.2rem; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+table { width: 100%; border-collapse: collapse; }
+th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); font-size: 0.9rem; }
+th { color: var(--muted); font-weight: 500; font-size: 0.8rem; text-transform: uppercase; }
+.badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; }
+.badge-active { background: rgba(52,152,219,0.15); color: var(--info); }
+.badge-adapting { background: rgba(243,156,18,0.15); color: var(--warn); }
+.badge-evolved { background: rgba(231,76,60,0.15); color: var(--danger); }
+.badge-dormant { background: rgba(136,136,136,0.15); color: var(--muted); }
+.badge-secure { background: rgba(46,204,113,0.15); color: var(--success); }
+.badge-warning { background: rgba(243,156,18,0.15); color: var(--warn); }
+.badge-at-risk { background: rgba(231,76,60,0.2); color: #e67e22; }
+.badge-compromised { background: rgba(231,76,60,0.25); color: var(--danger); }
+.badge-critical { background: var(--danger); color: #fff; }
+.badge-high { background: #e67e22; color: #fff; }
+.badge-medium { background: var(--warn); color: #000; }
+.badge-low { background: rgba(136,136,136,0.2); color: var(--muted); }
+.bar-track { width: 100%; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
+.bar-fill { height: 100%; border-radius: 4px; transition: width 0.5s; }
+.controls { display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; }
+button { background: var(--accent); color: #fff; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 0.9rem; }
+button:hover { opacity: 0.9; }
+button.outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
+.timeline-item { display: flex; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+.timeline-dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
+.timeline-item:last-child { border-bottom: none; }
+.forecast-chart { display: flex; align-items: flex-end; gap: 4px; height: 120px; padding-top: 8px; }
+.forecast-bar { flex: 1; min-width: 20px; border-radius: 4px 4px 0 0; position: relative; transition: height 0.3s; }
+.forecast-bar:hover::after { content: attr(data-label); position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); background: #222; padding: 4px 8px; border-radius: 4px; font-size: 0.7rem; white-space: nowrap; }
+.empty-state { text-align: center; color: var(--muted); padding: 40px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>🧬 Attack <span>Evolution</span> Tracker</h1>
+  <p class="subtitle">Autonomous bot attack pattern evolution monitoring — mutation detection, compromise prediction, preemptive defense rotation</p>
+
+  <div class="controls">
+    <button onclick="runSimulation()">▶ Run Simulation</button>
+    <button class="outline" onclick="runAnalysis()">🔍 Analyze</button>
+    <button class="outline" onclick="runForecast()">📈 Forecast</button>
+    <button class="outline" onclick="resetTracker()">↺ Reset</button>
+  </div>
+
+  <div class="grid" id="summary-cards">
+    <div class="card"><h3>Strategies</h3><div class="value" id="s-total">0</div><div class="label">tracked attack patterns</div></div>
+    <div class="card"><h3>Adapting</h3><div class="value" id="s-adapting" style="color:var(--warn)">0</div><div class="label">strategies learning</div></div>
+    <div class="card"><h3>Evolved</h3><div class="value" id="s-evolved" style="color:var(--danger)">0</div><div class="label">successful bypasses</div></div>
+    <div class="card"><h3>Challenges at Risk</h3><div class="value" id="s-risk" style="color:var(--danger)">0</div><div class="label">need attention</div></div>
+    <div class="card"><h3>Pending Rotations</h3><div class="value" id="s-rotations" style="color:var(--accent)">0</div><div class="label">recommended</div></div>
+  </div>
+
+  <div class="section">
+    <h2>🎯 Strategy Landscape</h2>
+    <table id="strategy-table">
+      <thead><tr><th>Strategy</th><th>Status</th><th>Attempts</th><th>Success Rate</th><th>Learning Rate</th><th>R²</th><th>Gen</th></tr></thead>
+      <tbody id="strategy-body"><tr><td colspan="7" class="empty-state">Run a simulation to see data</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="section">
+    <h2>🛡️ Challenge Risk Assessment</h2>
+    <table id="challenge-table">
+      <thead><tr><th>Challenge</th><th>Status</th><th>Bot Success</th><th>Attempts</th><th>Threats</th><th>Predicted Compromise</th></tr></thead>
+      <tbody id="challenge-body"><tr><td colspan="6" class="empty-state">No challenges at risk</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="section">
+    <h2>🔄 Rotation Recommendations</h2>
+    <div id="rotation-list"><div class="empty-state">No rotations recommended</div></div>
+  </div>
+
+  <div class="section">
+    <h2>📈 Threat Forecast</h2>
+    <div id="forecast-area"><div class="empty-state">Click Forecast to generate predictions</div></div>
+  </div>
+
+  <div class="section">
+    <h2>🧬 Evolution Timeline</h2>
+    <div id="timeline-area"><div class="empty-state">No evolution events yet</div></div>
+  </div>
+</div>
+
+<script>
+// Inline minimal tracker for browser demo (mirrors src/attack-evolution-tracker.js logic)
+(function(){
+var _now = function(){ return Date.now(); };
+var _clamp = function(v,lo,hi){ return v < lo ? lo : v > hi ? hi : v; };
+var _mean = function(a){ if(!a.length)return 0; var s=0; for(var i=0;i<a.length;i++)s+=a[i]; return s/a.length; };
+
+function _linearRegression(pts){
+  var n=pts.length; if(n<2)return{slope:0,intercept:0,r2:0};
+  var sx=0,sy=0,sxy=0,sx2=0,sy2=0;
+  for(var i=0;i<n;i++){var x=pts[i][0],y=pts[i][1];sx+=x;sy+=y;sxy+=x*y;sx2+=x*x;sy2+=y*y;}
+  var d=n*sx2-sx*sx; if(d===0)return{slope:0,intercept:sy/n,r2:0};
+  var sl=(n*sxy-sx*sy)/d, ic=(sy-sl*sx)/n;
+  var ssTot=sy2-(sy*sy)/n, ssRes=0;
+  for(var j=0;j<n;j++){var p=sl*pts[j][0]+ic;var r=pts[j][1]-p;ssRes+=r*r;}
+  var r2=ssTot===0?0:1-ssRes/ssTot; if(r2<0)r2=0;
+  return{slope:sl,intercept:ic,r2:r2};
+}
+
+var DEFAULTS={windowMs:3600000,epochMs:300000,minObs:10,lrThresh:0.02,compThresh:0.70,warnThresh:0.50,predHorizon:12,maxStrat:500,maxEvents:50000,maxEpoch:288,rotCooldown:1800000,lineageDepth:10};
+
+window.createAttackEvolutionTracker=function(opts){
+  opts=opts||{};
+  var epochMs=opts.epochMs||DEFAULTS.epochMs, minObs=opts.minObs||DEFAULTS.minObs, lrT=opts.lrThresh||DEFAULTS.lrThresh;
+  var compT=opts.compThresh||DEFAULTS.compThresh, warnT=opts.warnThresh||DEFAULTS.warnThresh;
+  var predH=opts.predHorizon||DEFAULTS.predHorizon, maxS=opts.maxStrat||DEFAULTS.maxStrat;
+  var maxEv=opts.maxEvents||DEFAULTS.maxEvents, maxEH=opts.maxEpoch||DEFAULTS.maxEpoch;
+  var rotCD=opts.rotCooldown||DEFAULTS.rotCooldown, winMs=opts.windowMs||DEFAULTS.windowMs;
+
+  var strategies={},challenges={},events=[],stratOrder=[],curEpoch=0,rotLog=[],evoTimeline=[];
+
+  function epochKey(ts){return Math.floor(ts/epochMs);}
+  function fp(a){return(a.tool||'unknown')+'::'+(a.technique||'unknown')+'::'+(a.timingProfile||'unknown');}
+
+  function updateEH(h,ep,suc,mx){
+    var last=h.length?h[h.length-1]:null;
+    if(last&&last.epoch===ep){last.attempts++;if(suc)last.successes++;last.rate=last.successes/last.attempts;}
+    else{h.push({epoch:ep,attempts:1,successes:suc?1:0,rate:suc?1:0});if(h.length>mx)h.splice(0,h.length-mx);}
+  }
+
+  function recordAttempt(a){
+    if(!a||typeof a!=='object')return null;
+    var ts=a.timestamp||_now(), ep=epochKey(ts), chId=a.challengeId||'unknown', suc=a.success===true;
+    var sid=a.strategyId||fp(a);
+    events.push({ts:ts,epoch:ep,strategyId:sid,challengeId:chId,success:suc});
+    if(events.length>maxEv)events=events.slice(events.length-Math.floor(maxEv*0.8));
+
+    var st=strategies[sid];
+    if(!st){
+      if(stratOrder.length>=maxS){var ev=stratOrder.shift();delete strategies[ev];}
+      st={id:sid,firstSeen:ts,lastSeen:ts,totalAttempts:0,totalSuccesses:0,epochHistory:[],parentId:null,generation:0,status:'active',learningRate:0,r2:0,peakRate:0,peakEpoch:0};
+      strategies[sid]=st; stratOrder.push(sid);
+      // mutation detect
+      var parts=sid.split('::');
+      if(parts.length>=2){var best=null,bs=0;var ids=Object.keys(strategies);
+        for(var i=0;i<ids.length;i++){var c=strategies[ids[i]];if(c.id===sid)continue;var cp=c.id.split('::');
+          if(cp[0]===parts[0]&&c.totalAttempts>=minObs&&c.totalAttempts>bs){bs=c.totalAttempts;best=c;}}
+        if(best){st.parentId=best.id;st.generation=Math.min(best.generation+1,10);
+          evoTimeline.push({ts:_now(),type:'mutation',details:{parentId:best.id,childId:sid,generation:st.generation}});}}
+    }
+    st.lastSeen=ts;st.totalAttempts++;if(suc)st.totalSuccesses++;
+    updateEH(st.epochHistory,ep,suc,maxEH);
+
+    var ch=challenges[chId];
+    if(!ch){ch={id:chId,totalAttempts:0,totalBotSuccesses:0,currentBotSuccessRate:0,epochHistory:[],status:'secure',predictedCompromiseEpoch:null,lastRotationRecommendedAt:null,strategiesTargeting:{}};challenges[chId]=ch;}
+    ch.totalAttempts++;if(suc)ch.totalBotSuccesses++;ch.currentBotSuccessRate=ch.totalBotSuccesses/ch.totalAttempts;
+    ch.strategiesTargeting[sid]=(ch.strategiesTargeting[sid]||0)+1;
+    updateEH(ch.epochHistory,ep,suc,maxEH);
+    curEpoch=ep;
+    return{strategyId:sid,epoch:ep};
+  }
+
+  function analyzeStrat(s){
+    var now=_now();
+    if(now-s.lastSeen>winMs*2){s.status='dormant';return;}
+    if(s.totalAttempts<minObs){s.status='active';return;}
+    var h=s.epochHistory;
+    if(h.length>=3){var pts=[];for(var i=0;i<h.length;i++)if(h[i].attempts>=2)pts.push([h[i].epoch,h[i].rate]);
+      if(pts.length>=3){var x0=pts[0][0],np=[];for(var k=0;k<pts.length;k++)np.push([pts[k][0]-x0,pts[k][1]]);
+        var rg=_linearRegression(np);s.learningRate=rg.slope;s.r2=rg.r2;}}
+    var rate=s.totalSuccesses/s.totalAttempts;
+    if(rate>s.peakRate){s.peakRate=rate;s.peakEpoch=curEpoch;}
+    if(rate>=compT)s.status='evolved';
+    else if(s.learningRate>=lrT&&s.r2>=0.3)s.status='adapting';
+    else s.status='active';
+  }
+
+  function analyzeCh(ch){
+    if(ch.totalAttempts<minObs){ch.status='secure';return;}
+    var r=ch.currentBotSuccessRate;
+    if(r>=compT)ch.status='compromised'; else if(r>=warnT)ch.status='at-risk'; else if(r>=warnT*0.6)ch.status='warning'; else ch.status='secure';
+    ch.predictedCompromiseEpoch=null;
+    var h=ch.epochHistory;
+    if(h.length>=3){var pts=[];for(var i=0;i<h.length;i++)if(h[i].attempts>=2)pts.push([h[i].epoch,h[i].rate]);
+      if(pts.length>=3){var x0=pts[0][0],np=[];for(var k=0;k<pts.length;k++)np.push([pts[k][0]-x0,pts[k][1]]);
+        var rg=_linearRegression(np);
+        if(rg.slope>0&&rg.r2>=0.25){var cx=pts[pts.length-1][0]-x0,cy=rg.slope*cx+rg.intercept;
+          var etc=(compT-cy)/rg.slope;if(etc>0&&etc<=predH)ch.predictedCompromiseEpoch=Math.ceil(cx+etc+x0);}}}
+  }
+
+  function analyze(){
+    var now=_now(),res={timestamp:now,strategies:[],adaptingStrategies:[],challengeRisks:[],rotationRecommendations:[],summary:{}};
+    var tA=0,tAd=0,tE=0,tD=0;
+    var ids=Object.keys(strategies);
+    for(var i=0;i<ids.length;i++){var s=strategies[ids[i]];analyzeStrat(s);
+      var info={id:s.id,status:s.status,totalAttempts:s.totalAttempts,successRate:s.totalAttempts>0?Math.round(s.totalSuccesses/s.totalAttempts*1000)/1000:0,learningRate:Math.round(s.learningRate*10000)/10000,r2:Math.round(s.r2*1000)/1000,peakRate:Math.round(s.peakRate*1000)/1000,generation:s.generation,parentId:s.parentId,lastSeen:s.lastSeen};
+      res.strategies.push(info);if(s.status==='adapting'||s.status==='evolved')res.adaptingStrategies.push(info);
+      if(s.status==='active')tA++;else if(s.status==='adapting')tAd++;else if(s.status==='evolved')tE++;else tD++;}
+    var chIds=Object.keys(challenges);
+    for(var j=0;j<chIds.length;j++){var ch=challenges[chIds[j]];analyzeCh(ch);
+      if(ch.status!=='secure')res.challengeRisks.push({id:ch.id,status:ch.status,botSuccessRate:Math.round(ch.currentBotSuccessRate*1000)/1000,totalAttempts:ch.totalAttempts,strategiesTargeting:Object.keys(ch.strategiesTargeting).length,predictedCompromiseEpoch:ch.predictedCompromiseEpoch});
+      if(ch.status!=='secure'&&(!ch.lastRotationRecommendedAt||now-ch.lastRotationRecommendedAt>=rotCD)){
+        var urg=ch.status==='compromised'?'critical':ch.predictedCompromiseEpoch?'high':ch.status==='at-risk'?'medium':'low';
+        var reason=ch.status==='compromised'?'Bot success rate '+Math.round(ch.currentBotSuccessRate*100)+'% exceeds threshold':ch.predictedCompromiseEpoch?'Predicted compromise in ~'+(ch.predictedCompromiseEpoch-curEpoch)+' epochs':'Rising bot success rate '+Math.round(ch.currentBotSuccessRate*100)+'%';
+        ch.lastRotationRecommendedAt=now;
+        res.rotationRecommendations.push({challengeId:ch.id,urgency:urg,reason:reason,timestamp:now});
+        evoTimeline.push({ts:now,type:'rotation_recommended',details:{challengeId:ch.id,urgency:urg}});}}
+    res.summary={totalStrategies:ids.length,active:tA,adapting:tAd,evolved:tE,dormant:tD,totalChallenges:chIds.length,challengesAtRisk:res.challengeRisks.length,pendingRotations:res.rotationRecommendations.length,totalEvents:events.length,evolutionEvents:evoTimeline.length};
+    return res;
+  }
+
+  function forecast(){
+    var preds=[];var chIds=Object.keys(challenges);
+    for(var i=0;i<chIds.length;i++){var ch=challenges[chIds[i]];if(ch.totalAttempts<minObs)continue;
+      var h=ch.epochHistory;if(h.length<3)continue;
+      var pts=[];for(var j=0;j<h.length;j++)if(h[j].attempts>=2)pts.push([h[j].epoch,h[j].rate]);
+      if(pts.length<3)continue;
+      var x0=pts[0][0],np=[];for(var k=0;k<pts.length;k++)np.push([pts[k][0]-x0,pts[k][1]]);
+      var rg=_linearRegression(np);var le=pts[pts.length-1][0],fps=[];
+      for(var e=1;e<=predH;e++){var fx=le-x0+e;var pv=_clamp(rg.slope*fx+rg.intercept,0,1);fps.push({epoch:le+e,predictedRate:Math.round(pv*1000)/1000});}
+      var willComp=false;for(var m=0;m<fps.length;m++)if(fps[m].predictedRate>=compT){willComp=true;break;}
+      preds.push({challengeId:ch.id,currentRate:Math.round(ch.currentBotSuccessRate*1000)/1000,trend:rg.slope>0.001?'rising':rg.slope<-0.001?'falling':'stable',trendSlope:Math.round(rg.slope*10000)/10000,r2:Math.round(rg.r2*1000)/1000,forecast:fps,willReachCompromise:willComp});}
+    preds.sort(function(a,b){if(a.willReachCompromise!==b.willReachCompromise)return a.willReachCompromise?-1:1;return b.trendSlope-a.trendSlope;});
+    return preds;
+  }
+
+  function reset(){strategies={};challenges={};events=[];stratOrder=[];curEpoch=0;rotLog=[];evoTimeline=[];}
+
+  return{recordAttempt:recordAttempt,analyze:analyze,forecast:forecast,reset:reset,getTimeline:function(o){o=o||{};var lim=o.limit||50;var tf=o.type||null;var r=evoTimeline;if(tf){r=[];for(var i=0;i<evoTimeline.length;i++)if(evoTimeline[i].type===tf)r.push(evoTimeline[i]);}if(r.length>lim)r=r.slice(r.length-lim);return r;}};
+};
+})();
+
+// ── App State ───────────────────────────────────────────────────────
+var tracker = createAttackEvolutionTracker({ epochMs: 5000, minObs: 5, predHorizon: 12 });
+var simInterval = null;
+
+var TOOLS = ['selenium','puppeteer','playwright','curl-bot','headless-chrome','phantom','casper','requests-py'];
+var TECHNIQUES = ['pixel-scan','ocr-v1','ocr-v2','ml-classifier','timing-attack','replay','brute-force','template-match','neural-net','edge-detect'];
+var TIMINGS = ['fast','medium','slow','variable','burst'];
+var CHALLENGES = ['gif-rotate','gif-sequence','gif-count','gif-color','gif-object','gif-motion','gif-text','gif-pattern'];
+
+function randItem(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
+
+function runSimulation(){
+  if(simInterval){ clearInterval(simInterval); simInterval=null; }
+  var step=0, maxSteps=200;
+  // Pre-assign some strategies different learning curves
+  var stratProfiles = {};
+  simInterval = setInterval(function(){
+    if(step>=maxSteps){ clearInterval(simInterval); simInterval=null; runAnalysis(); return; }
+    var tool = randItem(TOOLS);
+    var tech = randItem(TECHNIQUES);
+    var timing = randItem(TIMINGS);
+    var sid = tool+'::'+tech+'::'+timing;
+    // Create learner profile: some strategies get better over time
+    if(!stratProfiles[sid]){
+      stratProfiles[sid] = { baseRate: Math.random()*0.3, learnRate: Math.random() > 0.6 ? Math.random()*0.005 : 0 };
+    }
+    var prof = stratProfiles[sid];
+    var successProb = Math.min(prof.baseRate + prof.learnRate * step, 0.95);
+    var success = Math.random() < successProb;
+
+    tracker.recordAttempt({
+      challengeId: randItem(CHALLENGES),
+      tool: tool,
+      technique: tech,
+      timingProfile: timing,
+      success: success,
+      timestamp: Date.now() - (maxSteps - step) * 5000 // spread across time
+    });
+    step++;
+    if(step % 20 === 0) runAnalysis();
+  }, 30);
+}
+
+function runAnalysis(){
+  var r = tracker.analyze();
+  // Summary cards
+  document.getElementById('s-total').textContent = r.summary.totalStrategies;
+  document.getElementById('s-adapting').textContent = r.summary.adapting;
+  document.getElementById('s-evolved').textContent = r.summary.evolved;
+  document.getElementById('s-risk').textContent = r.summary.challengesAtRisk;
+  document.getElementById('s-rotations').textContent = r.summary.pendingRotations;
+
+  // Strategy table
+  var sb = document.getElementById('strategy-body');
+  if(!r.strategies.length){ sb.innerHTML='<tr><td colspan="7" class="empty-state">No strategies tracked</td></tr>'; }
+  else {
+    r.strategies.sort(function(a,b){ var o={evolved:0,adapting:1,active:2,dormant:3}; return (o[a.status]||9)-(o[b.status]||9)||b.successRate-a.successRate; });
+    var html='';
+    for(var i=0;i<Math.min(r.strategies.length,30);i++){
+      var s=r.strategies[i];
+      var pct=Math.round(s.successRate*100);
+      var barColor=pct>70?'var(--danger)':pct>40?'var(--warn)':'var(--success)';
+      html+='<tr><td style="font-family:monospace;font-size:0.8rem">'+s.id+'</td>';
+      html+='<td><span class="badge badge-'+s.status+'">'+s.status+'</span></td>';
+      html+='<td>'+s.totalAttempts+'</td>';
+      html+='<td><div style="display:flex;align-items:center;gap:8px">'+pct+'%<div class="bar-track" style="width:80px"><div class="bar-fill" style="width:'+pct+'%;background:'+barColor+'"></div></div></div></td>';
+      html+='<td>'+(s.learningRate>0?'+':'')+s.learningRate+'/ep</td>';
+      html+='<td>'+s.r2+'</td>';
+      html+='<td>G'+s.generation+'</td></tr>';
+    }
+    sb.innerHTML=html;
+  }
+
+  // Challenge table
+  var cb = document.getElementById('challenge-body');
+  if(!r.challengeRisks.length){ cb.innerHTML='<tr><td colspan="6" class="empty-state">All challenges secure ✓</td></tr>'; }
+  else {
+    var ch='';
+    for(var j=0;j<r.challengeRisks.length;j++){
+      var c=r.challengeRisks[j];
+      var cp=Math.round(c.botSuccessRate*100);
+      ch+='<tr><td>'+c.id+'</td>';
+      ch+='<td><span class="badge badge-'+c.status+'">'+c.status+'</span></td>';
+      ch+='<td><div style="display:flex;align-items:center;gap:8px">'+cp+'%<div class="bar-track" style="width:80px"><div class="bar-fill" style="width:'+cp+'%;background:'+(cp>70?'var(--danger)':cp>50?'var(--warn)':'var(--info)')+'"></div></div></div></td>';
+      ch+='<td>'+c.totalAttempts+'</td>';
+      ch+='<td>'+c.strategiesTargeting+'</td>';
+      ch+='<td>'+(c.predictedCompromiseEpoch?'Epoch '+c.predictedCompromiseEpoch:'—')+'</td></tr>';
+    }
+    cb.innerHTML=ch;
+  }
+
+  // Rotations
+  var rl = document.getElementById('rotation-list');
+  if(!r.rotationRecommendations.length){ rl.innerHTML='<div class="empty-state">No rotations recommended — defenses holding ✓</div>'; }
+  else {
+    var rh='';
+    for(var k=0;k<r.rotationRecommendations.length;k++){
+      var rec=r.rotationRecommendations[k];
+      rh+='<div style="padding:12px;margin-bottom:8px;border:1px solid var(--border);border-radius:8px">';
+      rh+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
+      rh+='<strong>'+rec.challengeId+'</strong>';
+      rh+='<span class="badge badge-'+rec.urgency+'">'+rec.urgency.toUpperCase()+'</span></div>';
+      rh+='<div style="color:var(--muted);font-size:0.85rem">'+rec.reason+'</div></div>';
+    }
+    rl.innerHTML=rh;
+  }
+
+  // Timeline
+  var tl = tracker.getTimeline({ limit: 20 });
+  var ta = document.getElementById('timeline-area');
+  if(!tl.length){ ta.innerHTML='<div class="empty-state">No evolution events yet</div>'; }
+  else {
+    var th='';
+    for(var m=tl.length-1;m>=0;m--){
+      var ev=tl[m];
+      var dotColor=ev.type==='mutation'?'var(--accent)':'var(--warn)';
+      var desc=ev.type==='mutation'?'Strategy mutation: <strong>'+ev.details.parentId+'</strong> → <strong>'+ev.details.childId+'</strong> (Gen '+ev.details.generation+')':'Rotation recommended for <strong>'+ev.details.challengeId+'</strong> ('+ev.details.urgency+')';
+      th+='<div class="timeline-item"><div class="timeline-dot" style="background:'+dotColor+'"></div><div><div style="font-size:0.75rem;color:var(--muted)">'+new Date(ev.ts).toLocaleTimeString()+'</div><div style="font-size:0.85rem">'+desc+'</div></div></div>';
+    }
+    ta.innerHTML=th;
+  }
+}
+
+function runForecast(){
+  var preds = tracker.forecast();
+  var fa = document.getElementById('forecast-area');
+  if(!preds.length){ fa.innerHTML='<div class="empty-state">Not enough data for forecast — run simulation first</div>'; return; }
+  var html='';
+  for(var i=0;i<preds.length;i++){
+    var p=preds[i];
+    var trendIcon=p.trend==='rising'?'📈':p.trend==='falling'?'📉':'➡️';
+    var trendColor=p.trend==='rising'?'var(--danger)':p.trend==='falling'?'var(--success)':'var(--muted)';
+    html+='<div style="margin-bottom:20px;padding:16px;border:1px solid var(--border);border-radius:8px">';
+    html+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">';
+    html+='<div><strong>'+p.challengeId+'</strong><span style="margin-left:8px;color:'+trendColor+'">'+trendIcon+' '+p.trend+' ('+p.trendSlope+'/ep, R²='+p.r2+')</span></div>';
+    html+='<div>Current: <strong>'+Math.round(p.currentRate*100)+'%</strong>'+(p.willReachCompromise?' <span class="badge badge-critical">WILL COMPROMISE</span>':'')+'</div></div>';
+    // Mini chart
+    html+='<div class="forecast-chart">';
+    for(var j=0;j<p.forecast.length;j++){
+      var f=p.forecast[j];
+      var h=Math.max(f.predictedRate*100,2);
+      var bc=f.predictedRate>=0.7?'var(--danger)':f.predictedRate>=0.5?'var(--warn)':'var(--info)';
+      html+='<div class="forecast-bar" style="height:'+h+'%;background:'+bc+'" data-label="Epoch '+(j+1)+': '+Math.round(f.predictedRate*100)+'%"></div>';
+    }
+    html+='</div></div>';
+  }
+  fa.innerHTML=html;
+}
+
+function resetTracker(){
+  if(simInterval){clearInterval(simInterval);simInterval=null;}
+  tracker.reset();
+  runAnalysis();
+  document.getElementById('forecast-area').innerHTML='<div class="empty-state">Click Forecast to generate predictions</div>';
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Threat Intelligence Fusion — gif-captcha</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+:root {
+  --bg: #0d1117; --surface: #161b22; --border: #30363d;
+  --text: #c9d1d9; --text-dim: #8b949e; --accent: #58a6ff;
+  --green: #3fb950; --yellow: #d29922; --orange: #db6d28; --red: #f85149;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:var(--bg); color:var(--text); font-family:'Segoe UI',system-ui,sans-serif; padding:24px; }
+h1 { font-size:1.6rem; margin-bottom:4px; }
+.subtitle { color:var(--text-dim); margin-bottom:24px; font-size:0.9rem; }
+
+.grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); gap:16px; margin-bottom:24px; }
+.card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:20px; }
+.card h2 { font-size:1rem; color:var(--accent); margin-bottom:12px; }
+
+/* Threat Gauge */
+.gauge-wrap { display:flex; align-items:center; gap:24px; }
+.gauge-label { font-size:2.4rem; font-weight:700; }
+.gauge-label.GREEN { color:var(--green); }
+.gauge-label.YELLOW { color:var(--yellow); }
+.gauge-label.ORANGE { color:var(--orange); }
+.gauge-label.RED { color:var(--red); }
+.score-big { font-size:3rem; font-weight:700; color:var(--text); }
+.score-unit { font-size:1rem; color:var(--text-dim); }
+
+svg.gauge { width:140px; height:140px; }
+.gauge-bg { fill:none; stroke:var(--border); stroke-width:10; }
+.gauge-fg { fill:none; stroke-width:10; stroke-linecap:round; transition:stroke-dashoffset .6s ease, stroke .3s; }
+
+/* Signal Feed */
+.feed { max-height:300px; overflow-y:auto; font-size:0.82rem; }
+.feed-item { padding:6px 0; border-bottom:1px solid var(--border); display:flex; gap:8px; align-items:center; }
+.feed-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.feed-dot.anomaly { background:#f0883e; }
+.feed-dot.botMatch { background:#f85149; }
+.feed-dot.fraudRing { background:#bc8cff; }
+.feed-dot.attackEvolution { background:#d29922; }
+.feed-dot.biometric { background:#58a6ff; }
+.feed-dot.generic { background:#8b949e; }
+.feed-time { color:var(--text-dim); min-width:60px; }
+.feed-text { flex:1; }
+
+/* Correlation Map */
+.corr-item { padding:8px 12px; margin-bottom:6px; border-radius:6px; background:rgba(88,166,255,0.08); border-left:3px solid var(--accent); font-size:0.85rem; }
+.corr-pattern { font-weight:600; color:var(--accent); }
+.corr-conf { color:var(--text-dim); font-size:0.8rem; }
+
+/* Posture */
+.posture-badge { display:inline-block; padding:8px 20px; border-radius:8px; font-weight:700; font-size:1.1rem; }
+.posture-badge.NORMAL { background:rgba(63,185,80,0.15); color:var(--green); }
+.posture-badge.ELEVATED { background:rgba(210,153,34,0.15); color:var(--yellow); }
+.posture-badge.HIGH { background:rgba(219,109,40,0.15); color:var(--orange); }
+.posture-badge.CRITICAL { background:rgba(248,81,73,0.15); color:var(--red); }
+.posture-rec { font-size:0.85rem; color:var(--text-dim); margin-top:8px; }
+.posture-rec li { margin:4px 0; }
+
+.posture-history { font-size:0.82rem; margin-top:12px; max-height:150px; overflow-y:auto; }
+.ph-item { padding:4px 0; border-bottom:1px solid var(--border); display:flex; gap:8px; }
+.ph-dir { font-weight:600; }
+.ph-dir.escalation { color:var(--red); }
+.ph-dir.de-escalation { color:var(--green); }
+
+/* Trends */
+.trend-row { display:flex; gap:24px; flex-wrap:wrap; margin-bottom:8px; }
+.trend-stat { text-align:center; }
+.trend-val { font-size:1.6rem; font-weight:700; }
+.trend-lbl { font-size:0.75rem; color:var(--text-dim); }
+.trend-val.rising { color:var(--red); }
+.trend-val.falling { color:var(--green); }
+.trend-val.stable { color:var(--yellow); }
+
+/* Source bars */
+.source-bar-wrap { margin:4px 0; }
+.source-bar-label { font-size:0.8rem; color:var(--text-dim); display:flex; justify-content:space-between; }
+.source-bar { height:6px; background:var(--border); border-radius:3px; margin-top:2px; }
+.source-bar-fill { height:100%; border-radius:3px; transition:width .4s; }
+
+/* Controls */
+.controls { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:20px; }
+.btn { padding:8px 16px; border:1px solid var(--border); background:var(--surface); color:var(--text); border-radius:6px; cursor:pointer; font-size:0.85rem; }
+.btn:hover { border-color:var(--accent); color:var(--accent); }
+.btn.active { background:var(--accent); color:#0d1117; border-color:var(--accent); }
+.btn.danger { border-color:var(--red); color:var(--red); }
+.btn.danger:hover { background:var(--red); color:#fff; }
+
+/* Stats */
+.stat-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+.stat-item { text-align:center; }
+.stat-num { font-size:1.4rem; font-weight:700; color:var(--accent); }
+.stat-label { font-size:0.75rem; color:var(--text-dim); }
+</style>
+</head>
+<body>
+
+<h1>🔮 Threat Intelligence Fusion</h1>
+<p class="subtitle">Autonomous cross-system threat correlation and defense posture management</p>
+
+<div class="controls">
+  <button class="btn" onclick="simAnomaly()">+ Anomaly</button>
+  <button class="btn" onclick="simBot()">+ Bot Match</button>
+  <button class="btn" onclick="simFraud()">+ Fraud Ring</button>
+  <button class="btn" onclick="simEvolution()">+ Attack Evo</button>
+  <button class="btn" onclick="simBiometric()">+ Biometric</button>
+  <button class="btn" onclick="simGeneric()">+ Generic</button>
+  <button class="btn active" onclick="simCoordinated()">⚡ Coordinated Attack</button>
+  <button class="btn active" onclick="simWave()">🌊 Attack Wave</button>
+  <button class="btn active" id="autoBtn" onclick="toggleAuto()">▶ Auto-Simulate</button>
+  <button class="btn danger" onclick="resetAll()">✕ Reset</button>
+</div>
+
+<div class="grid">
+  <!-- Threat Level Gauge -->
+  <div class="card">
+    <h2>Threat Level</h2>
+    <div class="gauge-wrap">
+      <svg class="gauge" viewBox="0 0 140 140">
+        <circle class="gauge-bg" cx="70" cy="70" r="55" />
+        <circle class="gauge-fg" id="gaugeFg" cx="70" cy="70" r="55"
+          stroke-dasharray="345.58" stroke-dashoffset="345.58"
+          transform="rotate(-90 70 70)" />
+      </svg>
+      <div>
+        <div class="score-big" id="scoreNum">0</div>
+        <div class="score-unit">/ 100</div>
+        <div class="gauge-label GREEN" id="levelLabel">GREEN</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Defense Posture -->
+  <div class="card">
+    <h2>Defense Posture</h2>
+    <div id="postureBadge" class="posture-badge NORMAL">NORMAL</div>
+    <ul class="posture-rec" id="postureRecs"></ul>
+    <div class="posture-history" id="postureHistory"></div>
+  </div>
+
+  <!-- Signal Feed -->
+  <div class="card">
+    <h2>Signal Feed</h2>
+    <div class="feed" id="signalFeed"><em style="color:var(--text-dim)">No signals yet — click a button above</em></div>
+  </div>
+
+  <!-- Correlations -->
+  <div class="card">
+    <h2>Correlations Detected</h2>
+    <div id="correlations"><em style="color:var(--text-dim)">None</em></div>
+  </div>
+
+  <!-- Trends -->
+  <div class="card">
+    <h2>Trends</h2>
+    <div class="trend-row" id="trendRow">
+      <div class="trend-stat"><div class="trend-val stable" id="trendDir">—</div><div class="trend-lbl">Direction</div></div>
+      <div class="trend-stat"><div class="trend-val" id="trendRate">0</div><div class="trend-lbl">Signals/min</div></div>
+      <div class="trend-stat"><div class="trend-val" id="trendSev">0</div><div class="trend-lbl">Avg Severity</div></div>
+      <div class="trend-stat"><div class="trend-val" id="trendVel">0</div><div class="trend-lbl">Velocity</div></div>
+    </div>
+    <div id="sourceBars"></div>
+  </div>
+
+  <!-- Stats -->
+  <div class="card">
+    <h2>Statistics</h2>
+    <div class="stat-grid" id="statsGrid">
+      <div class="stat-item"><div class="stat-num" id="statIngested">0</div><div class="stat-label">Ingested</div></div>
+      <div class="stat-item"><div class="stat-num" id="statActive">0</div><div class="stat-label">Active</div></div>
+      <div class="stat-item"><div class="stat-num" id="statAssess">0</div><div class="stat-label">Assessments</div></div>
+      <div class="stat-item"><div class="stat-num" id="statPruned">0</div><div class="stat-label">Pruned</div></div>
+      <div class="stat-item"><div class="stat-num" id="statPosture">0</div><div class="stat-label">Posture Changes</div></div>
+      <div class="stat-item"><div class="stat-num" id="statCorr">0</div><div class="stat-label">Correlations</div></div>
+    </div>
+  </div>
+</div>
+
+<script src="shared.js"></script>
+<script>
+// ── Inline minimal fusion engine for demo ───────────────────────────
+// (Simulates the server-side engine in the browser for interactive demo)
+
+var fusion = {
+  signals: [],
+  postureHistory: [],
+  currentPosture: "NORMAL",
+  lastPostureChangeMs: 0,
+  stats: { totalIngested:0, totalPruned:0, totalAssessments:0, bySource:{} },
+  totalCorrelations: 0,
+  windowMs: 300000,
+  correlationWindowMs: 30000,
+  decayHalfLifeMs: 300000,
+  maxSignals: 500,
+  weights: { anomaly:0.20, botMatch:0.25, fraudRing:0.20, attackEvolution:0.15, biometric:0.10, generic:0.10 },
+  postureCfg: { greenMax:25, yellowMax:50, orangeMax:75 },
+
+  _id: function() { return "sig_" + Math.random().toString(16).slice(2,10); },
+  _clamp: function(v,lo,hi) { return Math.max(lo,Math.min(hi,v)); },
+  _decay: function(age) { return Math.pow(0.5, age / this.decayHalfLifeMs); },
+
+  ingest: function(source, severity, details) {
+    this._prune();
+    var sig = { id:this._id(), source:source, severity:this._clamp(severity||0,0,1), details:details||{}, timestamp:Date.now() };
+    this.signals.push(sig);
+    while (this.signals.length > this.maxSignals) { this.signals.shift(); this.stats.totalPruned++; }
+    this.stats.totalIngested++;
+    this.stats.bySource[source] = (this.stats.bySource[source]||0)+1;
+    return sig;
+  },
+
+  _prune: function() {
+    var cutoff = Date.now() - this.windowMs;
+    var before = this.signals.length;
+    this.signals = this.signals.filter(function(s){ return s.timestamp >= cutoff; });
+    this.stats.totalPruned += (before - this.signals.length);
+  },
+
+  _groupBySource: function() {
+    var g = {}; var sources = ["anomaly","botMatch","fraudRing","attackEvolution","biometric","generic"];
+    sources.forEach(function(s){ g[s]=[]; });
+    this.signals.forEach(function(s){ if(g[s.source]) g[s.source].push(s); });
+    return g;
+  },
+
+  _sourceScore: function(sigs) {
+    if(!sigs.length) return 0;
+    var now = Date.now(), self = this, mx = 0;
+    sigs.forEach(function(s){ var sc = s.severity*100*self._decay(now-s.timestamp); if(sc>mx) mx=sc; });
+    return mx;
+  },
+
+  assess: function() {
+    this._prune();
+    var now = Date.now(), groups = this._groupBySource(), self = this;
+    var active = []; var sources = ["anomaly","botMatch","fraudRing","attackEvolution","biometric","generic"];
+    sources.forEach(function(src){ if(groups[src].length>0) active.push(src); });
+
+    var comp = 0;
+    sources.forEach(function(src){ comp += self._sourceScore(groups[src]) * (self.weights[src]||0); });
+
+    // Correlations
+    var corrs = [];
+    // COORDINATED_ATTACK
+    if(groups.anomaly.length && groups.botMatch.length) {
+      var hasNearFraud = false;
+      groups.anomaly.forEach(function(a) {
+        groups.fraudRing.forEach(function(f) { if(Math.abs(a.timestamp-f.timestamp)<=self.correlationWindowMs) hasNearFraud=true; });
+      });
+      if(hasNearFraud || groups.botMatch.length>=2) {
+        corrs.push({pattern:"COORDINATED_ATTACK", confidence:0.8, description:"Anomaly + bot + fraud ring correlation"});
+      }
+    }
+    // ADAPTIVE_THREAT
+    groups.attackEvolution.forEach(function(e) {
+      if(e.details && e.details.learningRate>0) {
+        corrs.push({pattern:"ADAPTIVE_THREAT", confidence:0.6+e.severity*0.3, description:"Attack strategies evolving"});
+      }
+    });
+    // EVASION_ATTEMPT
+    groups.biometric.forEach(function(b) {
+      if(b.details && b.details.flags && b.details.flags.length) {
+        corrs.push({pattern:"EVASION_ATTEMPT", confidence:0.5+b.severity*0.4, description:"Biometric flags: "+b.details.flags.join(", ")});
+      }
+    });
+    // EMERGING_THREAT
+    if(active.length>=3 && self.signals.length>=5) {
+      corrs.push({pattern:"EMERGING_THREAT", confidence:0.4+active.length*0.1, description:active.length+" sources active"});
+    }
+
+    var boost = 0; corrs.forEach(function(c){ boost += c.confidence*10; });
+    comp = self._clamp(comp+boost, 0, 100);
+
+    var level = comp<=25?"GREEN":comp<=50?"YELLOW":comp<=75?"ORANGE":"RED";
+    var posture = comp<=25?"NORMAL":comp<=50?"ELEVATED":comp<=75?"HIGH":"CRITICAL";
+
+    if(posture !== self.currentPosture) {
+      var dir = ["NORMAL","ELEVATED","HIGH","CRITICAL"].indexOf(posture) > ["NORMAL","ELEVATED","HIGH","CRITICAL"].indexOf(self.currentPosture) ? "escalation" : "de-escalation";
+      self.currentPosture = posture;
+      self.lastPostureChangeMs = now;
+      self.postureHistory.push({posture:posture, score:comp, timestamp:now, direction:dir});
+    }
+
+    self.stats.totalAssessments++;
+    self.totalCorrelations += corrs.length;
+
+    return {
+      threatLevel:level, compositeScore:Math.round(comp*10)/10, activeSources:active,
+      correlations:corrs, defensePosture:self.currentPosture,
+      recommendations: ({NORMAL:["Standard monitoring"],ELEVATED:["Increase difficulty","Enhanced logging"],HIGH:["Max difficulty","Activate honeypots","Alert team"],CRITICAL:["Emergency lockdown","Block known bots","Incident response"]})[self.currentPosture],
+      signalCount:self.signals.length, timestamp:now
+    };
+  },
+
+  getTrends: function() {
+    if(this.signals.length<3) return {direction:"insufficient_data",signalRate:0,averageSeverity:0,sourceDistribution:{},severityVelocity:0};
+    var sevs=[], dist={}, self=this;
+    this.signals.forEach(function(s){ sevs.push(s.severity); dist[s.source]=(dist[s.source]||0)+1; });
+    var avg = sevs.reduce(function(a,b){return a+b;},0)/sevs.length;
+    var first = this.signals[0].timestamp, last = this.signals[this.signals.length-1].timestamp;
+    var span = Math.max(last-first, 60000);
+    var rate = this.signals.length/(span/60000);
+    // Simple slope
+    var n = sevs.length, sumX=0, sumY=0, sumXY=0, sumXX=0;
+    for(var i=0;i<n;i++){ sumX+=i; sumY+=sevs[i]; sumXY+=i*sevs[i]; sumXX+=i*i; }
+    var slope = n>1 ? (n*sumXY-sumX*sumY)/(n*sumXX-sumX*sumX) : 0;
+    var dir = slope>0.001?"rising":slope<-0.001?"falling":"stable";
+    return {direction:dir,signalRate:Math.round(rate*100)/100,averageSeverity:Math.round(avg*1000)/1000,sourceDistribution:dist,severityVelocity:Math.round(slope*10000)/10000};
+  },
+
+  reset: function() {
+    this.signals=[]; this.postureHistory=[]; this.currentPosture="NORMAL";
+    this.lastPostureChangeMs=0; this.totalCorrelations=0;
+    this.stats={totalIngested:0,totalPruned:0,totalAssessments:0,bySource:{}};
+  }
+};
+
+// ── UI ──────────────────────────────────────────────────────────────
+
+var feedItems = [];
+var autoInterval = null;
+var CIRCUMFERENCE = 2 * Math.PI * 55; // ~345.58
+
+function addFeedItem(sig) {
+  feedItems.unshift(sig);
+  if (feedItems.length > 100) feedItems.pop();
+}
+
+function render() {
+  var result = fusion.assess();
+  var trends = fusion.getTrends();
+  var stats = fusion.stats;
+
+  // Gauge
+  var pct = result.compositeScore / 100;
+  var offset = CIRCUMFERENCE * (1 - pct);
+  var fg = document.getElementById("gaugeFg");
+  fg.setAttribute("stroke-dashoffset", offset);
+  var colors = {GREEN:"var(--green)",YELLOW:"var(--yellow)",ORANGE:"var(--orange)",RED:"var(--red)"};
+  fg.setAttribute("stroke", colors[result.threatLevel] || "var(--green)");
+  document.getElementById("scoreNum").textContent = result.compositeScore;
+  var ll = document.getElementById("levelLabel");
+  ll.textContent = result.threatLevel;
+  ll.className = "gauge-label " + result.threatLevel;
+
+  // Posture
+  var pb = document.getElementById("postureBadge");
+  pb.textContent = result.defensePosture;
+  pb.className = "posture-badge " + result.defensePosture;
+  var recs = document.getElementById("postureRecs");
+  recs.innerHTML = (result.recommendations||[]).map(function(r){return "<li>"+r+"</li>";}).join("");
+
+  // Posture history
+  var phEl = document.getElementById("postureHistory");
+  phEl.innerHTML = fusion.postureHistory.slice(-10).reverse().map(function(h){
+    var t = new Date(h.timestamp).toLocaleTimeString();
+    return '<div class="ph-item"><span class="ph-dir '+h.direction+'">'+h.direction+'</span><span>'+h.posture+' ('+h.score.toFixed(1)+')</span><span style="color:var(--text-dim)">'+t+'</span></div>';
+  }).join("");
+
+  // Signal feed
+  var feedEl = document.getElementById("signalFeed");
+  if(feedItems.length === 0) {
+    feedEl.innerHTML = '<em style="color:var(--text-dim)">No signals yet</em>';
+  } else {
+    feedEl.innerHTML = feedItems.slice(0,50).map(function(s){
+      var t = new Date(s.timestamp).toLocaleTimeString();
+      return '<div class="feed-item"><span class="feed-dot '+s.source+'"></span><span class="feed-time">'+t+'</span><span class="feed-text">'+s.source+' — severity '+(s.severity*100).toFixed(0)+'%</span></div>';
+    }).join("");
+  }
+
+  // Correlations
+  var corrEl = document.getElementById("correlations");
+  if(result.correlations.length === 0) {
+    corrEl.innerHTML = '<em style="color:var(--text-dim)">None detected</em>';
+  } else {
+    corrEl.innerHTML = result.correlations.map(function(c){
+      return '<div class="corr-item"><span class="corr-pattern">'+c.pattern+'</span> <span class="corr-conf">('+Math.round(c.confidence*100)+'%)</span><br>'+c.description+'</div>';
+    }).join("");
+  }
+
+  // Trends
+  var dirEl = document.getElementById("trendDir");
+  dirEl.textContent = trends.direction;
+  dirEl.className = "trend-val " + trends.direction;
+  document.getElementById("trendRate").textContent = trends.signalRate;
+  document.getElementById("trendSev").textContent = trends.averageSeverity;
+  document.getElementById("trendVel").textContent = trends.severityVelocity;
+
+  // Source bars
+  var barEl = document.getElementById("sourceBars");
+  var maxCount = 1;
+  var sources = ["anomaly","botMatch","fraudRing","attackEvolution","biometric","generic"];
+  var dist = trends.sourceDistribution || {};
+  sources.forEach(function(s){ if((dist[s]||0)>maxCount) maxCount=dist[s]; });
+  barEl.innerHTML = sources.map(function(s){
+    var cnt = dist[s]||0;
+    var pct = cnt/maxCount*100;
+    var dotColors = {anomaly:"#f0883e",botMatch:"#f85149",fraudRing:"#bc8cff",attackEvolution:"#d29922",biometric:"#58a6ff",generic:"#8b949e"};
+    return '<div class="source-bar-wrap"><div class="source-bar-label"><span>'+s+'</span><span>'+cnt+'</span></div><div class="source-bar"><div class="source-bar-fill" style="width:'+pct+'%;background:'+dotColors[s]+'"></div></div></div>';
+  }).join("");
+
+  // Stats
+  document.getElementById("statIngested").textContent = stats.totalIngested;
+  document.getElementById("statActive").textContent = result.signalCount;
+  document.getElementById("statAssess").textContent = stats.totalAssessments;
+  document.getElementById("statPruned").textContent = stats.totalPruned;
+  document.getElementById("statPosture").textContent = fusion.postureHistory.length;
+  document.getElementById("statCorr").textContent = fusion.totalCorrelations;
+}
+
+// ── Simulators ──────────────────────────────────────────────────────
+
+function rng(lo,hi) { return lo + Math.random()*(hi-lo); }
+
+function simAnomaly() {
+  var s = fusion.ingest("anomaly", rng(0.3,1.0), {type:"spike",metric:"solve_rate"});
+  addFeedItem(s); render();
+}
+function simBot() {
+  var s = fusion.ingest("botMatch", rng(0.4,1.0), {signatureId:"bot-"+Math.floor(rng(1,20)),category:"automated"});
+  addFeedItem(s); render();
+}
+function simFraud() {
+  var s = fusion.ingest("fraudRing", rng(0.5,0.9), {ringId:"ring-"+Math.floor(rng(1,5)),memberCount:Math.floor(rng(3,12))});
+  addFeedItem(s); render();
+}
+function simEvolution() {
+  var s = fusion.ingest("attackEvolution", rng(0.3,0.8), {strategyId:"strat-"+Math.floor(rng(1,10)),learningRate:rng(0.01,0.1)});
+  addFeedItem(s); render();
+}
+function simBiometric() {
+  var s = fusion.ingest("biometric", rng(0.2,0.8), {humanLikelihood:rng(0.2,0.7),flags:["timing_anomaly"]});
+  addFeedItem(s); render();
+}
+function simGeneric() {
+  var s = fusion.ingest("generic", rng(0.2,0.6), {type:"ip_blacklist"});
+  addFeedItem(s); render();
+}
+
+function simCoordinated() {
+  fusion.ingest("anomaly", rng(0.7,1.0), {type:"burst"}); 
+  fusion.ingest("botMatch", rng(0.7,0.95), {signatureId:"bot-farm-1",category:"farm"});
+  fusion.ingest("botMatch", rng(0.6,0.9), {signatureId:"bot-farm-2",category:"farm"});
+  var s = fusion.ingest("fraudRing", rng(0.6,0.9), {ringId:"ring-alpha",memberCount:8});
+  addFeedItem({id:"batch",source:"multi",severity:0.9,timestamp:Date.now()});
+  render();
+}
+
+function simWave() {
+  var types = [simAnomaly,simBot,simFraud,simEvolution,simBiometric,simGeneric];
+  var count = Math.floor(rng(3,8));
+  for(var i=0;i<count;i++) {
+    types[Math.floor(Math.random()*types.length)]();
+  }
+}
+
+function toggleAuto() {
+  var btn = document.getElementById("autoBtn");
+  if(autoInterval) {
+    clearInterval(autoInterval);
+    autoInterval = null;
+    btn.textContent = "▶ Auto-Simulate";
+    btn.classList.remove("danger");
+  } else {
+    autoInterval = setInterval(function(){
+      var r = Math.random();
+      if(r < 0.3) simAnomaly();
+      else if(r < 0.5) simBot();
+      else if(r < 0.65) simFraud();
+      else if(r < 0.75) simEvolution();
+      else if(r < 0.85) simBiometric();
+      else if(r < 0.92) simGeneric();
+      else simCoordinated();
+    }, 800);
+    btn.textContent = "⏸ Stop Auto";
+    btn.classList.add("danger");
+  }
+}
+
+function resetAll() {
+  fusion.reset();
+  feedItems = [];
+  if(autoInterval) { clearInterval(autoInterval); autoInterval=null; document.getElementById("autoBtn").textContent="▶ Auto-Simulate"; document.getElementById("autoBtn").classList.remove("danger"); }
+  render();
+}
+
+// Initial render
+render();
+</script>
+</body>
+</html>

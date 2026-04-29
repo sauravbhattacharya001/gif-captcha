@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Deception Campaign Orchestrator — GIF CAPTCHA</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+:root{--bg:#0a0a0f;--surface:#12121a;--surface2:#1a1a25;--border:#2a2a3a;--text:#e0e0e8;--muted:#888;--accent:#9f5fff;--accent2:#ff5f9f;--green:#3ecf8e;--red:#ff4d4d;--yellow:#ffc107;--orange:#ff8c00;--blue:#4dabf7}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+.header{background:linear-gradient(135deg,#1a0a2e,#0a0a2e);border-bottom:1px solid var(--border);padding:24px 32px}
+.header h1{font-size:1.6rem;font-weight:700;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.header p{color:var(--muted);margin-top:4px;font-size:0.9rem}
+.container{max-width:1400px;margin:0 auto;padding:24px}
+.grid{display:grid;gap:16px}
+.grid-3{grid-template-columns:repeat(3,1fr)}
+.grid-2{grid-template-columns:repeat(2,1fr)}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px}
+.card h3{font-size:0.85rem;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin-bottom:12px}
+.stat-value{font-size:2rem;font-weight:700;color:var(--accent)}
+.stat-label{font-size:0.8rem;color:var(--muted);margin-top:4px}
+.btn{padding:8px 16px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);cursor:pointer;font-size:0.85rem;transition:all 0.2s}
+.btn:hover{border-color:var(--accent);background:rgba(159,95,255,0.1)}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn-primary:hover{background:#b370ff}
+.input{padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:0.85rem;width:100%}
+.input:focus{outline:none;border-color:var(--accent)}
+.badge{display:inline-block;padding:2px 8px;border-radius:12px;font-size:0.75rem;font-weight:600}
+.badge-bot{background:rgba(255,77,77,0.15);color:var(--red)}
+.badge-human{background:rgba(62,207,142,0.15);color:var(--green)}
+.badge-uncertain{background:rgba(255,193,7,0.15);color:var(--yellow)}
+.badge-active{background:rgba(77,171,247,0.15);color:var(--blue)}
+.tactic-bar{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.tactic-bar .label{min-width:160px;font-size:0.8rem}
+.tactic-bar .bar-bg{flex:1;height:20px;background:var(--surface2);border-radius:4px;overflow:hidden}
+.tactic-bar .bar-fill{height:100%;border-radius:4px;transition:width 0.5s}
+.tactic-bar .value{min-width:40px;text-align:right;font-size:0.8rem;color:var(--muted)}
+table{width:100%;border-collapse:collapse}
+th,td{padding:8px 12px;text-align:left;border-bottom:1px solid var(--border);font-size:0.85rem}
+th{color:var(--muted);font-weight:600;text-transform:uppercase;font-size:0.75rem}
+.controls{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center}
+.section{margin-bottom:24px}
+.evidence-chain{display:flex;gap:4px;flex-wrap:wrap}
+.evidence-chip{padding:2px 6px;border-radius:4px;font-size:0.7rem;font-weight:600}
+.signal-bot{background:rgba(255,77,77,0.15);color:var(--red)}
+.signal-human{background:rgba(62,207,142,0.15);color:var(--green)}
+.phase-indicator{display:flex;gap:4px;align-items:center}
+.phase-dot{width:12px;height:12px;border-radius:50%;border:2px solid var(--border)}
+.phase-dot.completed{background:var(--green);border-color:var(--green)}
+.phase-dot.active{background:var(--blue);border-color:var(--blue);animation:pulse 1.5s infinite}
+.phase-dot.pending{background:transparent}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
+.campaign-card{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:8px}
+@media(max-width:900px){.grid-3{grid-template-columns:1fr}.grid-2{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="header">
+<h1>🎭 Deception Campaign Orchestrator</h1>
+<p>Autonomous multi-phase deception campaigns to detect and profile sophisticated bots</p>
+</div>
+<div class="container">
+<!-- Stats Row -->
+<div class="grid grid-3 section" id="stats-row">
+<div class="card"><h3>Active Campaigns</h3><div class="stat-value" id="stat-active">0</div></div>
+<div class="card"><h3>Bots Detected</h3><div class="stat-value" id="stat-bots">0</div></div>
+<div class="card"><h3>Humans Cleared</h3><div class="stat-value" id="stat-humans">0</div></div>
+</div>
+
+<!-- Controls -->
+<div class="section">
+<div class="card">
+<h3>Launch Campaign</h3>
+<div class="controls">
+<input class="input" id="input-session" placeholder="Session ID" style="max-width:200px">
+<select class="input" id="input-strategy" style="max-width:150px">
+<option value="adaptive">Adaptive</option>
+<option value="aggressive">Aggressive</option>
+<option value="subtle">Subtle</option>
+</select>
+<select class="input" id="input-phases" style="max-width:100px">
+<option value="1">1 Phase</option>
+<option value="2">2 Phases</option>
+<option value="3" selected>3 Phases</option>
+<option value="4">4 Phases</option>
+<option value="5">5 Phases</option>
+</select>
+<button class="btn btn-primary" onclick="launchCampaign()">🚀 Launch</button>
+<button class="btn" onclick="quickSimulate()">⚡ Simulate Bot</button>
+<button class="btn" onclick="quickSimulateHuman()">👤 Simulate Human</button>
+</div>
+</div>
+</div>
+
+<!-- Active Campaigns + Tactic Rankings -->
+<div class="grid grid-2 section">
+<div class="card">
+<h3>Active Campaigns</h3>
+<div id="active-campaigns"><p style="color:var(--muted);font-size:0.85rem">No active campaigns</p></div>
+</div>
+<div class="card">
+<h3>Tactic Effectiveness Rankings</h3>
+<div id="tactic-rankings"></div>
+</div>
+</div>
+
+<!-- Campaign History + Suspect Profiles -->
+<div class="grid grid-2 section">
+<div class="card">
+<h3>Campaign History</h3>
+<table>
+<thead><tr><th>Session</th><th>Strategy</th><th>Verdict</th><th>Confidence</th><th>Duration</th></tr></thead>
+<tbody id="history-body"></tbody>
+</table>
+</div>
+<div class="card">
+<h3>Suspect Profiles</h3>
+<div id="suspect-profiles"><p style="color:var(--muted);font-size:0.85rem">No suspects profiled yet</p></div>
+</div>
+</div>
+
+<!-- Recommendation Engine -->
+<div class="section">
+<div class="card">
+<h3>🔍 Campaign Recommendation Engine</h3>
+<div class="controls">
+<input class="input" id="rec-session" placeholder="Session ID" style="max-width:160px">
+<input class="input" id="rec-rate" placeholder="Req/min" type="number" style="max-width:90px">
+<input class="input" id="rec-time" placeholder="Avg ms" type="number" style="max-width:90px">
+<label style="font-size:0.8rem;display:flex;align-items:center;gap:4px"><input type="checkbox" id="rec-mouse" checked> Mouse</label>
+<label style="font-size:0.8rem;display:flex;align-items:center;gap:4px"><input type="checkbox" id="rec-keys" checked> Keys</label>
+<input class="input" id="rec-fails" placeholder="Fails" type="number" style="max-width:70px">
+<button class="btn btn-primary" onclick="checkRecommendation()">Analyze</button>
+</div>
+<div id="rec-result"></div>
+</div>
+</div>
+</div>
+
+<script>
+// Inline a minimal version of the orchestrator for the browser demo
+var TACTIC_TYPES=["HONEYPOT","DELAY_TRAP","IMPOSSIBLE_CHALLENGE","CURIOSITY_BAIT","FRUSTRATION_TEST","CONSISTENCY_PROBE","SOCIAL_PROOF_TRAP"];
+var TACTIC_TEMPLATES={HONEYPOT:{description:"Deploy invisible interaction traps",botSignal:"interacted with hidden element",humanSignal:"ignored hidden element",weight:.9},DELAY_TRAP:{description:"Insert artificial delays and measure reaction patterns",botSignal:"uniform wait time across delays",humanSignal:"variable reaction to delays",weight:.7},IMPOSSIBLE_CHALLENGE:{description:"Present unsolvable challenges",botSignal:"attempted solution with confidence",humanSignal:"hesitation, skip, or complaint",weight:.85},CURIOSITY_BAIT:{description:"Offer optional exploration paths",botSignal:"ignored all optional elements",humanSignal:"explored optional content",weight:.6},FRUSTRATION_TEST:{description:"Repeat challenges to measure frustration",botSignal:"flat emotional response curve",humanSignal:"escalating frustration indicators",weight:.75},CONSISTENCY_PROBE:{description:"Re-present identical challenges",botSignal:"identical response timing and content",humanSignal:"natural variation in responses",weight:.8},SOCIAL_PROOF_TRAP:{description:"Display fake social signals",botSignal:"response unaffected by social cues",humanSignal:"response influenced by peers",weight:.5}};
+
+function _clamp(v,lo,hi){return v<lo?lo:v>hi?hi:v}
+function _mean(a){if(!a.length)return 0;var s=0;for(var i=0;i<a.length;i++)s+=a[i];return s/a.length}
+function _stddev(a){if(a.length<2)return 0;var m=_mean(a),ss=0;for(var i=0;i<a.length;i++)ss+=(a[i]-m)*(a[i]-m);return Math.sqrt(ss/(a.length-1))}
+function _posOpt(v,d){return v!=null&&v>0?v:d}
+function _nnOpt(v,d){return v!=null&&v>=0?v:d}
+var _idCounter=0;
+function _rid(){return"c"+(++_idCounter)+"_"+Math.random().toString(36).slice(2,8)}
+
+// Simplified browser orchestrator
+function DCO(opts){
+  opts=opts||{};
+  this.campaigns={};this.campaignCount=0;this.completed=[];this.suspects={};this.suspectCount=0;
+  this.botThreshold=opts.botThreshold||.7;this.humanThreshold=opts.humanThreshold||.3;
+  this.tacticEff={};
+  for(var i=0;i<TACTIC_TYPES.length;i++)this.tacticEff[TACTIC_TYPES[i]]={deployments:0,correct:0,fp:0,fn:0,eff:.5};
+  this.stats={created:0,completed:0,obs:0,bots:0,humans:0,fps:0};
+}
+DCO.prototype.design=function(sid,opts){
+  opts=opts||{};var id=_rid(),now=Date.now(),np=_clamp(opts.phases||3,1,5),strat=opts.strategy||"adaptive";
+  var tactics=opts.tactics||this._pickTactics(strat,np);
+  var phases=[],pnames=["RECON","ENGAGE","PROFILE","CONFIRM","VERDICT"].slice(0,np);
+  for(var i=0;i<pnames.length;i++){
+    var pt=this._assignPhase(tactics,i,np);
+    phases.push({name:pnames[i],tactics:pt,status:i===0?"ACTIVE":"PENDING",obs:[]});
+  }
+  var c={id:id,sid:sid,strat:strat,phases:phases,cp:0,status:"ACTIVE",created:now,verdict:null};
+  this.campaigns[id]=c;this.campaignCount++;this.stats.created++;
+  this._ensureSuspect(sid);return c;
+};
+DCO.prototype._pickTactics=function(s,np){
+  var pool=TACTIC_TYPES.slice();
+  if(s==="aggressive")pool.sort(function(a,b){return TACTIC_TEMPLATES[b].weight-TACTIC_TEMPLATES[a].weight});
+  else if(s==="subtle")pool.sort(function(a,b){return TACTIC_TEMPLATES[a].weight-TACTIC_TEMPLATES[b].weight});
+  return pool.slice(0,Math.min(np+2,pool.length));
+};
+DCO.prototype._assignPhase=function(tactics,pi,np){
+  if(np===1)return tactics.slice();
+  var pp=Math.ceil(tactics.length/np),s=pi*pp,e=Math.min(s+pp,tactics.length);
+  if(s>=tactics.length){s=tactics.length-1;e=tactics.length}
+  return tactics.slice(s,e);
+};
+DCO.prototype._ensureSuspect=function(sid){
+  if(this.suspects[sid])return;
+  this.suspects[sid]={sid:sid,firstSeen:Date.now(),lastSeen:Date.now(),obs:[],verdicts:[],lastVerdict:null,botConf:.5,profile:{avgMs:null,variance:null,trapRate:null}};
+  this.suspectCount++;
+};
+DCO.prototype.observe=function(cid,ttype,obs){
+  var c=this.campaigns[cid];if(!c||c.status!=="ACTIVE")return null;
+  var phase=c.phases[c.cp],now=Date.now();
+  var rec={tactic:ttype,ts:now,behavior:obs.behavior||"unknown",ms:_nnOpt(obs.responseTimeMs,0),trap:!!obs.interactedWithTrap,consistency:obs.consistencyScore!=null?_clamp(obs.consistencyScore,0,1):null};
+  rec.botStr=this._scoreBot(ttype,rec);
+  phase.obs.push(rec);this.stats.obs++;
+  // Update suspect
+  var sus=this.suspects[c.sid];
+  if(sus){sus.lastSeen=now;sus.obs.push(rec);if(sus.obs.length>100)sus.obs.shift();this._updateProfile(sus)}
+  // Check if all tactics triggered
+  var triggered={};for(var i=0;i<phase.obs.length;i++)triggered[phase.obs[i].tactic]=true;
+  var allDone=true;for(var j=0;j<phase.tactics.length;j++)if(!triggered[phase.tactics[j]]){allDone=false;break}
+  if(allDone)return this._advance(cid);
+  return{status:"ACTIVE",phase:phase.name,botStr:rec.botStr};
+};
+DCO.prototype._scoreBot=function(t,r){
+  var s=.5,w=TACTIC_TEMPLATES[t].weight;
+  switch(t){
+    case"HONEYPOT":s=r.trap?.95:.05;break;
+    case"DELAY_TRAP":s=r.ms<100?.8:r.ms%1000===0?.6:.2;break;
+    case"IMPOSSIBLE_CHALLENGE":s=r.behavior==="attempted_solution"?.85:r.behavior==="skipped"||r.behavior==="complained"?.1:.4;break;
+    case"CURIOSITY_BAIT":s=r.trap?.1:.6;break;
+    case"FRUSTRATION_TEST":s=r.consistency!=null?r.consistency*.8:.4;break;
+    case"CONSISTENCY_PROBE":s=r.consistency!=null?(r.consistency>.95?.9:r.consistency*.6):.4;break;
+    case"SOCIAL_PROOF_TRAP":s=r.trap?.2:.55;break;
+  }
+  return _clamp(s*w+(1-w)*.5,0,1);
+};
+DCO.prototype._advance=function(cid){
+  var c=this.campaigns[cid];c.phases[c.cp].status="COMPLETED";c.cp++;
+  if(c.cp>=c.phases.length)return this._complete(cid);
+  c.phases[c.cp].status="ACTIVE";
+  return{status:"ACTIVE",phase:c.phases[c.cp].name,advanced:true};
+};
+DCO.prototype._complete=function(cid){
+  var c=this.campaigns[cid],sigs=[];
+  for(var i=0;i<c.phases.length;i++)for(var j=0;j<c.phases[i].obs.length;j++)sigs.push(c.phases[i].obs[j].botStr);
+  var conf=sigs.length?_mean(sigs):.5,v;
+  if(conf>=this.botThreshold){v="BOT";this.stats.bots++}
+  else if(conf>=(this.botThreshold+this.humanThreshold)/2)v="LIKELY_BOT";
+  else if(conf<=this.humanThreshold){v="HUMAN";this.stats.humans++}
+  else if(conf<=(this.botThreshold+this.humanThreshold)/2)v="LIKELY_HUMAN";
+  else v="UNCERTAIN";
+  var evidence=[];
+  for(var k=0;k<c.phases.length;k++)for(var l=0;l<c.phases[k].obs.length;l++){
+    var o=c.phases[k].obs[l];evidence.push({tactic:o.tactic,signal:o.botStr>.5?"BOT":"HUMAN",strength:Math.round(o.botStr*100)/100});
+  }
+  evidence.sort(function(a,b){return b.strength-a.strength});
+  c.verdict={cls:v,conf:Math.round(conf*1000)/1000,variance:Math.round(_stddev(sigs)*1000)/1000,count:sigs.length,evidence:evidence};
+  c.status="COMPLETED";this.stats.completed++;
+  this.completed.unshift({id:cid,sid:c.sid,strat:c.strat,verdict:v,conf:conf,obs:sigs.length,ts:Date.now()});
+  if(this.completed.length>200)this.completed.length=200;
+  var sus=this.suspects[c.sid];
+  if(sus){sus.verdicts.push({v:v,conf:conf,ts:Date.now()});sus.lastVerdict=v;sus.botConf=conf}
+  // Update tactic eff
+  var isBot=v==="BOT"||v==="LIKELY_BOT";
+  for(var m=0;m<c.phases.length;m++)for(var n=0;n<c.phases[m].obs.length;n++){
+    var ob=c.phases[m].obs[n],ef=this.tacticEff[ob.tactic];
+    ef.deployments++;var pred=ob.botStr>.5;
+    if(pred&&isBot)ef.correct++;else if(pred&&!isBot)ef.fp++;else if(!pred&&isBot)ef.fn++;
+    var tot=ef.correct+ef.fp+ef.fn;if(tot>0)ef.eff=ef.eff*.95+(ef.correct/tot)*.05;
+  }
+  delete this.campaigns[cid];this.campaignCount--;
+  return{status:"COMPLETED",verdict:c.verdict};
+};
+DCO.prototype._updateProfile=function(sus){
+  var times=[],traps=0,tc=0;
+  for(var i=0;i<sus.obs.length;i++){
+    var o=sus.obs[i];if(o.ms>0)times.push(o.ms);
+    if(o.tactic==="HONEYPOT"||o.tactic==="CURIOSITY_BAIT"||o.tactic==="SOCIAL_PROOF_TRAP"){tc++;if(o.trap)traps++}
+  }
+  if(times.length){sus.profile.avgMs=Math.round(_mean(times));sus.profile.variance=times.length>1?Math.round(_stddev(times)*100)/100:0}
+  if(tc)sus.profile.trapRate=Math.round(traps/tc*1000)/1000;
+};
+DCO.prototype.recommend=function(sid,sig){
+  sig=sig||{};var score=0,reasons=[];
+  if(sig.requestRate!=null&&sig.requestRate>10){score+=.3;reasons.push("High req rate: "+sig.requestRate+"/min")}
+  if(sig.avgResponseTimeMs!=null&&sig.avgResponseTimeMs<200){score+=.25;reasons.push("Fast responses: "+sig.avgResponseTimeMs+"ms")}
+  if(sig.hasMouseMovement===false){score+=.2;reasons.push("No mouse movement")}
+  if(sig.hasKeystrokes===false){score+=.15;reasons.push("No keystrokes")}
+  if(sig.failedAttempts!=null&&sig.failedAttempts>3){score+=.1;reasons.push("Failed attempts: "+sig.failedAttempts)}
+  score=_clamp(score,0,1);
+  var sus=this.suspects[sid];
+  if(sus&&sus.botConf>.5){score=_clamp(score+.2,0,1);reasons.push("Prior suspicion")}
+  var rec;
+  if(score>=.7)rec={launch:true,strategy:"aggressive",phases:4};
+  else if(score>=.4)rec={launch:true,strategy:"adaptive",phases:3};
+  else if(score>=.2)rec={launch:true,strategy:"subtle",phases:2};
+  else rec={launch:false};
+  return{sid:sid,score:Math.round(score*1000)/1000,reasons:reasons,rec:rec};
+};
+
+// ── App State ──
+var orch=new DCO();
+var suspectList=[];
+
+function refresh(){
+  // Stats
+  document.getElementById("stat-active").textContent=orch.campaignCount;
+  document.getElementById("stat-bots").textContent=orch.stats.bots;
+  document.getElementById("stat-humans").textContent=orch.stats.humans;
+
+  // Active campaigns
+  var ac=document.getElementById("active-campaigns");
+  var keys=Object.keys(orch.campaigns);
+  if(!keys.length){ac.innerHTML='<p style="color:var(--muted);font-size:0.85rem">No active campaigns</p>';return}
+  var html="";
+  for(var i=0;i<keys.length;i++){
+    var c=orch.campaigns[keys[i]];
+    html+='<div class="campaign-card"><div style="display:flex;justify-content:space-between;align-items:center">';
+    html+='<strong>'+c.sid+'</strong><span class="badge badge-active">'+c.strat.toUpperCase()+'</span></div>';
+    html+='<div class="phase-indicator" style="margin-top:8px">';
+    for(var j=0;j<c.phases.length;j++){
+      var cls=c.phases[j].status==="COMPLETED"?"completed":c.phases[j].status==="ACTIVE"?"active":"pending";
+      html+='<span class="phase-dot '+cls+'" title="'+c.phases[j].name+'"></span>';
+      if(j<c.phases.length-1)html+='<span style="width:20px;height:2px;background:var(--border);display:inline-block"></span>';
+    }
+    html+='</div></div>';
+  }
+  ac.innerHTML=html;
+
+  // Tactic rankings
+  var tr=document.getElementById("tactic-rankings");
+  var types=TACTIC_TYPES.slice().sort(function(a,b){return orch.tacticEff[b].eff-orch.tacticEff[a].eff});
+  html="";
+  for(var k=0;k<types.length;k++){
+    var ef=orch.tacticEff[types[k]];
+    var pct=Math.round(ef.eff*100);
+    var color=pct>=60?"var(--green)":pct>=40?"var(--yellow)":"var(--red)";
+    html+='<div class="tactic-bar"><span class="label">'+types[k]+'</span>';
+    html+='<div class="bar-bg"><div class="bar-fill" style="width:'+pct+'%;background:'+color+'"></div></div>';
+    html+='<span class="value">'+pct+'%</span></div>';
+  }
+  tr.innerHTML=html;
+
+  // History
+  var hb=document.getElementById("history-body");html="";
+  for(var l=0;l<Math.min(orch.completed.length,15);l++){
+    var h=orch.completed[l];
+    var bc=h.verdict==="BOT"||h.verdict==="LIKELY_BOT"?"badge-bot":h.verdict==="HUMAN"||h.verdict==="LIKELY_HUMAN"?"badge-human":"badge-uncertain";
+    html+="<tr><td>"+h.sid+"</td><td>"+h.strat+"</td><td><span class='badge "+bc+"'>"+h.verdict+"</span></td>";
+    html+="<td>"+Math.round(h.conf*100)+"%</td><td>"+h.obs+" obs</td></tr>";
+  }
+  hb.innerHTML=html||'<tr><td colspan="5" style="color:var(--muted)">No completed campaigns</td></tr>';
+
+  // Suspects
+  var sp=document.getElementById("suspect-profiles");
+  var sids=Object.keys(orch.suspects);
+  if(!sids.length){sp.innerHTML='<p style="color:var(--muted);font-size:0.85rem">No suspects profiled yet</p>';return}
+  html="";
+  for(var m=0;m<Math.min(sids.length,10);m++){
+    var s=orch.suspects[sids[m]];
+    var vc=s.lastVerdict==="BOT"||s.lastVerdict==="LIKELY_BOT"?"badge-bot":s.lastVerdict==="HUMAN"||s.lastVerdict==="LIKELY_HUMAN"?"badge-human":"badge-uncertain";
+    html+='<div class="campaign-card"><div style="display:flex;justify-content:space-between">';
+    html+='<strong>'+s.sid+'</strong>';
+    if(s.lastVerdict)html+='<span class="badge '+vc+'">'+s.lastVerdict+'</span>';
+    html+='</div><div style="font-size:0.8rem;color:var(--muted);margin-top:4px">';
+    if(s.profile.avgMs!=null)html+='Avg response: '+s.profile.avgMs+'ms · ';
+    if(s.profile.trapRate!=null)html+='Trap rate: '+Math.round(s.profile.trapRate*100)+'% · ';
+    html+=s.obs.length+' observations</div></div>';
+  }
+  sp.innerHTML=html;
+}
+
+function launchCampaign(){
+  var sid=document.getElementById("input-session").value.trim()||("session-"+Math.random().toString(36).slice(2,6));
+  var strat=document.getElementById("input-strategy").value;
+  var phases=parseInt(document.getElementById("input-phases").value);
+  orch.design(sid,{strategy:strat,phases:phases});
+  document.getElementById("input-session").value="";
+  refresh();
+}
+
+function _simObs(c,ttype,isBot){
+  var obs={behavior:isBot?"automated":"natural",responseTimeMs:isBot?50+Math.random()*50:800+Math.random()*2000};
+  if(ttype==="HONEYPOT"||ttype==="CURIOSITY_BAIT"||ttype==="SOCIAL_PROOF_TRAP")obs.interactedWithTrap=ttype==="HONEYPOT"?isBot:ttype==="CURIOSITY_BAIT"?!isBot:!isBot;
+  if(ttype==="IMPOSSIBLE_CHALLENGE")obs.behavior=isBot?"attempted_solution":"skipped";
+  if(ttype==="FRUSTRATION_TEST"||ttype==="CONSISTENCY_PROBE")obs.consistencyScore=isBot?.97:.3+Math.random()*.3;
+  return obs;
+}
+
+function quickSimulate(){_doSim(true)}
+function quickSimulateHuman(){_doSim(false)}
+function _doSim(isBot){
+  var sid=(isBot?"bot-":"human-")+Math.random().toString(36).slice(2,6);
+  var c=orch.design(sid,{phases:2,strategy:isBot?"aggressive":"subtle"});
+  for(var i=0;i<c.phases.length;i++){
+    for(var j=0;j<c.phases[i].tactics.length;j++){
+      var r=orch.observe(c.id,c.phases[i].tactics[j],_simObs(c,c.phases[i].tactics[j],isBot));
+      if(r&&r.status==="COMPLETED")break;
+    }
+    if(!orch.campaigns[c.id])break;
+  }
+  refresh();
+}
+
+function checkRecommendation(){
+  var sid=document.getElementById("rec-session").value.trim()||"test-session";
+  var sig={};
+  var rate=document.getElementById("rec-rate").value;if(rate)sig.requestRate=parseFloat(rate);
+  var time=document.getElementById("rec-time").value;if(time)sig.avgResponseTimeMs=parseFloat(time);
+  sig.hasMouseMovement=document.getElementById("rec-mouse").checked;
+  sig.hasKeystrokes=document.getElementById("rec-keys").checked;
+  var fails=document.getElementById("rec-fails").value;if(fails)sig.failedAttempts=parseInt(fails);
+  var rec=orch.recommend(sid,sig);
+  var el=document.getElementById("rec-result");
+  var color=rec.score>=.7?"var(--red)":rec.score>=.4?"var(--orange)":rec.score>=.2?"var(--yellow)":"var(--green)";
+  var html='<div style="margin-top:12px;padding:12px;background:var(--surface2);border-radius:8px">';
+  html+='<div style="display:flex;justify-content:space-between;align-items:center">';
+  html+='<span style="font-size:1.2rem;font-weight:700;color:'+color+'">Suspicion: '+Math.round(rec.score*100)+'%</span>';
+  if(rec.rec.launch)html+='<span class="badge badge-active">Launch: '+rec.rec.strategy+' ('+rec.rec.phases+' phases)</span>';
+  else html+='<span class="badge badge-human">No campaign needed</span>';
+  html+='</div>';
+  if(rec.reasons.length){html+='<ul style="margin-top:8px;padding-left:20px;font-size:0.8rem;color:var(--muted)">';
+  for(var i=0;i<rec.reasons.length;i++)html+='<li>'+rec.reasons[i]+'</li>';html+='</ul>'}
+  html+='</div>';el.innerHTML=html;
+}
+
+// Init
+refresh();
+// Auto-run some simulations for demo
+for(var i=0;i<3;i++){quickSimulate();quickSimulateHuman()}
+</script>
+</body>
+</html>

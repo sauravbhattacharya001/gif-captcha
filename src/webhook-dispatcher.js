@@ -338,6 +338,14 @@ WebhookDispatcher.prototype.list = function () {
 
 // ── Rate Limiting ───────────────────────────────────────────────────
 
+/**
+ * Check and consume one rate-limit token for a webhook.
+ * Resets the window when more than 60 seconds have elapsed since the window start.
+ *
+ * @private
+ * @param {string} id - Webhook identifier
+ * @returns {boolean} True if the delivery is within rate limits
+ */
 WebhookDispatcher.prototype._checkRateLimit = function (id) {
   var now = Date.now();
   var bucket = this._rateBuckets.get(id);
@@ -579,8 +587,20 @@ WebhookDispatcher.prototype.getStats = function (id) {
 
 // ── Pause / Resume ──────────────────────────────────────────────────
 
+/**
+ * Pause all webhook dispatching. Events fired while paused are silently dropped.
+ */
 WebhookDispatcher.prototype.pause = function () { this._paused = true; };
+
+/**
+ * Resume webhook dispatching after a pause.
+ */
 WebhookDispatcher.prototype.resume = function () { this._paused = false; };
+
+/**
+ * Check whether dispatching is currently paused.
+ * @returns {boolean}
+ */
 WebhookDispatcher.prototype.isPaused = function () { return this._paused; };
 
 // ── Verify Signature (static helper for consumers) ─────────────────

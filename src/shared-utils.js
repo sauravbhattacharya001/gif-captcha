@@ -62,6 +62,12 @@ function LruTracker() {
   this.length = 0;
 }
 
+/**
+ * Add a key to the tracker as the most recently used.
+ * If the key already exists, it is moved to the most-recent position (equivalent to touch).
+ *
+ * @param {string} key - The key to track
+ */
 LruTracker.prototype.push = function (key) {
   if (this._map[key]) {
     this.touch(key);
@@ -78,6 +84,12 @@ LruTracker.prototype.push = function (key) {
   this.length++;
 };
 
+/**
+ * Move an existing key to the most-recent position without adding it.
+ * No-op if the key is not currently tracked or is already the newest.
+ *
+ * @param {string} key - The key to refresh
+ */
 LruTracker.prototype.touch = function (key) {
   var node = this._map[key];
   if (!node || node === this._tail) return;
@@ -92,6 +104,12 @@ LruTracker.prototype.touch = function (key) {
   this._tail = node;
 };
 
+/**
+ * Remove and return the least-recently-used (oldest) key.
+ * Returns undefined if the tracker is empty.
+ *
+ * @returns {string|undefined} The evicted key, or undefined if empty
+ */
 LruTracker.prototype.evictOldest = function () {
   if (!this._head) return undefined;
   var node = this._head;
@@ -103,6 +121,12 @@ LruTracker.prototype.evictOldest = function () {
   return node.key;
 };
 
+/**
+ * Remove a specific key from the tracker regardless of its position.
+ *
+ * @param {string} key - The key to remove
+ * @returns {boolean} True if the key existed and was removed
+ */
 LruTracker.prototype.remove = function (key) {
   var node = this._map[key];
   if (!node) return false;
@@ -115,10 +139,22 @@ LruTracker.prototype.remove = function (key) {
   return true;
 };
 
+/**
+ * Check whether a key is currently tracked.
+ *
+ * @param {string} key - The key to look up
+ * @returns {boolean} True if the key is present
+ */
 LruTracker.prototype.has = function (key) {
   return !!this._map[key];
 };
 
+/**
+ * Return all tracked keys as an array ordered from oldest to newest.
+ * Useful for serialization/persistence.
+ *
+ * @returns {string[]} Keys in LRU order (oldest first)
+ */
 LruTracker.prototype.toArray = function () {
   var result = [];
   var node = this._head;
@@ -129,6 +165,9 @@ LruTracker.prototype.toArray = function () {
   return result;
 };
 
+/**
+ * Remove all tracked keys and reset internal state.
+ */
 LruTracker.prototype.clear = function () {
   this._map = Object.create(null);
   this._head = null;

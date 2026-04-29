@@ -27,6 +27,7 @@ var _now = _shared._now;
 var _mean = _shared._mean;
 var _stddev = _shared._stddev;
 var _clamp = _shared._clamp;
+var _sharedLinearRegression = _shared._linearRegression;
 
 var _crypto = require("./crypto-utils");
 var secureRandom = _crypto.secureRandom;
@@ -63,41 +64,21 @@ function _epochKey(ts, epochMs) {
 }
 
 /**
- * Simple linear regression: y = slope * x + intercept.
- * Returns { slope, intercept, r2 }.
+ * Linear regression adapter for [[x, y], ...] point arrays.
+ * Delegates to shared-utils._linearRegression (which accepts parallel xs, ys)
+ * to eliminate the duplicated regression implementation (issue #91 cleanup).
  */
 function _linearRegression(points) {
   var n = points.length;
   if (n < 2) return { slope: 0, intercept: 0, r2: 0 };
-
-  var sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0, sumY2 = 0;
+  var xs = new Array(n);
+  var ys = new Array(n);
   for (var i = 0; i < n; i++) {
-    var x = points[i][0], y = points[i][1];
-    sumX += x;
-    sumY += y;
-    sumXY += x * y;
-    sumX2 += x * x;
-    sumY2 += y * y;
+    xs[i] = points[i][0];
+    ys[i] = points[i][1];
   }
-
-  var denom = n * sumX2 - sumX * sumX;
-  if (denom === 0) return { slope: 0, intercept: sumY / n, r2: 0 };
-
-  var slope = (n * sumXY - sumX * sumY) / denom;
-  var intercept = (sumY - slope * sumX) / n;
-
-  // R² calculation
-  var ssTot = sumY2 - (sumY * sumY) / n;
-  var ssRes = 0;
-  for (var j = 0; j < n; j++) {
-    var predicted = slope * points[j][0] + intercept;
-    var residual = points[j][1] - predicted;
-    ssRes += residual * residual;
-  }
-  var r2 = ssTot === 0 ? 0 : 1 - ssRes / ssTot;
-  if (r2 < 0) r2 = 0;
-
-  return { slope: slope, intercept: intercept, r2: r2 };
+  var reg = _sharedLinearRegression(xs, ys);
+  return { slope: reg.slope, intercept: reg.intercept, r2: Math.max(0, reg.r2) };
 }
 
 /**

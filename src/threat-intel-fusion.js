@@ -261,15 +261,22 @@ function _detectEmergingThreat(groups, correlationWindowMs) {
   return null;
 }
 
+/**
+ * Detect sustained elevated pressure. Signals are already in chronological
+ * order (each receives _now() at ingestion), so skip the O(n log n) sort.
+ * Also computes mean severity in a single pass without allocating an
+ * intermediate array.
+ */
 function _detectSustainedPressure(signals, windowMs) {
   // Persistent elevated signals over the full window
   if (signals.length < 5) return null;
-  var sorted = signals.slice().sort(function (a, b) { return a.timestamp - b.timestamp; });
-  var span = sorted[sorted.length - 1].timestamp - sorted[0].timestamp;
+  // Signals are chronologically ordered — first/last give the span directly
+  var span = signals[signals.length - 1].timestamp - signals[0].timestamp;
   if (span < windowMs * 0.5) return null; // not sustained enough
-  // Check if severity stays elevated
-  var sevs = signals.map(function (s) { return s.severity; });
-  var avg = _mean(sevs);
+  // Single-pass mean severity (avoids allocating a mapped array)
+  var sevSum = 0;
+  for (var i = 0; i < signals.length; i++) sevSum += signals[i].severity;
+  var avg = sevSum / signals.length;
   if (avg < 0.3) return null;
   return {
     pattern: "SUSTAINED_PRESSURE",
@@ -352,17 +359,31 @@ function createThreatIntelFusion(options) {
 
   // ── Internal ────────────────────────────────────────────────────
 
+  /**
+   * Remove expired signals. Uses binary search to find the cutoff index
+   * because signals are chronologically ordered (each receives _now() at
+   * ingestion time). Previously iterated every signal with a conditional
+   * push into a new array — O(n) allocations each time. Binary search +
+   * splice is O(log n) to locate + O(k) for the removal of k expired
+   * entries, and avoids allocating a fresh array when nothing expired.
+   */
   function _prune() {
+    if (signals.length === 0) return;
     var cutoff = _now() - windowMs;
-    var before = signals.length;
-    var kept = [];
-    for (var i = 0; i < signals.length; i++) {
-      if (signals[i].timestamp >= cutoff) {
-        kept.push(signals[i]);
-      }
+    // Fast exit: if the oldest signal is still valid, nothing to prune
+    if (signals[0].timestamp >= cutoff) return;
+    // Binary search for the first signal at or after cutoff
+    var lo = 0, hi = signals.length;
+    while (lo < hi) {
+      var mid = (lo + hi) >>> 1;
+      if (signals[mid].timestamp < cutoff) lo = mid + 1;
+      else hi = mid;
     }
-    signals = kept;
-    stats.totalPruned += (before - signals.length);
+    // lo = index of first valid signal
+    if (lo > 0) {
+      stats.totalPruned += lo;
+      signals = signals.slice(lo);
+    }
   }
 
   function _enforceCap() {
@@ -373,7 +394,13 @@ function createThreatIntelFusion(options) {
   }
 
   function _ingest(source, severity, details) {
-    _prune();
+    // Lazy pruning: only prune when signal count exceeds 110% of max or
+    // when the oldest signal is clearly expired. Avoids O(log n) binary
+    // search overhead on every single ingestion call.
+    if (signals.length > maxSignals * 1.1 ||
+        (signals.length > 0 && signals[0].timestamp < _now() - windowMs)) {
+      _prune();
+    }
     var signal = {
       id: _makeSignalId(),
       source: source,

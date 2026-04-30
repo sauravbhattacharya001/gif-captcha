@@ -129,6 +129,8 @@ function DeceptionCampaignOrchestrator(options) {
   // Active campaigns: id → campaign object
   this._campaigns = Object.create(null);
   this._campaignCount = 0;
+  // Insertion-order queue for O(1) oldest-campaign eviction (replaces O(n) scan)
+  this._campaignInsertionOrder = [];
 
   // Completed campaigns (ring buffer for analysis)
   this._completed = [];
@@ -136,6 +138,8 @@ function DeceptionCampaignOrchestrator(options) {
   // Suspect profiles: sessionId → profile
   this._suspects = Object.create(null);
   this._suspectCount = 0;
+  // Insertion-order queue for O(1) oldest-suspect eviction (replaces O(n) scan)
+  this._suspectInsertionOrder = [];
 
   // Tactic effectiveness scores (learned over time)
   this._tacticEffectiveness = {};
@@ -218,6 +222,7 @@ DeceptionCampaignOrchestrator.prototype.designCampaign = function (sessionId, op
   };
 
   this._campaigns[campaignId] = campaign;
+  this._campaignInsertionOrder.push(campaignId);
   this._campaignCount++;
   this._stats.totalCampaignsCreated++;
 
@@ -671,13 +676,26 @@ DeceptionCampaignOrchestrator.prototype._ensureSuspect = function (sessionId) {
       curiosityScore: null,
       frustrationCurve: null,
       consistencyPattern: null
+    },
+    // Incremental accumulators — O(1) profile updates instead of O(obs) rescan
+    _accum: {
+      rtSum: 0, rtSumSq: 0, rtCount: 0,
+      trapInteractions: 0, trapCount: 0,
+      consistencySum: 0, consistencyCount: 0
     }
   };
+  this._suspectInsertionOrder.push(sessionId);
   this._suspectCount++;
 };
 
 /**
  * Update a suspect's behavioral profile from a new observation.
+ *
+ * Refactored: uses incremental accumulators (_accum) so each call is O(1)
+ * instead of rescanning all observations (previously O(observations)).
+ * When observations overflow the max buffer we subtract the evicted
+ * observation's contribution from the accumulators to stay accurate.
+ *
  * @private
  */
 DeceptionCampaignOrchestrator.prototype._updateSuspectProfile = function (sessionId, record) {
@@ -685,41 +703,57 @@ DeceptionCampaignOrchestrator.prototype._updateSuspectProfile = function (sessio
   if (!suspect) return;
 
   suspect.lastSeen = record.timestamp;
+  var acc = suspect._accum;
 
-  // Store observation (bounded)
+  // If buffer is full, subtract the evicted (oldest) observation's contribution
   if (suspect.observations.length >= this._maxObservations) {
-    suspect.observations.shift();
+    var evicted = suspect.observations.shift();
+    if (evicted.responseTimeMs > 0) {
+      acc.rtSum -= evicted.responseTimeMs;
+      acc.rtSumSq -= evicted.responseTimeMs * evicted.responseTimeMs;
+      acc.rtCount--;
+    }
+    if (evicted.tacticType === "HONEYPOT" || evicted.tacticType === "CURIOSITY_BAIT" || evicted.tacticType === "SOCIAL_PROOF_TRAP") {
+      acc.trapCount--;
+      if (evicted.interactedWithTrap) acc.trapInteractions--;
+    }
+    if (evicted.consistencyScore != null) {
+      acc.consistencySum -= evicted.consistencyScore;
+      acc.consistencyCount--;
+    }
   }
+
   suspect.observations.push(record);
 
-  // Recalculate behavioral profile
+  // Add new observation's contribution
+  if (record.responseTimeMs > 0) {
+    acc.rtSum += record.responseTimeMs;
+    acc.rtSumSq += record.responseTimeMs * record.responseTimeMs;
+    acc.rtCount++;
+  }
+  if (record.tacticType === "HONEYPOT" || record.tacticType === "CURIOSITY_BAIT" || record.tacticType === "SOCIAL_PROOF_TRAP") {
+    acc.trapCount++;
+    if (record.interactedWithTrap) acc.trapInteractions++;
+  }
+  if (record.consistencyScore != null) {
+    acc.consistencySum += record.consistencyScore;
+    acc.consistencyCount++;
+  }
+
+  // Derive profile from accumulators — O(1)
   var profile = suspect.behavioralProfile;
-  var responseTimes = [];
-  var trapInteractions = 0;
-  var trapCount = 0;
-  var consistencyScores = [];
-
-  for (var i = 0; i < suspect.observations.length; i++) {
-    var obs = suspect.observations[i];
-    if (obs.responseTimeMs > 0) responseTimes.push(obs.responseTimeMs);
-    if (obs.tacticType === "HONEYPOT" || obs.tacticType === "CURIOSITY_BAIT" || obs.tacticType === "SOCIAL_PROOF_TRAP") {
-      trapCount++;
-      if (obs.interactedWithTrap) trapInteractions++;
-    }
-    if (obs.consistencyScore != null) consistencyScores.push(obs.consistencyScore);
+  if (acc.rtCount > 0) {
+    var mean = acc.rtSum / acc.rtCount;
+    profile.avgResponseTimeMs = Math.round(mean);
+    profile.responseTimeVariance = acc.rtCount > 1
+      ? Math.round(Math.sqrt((acc.rtSumSq - acc.rtSum * acc.rtSum / acc.rtCount) / (acc.rtCount - 1)) * 100) / 100
+      : 0;
   }
-
-  if (responseTimes.length > 0) {
-    profile.avgResponseTimeMs = Math.round(_mean(responseTimes));
-    profile.responseTimeVariance = responseTimes.length > 1 ? Math.round(_stddev(responseTimes) * 100) / 100 : 0;
+  if (acc.trapCount > 0) {
+    profile.trapInteractionRate = Math.round((acc.trapInteractions / acc.trapCount) * 1000) / 1000;
   }
-
-  if (trapCount > 0) {
-    profile.trapInteractionRate = Math.round((trapInteractions / trapCount) * 1000) / 1000;
-  }
-
-  if (consistencyScores.length > 0) {
-    profile.consistencyPattern = Math.round(_mean(consistencyScores) * 1000) / 1000;
+  if (acc.consistencyCount > 0) {
+    profile.consistencyPattern = Math.round((acc.consistencySum / acc.consistencyCount) * 1000) / 1000;
   }
 };
 
@@ -918,35 +952,37 @@ DeceptionCampaignOrchestrator.prototype.reportFalsePositive = function (sessionI
 
 // ── Eviction ────────────────────────────────────────────────────────
 
-/** @private */
+/**
+ * Evict the oldest campaign using the insertion-order queue.
+ * O(1) amortized — replaces O(n) full-scan of all campaigns.
+ * @private
+ */
 DeceptionCampaignOrchestrator.prototype._evictOldestCampaign = function () {
-  var oldestId = null;
-  var oldestTime = Infinity;
-  for (var id in this._campaigns) {
-    if (this._campaigns[id].createdAt < oldestTime) {
-      oldestTime = this._campaigns[id].createdAt;
-      oldestId = id;
+  while (this._campaignInsertionOrder.length > 0) {
+    var candidateId = this._campaignInsertionOrder.shift();
+    if (this._campaigns[candidateId]) {
+      delete this._campaigns[candidateId];
+      this._campaignCount--;
+      return;
     }
-  }
-  if (oldestId) {
-    delete this._campaigns[oldestId];
-    this._campaignCount--;
+    // Already removed (completed) — skip stale entry
   }
 };
 
-/** @private */
+/**
+ * Evict the oldest suspect using the insertion-order queue.
+ * O(1) amortized — replaces O(n) full-scan of all suspects.
+ * @private
+ */
 DeceptionCampaignOrchestrator.prototype._evictOldestSuspect = function () {
-  var oldestId = null;
-  var oldestTime = Infinity;
-  for (var id in this._suspects) {
-    if (this._suspects[id].lastSeen < oldestTime) {
-      oldestTime = this._suspects[id].lastSeen;
-      oldestId = id;
+  while (this._suspectInsertionOrder.length > 0) {
+    var candidateId = this._suspectInsertionOrder.shift();
+    if (this._suspects[candidateId]) {
+      delete this._suspects[candidateId];
+      this._suspectCount--;
+      return;
     }
-  }
-  if (oldestId) {
-    delete this._suspects[oldestId];
-    this._suspectCount--;
+    // Already removed — skip stale entry
   }
 };
 

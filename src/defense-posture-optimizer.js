@@ -369,23 +369,35 @@ DefensePostureOptimizer.prototype.computePareto = function (options) {
     });
   }
 
-  // Find non-dominated set
+  // Find non-dominated set using incremental frontier approach — O(n*k)
+  // where k is the frontier size, instead of O(n²) all-pairs comparison.
   var frontier = [];
   var dominated = [];
 
   for (var a = 0; a < vectors.length; a++) {
     var isDominated = false;
-    for (var b = 0; b < vectors.length; b++) {
-      if (a === b) continue;
-      if (_dominates(vectors[b].objectives, vectors[a].objectives)) {
+    var newFrontier = [];
+    var aObj = vectors[a].objectives;
+    for (var f = 0; f < frontier.length; f++) {
+      var fObj = frontier[f].objectives;
+      if (!isDominated && _dominates(fObj, aObj)) {
         isDominated = true;
+        // Keep remaining frontier members as-is
+        for (var r = f; r < frontier.length; r++) newFrontier.push(frontier[r]);
         break;
+      }
+      if (!_dominates(aObj, fObj)) {
+        newFrontier.push(frontier[f]);
+      } else {
+        dominated.push(frontier[f]);
       }
     }
     if (!isDominated) {
-      frontier.push(vectors[a]);
+      newFrontier.push(vectors[a]);
+      frontier = newFrontier;
     } else {
       dominated.push(vectors[a]);
+      frontier = newFrontier;
     }
   }
 
@@ -816,39 +828,53 @@ DefensePostureOptimizer.prototype.getTimeline = function (options) {
  */
 DefensePostureOptimizer.prototype.getDimensionBreakdown = function () {
   var snaps = this._snapshots;
-  if (snaps.length === 0) return { dimensions: {}, snapshotCount: 0 };
+  var n = snaps.length;
+  if (n === 0) return { dimensions: {}, snapshotCount: 0 };
 
   var metricKeys = ["catchRate", "humanFriction", "latencyCost", "challengeDiversity", "attackSurface", "fatigueRisk"];
   var result = {};
 
   for (var ki = 0; ki < metricKeys.length; ki++) {
     var key = metricKeys[ki];
-    var values = [];
-    for (var i = 0; i < snaps.length; i++) {
-      values.push(snaps[i].metrics[key]);
+    // Single-pass extraction with min/max/sum tracking
+    var values = new Array(n);
+    var vMin = Infinity;
+    var vMax = -Infinity;
+    var vSum = 0;
+    for (var i = 0; i < n; i++) {
+      var v = snaps[i].metrics[key];
+      values[i] = v;
+      vSum += v;
+      if (v < vMin) vMin = v;
+      if (v > vMax) vMax = v;
     }
 
-    var avg = _mean(values);
-    var sd = _stddev(values);
-    var trend = values.length >= 3 ? _linearRegression(values) : null;
+    var avg = vSum / n;
+    // Single-pass stddev using pre-computed mean (avoids redundant mean call)
+    var sqSum = 0;
+    for (var si = 0; si < n; si++) {
+      var diff = values[si] - avg;
+      sqSum += diff * diff;
+    }
+    var sd = Math.sqrt(sqSum / n);
 
-    var sorted = values.slice().sort(function (a, b) { return a - b; });
+    var trend = n >= 3 ? _linearRegression(values) : null;
 
     result[key] = {
       average: Math.round(avg * 1000) / 1000,
-      min: sorted[0],
-      max: sorted[sorted.length - 1],
+      min: vMin,
+      max: vMax,
       stddev: Math.round(sd * 1000) / 1000,
       variability: avg > 0 ? Math.round((sd / avg) * 100) / 100 : 0,
       trend: trend ? {
         slope: Math.round(trend.slope * 10000) / 10000,
         direction: trend.slope > 0.002 ? "INCREASING" : trend.slope < -0.002 ? "DECREASING" : "STABLE"
       } : null,
-      samples: values.length
+      samples: n
     };
   }
 
-  return { dimensions: result, snapshotCount: snaps.length };
+  return { dimensions: result, snapshotCount: n };
 };
 
 // ── State Export/Import ─────────────────────────────────────────────

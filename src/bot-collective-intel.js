@@ -101,6 +101,9 @@ function createBotCollectiveIntelDetector(options) {
   // sessionId -> swarmId (reverse index)
   var sessionToSwarm = Object.create(null);
 
+  // Behavior vector cache: sessionId -> { vector: number[], generation: number }
+  var behaviorCache = Object.create(null);
+
   // Global collective knowledge observations
   var knowledgeEvents = []; // { type, challengeId, timestamp, sessionId, swarmId }
   var lastTopologyCheck = 0;
@@ -126,6 +129,7 @@ function createBotCollectiveIntelDetector(options) {
     var oldId = sessionOrder.shift();
     if (sessions[oldId]) {
       delete sessions[oldId];
+      delete behaviorCache[oldId];
       sessionCount--;
       if (sessionToSwarm[oldId]) {
         _removeFromSwarm(oldId, sessionToSwarm[oldId]);
@@ -205,44 +209,63 @@ function createBotCollectiveIntelDetector(options) {
   /**
    * Compute behavioral vector for a session (for cosine similarity).
    * Dimensions: avgSolveTime, successRate, eventCadence, burstFreq, challengeVariety
+   * Uses per-session cache invalidated by event count (generation).
    */
   function _behaviorVector(sess) {
     var times = sess.solveTimes;
     if (times.length < 2) return [0, 0, 0, 0, 0];
 
+    // Check cache — generation is event count, so vector is recomputed only on new events
+    var gen = sess.events.length;
+    var cached = behaviorCache[sess.id];
+    if (cached && cached.generation === gen) return cached.vector;
+
     // Avg solve time (normalized to 0-1 range, cap at 30s)
-    var avgTime = _mean(sess.events.map(function (e) { return e.solveMs || 0; }).filter(function (x) { return x > 0; }));
+    var solveSum = 0;
+    var solveCount = 0;
+    for (var s = 0; s < sess.events.length; s++) {
+      var ms = sess.events[s].solveMs;
+      if (ms > 0) { solveSum += ms; solveCount++; }
+    }
+    var avgTime = solveCount > 0 ? solveSum / solveCount : 0;
     var normAvgTime = _clamp(avgTime / 30000, 0, 1);
 
     // Success rate
     var successRate = sess.successRate;
 
-    // Event cadence (avg inter-arrival time, normalized)
-    var intervals = [];
-    for (var i = 1; i < times.length; i++) intervals.push(times[i] - times[i - 1]);
-    var avgCadence = intervals.length > 0 ? _mean(intervals) : 60000;
+    // Event cadence (avg inter-arrival time, normalized) + burst frequency
+    var intervalSum = 0;
+    var bursts = 0;
+    var intervalCount = times.length - 1;
+    for (var i = 1; i < times.length; i++) {
+      var d = times[i] - times[i - 1];
+      intervalSum += d;
+      if (d < 2000) bursts++;
+    }
+    var avgCadence = intervalCount > 0 ? intervalSum / intervalCount : 60000;
     var normCadence = _clamp(avgCadence / 60000, 0, 1);
-
-    // Burst frequency (intervals < 2s)
-    var bursts = intervals.filter(function (d) { return d < 2000; }).length;
-    var burstFreq = intervals.length > 0 ? bursts / intervals.length : 0;
+    var burstFreq = intervalCount > 0 ? bursts / intervalCount : 0;
 
     // Challenge variety (unique challenges / total)
     var uniqueChallenges = Object.keys(sess.challengeResults).length;
     var variety = sess.events.length > 0 ? Math.min(uniqueChallenges / sess.events.length, 1) : 0;
 
-    return [normAvgTime, successRate, normCadence, burstFreq, variety];
+    var vec = [normAvgTime, successRate, normCadence, burstFreq, variety];
+    behaviorCache[sess.id] = { vector: vec, generation: gen };
+    return vec;
   }
 
   /**
    * Compute composite correlation score between two sessions.
+   * Note: for hot-path bulk scoring in _checkSwarmMembership, we inline this
+   * with cached vectors and early-exit. This function is kept for ad-hoc use.
    */
   function _correlationScore(sessA, sessB) {
-    var timingSync = _timingSyncScore(sessA, sessB);
-    var knowledgeShare = _knowledgeSharingScore(sessA, sessB);
     var vecA = _behaviorVector(sessA);
     var vecB = _behaviorVector(sessB);
     var behaviorSim = _cosineSimilarity(vecA, vecB);
+    var timingSync = _timingSyncScore(sessA, sessB);
+    var knowledgeShare = _knowledgeSharingScore(sessA, sessB);
 
     // Weighted composite
     return (timingSync * 0.35) + (knowledgeShare * 0.30) + (behaviorSim * 0.35);
@@ -459,6 +482,9 @@ function createBotCollectiveIntelDetector(options) {
 
   /**
    * Check if a session belongs to a swarm.
+   * Optimized: pre-computes the target behavior vector once, skips sessions
+   * with no time overlap (timing sync would be 0), and uses early-exit on
+   * the behavioral similarity dimension before computing expensive timing/knowledge scores.
    */
   function _checkSwarmMembership(sessionId) {
     var sess = sessions[sessionId];
@@ -469,6 +495,11 @@ function createBotCollectiveIntelDetector(options) {
       return { detected: true, swarmId: sessionToSwarm[sessionId] };
     }
 
+    // Pre-compute target vector once for all comparisons
+    var vecA = _behaviorVector(sess);
+    var sessFirst = sess.firstSeen;
+    var sessLast = sess.lastSeen;
+
     // Find correlated sessions
     var correlated = [];
     for (var i = 0; i < sessionOrder.length; i++) {
@@ -477,7 +508,19 @@ function createBotCollectiveIntelDetector(options) {
       var otherSess = sessions[otherId];
       if (!otherSess || otherSess.events.length < 5) continue;
 
-      var score = _correlationScore(sess, otherSess);
+      // Skip sessions with no time overlap — timing sync would be ~0
+      if (otherSess.lastSeen < sessFirst - syncThresholdMs ||
+          otherSess.firstSeen > sessLast + syncThresholdMs) continue;
+
+      // Cheap behavioral similarity pre-check (weight=0.35, max contrib=0.35)
+      var vecB = _behaviorVector(otherSess);
+      var behaviorSim = _cosineSimilarity(vecA, vecB);
+      // If even perfect timing+knowledge (0.65) + this behavior can't reach threshold, skip
+      if (behaviorSim * 0.35 + 0.65 < correlationThreshold) continue;
+
+      var timingSync = _timingSyncScore(sess, otherSess);
+      var knowledgeShare = _knowledgeSharingScore(sess, otherSess);
+      var score = (timingSync * 0.35) + (knowledgeShare * 0.30) + (behaviorSim * 0.35);
       if (score >= correlationThreshold) {
         correlated.push({ id: otherId, score: score });
       }
@@ -912,6 +955,7 @@ function createBotCollectiveIntelDetector(options) {
     swarmCount = 0;
     nextSwarmId = 1;
     sessionToSwarm = Object.create(null);
+    behaviorCache = Object.create(null);
     knowledgeEvents = [];
     lastTopologyCheck = 0;
     stats = {

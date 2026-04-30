@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bot Collective Intelligence Detector — gif-captcha</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:system-ui,-apple-system,sans-serif;background:#0d1117;color:#c9d1d9;line-height:1.6;padding:20px}
+.container{max-width:1200px;margin:0 auto}
+h1{font-size:1.6rem;margin-bottom:6px;color:#58a6ff}
+.subtitle{color:#8b949e;margin-bottom:24px;font-size:0.9rem}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-bottom:24px}
+.card{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:16px}
+.card h3{font-size:0.85rem;color:#8b949e;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px}
+.metric{font-size:2rem;font-weight:700;color:#f0f6fc}
+.metric.threat-dormant{color:#3fb950}
+.metric.threat-probing{color:#d29922}
+.metric.threat-coordinated{color:#db6d28}
+.metric.threat-swarming{color:#f85149}
+.metric.threat-overwhelming{color:#ff7b72;animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.6}}
+.badge{display:inline-block;padding:2px 8px;border-radius:12px;font-size:0.75rem;font-weight:600}
+.badge-green{background:#1b4332;color:#3fb950}
+.badge-yellow{background:#3d2e00;color:#d29922}
+.badge-orange{background:#3d1e00;color:#db6d28}
+.badge-red{background:#3d0000;color:#f85149}
+.swarm-list{margin-top:16px}
+.swarm-item{background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:12px;margin-bottom:10px}
+.swarm-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.swarm-name{font-weight:600;color:#58a6ff}
+.topology-badge{font-size:0.7rem;padding:3px 8px;border-radius:4px;background:#1f2937;color:#79c0ff}
+.progress-bar{height:6px;background:#21262d;border-radius:3px;overflow:hidden;margin:4px 0}
+.progress-fill{height:100%;border-radius:3px;transition:width 0.3s}
+.stat-row{display:flex;justify-content:space-between;font-size:0.8rem;color:#8b949e;margin:3px 0}
+.controls{margin-bottom:20px;display:flex;gap:10px;flex-wrap:wrap}
+button{background:#21262d;color:#c9d1d9;border:1px solid #30363d;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:0.85rem}
+button:hover{background:#30363d;border-color:#58a6ff}
+button.active{background:#1f6feb;border-color:#58a6ff;color:#fff}
+.timeline{margin-top:16px;padding:12px;background:#0d1117;border:1px solid #30363d;border-radius:6px;max-height:200px;overflow-y:auto}
+.timeline-event{padding:4px 0;border-bottom:1px solid #21262d;font-size:0.8rem}
+.timeline-event:last-child{border-bottom:none}
+.timeline-time{color:#8b949e;margin-right:8px}
+.empty{text-align:center;padding:40px;color:#8b949e}
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>🐝 Bot Collective Intelligence Detector</h1>
+  <p class="subtitle">Autonomous swarm detection — timing sync, knowledge propagation, topology inference</p>
+
+  <div class="controls">
+    <button id="btn-simulate" class="active">Simulate Swarm</button>
+    <button id="btn-analyze">Run Analysis</button>
+    <button id="btn-reset">Reset</button>
+    <button id="btn-export">Export State</button>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h3>Global Threat Level</h3>
+      <div class="metric" id="global-threat">DORMANT</div>
+    </div>
+    <div class="card">
+      <h3>Active Swarms</h3>
+      <div class="metric" id="active-swarms">0</div>
+    </div>
+    <div class="card">
+      <h3>Sessions Tracked</h3>
+      <div class="metric" id="sessions-tracked">0</div>
+    </div>
+    <div class="card">
+      <h3>Events Ingested</h3>
+      <div class="metric" id="events-ingested">0</div>
+    </div>
+    <div class="card">
+      <h3>Peak Swarm Size</h3>
+      <div class="metric" id="peak-size">0</div>
+    </div>
+    <div class="card">
+      <h3>Threat Escalations</h3>
+      <div class="metric" id="escalations">0</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Detected Swarms</h3>
+    <div class="swarm-list" id="swarm-list">
+      <div class="empty">No swarms detected yet. Click "Simulate Swarm" to generate activity.</div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h3>Activity Timeline</h3>
+    <div class="timeline" id="timeline">
+      <div class="empty">Waiting for events...</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Inline simulation (browser-only, mirrors the module logic)
+(function(){
+  var state = { swarms: [], stats: { eventsIngested:0, sessionsTracked:0, peakSwarmSize:0, swarmsActive:0, threatEscalations:0 }, globalThreat:'DORMANT', timeline:[] };
+  var simRound = 0;
+
+  function threatClass(level){ return 'threat-' + level.toLowerCase(); }
+  function threatBadge(level){
+    var cls = {DORMANT:'badge-green',PROBING:'badge-yellow',COORDINATED:'badge-orange',SWARMING:'badge-red',OVERWHELMING:'badge-red'};
+    return '<span class="badge '+(cls[level]||'badge-green')+'">'+level+'</span>';
+  }
+  function topologies(){ return ['HUB_SPOKE','MESH','HIERARCHICAL','PIPELINE','INDEPENDENT']; }
+  function randFrom(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
+
+  function render(){
+    var el = function(id){return document.getElementById(id);};
+    el('global-threat').textContent = state.globalThreat;
+    el('global-threat').className = 'metric ' + threatClass(state.globalThreat);
+    el('active-swarms').textContent = state.stats.swarmsActive;
+    el('sessions-tracked').textContent = state.stats.sessionsTracked;
+    el('events-ingested').textContent = state.stats.eventsIngested;
+    el('peak-size').textContent = state.stats.peakSwarmSize;
+    el('escalations').textContent = state.stats.threatEscalations;
+
+    if(state.swarms.length===0){
+      el('swarm-list').innerHTML='<div class="empty">No swarms detected yet. Click "Simulate Swarm" to generate activity.</div>';
+    } else {
+      var html='';
+      state.swarms.forEach(function(s){
+        var sophPct = s.sophisticationScore;
+        var color = sophPct>70?'#f85149':sophPct>40?'#d29922':'#3fb950';
+        html+='<div class="swarm-item">';
+        html+='<div class="swarm-header"><span class="swarm-name">'+s.id+'</span><span class="topology-badge">'+s.topology+'</span></div>';
+        html+='<div class="stat-row"><span>Members</span><span>'+s.members+'</span></div>';
+        html+='<div class="stat-row"><span>Confidence</span><span>'+(s.confidence*100).toFixed(0)+'%</span></div>';
+        html+='<div class="stat-row"><span>Learning Rate</span><span>'+(s.learningRate>0?'+':'')+s.learningRate.toFixed(3)+'</span></div>';
+        html+='<div class="stat-row"><span>Threat</span><span>'+threatBadge(s.threatLevel)+'</span></div>';
+        html+='<div class="stat-row"><span>Sophistication</span><span>'+sophPct+'/100</span></div>';
+        html+='<div class="progress-bar"><div class="progress-fill" style="width:'+sophPct+'%;background:'+color+'"></div></div>';
+        html+='</div>';
+      });
+      el('swarm-list').innerHTML=html;
+    }
+
+    if(state.timeline.length===0){
+      el('timeline').innerHTML='<div class="empty">Waiting for events...</div>';
+    } else {
+      var thtml='';
+      state.timeline.slice(-30).reverse().forEach(function(ev){
+        thtml+='<div class="timeline-event"><span class="timeline-time">'+ev.time+'</span>'+ev.text+'</div>';
+      });
+      el('timeline').innerHTML=thtml;
+    }
+  }
+
+  function addTimelineEvent(text){
+    state.timeline.push({time:new Date().toLocaleTimeString(),text:text});
+  }
+
+  function simulate(){
+    simRound++;
+    var threats = ['DORMANT','PROBING','COORDINATED','SWARMING','OVERWHELMING'];
+    var memberCount = 3 + Math.floor(Math.random()*12);
+    var topo = randFrom(topologies());
+    var confidence = 0.5 + Math.random()*0.45;
+    var lr = (Math.random()-0.2)*0.8;
+    var threatIdx = Math.min(Math.floor(memberCount/4), threats.length-1);
+    var threat = threats[threatIdx];
+
+    var swarm = {
+      id: 'swarm_'+simRound,
+      members: memberCount,
+      topology: topo,
+      confidence: confidence,
+      learningRate: lr,
+      threatLevel: threat,
+      sophisticationScore: Math.floor(20 + Math.random()*70)
+    };
+
+    state.swarms.unshift(swarm);
+    if(state.swarms.length>10) state.swarms.pop();
+    state.stats.swarmsActive = state.swarms.length;
+    state.stats.eventsIngested += memberCount * (5+Math.floor(Math.random()*15));
+    state.stats.sessionsTracked += memberCount;
+    state.stats.peakSwarmSize = Math.max(state.stats.peakSwarmSize, memberCount);
+
+    var maxThreatIdx = 0;
+    state.swarms.forEach(function(s){ maxThreatIdx = Math.max(maxThreatIdx, threats.indexOf(s.threatLevel)); });
+    state.globalThreat = threats[maxThreatIdx];
+
+    addTimelineEvent('🐝 Swarm <b>'+swarm.id+'</b> detected — '+memberCount+' members, '+topo+' topology');
+    if(threatIdx>=2){
+      state.stats.threatEscalations++;
+      addTimelineEvent('⚠️ Threat escalation: '+threat+' ('+swarm.id+')');
+    }
+    render();
+  }
+
+  function analyze(){
+    if(state.swarms.length===0){ addTimelineEvent('ℹ️ No swarms to analyze'); render(); return; }
+    state.swarms.forEach(function(s){
+      s.learningRate += (Math.random()-0.3)*0.1;
+      s.sophisticationScore = Math.min(100, Math.max(0, s.sophisticationScore + Math.floor(Math.random()*10-3)));
+      var newTopo = Math.random()>0.8 ? randFrom(topologies()) : s.topology;
+      if(newTopo!==s.topology){ addTimelineEvent('🔄 '+s.id+' topology shifted: '+s.topology+' → '+newTopo); s.topology=newTopo; }
+    });
+    addTimelineEvent('🔍 Analysis pass complete — '+state.swarms.length+' swarms updated');
+    render();
+  }
+
+  function reset(){
+    state = { swarms:[], stats:{eventsIngested:0,sessionsTracked:0,peakSwarmSize:0,swarmsActive:0,threatEscalations:0}, globalThreat:'DORMANT', timeline:[] };
+    simRound=0;
+    addTimelineEvent('🗑️ State reset');
+    render();
+  }
+
+  function exportState(){
+    var blob = new Blob([JSON.stringify(state,null,2)],{type:'application/json'});
+    var a = document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download='collective-intel-state.json';
+    a.click();
+    addTimelineEvent('📦 State exported');
+    render();
+  }
+
+  document.getElementById('btn-simulate').onclick=simulate;
+  document.getElementById('btn-analyze').onclick=analyze;
+  document.getElementById('btn-reset').onclick=reset;
+  document.getElementById('btn-export').onclick=exportState;
+  render();
+})();
+</script>
+</body>
+</html>

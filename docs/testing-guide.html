@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="GIF CAPTCHA Testing Guide — how to run, write, and maintain the 103-file test suite">
+    <title>GIF CAPTCHA — Testing Guide</title>
+    <link rel="stylesheet" href="../shared.css">
+    <style>
+        body { padding: 2rem; max-width: 960px; margin: 0 auto; }
+        h1 { font-size: 2rem; margin-bottom: 0.3rem; }
+        h2 { font-size: 1.5rem; margin: 2.5rem 0 1rem; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 0.3rem; }
+        h3 { font-size: 1.15rem; margin: 1.8rem 0 0.5rem; color: var(--text); }
+        p, li { color: var(--muted); line-height: 1.65; }
+        .subtitle { color: var(--muted); font-size: 1rem; margin-bottom: 1.5rem; }
+        code { background: var(--surface); padding: 0.15rem 0.4rem; border-radius: 3px; font-size: 0.88em; color: var(--accent); }
+        pre { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 1rem; overflow-x: auto; margin: 1rem 0; }
+        pre code { background: none; padding: 0; color: var(--text); }
+        .nav { display: flex; gap: 1.5rem; margin-bottom: 2rem; flex-wrap: wrap; }
+        .nav a { color: var(--accent); text-decoration: none; font-size: 0.9rem; }
+        .nav a:hover { text-decoration: underline; }
+        .tip { background: #1a2a1a; border: 1px solid #2a4a2a; border-radius: 8px; padding: 1rem 1.2rem; margin: 1rem 0; }
+        .tip::before { content: "💡 "; }
+        .warn { background: #3a2a1a; border: 1px solid #4a3a1a; border-radius: 8px; padding: 1rem 1.2rem; margin: 1rem 0; }
+        .warn::before { content: "⚠️ "; }
+        .category-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; margin: 1rem 0; }
+        .category-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; }
+        .category-card h4 { margin: 0 0 0.5rem; color: var(--accent); font-size: 0.95rem; }
+        .category-card ul { margin: 0; padding-left: 1rem; font-size: 0.85rem; }
+        .category-card li { margin: 0.2rem 0; }
+        table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.9rem; }
+        th, td { padding: 0.6rem; text-align: left; border-bottom: 1px solid var(--border); }
+        th { color: var(--text); font-weight: 600; }
+        td { color: var(--muted); }
+    </style>
+</head>
+<body>
+    <div class="nav">
+        <a href="../index.html">← Case Study</a>
+        <a href="getting-started.html">Getting Started</a>
+        <a href="index.html">API Reference</a>
+        <a href="architecture.html">Architecture</a>
+        <a href="module-reference.html">Module Reference</a>`n        <a href="testing-guide.html">Testing Guide</a>
+        <a href="security-guide.html">Security Guide</a>
+        <a href="deployment-guide.html">Deployment</a>
+        <a href="testing-guide.html"><strong>Testing Guide</strong></a>
+    </div>
+
+    <h1>Testing Guide</h1>
+    <p class="subtitle">Running, writing, and maintaining the gif-captcha test suite</p>
+
+    <h2>Overview</h2>
+    <p>
+        gif-captcha uses Node.js's built-in <code>node:test</code> runner — no external test frameworks required.
+        The test suite comprises <strong>103 test files</strong> covering all 49 source modules plus integration,
+        edge-case, and legacy compatibility scenarios.
+    </p>
+
+    <table>
+        <tr><th>Metric</th><th>Value</th></tr>
+        <tr><td>Test files</td><td>103</td></tr>
+        <tr><td>Source modules</td><td>49</td></tr>
+        <tr><td>Test runner</td><td><code>node:test</code> (Node.js built-in)</td></tr>
+        <tr><td>Coverage tool</td><td><code>c8</code> (V8 native coverage)</td></tr>
+        <tr><td>Min. Node version</td><td>18.0.0</td></tr>
+        <tr><td>Coverage thresholds</td><td>Lines 75% · Functions 85% · Branches 85%</td></tr>
+    </table>
+
+    <h2>Running Tests</h2>
+
+    <h3>Full Suite</h3>
+    <pre><code>npm test
+# Equivalent to: node --test tests/*.test.js</code></pre>
+
+    <h3>With Coverage</h3>
+    <pre><code># Text + LCOV reports
+npm run test:coverage
+
+# Check coverage thresholds pass
+npm run coverage:check</code></pre>
+
+    <h3>Single File</h3>
+    <pre><code># Run one test file
+node --test tests/trust-score-engine.test.js
+
+# Run with verbose output
+node --test --test-reporter=spec tests/fraud-ring-detector.test.js</code></pre>
+
+    <h3>Pattern Matching</h3>
+    <pre><code># Run all captcha-* tests
+node --test tests/captcha-*.test.js
+
+# Run all bot-related tests
+node --test tests/bot-*.test.js</code></pre>
+
+    <div class="tip">
+        Use <code>--test-only</code> to run only tests marked with <code>{ only: true }</code> during development.
+    </div>
+
+    <h2>Test Categories</h2>
+
+    <div class="category-grid">
+        <div class="category-card">
+            <h4>🔒 Security (17 files)</h4>
+            <ul>
+                <li>bot-capability-profiler</li>
+                <li>bot-collective-intel (+advanced)</li>
+                <li>bot-detector</li>
+                <li>bot-signature-database</li>
+                <li>captcha-replay-detector</li>
+                <li>crypto-utils</li>
+                <li>deception-campaign-orchestrator</li>
+                <li>fraud-ring-detector</li>
+                <li>honeypot-injector</li>
+                <li>security-hardening</li>
+                <li>security-scorer</li>
+                <li>solve-pattern-fingerprinter</li>
+                <li>threat-intel-fusion</li>
+                <li>trust-score-engine (+edge)</li>
+                <li>token-verifier</li>
+            </ul>
+        </div>
+
+        <div class="category-card">
+            <h4>📊 Analytics (14 files)</h4>
+            <ul>
+                <li>captcha-anomaly-detector</li>
+                <li>captcha-stats-collector</li>
+                <li>captcha-traffic-analyzer</li>
+                <li>challenge-analytics</li>
+                <li>geo-risk-scorer (+extended)</li>
+                <li>heatmap</li>
+                <li>metrics-aggregator</li>
+                <li>response-time-profiler</li>
+                <li>session-risk-aggregator (+legacy)</li>
+                <li>solve-funnel-analyzer</li>
+                <li>temporal</li>
+                <li>analysis</li>
+            </ul>
+        </div>
+
+        <div class="category-card">
+            <h4>🎯 Challenge Engine (12 files)</h4>
+            <ul>
+                <li>adaptive-difficulty-tuner</li>
+                <li>challenge-autopilot</li>
+                <li>challenge-decay-manager</li>
+                <li>challenge-diversity-analyzer</li>
+                <li>challenge-genetics-lab</li>
+                <li>challenge-pool-manager (+extended)</li>
+                <li>challenge-rotation-scheduler</li>
+                <li>challenge-router</li>
+                <li>challenge-template-engine</li>
+                <li>designer</li>
+                <li>generator</li>
+            </ul>
+        </div>
+
+        <div class="category-card">
+            <h4>🏗️ Infrastructure (13 files)</h4>
+            <ul>
+                <li>captcha-audit-log</li>
+                <li>captcha-capacity-planner</li>
+                <li>captcha-health-monitor</li>
+                <li>captcha-incident-manager</li>
+                <li>captcha-load-tester</li>
+                <li>captcha-rate-limiter</li>
+                <li>config-validator</li>
+                <li>compliance-reporter</li>
+                <li>csv-utils</li>
+                <li>event-emitter</li>
+                <li>shared-utils</li>
+                <li>webhook-dispatcher</li>
+                <li>i18n (+extended)</li>
+            </ul>
+        </div>
+
+        <div class="category-card">
+            <h4>🧪 Core & Integration (15 files)</h4>
+            <ul>
+                <li>index</li>
+                <li>core-edge-cases</li>
+                <li>integration</li>
+                <li>lib</li>
+                <li>shared</li>
+                <li>ab-experiment-runner</li>
+                <li>ab-experiment</li>
+                <li>abtest</li>
+                <li>behavioral-biometrics (+edge)</li>
+                <li>session-manager</li>
+                <li>session-recorder</li>
+                <li>captcha-session-replay</li>
+                <li>demo</li>
+                <li>perf-caching</li>
+            </ul>
+        </div>
+
+        <div class="category-card">
+            <h4>🎭 Specialized (12 files)</h4>
+            <ul>
+                <li>accessibility (+auditor)</li>
+                <li>captcha-accessibility-analyzer</li>
+                <li>captcha-export-formatter</li>
+                <li>captcha-fatigue-detector</li>
+                <li>captcha-localization-manager</li>
+                <li>captcha-strength-scorer</li>
+                <li>defense-posture-optimizer</li>
+                <li>attack-evolution-tracker</li>
+                <li>competitive</li>
+                <li>effectiveness</li>
+                <li>resistance</li>
+                <li>simulator</li>
+            </ul>
+        </div>
+    </div>
+
+    <h2>Writing Tests</h2>
+
+    <h3>Test File Structure</h3>
+    <pre><code>const { describe, it, beforeEach } = require('node:test');
+const assert = require('node:assert/strict');
+const { MyModule } = require('../src/my-module.js');
+
+describe('MyModule', () => {
+    let instance;
+
+    beforeEach(() => {
+        instance = new MyModule({ /* config */ });
+    });
+
+    describe('constructor', () => {
+        it('applies default configuration', () => {
+            assert.strictEqual(instance.enabled, true);
+        });
+
+        it('validates required options', () => {
+            assert.throws(
+                () => new MyModule({}),
+                { message: /required/ }
+            );
+        });
+    });
+
+    describe('process()', () => {
+        it('handles normal input', () => {
+            const result = instance.process({ data: 'test' });
+            assert.ok(result.score >= 0 && result.score <= 1);
+        });
+
+        it('handles edge cases gracefully', () => {
+            assert.doesNotThrow(() => instance.process(null));
+            assert.doesNotThrow(() => instance.process(undefined));
+        });
+    });
+});</code></pre>
+
+    <h3>Conventions</h3>
+    <ul>
+        <li><strong>File naming:</strong> <code>tests/{module-name}.test.js</code> mirrors <code>src/{module-name}.js</code></li>
+        <li><strong>Assertions:</strong> Use <code>node:assert/strict</code> — strict equality by default</li>
+        <li><strong>No mocks framework:</strong> Use manual stubs/fakes where needed (keep tests dependency-free)</li>
+        <li><strong>Self-contained:</strong> Each test file must run independently — no shared state between files</li>
+        <li><strong>Descriptive names:</strong> <code>it('returns empty array when no sessions match criteria')</code></li>
+        <li><strong>Edge cases first:</strong> Test null/undefined/empty inputs before happy paths</li>
+    </ul>
+
+    <h3>What to Test</h3>
+    <table>
+        <tr><th>Category</th><th>What to cover</th></tr>
+        <tr><td>Construction</td><td>Default config, custom config, invalid config (throws)</td></tr>
+        <tr><td>Core logic</td><td>Happy path, boundary values, edge cases</td></tr>
+        <tr><td>Validation</td><td>Type coercion, clamping, null handling</td></tr>
+        <tr><td>Memory</td><td>LRU eviction, TTL expiry, max-size bounds</td></tr>
+        <tr><td>Scoring</td><td>Score ranges [0,1], decay over time, weight normalization</td></tr>
+        <tr><td>Export/Import</td><td>Round-trip serialization, corrupt data handling</td></tr>
+        <tr><td>Concurrency</td><td>Session isolation, no cross-contamination</td></tr>
+    </table>
+
+    <div class="warn">
+        Never use <code>setTimeout</code> or real timers in tests. If testing time-based features,
+        inject a clock function or manipulate timestamps directly.
+    </div>
+
+    <h2>Coverage</h2>
+
+    <p>Coverage is tracked via <code>c8</code> using V8's native instrumentation — no transpilation or Istanbul needed.</p>
+
+    <h3>Viewing Reports</h3>
+    <pre><code># Terminal summary
+npm run test:coverage
+
+# HTML report (opens in browser)
+npx c8 --reporter=html node --test tests/*.test.js
+open coverage/index.html</code></pre>
+
+    <h3>Thresholds</h3>
+    <p>CI enforces minimum coverage via <code>.c8rc.json</code>:</p>
+    <ul>
+        <li><strong>Lines:</strong> 75%</li>
+        <li><strong>Functions:</strong> 85%</li>
+        <li><strong>Branches:</strong> 85%</li>
+    </ul>
+    <p>
+        If your changes drop coverage below thresholds, add tests for the new code paths.
+        The <code>coverage:check</code> script will fail in CI if thresholds aren't met.
+    </p>
+
+    <h2>CI Integration</h2>
+
+    <p>Tests run automatically on every push and PR via GitHub Actions (<code>.github/workflows/ci.yml</code>):</p>
+    <ul>
+        <li>Matrix: Node.js 18, 20, 22</li>
+        <li>Steps: install → syntax-check → test → coverage</li>
+        <li>Coverage reports uploaded to Codecov</li>
+        <li>Branch protection requires CI pass before merge</li>
+    </ul>
+
+    <h2>Debugging Failing Tests</h2>
+
+    <h3>Verbose Output</h3>
+    <pre><code># Show all test names (passing and failing)
+node --test --test-reporter=spec tests/my-module.test.js</code></pre>
+
+    <h3>Isolate a Single Test</h3>
+    <pre><code>// Temporarily mark one test as `only`
+it('the failing test', { only: true }, () => {
+    // ...
+});
+
+// Run with --test-only flag
+node --test --test-only tests/my-module.test.js</code></pre>
+
+    <h3>Common Failures</h3>
+    <table>
+        <tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr>
+        <tr>
+            <td>Tests pass alone, fail together</td>
+            <td>Shared module-level state</td>
+            <td>Reset in <code>beforeEach</code> or create fresh instances</td>
+        </tr>
+        <tr>
+            <td>Flaky timing assertions</td>
+            <td>Using <code>Date.now()</code> directly</td>
+            <td>Inject a clock/timestamp parameter</td>
+        </tr>
+        <tr>
+            <td><code>ERR_MODULE_NOT_FOUND</code></td>
+            <td>Wrong relative path in require()</td>
+            <td>Check <code>../src/</code> prefix</td>
+        </tr>
+        <tr>
+            <td>Score out of expected range</td>
+            <td>Missing clamp after arithmetic</td>
+            <td>Use <code>Math.max(0, Math.min(1, score))</code></td>
+        </tr>
+    </table>
+
+    <h2>Performance Testing</h2>
+
+    <p>
+        The <code>perf-caching.test.js</code> and <code>benchmark.test.js</code> files cover performance-sensitive paths.
+        When optimizing hot paths:
+    </p>
+    <ul>
+        <li>Measure before and after with <code>performance.now()</code></li>
+        <li>Test with realistic data sizes (1000+ sessions, 10000+ events)</li>
+        <li>Verify O(n) vs O(n²) behavior doesn't regress</li>
+        <li>Check memory bounds — LRU caches should evict properly</li>
+    </ul>
+
+    <h2>Adding Tests for New Modules</h2>
+
+    <ol>
+        <li>Create <code>tests/{module-name}.test.js</code></li>
+        <li>Follow the structure pattern above</li>
+        <li>Cover: construction, core methods, edge cases, export/import if applicable</li>
+        <li>Aim for 85%+ coverage on your new module</li>
+        <li>Run <code>npm run coverage:check</code> to verify thresholds</li>
+        <li>Test passes in isolation: <code>node --test tests/{module-name}.test.js</code></li>
+    </ol>
+
+    <div class="tip">
+        Look at <code>trust-score-engine.test.js</code> or <code>session-risk-aggregator.test.js</code>
+        as reference examples — they demonstrate thorough coverage of construction, scoring,
+        decay, bounds, export/import, and session management patterns.
+    </div>
+
+    <hr style="margin: 3rem 0; border-color: var(--border);">
+    <p style="font-size: 0.85rem; color: var(--muted);">
+        Part of the <a href="index.html" style="color: var(--accent);">GIF CAPTCHA Documentation</a>.
+        Last updated: April 2026.
+    </p>
+</body>
+</html>

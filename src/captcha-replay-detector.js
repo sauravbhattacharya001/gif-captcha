@@ -149,6 +149,22 @@ CaptchaReplayDetector.prototype._prune = function () {
       this._fingerprintTimestamps.delete(fpKeys[m]);
     }
   }
+
+  // 5. Evict idle sessions whose last solve is older than the sliding
+  //    window.  Without this, the _sessions Map grows without bound
+  //    (CWE-400) when many unique session IDs are observed over time.
+  if (this._sessions.size > this.maxTokens) {
+    var sessArr = Array.from(this._sessions.entries());
+    sessArr.sort(function (a, b) {
+      var tA = a[1].solves.length ? a[1].solves[a[1].solves.length - 1].ts : 0;
+      var tB = b[1].solves.length ? b[1].solves[b[1].solves.length - 1].ts : 0;
+      return tA - tB;
+    });
+    var sessExcess = this._sessions.size - this.maxTokens;
+    for (var se = 0; se < sessExcess; se++) {
+      this._sessions.delete(sessArr[se][0]);
+    }
+  }
 };
 
 /**
@@ -163,6 +179,16 @@ CaptchaReplayDetector.prototype._ensureSession = function (sessionId) {
   }
   return this._sessions.get(sessionId);
 };
+
+/**
+ * Maximum number of solve records, flags, and threat scores retained
+ * per session.  Beyond this limit older entries are discarded (FIFO).
+ * Prevents CWE-400 unbounded memory growth when an attacker sends
+ * thousands of solve attempts within a single session.
+ * @private
+ * @constant {number}
+ */
+var MAX_SESSION_SOLVES = 200;
 
 /**
  * Record a CAPTCHA solve attempt and evaluate for replay/attack signals.
@@ -257,6 +283,19 @@ CaptchaReplayDetector.prototype.recordSolve = function (sessionId, token, solveT
   session.solves.push({ token: tokenHash, solveTimeMs: solveTimeMs, ip: ip, ts: _now(), threatScore: threatScore });
   session.flags = session.flags.concat(flags);
   session.threatScores.push(threatScore);
+
+  // Trim per-session arrays to prevent CWE-400 unbounded memory growth.
+  // An attacker replaying thousands of solve attempts against a single
+  // session would otherwise grow these arrays without limit.
+  if (session.solves.length > MAX_SESSION_SOLVES) {
+    session.solves = session.solves.slice(session.solves.length - MAX_SESSION_SOLVES);
+  }
+  if (session.threatScores.length > MAX_SESSION_SOLVES) {
+    session.threatScores = session.threatScores.slice(session.threatScores.length - MAX_SESSION_SOLVES);
+  }
+  if (session.flags.length > MAX_SESSION_SOLVES * 2) {
+    session.flags = session.flags.slice(session.flags.length - MAX_SESSION_SOLVES * 2);
+  }
 
   // ── Auto-Block ──
   var allowed = true;

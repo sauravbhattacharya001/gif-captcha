@@ -1,12 +1,21 @@
 {
   "all": true,
-  "include": ["tests/**/*.js"],
-  "exclude": ["node_modules/**"],
+  "src": ["src"],
+  "include": ["src/**/*.js", "shared.js"],
+  "exclude": [
+    "node_modules/**",
+    "tests/**",
+    "coverage/**",
+    "docs/**"
+  ],
   "reporter": ["text", "lcov", "json-summary"],
   "report-dir": "coverage",
-  "check-coverage": false,
-  "lines": 70,
-  "functions": 70,
-  "branches": 70,
-  "clean": true
+  "clean": true,
+  "skip-full": false,
+  "watermarks": {
+    "lines": [60, 80],
+    "functions": [50, 70],
+    "branches": [70, 90],
+    "statements": [60, 80]
+  }
 }

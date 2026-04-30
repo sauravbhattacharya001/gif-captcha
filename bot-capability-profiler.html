@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bot Capability Profiler — gif-captcha</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+.profiler-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin: 1.5rem 0; }
+.profiler-card { background: var(--card-bg, #1e1e2e); border-radius: 12px; padding: 1.5rem; border: 1px solid var(--border, #333); }
+.profiler-card h3 { margin: 0 0 1rem; color: var(--accent, #7c3aed); }
+.tier-badge { display: inline-block; padding: 0.25rem 0.75rem; border-radius: 99px; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; }
+.tier-SCRIPT_KIDDIE { background: #334155; color: #94a3b8; }
+.tier-BASIC_BOT { background: #422006; color: #fb923c; }
+.tier-INTERMEDIATE { background: #1e3a5f; color: #60a5fa; }
+.tier-ADVANCED { background: #3b0764; color: #c084fc; }
+.tier-ELITE { background: #450a0a; color: #f87171; }
+.cap-bar { height: 8px; border-radius: 4px; background: #333; margin: 0.25rem 0; position: relative; overflow: hidden; }
+.cap-fill { height: 100%; border-radius: 4px; transition: width 0.3s; }
+.vuln-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.5rem; text-align: center; font-size: 0.75rem; }
+.vuln-cell { padding: 0.5rem; border-radius: 6px; }
+.vuln-IMMUNE { background: #064e3b; color: #6ee7b7; }
+.vuln-RESISTANT { background: #1e3a5f; color: #93c5fd; }
+.vuln-MODERATE { background: #422006; color: #fcd34d; }
+.vuln-VULNERABLE { background: #7c2d12; color: #fdba74; }
+.vuln-DEFEATED { background: #450a0a; color: #fca5a5; }
+.stat-num { font-size: 2rem; font-weight: 700; color: var(--accent, #7c3aed); }
+.stat-label { font-size: 0.8rem; color: #888; text-transform: uppercase; }
+.rec-item { padding: 0.75rem; margin: 0.5rem 0; border-radius: 8px; border-left: 4px solid var(--accent, #7c3aed); background: rgba(124,58,237,0.05); }
+.bot-input { width: 100%; padding: 0.75rem; border-radius: 8px; border: 1px solid #444; background: #1a1a2e; color: #eee; margin-bottom: 1rem; }
+.btn { padding: 0.5rem 1.25rem; border-radius: 8px; border: none; background: var(--accent, #7c3aed); color: white; cursor: pointer; font-weight: 600; }
+.btn:hover { opacity: 0.85; }
+.tabs { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+.tab { padding: 0.5rem 1rem; border-radius: 8px 8px 0 0; cursor: pointer; background: #1a1a2e; border: 1px solid #333; border-bottom: none; color: #888; }
+.tab.active { background: var(--card-bg, #1e1e2e); color: #eee; border-color: var(--accent, #7c3aed); }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+@media (max-width: 768px) { .profiler-grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div style="max-width: 1200px; margin: 0 auto; padding: 2rem;">
+<h1>🔬 Bot Capability Profiler</h1>
+<p style="color:#888;">Autonomous bot sophistication analysis — capability fingerprinting, tier classification, and defense recommendations.</p>
+
+<div class="tabs">
+  <div class="tab active" data-tab="overview">Overview</div>
+  <div class="tab" data-tab="profiles">Bot Profiles</div>
+  <div class="tab" data-tab="vulnerability">Vulnerability Map</div>
+  <div class="tab" data-tab="defense">Defense Recs</div>
+  <div class="tab" data-tab="simulator">Simulator</div>
+</div>
+
+<!-- Overview Tab -->
+<div class="tab-content active" id="tab-overview">
+  <div class="profiler-grid">
+    <div class="profiler-card">
+      <h3>📊 Fleet Stats</h3>
+      <div id="stats-display">
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;text-align:center;">
+          <div><div class="stat-num" id="stat-bots">0</div><div class="stat-label">Tracked Bots</div></div>
+          <div><div class="stat-num" id="stat-attempts">0</div><div class="stat-label">Total Attempts</div></div>
+          <div><div class="stat-num" id="stat-solve">0%</div><div class="stat-label">Solve Rate</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="profiler-card">
+      <h3>🏷️ Tier Distribution</h3>
+      <div id="tier-dist"></div>
+    </div>
+    <div class="profiler-card">
+      <h3>🚨 Recent Alerts</h3>
+      <div id="alerts-list" style="max-height:200px;overflow-y:auto;"><em style="color:#666;">No alerts yet</em></div>
+    </div>
+    <div class="profiler-card">
+      <h3>📈 Evolution Events</h3>
+      <div id="evolution-list" style="max-height:200px;overflow-y:auto;"><em style="color:#666;">No events yet</em></div>
+    </div>
+  </div>
+</div>
+
+<!-- Bot Profiles Tab -->
+<div class="tab-content" id="tab-profiles">
+  <div class="profiler-card">
+    <h3>🤖 Bot Profile Lookup</h3>
+    <input class="bot-input" id="bot-lookup" placeholder="Enter bot ID...">
+    <button class="btn" onclick="lookupBot()">Get Profile</button>
+    <div id="profile-result" style="margin-top:1rem;"></div>
+  </div>
+  <div class="profiler-card" style="margin-top:1.5rem;">
+    <h3>⚔️ Bot Comparison</h3>
+    <div style="display:flex;gap:1rem;">
+      <input class="bot-input" id="cmp-bot1" placeholder="Bot 1 ID..." style="flex:1;">
+      <input class="bot-input" id="cmp-bot2" placeholder="Bot 2 ID..." style="flex:1;">
+    </div>
+    <button class="btn" onclick="compareBots()">Compare</button>
+    <div id="compare-result" style="margin-top:1rem;"></div>
+  </div>
+</div>
+
+<!-- Vulnerability Map Tab -->
+<div class="tab-content" id="tab-vulnerability">
+  <div class="profiler-card">
+    <h3>🗺️ Challenge Vulnerability Map</h3>
+    <p style="color:#888;font-size:0.85rem;">Shows which tiers can defeat each challenge type.</p>
+    <div id="vuln-map"></div>
+  </div>
+</div>
+
+<!-- Defense Recommendations Tab -->
+<div class="tab-content" id="tab-defense">
+  <div class="profiler-card">
+    <h3>🛡️ Defense Recommendations</h3>
+    <div id="defense-recs"></div>
+  </div>
+</div>
+
+<!-- Simulator Tab -->
+<div class="tab-content" id="tab-simulator">
+  <div class="profiler-card">
+    <h3>🧪 Attempt Simulator</h3>
+    <p style="color:#888;font-size:0.85rem;">Simulate bot attempts to see profiling in action.</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+      <div>
+        <label style="color:#aaa;font-size:0.8rem;">Bot ID</label>
+        <input class="bot-input" id="sim-bot" value="sim-bot-1">
+      </div>
+      <div>
+        <label style="color:#aaa;font-size:0.8rem;">Challenge Type</label>
+        <input class="bot-input" id="sim-challenge" value="animated-text">
+      </div>
+      <div>
+        <label style="color:#aaa;font-size:0.8rem;">Solve Rate (0-1)</label>
+        <input class="bot-input" id="sim-rate" type="number" value="0.6" min="0" max="1" step="0.1">
+      </div>
+      <div>
+        <label style="color:#aaa;font-size:0.8rem;">Difficulty (0-1)</label>
+        <input class="bot-input" id="sim-diff" type="number" value="0.5" min="0" max="1" step="0.1">
+      </div>
+      <div>
+        <label style="color:#aaa;font-size:0.8rem;">Count</label>
+        <input class="bot-input" id="sim-count" type="number" value="20" min="1" max="100">
+      </div>
+      <div>
+        <label style="color:#aaa;font-size:0.8rem;">Dimension</label>
+        <select class="bot-input" id="sim-dim">
+          <option value="OCR_ACCURACY">OCR Accuracy</option>
+          <option value="MOTION_TRACKING">Motion Tracking</option>
+          <option value="TEMPORAL_REASONING">Temporal Reasoning</option>
+          <option value="SPATIAL_REASONING">Spatial Reasoning</option>
+          <option value="COLOR_DISCRIMINATION">Color Discrimination</option>
+          <option value="PATTERN_RECOGNITION">Pattern Recognition</option>
+          <option value="SEMANTIC_UNDERSTANDING">Semantic Understanding</option>
+          <option value="ADVERSARIAL_RESISTANCE">Adversarial Resistance</option>
+        </select>
+      </div>
+    </div>
+    <button class="btn" onclick="runSimulation()" style="margin-top:1rem;">Run Simulation</button>
+    <div id="sim-result" style="margin-top:1rem;"></div>
+  </div>
+</div>
+
+</div>
+<script src="shared.js"></script>
+<script>
+(function(){
+  // Inline lightweight profiler for demo (mirrors src/bot-capability-profiler.js logic)
+  var profiler = null;
+  try { profiler = require && require("../src/bot-capability-profiler.js").createBotCapabilityProfiler(); } catch(e) {}
+  if (!profiler) {
+    // Browser-friendly mini profiler
+    var DIMS = ["OCR_ACCURACY","MOTION_TRACKING","TEMPORAL_REASONING","SPATIAL_REASONING","COLOR_DISCRIMINATION","PATTERN_RECOGNITION","SEMANTIC_UNDERSTANDING","ADVERSARIAL_RESISTANCE"];
+    var TIERS = ["SCRIPT_KIDDIE","BASIC_BOT","INTERMEDIATE","ADVANCED","ELITE"];
+    var bots = {}, challenges = {}, alerts = [], events = [];
+    function clamp(v,mn,mx){return Math.max(mn,Math.min(mx,v));}
+    function assignTier(s){if(s>=80)return TIERS[4];if(s>=60)return TIERS[3];if(s>=40)return TIERS[2];if(s>=20)return TIERS[1];return TIERS[0];}
+    profiler = {
+      CAPABILITY_DIMENSIONS: DIMS, SOPHISTICATION_TIERS: TIERS,
+      recordAttempt: function(a){
+        if(!a||!a.botId||!a.challengeType)return{error:"required"};
+        var b=bots[a.botId];
+        if(!b){b={id:a.botId,caps:{},tier:TIERS[0],tierScore:0,total:0,solves:0,attempts:[]};DIMS.forEach(function(d){b.caps[d]={score:0,samples:0};});bots[a.botId]=b;}
+        b.total++;if(a.solved)b.solves++;
+        var dims=a.dimensions||["PATTERN_RECOGNITION"];
+        var ev=a.solved?(0.5+0.5*(a.difficulty||0.5)):(0.3*(1-(a.difficulty||0.5)));
+        dims.forEach(function(d){var c=b.caps[d];if(!c)return;c.samples++;var al=Math.min(0.3,2/(c.samples+1));c.score=c.score*(1-al)+ev*al;c.score=clamp(c.score,0,1);});
+        var tot=0,cnt=0;DIMS.forEach(function(d){if(b.caps[d].samples>0){tot+=b.caps[d].score;cnt++;}});
+        b.tierScore=cnt?Math.round(tot/cnt*100):0;b.tier=assignTier(b.tierScore);
+        b.attempts.push({ts:Date.now(),type:a.challengeType,solved:!!a.solved});
+        if(b.attempts.length>200)b.attempts=b.attempts.slice(-150);
+        if(!challenges[a.challengeType])challenges[a.challengeType]={id:a.challengeType,total:0,solves:0};
+        challenges[a.challengeType].total++;if(a.solved)challenges[a.challengeType].solves++;
+        return{botId:b.id,tier:b.tier,tierScore:b.tierScore,totalAttempts:b.total,solveRate:b.total?Math.round(b.solves/b.total*100)/100:0};
+      },
+      getProfile: function(id){var b=bots[id];if(!b)return null;var caps={};DIMS.forEach(function(d){caps[d]={score:Math.round(b.caps[d].score*100)/100,samples:b.caps[d].samples,rating:b.caps[d].score>=0.8?"EXPERT":b.caps[d].score>=0.6?"PROFICIENT":b.caps[d].score>=0.4?"INTERMEDIATE":b.caps[d].score>=0.2?"NOVICE":"MINIMAL"};});var str=[],wk=[];DIMS.forEach(function(d){if(b.caps[d].samples>=3){if(b.caps[d].score>=0.7)str.push(d);if(b.caps[d].score<=0.3)wk.push(d);}});return{id:b.id,tier:b.tier,tierScore:b.tierScore,capabilities:caps,strengths:str,weaknesses:wk,totalAttempts:b.total,totalSolves:b.solves,solveRate:b.total?Math.round(b.solves/b.total*100)/100:0};},
+      getStats: function(){var ids=Object.keys(bots),ta=0,ts=0;ids.forEach(function(id){ta+=bots[id].total;ts+=bots[id].solves;});return{trackedBots:ids.length,totalAttempts:ta,overallSolveRate:ta?Math.round(ts/ta*100)/100:0,trackedChallengeTypes:Object.keys(challenges).length};},
+      getTierDistribution: function(){var d={};TIERS.forEach(function(t){d[t]=0;});var ids=Object.keys(bots);ids.forEach(function(id){d[bots[id].tier]++;});var pct={};TIERS.forEach(function(t){pct[t]=ids.length?Math.round(d[t]/ids.length*100):0;});return{counts:d,percentages:pct,total:ids.length};},
+      getDefenseRecommendations: function(){var dw={};DIMS.forEach(function(d){dw[d]={t:0,c:0};});Object.keys(bots).forEach(function(id){DIMS.forEach(function(d){if(bots[id].caps[d].samples>0){dw[d].t+=bots[id].caps[d].score;dw[d].c++;}});});var recs=[];DIMS.forEach(function(d){if(dw[d].c>0){var avg=dw[d].t/dw[d].c;recs.push({dimension:d,botAvgCapability:Math.round(avg*100)/100,effectiveness:Math.round((1-avg)*100),recommendation:avg<0.3?"HIGHLY_EFFECTIVE":avg<0.6?"MODERATELY_EFFECTIVE":"LOW_EFFECTIVENESS"});}});recs.sort(function(a,b){return a.botAvgCapability-b.botAvgCapability;});return{dimensionEffectiveness:recs,topRecommendation:recs.length?"Focus on "+recs[0].dimension:"Insufficient data"};},
+      compareBots: function(a,b){if(!bots[a]||!bots[b])return null;var cmp={};DIMS.forEach(function(d){cmp[d]={bot1:Math.round(bots[a].caps[d].score*100)/100,bot2:Math.round(bots[b].caps[d].score*100)/100,advantage:bots[a].caps[d].score>bots[b].caps[d].score?a:bots[b].caps[d].score>bots[a].caps[d].score?b:"TIED"};});return{bot1:{id:a,tier:bots[a].tier,tierScore:bots[a].tierScore},bot2:{id:b,tier:bots[b].tier,tierScore:bots[b].tierScore},dimensionComparison:cmp,overallAdvantage:bots[a].tierScore>bots[b].tierScore?a:bots[b].tierScore>bots[a].tierScore?b:"TIED"};},
+      getAlerts: function(){return alerts.slice(-10);},
+      getEvolutionEvents: function(){return events.slice(-10);}
+    };
+  }
+
+  // Tab switching
+  document.querySelectorAll(".tab").forEach(function(tab){
+    tab.addEventListener("click",function(){
+      document.querySelectorAll(".tab").forEach(function(t){t.classList.remove("active");});
+      document.querySelectorAll(".tab-content").forEach(function(c){c.classList.remove("active");});
+      tab.classList.add("active");
+      document.getElementById("tab-"+tab.dataset.tab).classList.add("active");
+    });
+  });
+
+  function renderOverview(){
+    var stats=profiler.getStats();
+    document.getElementById("stat-bots").textContent=stats.trackedBots;
+    document.getElementById("stat-attempts").textContent=stats.totalAttempts;
+    document.getElementById("stat-solve").textContent=Math.round(stats.overallSolveRate*100)+"%";
+    var dist=profiler.getTierDistribution();
+    var html="";
+    profiler.SOPHISTICATION_TIERS.forEach(function(t){
+      var pct=dist.percentages[t]||0;
+      html+='<div style="display:flex;align-items:center;gap:0.75rem;margin:0.4rem 0;"><span class="tier-badge tier-'+t+'">'+t.replace(/_/g," ")+'</span><div style="flex:1;"><div class="cap-bar"><div class="cap-fill" style="width:'+pct+'%;background:var(--accent,#7c3aed);"></div></div></div><span style="color:#aaa;font-size:0.8rem;">'+dist.counts[t]+' ('+pct+'%)</span></div>';
+    });
+    document.getElementById("tier-dist").innerHTML=html;
+  }
+
+  window.lookupBot=function(){
+    var id=document.getElementById("bot-lookup").value.trim();
+    if(!id)return;
+    var p=profiler.getProfile(id);
+    if(!p){document.getElementById("profile-result").innerHTML='<em style="color:#f87171;">Bot not found</em>';return;}
+    var html='<div style="margin-bottom:1rem;"><span class="tier-badge tier-'+p.tier+'">'+p.tier.replace(/_/g," ")+'</span> <strong>Score: '+p.tierScore+'/100</strong> | Solve Rate: '+Math.round(p.solveRate*100)+'% ('+p.totalSolves+'/'+p.totalAttempts+')</div>';
+    html+='<h4 style="margin:0.5rem 0;">Capability Profile</h4>';
+    profiler.CAPABILITY_DIMENSIONS.forEach(function(d){
+      var c=p.capabilities[d];
+      var color=c.score>=0.7?"#4ade80":c.score>=0.4?"#fbbf24":"#94a3b8";
+      html+='<div style="display:flex;align-items:center;gap:0.5rem;margin:0.3rem 0;font-size:0.85rem;"><span style="width:180px;color:#aaa;">'+d.replace(/_/g," ")+'</span><div class="cap-bar" style="flex:1;"><div class="cap-fill" style="width:'+Math.round(c.score*100)+'%;background:'+color+';"></div></div><span style="width:60px;text-align:right;color:#eee;">'+c.score+' ('+c.rating+')</span></div>';
+    });
+    if(p.strengths.length)html+='<div style="margin-top:0.75rem;"><strong style="color:#4ade80;">Strengths:</strong> '+p.strengths.join(", ")+'</div>';
+    if(p.weaknesses.length)html+='<div><strong style="color:#f87171;">Weaknesses:</strong> '+p.weaknesses.join(", ")+'</div>';
+    document.getElementById("profile-result").innerHTML=html;
+  };
+
+  window.compareBots=function(){
+    var id1=document.getElementById("cmp-bot1").value.trim();
+    var id2=document.getElementById("cmp-bot2").value.trim();
+    if(!id1||!id2)return;
+    var cmp=profiler.compareBots(id1,id2);
+    if(!cmp){document.getElementById("compare-result").innerHTML='<em style="color:#f87171;">One or both bots not found</em>';return;}
+    var html='<div style="display:flex;justify-content:space-between;margin-bottom:1rem;"><div><span class="tier-badge tier-'+cmp.bot1.tier+'">'+id1+': '+cmp.bot1.tier.replace(/_/g," ")+'</span></div><div><span class="tier-badge tier-'+cmp.bot2.tier+'">'+id2+': '+cmp.bot2.tier.replace(/_/g," ")+'</span></div></div>';
+    html+='<div><strong>Overall: </strong>'+(cmp.overallAdvantage==="TIED"?"TIED":cmp.overallAdvantage+" wins")+'</div>';
+    profiler.CAPABILITY_DIMENSIONS.forEach(function(d){
+      var c=cmp.dimensionComparison[d];
+      html+='<div style="display:flex;align-items:center;gap:0.5rem;margin:0.3rem 0;font-size:0.8rem;"><span style="width:50px;text-align:right;color:#60a5fa;">'+c.bot1+'</span><div class="cap-bar" style="flex:1;position:relative;"><div class="cap-fill" style="width:'+Math.round(c.bot1*100)+'%;background:#60a5fa;position:absolute;left:0;top:0;"></div></div><span style="width:140px;text-align:center;color:#aaa;">'+d.replace(/_/g," ")+'</span><div class="cap-bar" style="flex:1;"><div class="cap-fill" style="width:'+Math.round(c.bot2*100)+'%;background:#c084fc;"></div></div><span style="width:50px;color:#c084fc;">'+c.bot2+'</span></div>';
+    });
+    document.getElementById("compare-result").innerHTML=html;
+  };
+
+  window.runSimulation=function(){
+    var botId=document.getElementById("sim-bot").value.trim()||"sim-bot";
+    var ct=document.getElementById("sim-challenge").value.trim()||"challenge";
+    var rate=parseFloat(document.getElementById("sim-rate").value)||0.5;
+    var diff=parseFloat(document.getElementById("sim-diff").value)||0.5;
+    var count=parseInt(document.getElementById("sim-count").value)||20;
+    var dim=document.getElementById("sim-dim").value;
+    var results=[];
+    for(var i=0;i<count;i++){
+      var solved=Math.random()<rate;
+      var r=profiler.recordAttempt({botId:botId,challengeType:ct,solved:solved,difficulty:diff,dimensions:[dim]});
+      results.push(r);
+    }
+    var last=results[results.length-1];
+    var html='<div style="padding:1rem;background:#0d1117;border-radius:8px;"><strong>✅ '+count+' attempts simulated</strong><br><br>';
+    html+='Bot: <strong>'+last.botId+'</strong><br>';
+    html+='Tier: <span class="tier-badge tier-'+last.tier+'">'+last.tier.replace(/_/g," ")+'</span> (score: '+last.tierScore+')<br>';
+    html+='Solve Rate: '+Math.round(last.solveRate*100)+'%<br>';
+    html+='Total Attempts: '+last.totalAttempts+'</div>';
+    document.getElementById("sim-result").innerHTML=html;
+    renderOverview();
+  };
+
+  // Render defense recs
+  function renderDefense(){
+    var recs=profiler.getDefenseRecommendations();
+    var html='<p style="margin-bottom:1rem;"><strong>Top Recommendation:</strong> '+recs.topRecommendation+'</p>';
+    if(recs.dimensionEffectiveness&&recs.dimensionEffectiveness.length){
+      recs.dimensionEffectiveness.forEach(function(r){
+        var color=r.botAvgCapability<0.3?"#4ade80":r.botAvgCapability<0.6?"#fbbf24":"#f87171";
+        html+='<div class="rec-item"><strong style="color:'+color+';">'+r.dimension.replace(/_/g," ")+'</strong> — Effectiveness: '+r.effectiveness+'% | Bot capability: '+r.botAvgCapability+'<br><span style="color:#888;font-size:0.8rem;">'+r.recommendation+'</span></div>';
+      });
+    } else {
+      html+='<em style="color:#666;">Run simulations to generate data</em>';
+    }
+    document.getElementById("defense-recs").innerHTML=html;
+  }
+
+  // Observe tab switches to refresh
+  document.querySelectorAll(".tab").forEach(function(tab){
+    tab.addEventListener("click",function(){
+      if(tab.dataset.tab==="overview")renderOverview();
+      if(tab.dataset.tab==="defense")renderDefense();
+    });
+  });
+
+  renderOverview();
+})();
+</script>
+</body>
+</html>

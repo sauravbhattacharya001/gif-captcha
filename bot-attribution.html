@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bot Attribution Engine — gif-captcha</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+.attr-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px; }
+.attr-card { background: var(--card-bg, #1e1e2e); border-radius: 12px; padding: 20px; border: 1px solid var(--border, #333); }
+.attr-card h3 { margin: 0 0 8px; font-size: 14px; color: var(--muted, #888); text-transform: uppercase; letter-spacing: 1px; }
+.attr-card .value { font-size: 28px; font-weight: 700; color: var(--text, #eee); }
+.threat-LOW { color: #4ade80; }
+.threat-MEDIUM { color: #facc15; }
+.threat-HIGH { color: #f97316; }
+.threat-CRITICAL { color: #ef4444; }
+.badge { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+.badge-LOW { background: rgba(74,222,128,0.15); color: #4ade80; }
+.badge-MEDIUM { background: rgba(250,204,21,0.15); color: #facc15; }
+.badge-HIGH { background: rgba(249,115,22,0.15); color: #f97316; }
+.badge-CRITICAL { background: rgba(239,68,68,0.15); color: #ef4444; }
+.badge-soph { background: rgba(139,92,246,0.15); color: #a78bfa; }
+table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border, #333); }
+th { color: var(--muted, #888); font-size: 12px; text-transform: uppercase; letter-spacing: 1px; }
+td { color: var(--text, #ddd); font-size: 14px; }
+.fp-bar-wrap { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+.fp-bar-label { width: 180px; font-size: 12px; color: var(--muted, #aaa); }
+.fp-bar { height: 14px; border-radius: 7px; background: var(--border, #333); flex: 1; position: relative; overflow: hidden; }
+.fp-bar-fill { height: 100%; border-radius: 7px; transition: width 0.3s; }
+.fp-bar-val { font-size: 12px; color: var(--muted, #aaa); width: 40px; text-align: right; }
+.timeline-item { display: flex; gap: 12px; padding: 8px 0; border-left: 2px solid var(--border, #444); margin-left: 8px; padding-left: 16px; }
+.timeline-dot { width: 10px; height: 10px; border-radius: 50%; background: #818cf8; margin-top: 4px; flex-shrink: 0; }
+.timeline-time { font-size: 12px; color: var(--muted, #888); }
+.timeline-event { font-size: 14px; color: var(--text, #ddd); }
+.tab-bar { display: flex; gap: 4px; margin-bottom: 16px; flex-wrap: wrap; }
+.tab-btn { padding: 8px 16px; border: 1px solid var(--border, #444); background: transparent; color: var(--muted, #aaa); border-radius: 8px; cursor: pointer; font-size: 13px; }
+.tab-btn.active { background: var(--accent, #818cf8); color: #fff; border-color: var(--accent, #818cf8); }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+.section-title { font-size: 20px; font-weight: 700; margin: 24px 0 12px; color: var(--text, #eee); }
+#demo-btn { padding: 10px 24px; background: var(--accent, #818cf8); color: #fff; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; margin-bottom: 24px; }
+#demo-btn:hover { opacity: 0.85; }
+</style>
+</head>
+<body>
+<div style="max-width:1100px;margin:0 auto;padding:24px;">
+<h1 style="margin-bottom:4px;">🕵️ Bot Attribution Engine</h1>
+<p style="color:var(--muted,#888);margin-top:0;">Autonomous operator & campaign identification for gif-captcha</p>
+
+<button id="demo-btn" onclick="loadDemo()">▶ Load Demo Data</button>
+
+<div class="attr-grid" id="summary-cards">
+  <div class="attr-card"><h3>Total Bots</h3><div class="value" id="stat-bots">0</div></div>
+  <div class="attr-card"><h3>Operators</h3><div class="value" id="stat-ops">0</div></div>
+  <div class="attr-card"><h3>Campaigns</h3><div class="value" id="stat-camps">0</div></div>
+  <div class="attr-card"><h3>Active Campaigns</h3><div class="value" id="stat-active">0</div></div>
+</div>
+
+<div class="attr-grid" id="threat-dist">
+  <div class="attr-card"><h3>🟢 Low</h3><div class="value threat-LOW" id="td-low">0</div></div>
+  <div class="attr-card"><h3>🟡 Medium</h3><div class="value threat-MEDIUM" id="td-med">0</div></div>
+  <div class="attr-card"><h3>🟠 High</h3><div class="value threat-HIGH" id="td-high">0</div></div>
+  <div class="attr-card"><h3>🔴 Critical</h3><div class="value threat-CRITICAL" id="td-crit">0</div></div>
+</div>
+
+<div class="tab-bar">
+  <button class="tab-btn active" data-tab="operators">Operators</button>
+  <button class="tab-btn" data-tab="bots">Bot Mapping</button>
+  <button class="tab-btn" data-tab="campaigns">Campaigns</button>
+  <button class="tab-btn" data-tab="fingerprints">Fingerprints</button>
+  <button class="tab-btn" data-tab="timeline">Timeline</button>
+</div>
+
+<div class="tab-content active" id="tab-operators">
+  <h2 class="section-title">Operator Profiles</h2>
+  <table><thead><tr><th>Operator</th><th>Bots</th><th>Threat</th><th>Sophistication</th><th>First Seen</th><th>Last Seen</th></tr></thead><tbody id="op-table"></tbody></table>
+</div>
+
+<div class="tab-content" id="tab-bots">
+  <h2 class="section-title">Bot → Operator Mapping</h2>
+  <table><thead><tr><th>Bot ID</th><th>Operator</th><th>Confidence</th><th>Matched Dimensions</th></tr></thead><tbody id="bot-table"></tbody></table>
+</div>
+
+<div class="tab-content" id="tab-campaigns">
+  <h2 class="section-title">Detected Campaigns</h2>
+  <table><thead><tr><th>Campaign</th><th>Operator</th><th>Bots</th><th>Status</th><th>Targets</th><th>Confidence</th></tr></thead><tbody id="camp-table"></tbody></table>
+</div>
+
+<div class="tab-content" id="tab-fingerprints">
+  <h2 class="section-title">Fingerprint Analysis</h2>
+  <div id="fp-container"></div>
+</div>
+
+<div class="tab-content" id="tab-timeline">
+  <h2 class="section-title">Operator Timeline</h2>
+  <select id="tl-select" onchange="renderTimeline()" style="padding:8px 12px;border-radius:8px;background:var(--card-bg,#1e1e2e);color:var(--text,#eee);border:1px solid var(--border,#444);margin-bottom:16px;"></select>
+  <div id="tl-container"></div>
+</div>
+</div>
+
+<script src="shared.js"></script>
+<script>
+var DIMS = ["TOOLCHAIN_SIGNATURE","INFRASTRUCTURE_PATTERN","OPERATIONAL_CADENCE","EVASION_STYLE","TARGETING_STRATEGY","RESOURCE_ALLOCATION","EVOLUTION_TRAJECTORY","ERROR_SIGNATURE"];
+var DIM_COLORS = ["#818cf8","#f472b6","#34d399","#facc15","#fb923c","#38bdf8","#a78bfa","#ef4444"];
+
+var state = { operators: {}, bots: {}, campaigns: {}, attributions: {}, timelines: {} };
+
+// Tab switching
+document.querySelectorAll(".tab-btn").forEach(function(btn) {
+  btn.addEventListener("click", function() {
+    document.querySelectorAll(".tab-btn").forEach(function(b) { b.classList.remove("active"); });
+    document.querySelectorAll(".tab-content").forEach(function(c) { c.classList.remove("active"); });
+    btn.classList.add("active");
+    document.getElementById("tab-" + btn.dataset.tab).classList.add("active");
+  });
+});
+
+function fmtDate(ts) {
+  if (!ts) return "—";
+  var d = new Date(ts);
+  return d.toLocaleDateString() + " " + d.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});
+}
+
+function renderAll() {
+  // Summary
+  var ops = Object.keys(state.operators);
+  var bots = Object.keys(state.bots);
+  var camps = Object.keys(state.campaigns);
+  var activeCamps = 0;
+  camps.forEach(function(k) { if (state.campaigns[k].status === "ACTIVE" || state.campaigns[k].status === "INTENSIFYING") activeCamps++; });
+
+  document.getElementById("stat-bots").textContent = bots.length;
+  document.getElementById("stat-ops").textContent = ops.length;
+  document.getElementById("stat-camps").textContent = camps.length;
+  document.getElementById("stat-active").textContent = activeCamps;
+
+  var td = {LOW:0,MEDIUM:0,HIGH:0,CRITICAL:0};
+  ops.forEach(function(k) { var t = state.operators[k].threatLevel || "LOW"; td[t] = (td[t]||0)+1; });
+  document.getElementById("td-low").textContent = td.LOW;
+  document.getElementById("td-med").textContent = td.MEDIUM;
+  document.getElementById("td-high").textContent = td.HIGH;
+  document.getElementById("td-crit").textContent = td.CRITICAL;
+
+  // Operators table
+  var opHtml = "";
+  ops.forEach(function(k) {
+    var o = state.operators[k];
+    opHtml += "<tr><td>" + k.substring(0,12) + "</td><td>" + (o.knownBots||[]).length +
+      "</td><td><span class='badge badge-" + o.threatLevel + "'>" + o.threatLevel +
+      "</span></td><td><span class='badge badge-soph'>" + o.sophisticationLevel +
+      "</span></td><td>" + fmtDate(o.firstSeen) + "</td><td>" + fmtDate(o.lastSeen) + "</td></tr>";
+  });
+  document.getElementById("op-table").innerHTML = opHtml || "<tr><td colspan='6' style='color:var(--muted)'>No operators yet</td></tr>";
+
+  // Bot mapping table
+  var botHtml = "";
+  bots.forEach(function(k) {
+    var a = state.attributions[k] || {};
+    botHtml += "<tr><td>" + k + "</td><td>" + (a.operatorId ? a.operatorId.substring(0,12) : "—") +
+      "</td><td>" + (a.confidence != null ? (a.confidence * 100).toFixed(1) + "%" : "—") +
+      "</td><td>" + (a.matchedDimensions ? a.matchedDimensions.length + " dims" : "—") + "</td></tr>";
+  });
+  document.getElementById("bot-table").innerHTML = botHtml || "<tr><td colspan='4' style='color:var(--muted)'>No bots yet</td></tr>";
+
+  // Campaigns table
+  var campHtml = "";
+  camps.forEach(function(k) {
+    var c = state.campaigns[k];
+    campHtml += "<tr><td>" + k.substring(0,12) + "</td><td>" + (c.operatorId||"").substring(0,12) +
+      "</td><td>" + (c.activeBots||[]).length + "</td><td><span class='badge badge-" +
+      (c.status==="INTENSIFYING"?"HIGH":c.status==="ACTIVE"?"MEDIUM":"LOW") + "'>" + c.status +
+      "</span></td><td>" + (c.targetedChallenges||[]).join(", ") +
+      "</td><td>" + ((c.confidence||0)*100).toFixed(1) + "%</td></tr>";
+  });
+  document.getElementById("camp-table").innerHTML = campHtml || "<tr><td colspan='6' style='color:var(--muted)'>No campaigns detected</td></tr>";
+
+  // Fingerprints
+  var fpHtml = "";
+  bots.slice(0, 10).forEach(function(k) {
+    var a = state.attributions[k];
+    if (!a || !a.fingerprint) return;
+    fpHtml += "<div style='margin-bottom:20px;'><strong>" + k + "</strong>";
+    for (var i = 0; i < DIMS.length; i++) {
+      var val = a.fingerprint[i] || 0;
+      var pct = (val * 100).toFixed(1);
+      fpHtml += "<div class='fp-bar-wrap'><span class='fp-bar-label'>" + DIMS[i].replace(/_/g," ") +
+        "</span><div class='fp-bar'><div class='fp-bar-fill' style='width:" + pct + "%;background:" + DIM_COLORS[i] +
+        ";'></div></div><span class='fp-bar-val'>" + pct + "%</span></div>";
+    }
+    fpHtml += "</div>";
+  });
+  document.getElementById("fp-container").innerHTML = fpHtml || "<p style='color:var(--muted)'>No fingerprints yet</p>";
+
+  // Timeline select
+  var sel = document.getElementById("tl-select");
+  var prevVal = sel.value;
+  sel.innerHTML = "";
+  ops.forEach(function(k) {
+    var opt = document.createElement("option");
+    opt.value = k; opt.textContent = k.substring(0,12) + " (" + (state.operators[k].knownBots||[]).length + " bots)";
+    sel.appendChild(opt);
+  });
+  if (prevVal && state.timelines[prevVal]) sel.value = prevVal;
+  renderTimeline();
+}
+
+function renderTimeline() {
+  var opId = document.getElementById("tl-select").value;
+  var events = state.timelines[opId] || [];
+  var html = "";
+  events.sort(function(a,b){return a.timestamp-b.timestamp;}).forEach(function(e) {
+    html += "<div class='timeline-item'><div class='timeline-dot'></div><div><div class='timeline-time'>" +
+      fmtDate(e.timestamp) + "</div><div class='timeline-event'><strong>" + e.event + "</strong>" +
+      (e.details ? " — " + JSON.stringify(e.details) : "") + "</div></div></div>";
+  });
+  document.getElementById("tl-container").innerHTML = html || "<p style='color:var(--muted)'>No timeline events</p>";
+}
+
+function loadDemo() {
+  var now = Date.now();
+  var ops = {};
+  var allBots = {};
+  var attributions = {};
+  var timelines = {};
+  var campaigns = {};
+
+  // Create 3 operators with different profiles
+  var opData = [
+    { id:"op_selenium_farm", threat:"HIGH", soph:"EXPERT", bots:8, prefix:"sel_bot_" },
+    { id:"op_puppeteer_ring", threat:"CRITICAL", soph:"ELITE", bots:12, prefix:"pup_bot_" },
+    { id:"op_script_kiddie", threat:"LOW", soph:"NOVICE", bots:3, prefix:"sk_bot_" }
+  ];
+
+  opData.forEach(function(od) {
+    var botList = [];
+    for (var i = 0; i < od.bots; i++) {
+      var bid = od.prefix + i;
+      botList.push(bid);
+      allBots[bid] = true;
+      var fp = [];
+      for (var d = 0; d < 8; d++) fp[d] = Math.random() * 0.6 + (od.threat==="CRITICAL"?0.3:od.threat==="HIGH"?0.2:0.05);
+      attributions[bid] = { operatorId: od.id, confidence: 0.7 + Math.random()*0.3, matchedDimensions: DIMS.slice(0, 3+Math.floor(Math.random()*5)), fingerprint: fp };
+    }
+    ops[od.id] = { knownBots: botList, campaigns: [], firstSeen: now - 86400000*7, lastSeen: now - Math.random()*3600000, threatLevel: od.threat, sophisticationLevel: od.soph };
+    timelines[od.id] = [
+      { timestamp: now-86400000*7, event:"OPERATOR_CREATED", details:{firstBot:botList[0]} },
+      { timestamp: now-86400000*3, event:"BOT_ATTRIBUTED", details:{botId:botList[1]} },
+      { timestamp: now-86400000*1, event:"THREAT_ASSESSED", details:{threatLevel:od.threat,escalation:od.threat==="CRITICAL"} }
+    ];
+  });
+
+  // Campaigns
+  campaigns["camp_selenium_1"] = { operatorId:"op_selenium_farm", activeBots:["sel_bot_0","sel_bot_1","sel_bot_2"], targetedChallenges:["image_select","text_input"], startedAt:now-86400000*2, lastActivity:now-3600000, status:"ACTIVE", confidence:0.82 };
+  campaigns["camp_puppeteer_1"] = { operatorId:"op_puppeteer_ring", activeBots:["pup_bot_0","pup_bot_1","pup_bot_2","pup_bot_3","pup_bot_4"], targetedChallenges:["image_select","audio_challenge","motion_track"], startedAt:now-86400000, lastActivity:now-600000, status:"INTENSIFYING", confidence:0.91 };
+  ops["op_selenium_farm"].campaigns.push("camp_selenium_1");
+  ops["op_puppeteer_ring"].campaigns.push("camp_puppeteer_1");
+
+  state.operators = ops;
+  state.bots = allBots;
+  state.campaigns = campaigns;
+  state.attributions = attributions;
+  state.timelines = timelines;
+
+  renderAll();
+}
+</script>
+</body>
+</html>

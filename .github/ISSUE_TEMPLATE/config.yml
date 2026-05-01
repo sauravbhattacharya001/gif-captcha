@@ -3,3 +3,6 @@ contact_links:
   - name: 📖 View Live Demo
     url: https://sauravbhattacharya001.github.io/gif-captcha/
     about: Check out the interactive case study before filing an issue
+  - name: 📚 Documentation
+    url: https://github.com/sauravbhattacharya001/gif-captcha#readme
+    about: Read the README for setup instructions and API reference

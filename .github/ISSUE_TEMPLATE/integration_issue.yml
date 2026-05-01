@@ -1,0 +1,76 @@
+name: 🔧 Integration / Deployment Issue
+description: Report issues with integrating gif-captcha into your application or deploying it
+title: "[Integration]: "
+labels: ["integration", "help wanted"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for issues related to embedding gif-captcha in web applications, server-side verification, Docker deployment, or framework integration.
+
+  - type: dropdown
+    id: integration-type
+    attributes:
+      label: Integration Context
+      description: What are you trying to integrate with?
+      options:
+        - Node.js / Express backend
+        - Python / Flask / Django backend
+        - Static site / CDN deployment
+        - Docker / container deployment
+        - React / Vue / Angular frontend
+        - WordPress / CMS plugin
+        - API / headless verification
+        - CI/CD pipeline
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Problem Description
+      description: What issue are you encountering during integration or deployment?
+      placeholder: |
+        When importing the captcha module into my Express app, the GIF
+        generation fails with a "canvas not found" error in production.
+    validations:
+      required: true
+
+  - type: textarea
+    id: configuration
+    attributes:
+      label: Configuration / Setup
+      description: Share relevant config files, environment details, or setup steps you followed.
+      placeholder: |
+        Node.js v20.11.0
+        npm install gif-captcha
+        Running behind nginx reverse proxy
+      render: shell
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error Logs / Output
+      description: Paste any relevant error messages, stack traces, or console output.
+      render: shell
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What should happen instead?
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating System & Runtime
+      placeholder: e.g. Ubuntu 22.04, Node.js 20.11, Docker 25.0
+
+  - type: textarea
+    id: workarounds
+    attributes:
+      label: Workarounds Attempted
+      description: What have you already tried to fix this?

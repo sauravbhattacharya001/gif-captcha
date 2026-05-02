@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Challenge Retirement Engine — Dashboard</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:linear-gradient(135deg,#0f0c29,#302b63,#24243e);color:#e0e0e0;min-height:100vh;padding:24px}
+h1{text-align:center;font-size:1.8rem;margin-bottom:8px;background:linear-gradient(90deg,#00d2ff,#7b2ff7);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.subtitle{text-align:center;color:#888;margin-bottom:24px;font-size:.9rem}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;margin-bottom:24px}
+.card{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:20px;backdrop-filter:blur(10px)}
+.card h2{font-size:1rem;color:#aaa;margin-bottom:12px;text-transform:uppercase;letter-spacing:1px}
+.gauge-container{display:flex;align-items:center;justify-content:center;flex-direction:column}
+.gauge{width:160px;height:80px;position:relative;overflow:hidden}
+.gauge-bg{width:160px;height:80px;border-radius:80px 80px 0 0;background:#1a1a2e;position:absolute;top:0}
+.gauge-fill{width:160px;height:80px;border-radius:80px 80px 0 0;position:absolute;top:0;transform-origin:bottom center;transition:transform .8s ease}
+.gauge-cover{width:120px;height:60px;border-radius:60px 60px 0 0;background:#1e1e3a;position:absolute;top:20px;left:20px}
+.gauge-value{font-size:2rem;font-weight:700;margin-top:8px}
+.tier-bar{display:flex;height:32px;border-radius:8px;overflow:hidden;margin-bottom:8px}
+.tier-segment{display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:600;transition:width .5s ease}
+.tier-active{background:#00c853}
+.tier-warning{background:#ff9800}
+.tier-probation{background:#ff5252}
+.tier-retired{background:#616161}
+.tier-legend{display:flex;gap:16px;flex-wrap:wrap;font-size:.8rem;margin-top:8px}
+.tier-legend span{display:flex;align-items:center;gap:4px}
+.tier-legend .dot{width:10px;height:10px;border-radius:50%}
+table{width:100%;border-collapse:collapse;font-size:.85rem}
+th{text-align:left;padding:8px;border-bottom:1px solid rgba(255,255,255,.15);color:#aaa}
+td{padding:8px;border-bottom:1px solid rgba(255,255,255,.05)}
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.7rem;font-weight:600}
+.badge-active{background:rgba(0,200,83,.2);color:#00c853}
+.badge-warning{background:rgba(255,152,0,.2);color:#ff9800}
+.badge-probation{background:rgba(255,82,82,.2);color:#ff5252}
+.badge-retired{background:rgba(97,97,97,.2);color:#999}
+.insight{padding:10px 14px;border-radius:8px;margin-bottom:8px;font-size:.85rem;border-left:3px solid}
+.insight-CRITICAL{background:rgba(255,82,82,.1);border-color:#ff5252}
+.insight-WARNING{background:rgba(255,152,0,.1);border-color:#ff9800}
+.insight-INFO{background:rgba(0,210,255,.1);border-color:#00d2ff}
+.insight-RECOMMENDATION{background:rgba(123,47,247,.1);border-color:#7b2ff7}
+.insight-type{font-weight:600;font-size:.7rem;text-transform:uppercase;margin-bottom:4px}
+.controls{text-align:center;margin-bottom:20px}
+button{background:linear-gradient(135deg,#7b2ff7,#00d2ff);border:none;color:#fff;padding:8px 20px;border-radius:8px;cursor:pointer;font-size:.85rem;margin:4px}
+button:hover{opacity:.85}
+#detail-panel{display:none}
+.decay-chart{height:120px;display:flex;align-items:flex-end;gap:2px;margin-top:12px}
+.decay-bar{flex:1;background:linear-gradient(to top,#7b2ff7,#00d2ff);border-radius:3px 3px 0 0;min-width:4px;transition:height .3s}
+.stats-row{display:flex;justify-content:space-between;margin-top:8px;font-size:.85rem}
+</style>
+</head>
+<body>
+<h1>🏚️ Challenge Retirement Engine</h1>
+<p class="subtitle">Autonomous challenge lifecycle management — detect, degrade, and retire compromised challenges</p>
+
+<div class="controls">
+<button onclick="generateDemo()">Generate Demo Data</button>
+<button onclick="runAnalysis()">Run Analysis</button>
+<button onclick="showDetail(null)">Hide Detail</button>
+</div>
+
+<div class="grid">
+<div class="card">
+<h2>Fleet Health</h2>
+<div class="gauge-container">
+<div class="gauge">
+<div class="gauge-bg"></div>
+<div class="gauge-fill" id="gauge-fill" style="transform:rotate(0deg);background:linear-gradient(90deg,#ff5252,#ff9800,#00c853)"></div>
+<div class="gauge-cover"></div>
+</div>
+<div class="gauge-value" id="health-value">--</div>
+</div>
+</div>
+
+<div class="card">
+<h2>Tier Distribution</h2>
+<div class="tier-bar" id="tier-bar"></div>
+<div class="tier-legend">
+<span><span class="dot" style="background:#00c853"></span> Active</span>
+<span><span class="dot" style="background:#ff9800"></span> Warning</span>
+<span><span class="dot" style="background:#ff5252"></span> Probation</span>
+<span><span class="dot" style="background:#616161"></span> Retired</span>
+</div>
+<div class="stats-row" id="tier-stats"></div>
+</div>
+</div>
+
+<div class="grid">
+<div class="card">
+<h2>Challenge Fleet</h2>
+<div style="max-height:300px;overflow-y:auto">
+<table>
+<thead><tr><th>Challenge</th><th>Tier</th><th>Score</th><th>Bot Rate</th><th>Attempts</th><th></th></tr></thead>
+<tbody id="fleet-table"></tbody>
+</table>
+</div>
+</div>
+
+<div class="card">
+<h2>Autonomous Insights</h2>
+<div id="insights-panel" style="max-height:300px;overflow-y:auto"><p style="color:#666">Run analysis to see insights</p></div>
+</div>
+</div>
+
+<div class="card" id="detail-panel">
+<h2>Challenge Detail: <span id="detail-name">—</span></h2>
+<div class="stats-row">
+<span>Tier: <strong id="detail-tier">—</strong></span>
+<span>Score: <strong id="detail-score">—</strong></span>
+<span>Created: <strong id="detail-created">—</strong></span>
+</div>
+<div class="stats-row">
+<span>Bot Solve Rate: <strong id="detail-bot-rate">—</strong></span>
+<span>Human Solve Rate: <strong id="detail-human-rate">—</strong></span>
+<span>Avg Solve Time: <strong id="detail-solve-time">—</strong></span>
+</div>
+<h2 style="margin-top:16px">Effectiveness Decay Curve</h2>
+<div class="decay-chart" id="decay-chart"></div>
+<div id="detail-warnings" style="margin-top:12px"></div>
+</div>
+
+<div class="card" style="margin-top:16px">
+<h2>Retirement Log</h2>
+<div style="max-height:200px;overflow-y:auto">
+<table>
+<thead><tr><th>Challenge</th><th>Retired At</th><th>Reason</th></tr></thead>
+<tbody id="retirement-log"></tbody>
+</table>
+</div>
+</div>
+
+<script>
+// Simulated engine state for the dashboard demo
+var state = { challenges: [], fleetHealth: 0, tierCounts: {ACTIVE:0,WARNING:0,PROBATION:0,RETIRED:0}, insights: [], retirementLog: [] };
+
+var CATEGORIES = ['math','visual','pattern','sequence','color','spatial','logic','motion'];
+var challenges = [];
+
+function rand(min,max){return Math.random()*(max-min)+min}
+function pick(arr){return arr[Math.floor(Math.random()*arr.length)]}
+
+function generateDemo(){
+  challenges = [];
+  var now = Date.now();
+  for(var i=0;i<25;i++){
+    var age = rand(1,30)*24*60*60*1000;
+    var botRate = Math.random();
+    var score;
+    if(botRate>0.7) score = rand(0,35);
+    else if(botRate>0.5) score = rand(30,60);
+    else if(botRate>0.3) score = rand(50,75);
+    else score = rand(70,100);
+    score = Math.round(score);
+    var tier = score>=70?'ACTIVE':score>=50?'WARNING':score>=30?'PROBATION':'RETIRED';
+    var ch = {
+      id: 'challenge-'+String.fromCharCode(65+i%26)+(i<26?'':String(Math.floor(i/26))),
+      tier: tier,
+      effectivenessScore: score,
+      totalAttempts: Math.floor(rand(20,500)),
+      botSolveRate: Math.round(botRate*100)/100,
+      humanSolveRate: Math.round(rand(0.6,0.95)*100)/100,
+      avgSolveTimeMs: Math.round(rand(800,5000)),
+      createdAt: now-age,
+      lastAttemptAt: now-rand(0,age/2),
+      retiredAt: tier==='RETIRED'?now-rand(0,age/4):null,
+      retiredReason: tier==='RETIRED'?pick(['auto-retired: score '+score,'manual','burst attack detected']):null,
+      category: pick(CATEGORIES),
+      warnings: [],
+      decayHistory: []
+    };
+    // Generate decay history
+    for(var d=0;d<20;d++){
+      var pct = d/19;
+      var decay = 100 - (100-score)*Math.pow(pct,0.7) + rand(-5,5);
+      ch.decayHistory.push(Math.round(Math.max(0,Math.min(100,decay))));
+    }
+    if(botRate>0.5) ch.warnings.push('Bot solve rate '+Math.round(botRate*100)+'% exceeds threshold');
+    if(Math.random()>0.7) ch.warnings.push('Solve times dropping — possible bot learning');
+    challenges.push(ch);
+  }
+  runAnalysis();
+}
+
+function runAnalysis(){
+  if(challenges.length===0){generateDemo();return}
+  var tc = {ACTIVE:0,WARNING:0,PROBATION:0,RETIRED:0};
+  var totalScore=0,activeCount=0;
+  challenges.forEach(function(c){
+    tc[c.tier]++;
+    if(c.tier!=='RETIRED'){totalScore+=c.effectivenessScore;activeCount++}
+  });
+  state.fleetHealth = activeCount>0?Math.round(totalScore/activeCount):0;
+  state.tierCounts=tc;
+  state.challenges=challenges;
+
+  // Generate insights
+  var insights=[];
+  if(state.fleetHealth<50) insights.push({type:'CRITICAL',message:'Fleet health critically low at '+state.fleetHealth+'% — immediate attention needed'});
+  else if(state.fleetHealth<70) insights.push({type:'WARNING',message:'Fleet health declining — '+state.fleetHealth+'% effectiveness average'});
+  var degraded=tc.WARNING+tc.PROBATION+tc.RETIRED;
+  var pct=Math.round(degraded/challenges.length*100);
+  if(pct>40) insights.push({type:'WARNING',message:pct+'% of challenges in WARNING or worse — consider rotating challenge pool'});
+  // category check
+  var cats={};
+  challenges.forEach(function(c){if(c.category&&c.tier!=='ACTIVE'){cats[c.category]=(cats[c.category]||0)+1}});
+  Object.keys(cats).forEach(function(k){if(cats[k]>=3) insights.push({type:'CRITICAL',message:cats[k]+' challenges in category "'+k+'" compromised — category may be cracked'})});
+  if(tc.ACTIVE<5&&challenges.length>5) insights.push({type:'RECOMMENDATION',message:'Only '+tc.ACTIVE+' active challenges remaining — add new challenges urgently'});
+  state.insights=insights;
+
+  // Retirement log
+  state.retirementLog=challenges.filter(function(c){return c.retiredAt}).map(function(c){return{id:c.id,retiredAt:c.retiredAt,reason:c.retiredReason}});
+
+  render();
+}
+
+function render(){
+  // Gauge
+  var angle = state.fleetHealth/100*180;
+  document.getElementById('gauge-fill').style.transform='rotate('+angle+'deg)';
+  var hv=document.getElementById('health-value');
+  hv.textContent=state.fleetHealth+'%';
+  hv.style.color=state.fleetHealth>=70?'#00c853':state.fleetHealth>=50?'#ff9800':'#ff5252';
+
+  // Tier bar
+  var total=challenges.length||1;
+  var tb=document.getElementById('tier-bar');
+  tb.innerHTML='<div class="tier-segment tier-active" style="width:'+((state.tierCounts.ACTIVE/total)*100)+'%">'+(state.tierCounts.ACTIVE||'')+'</div>'+
+    '<div class="tier-segment tier-warning" style="width:'+((state.tierCounts.WARNING/total)*100)+'%">'+(state.tierCounts.WARNING||'')+'</div>'+
+    '<div class="tier-segment tier-probation" style="width:'+((state.tierCounts.PROBATION/total)*100)+'%">'+(state.tierCounts.PROBATION||'')+'</div>'+
+    '<div class="tier-segment tier-retired" style="width:'+((state.tierCounts.RETIRED/total)*100)+'%">'+(state.tierCounts.RETIRED||'')+'</div>';
+  document.getElementById('tier-stats').innerHTML='<span>Total: <strong>'+challenges.length+'</strong></span>';
+
+  // Fleet table
+  var sorted=challenges.slice().sort(function(a,b){return a.effectivenessScore-b.effectivenessScore});
+  var rows='';
+  sorted.forEach(function(c){
+    var bc='badge-'+c.tier.toLowerCase();
+    rows+='<tr onclick="showDetail(\''+c.id+'\')"><td>'+c.id+'</td><td><span class="badge '+bc+'">'+c.tier+'</span></td><td>'+c.effectivenessScore+'</td><td>'+Math.round(c.botSolveRate*100)+'%</td><td>'+c.totalAttempts+'</td><td style="cursor:pointer">🔍</td></tr>';
+  });
+  document.getElementById('fleet-table').innerHTML=rows;
+
+  // Insights
+  var ip=document.getElementById('insights-panel');
+  if(state.insights.length===0){ip.innerHTML='<p style="color:#666">No insights — fleet is healthy</p>';return}
+  ip.innerHTML=state.insights.map(function(ins){return'<div class="insight insight-'+ins.type+'"><div class="insight-type">'+ins.type+'</div>'+ins.message+'</div>'}).join('');
+
+  // Retirement log
+  var rl=document.getElementById('retirement-log');
+  rl.innerHTML=state.retirementLog.map(function(r){return'<tr><td>'+r.id+'</td><td>'+new Date(r.retiredAt).toLocaleDateString()+'</td><td>'+r.reason+'</td></tr>'}).join('');
+}
+
+function showDetail(id){
+  var panel=document.getElementById('detail-panel');
+  if(!id){panel.style.display='none';return}
+  var ch=challenges.find(function(c){return c.id===id});
+  if(!ch){panel.style.display='none';return}
+  panel.style.display='block';
+  document.getElementById('detail-name').textContent=ch.id;
+  document.getElementById('detail-tier').textContent=ch.tier;
+  document.getElementById('detail-score').textContent=ch.effectivenessScore+'/100';
+  document.getElementById('detail-created').textContent=new Date(ch.createdAt).toLocaleDateString();
+  document.getElementById('detail-bot-rate').textContent=Math.round(ch.botSolveRate*100)+'%';
+  document.getElementById('detail-human-rate').textContent=Math.round(ch.humanSolveRate*100)+'%';
+  document.getElementById('detail-solve-time').textContent=ch.avgSolveTimeMs+'ms';
+
+  // Decay chart
+  var chart=document.getElementById('decay-chart');
+  var bars='';
+  (ch.decayHistory||[]).forEach(function(v){bars+='<div class="decay-bar" style="height:'+v+'%"></div>'});
+  chart.innerHTML=bars;
+
+  // Warnings
+  var wdiv=document.getElementById('detail-warnings');
+  if(ch.warnings.length>0){
+    wdiv.innerHTML='<h2 style="margin-top:8px">Warnings</h2>'+ch.warnings.map(function(w){return'<div class="insight insight-WARNING" style="margin-top:4px">'+w+'</div>'}).join('');
+  }else{wdiv.innerHTML=''}
+}
+
+generateDemo();
+</script>
+</body>
+</html>

@@ -1018,20 +1018,76 @@ DeceptionCampaignOrchestrator.prototype.exportState = function () {
  * Import previously exported state.
  * @param {Object} state
  */
+/**
+ * Reject keys that could cause prototype pollution when used as
+ * property names on plain objects (CWE-1321).
+ * @param {string} key
+ * @returns {boolean}
+ */
+function _isSafeKey(key) {
+  return key !== "__proto__" && key !== "constructor" && key !== "prototype";
+}
+
+/**
+ * Deep-clone a value via JSON round-trip.  Returns the fallback when
+ * the input is falsy.  Ensures that imported objects do not share
+ * references with caller-controlled data (CWE-915) and that any
+ * prototype-chain poisoning or getter/setter traps on the source
+ * object are stripped (CWE-1321).
+ * @param {*} val
+ * @param {*} fallback
+ * @returns {*}
+ */
+function _safeClone(val, fallback) {
+  if (!val) return fallback;
+  return JSON.parse(JSON.stringify(val));
+}
+
+/**
+ * Deep-clone a dict (string-keyed object) into a null-prototype
+ * target, skipping dangerous keys.  Provides both prototype-pollution
+ * defence and reference isolation in one pass.
+ * @param {Object} src
+ * @returns {Object}
+ */
+function _safeCloneDict(src) {
+  var out = Object.create(null);
+  if (!src || typeof src !== "object" || Array.isArray(src)) return out;
+  var keys = Object.keys(src);
+  for (var i = 0; i < keys.length; i++) {
+    if (!_isSafeKey(keys[i])) continue;
+    out[keys[i]] = JSON.parse(JSON.stringify(src[keys[i]]));
+  }
+  return out;
+}
+
 DeceptionCampaignOrchestrator.prototype.importState = function (state) {
   if (!state || state.version !== 1) {
     throw new Error("Invalid state version");
   }
-  this._campaigns = state.campaigns || Object.create(null);
-  this._campaignCount = state.campaignCount || 0;
-  this._suspects = state.suspects || Object.create(null);
-  this._suspectCount = state.suspectCount || 0;
-  this._completed = state.completed || [];
+
+  // Deep-clone all imported structures to prevent:
+  //  1. Prototype-chain poisoning (CWE-1321): imported {} inherits
+  //     from Object.prototype — attacker-controlled properties on
+  //     the prototype propagate into internal lookups.
+  //  2. Object-reference leakage (CWE-915): caller retains a live
+  //     reference to internal state, allowing post-import mutation.
+  //  3. Getter/setter traps: crafted objects with accessor
+  //     descriptors can execute arbitrary code when properties
+  //     are read during campaign processing.
+  this._campaigns = _safeCloneDict(state.campaigns);
+  this._campaignCount = typeof state.campaignCount === "number" ? state.campaignCount : 0;
+  this._suspects = _safeCloneDict(state.suspects);
+  this._suspectCount = typeof state.suspectCount === "number" ? state.suspectCount : 0;
+  this._completed = _safeClone(state.completed, []);
+  // Rebuild insertion-order queues from imported keys
+  this._campaignInsertionOrder = Object.keys(this._campaigns);
+  this._suspectInsertionOrder = Object.keys(this._suspects);
   if (state.tacticEffectiveness) {
-    this._tacticEffectiveness = state.tacticEffectiveness;
+    this._tacticEffectiveness = _safeClone(state.tacticEffectiveness, this._tacticEffectiveness);
   }
   if (state.stats) {
-    this._stats = state.stats;
+    this._stats = _safeClone(state.stats, this._stats);
   }
 };
 

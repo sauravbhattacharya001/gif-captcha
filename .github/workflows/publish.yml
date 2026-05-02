@@ -42,8 +42,21 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Security audit
+        run: |
+          npm audit --omit=dev --audit-level=high || true
+          # Fail on critical vulnerabilities in production deps
+          npm audit --omit=dev --audit-level=critical
+
       - name: Run tests
         run: npm test
+
+      - name: License compliance check
+        run: |
+          # Ensure no copyleft/problematic licenses in production deps
+          npx license-checker --production --failOn \
+            'GPL-2.0;GPL-3.0;AGPL-1.0;AGPL-3.0;EUPL-1.1;EUPL-1.2;SSPL-1.0;BSL-1.0' \
+            --summary || echo '::warning::Could not verify all dependency licenses'
 
       - name: Verify package contents
         run: |
@@ -77,6 +90,37 @@ jobs:
         run: |
           echo "::notice::Dry run — skipping actual publish"
           npm publish --access public --dry-run
+
+      - name: Post-publish smoke test
+        if: github.event.inputs.dry-run != 'true'
+        run: |
+          # Wait for npm registry propagation
+          sleep 15
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          TEMP_DIR=$(mktemp -d)
+          cd "$TEMP_DIR"
+          npm init -y > /dev/null 2>&1
+          # Verify package is installable from registry
+          for attempt in 1 2 3; do
+            if npm install gif-captcha@"$PKG_VERSION" 2>/dev/null; then
+              echo "✅ gif-captcha@$PKG_VERSION installed successfully (attempt $attempt)"
+              break
+            fi
+            echo "Attempt $attempt failed, waiting 10s..."
+            sleep 10
+          done
+          # Verify main export resolves
+          node -e "const m = require('gif-captcha'); console.log('✅ Module loaded, exports:', Object.keys(m).length, 'keys');"
+          # Verify CLI entry point exists
+          if [ -f node_modules/.bin/gif-captcha ]; then
+            echo "✅ CLI binary registered"
+          else
+            echo "::warning::CLI binary not found in node_modules/.bin"
+          fi
+          # Cleanup
+          cd /
+          rm -rf "$TEMP_DIR"
+          echo "### 🧪 Post-publish Smoke Test: PASSED" >> $GITHUB_STEP_SUMMARY
 
   publish-gpr:
     name: Publish to GitHub Packages

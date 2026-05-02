@@ -224,7 +224,6 @@ function createFunnelAnalyzer(opts) {
   function trends() {
     if (records.length === 0) return [];
     var minTs = records[0].timestamp;
-    var maxTs = records[records.length - 1].timestamp;
     // Bucket records
     var buckets = {};
     records.forEach(function (r) {

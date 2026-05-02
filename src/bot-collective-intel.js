@@ -281,7 +281,6 @@ function createBotCollectiveIntelDetector(options) {
     // Build adjacency strength matrix
     var n = members.length;
     var strengths = [];
-    var degreeVariance = [];
 
     for (var i = 0; i < n; i++) {
       var rowSum = 0;

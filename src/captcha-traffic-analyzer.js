@@ -300,10 +300,10 @@ function createCaptchaTrafficAnalyzer(options) {
 
     var n = windows.length;
     // Welford's online accumulators for mean/stddev — avoids 4×O(W) _mean/_stddev calls
-    var cSum = 0, cM2 = 0, cMean = 0;
-    var sSum = 0, sM2 = 0, sMean = 0;
-    var rSum = 0, rM2 = 0, rMean = 0;
-    var dSum = 0, dM2 = 0, dMean = 0;
+    var cM2 = 0, cMean = 0;
+    var sM2 = 0, sMean = 0;
+    var rM2 = 0, rMean = 0;
+    var dM2 = 0, dMean = 0;
     // Still need arrays for median (requires sorted data)
     var counts = new Array(n);
     var solveRates = new Array(n);

@@ -27,8 +27,6 @@
     EN301549: { level: "EN",  timeLimitMin: 30, requireAlt: true,  contrastMin: 4.5 }
   };
 
-  var SEVERITY = { critical: 4, major: 3, moderate: 2, minor: 1, info: 0 };
-
   var CRITERION_WEIGHTS = {
     alternatives: 15, cognitiveLoad: 15, timeLimit: 12, keyboardNav: 12,
     colorContrast: 10, screenReader: 12, motorSkill: 10, instructions: 7, errorRecovery: 7

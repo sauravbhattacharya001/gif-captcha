@@ -43,7 +43,6 @@ function createConfigValidator(options) {
   // Severity levels
   var ERROR = "error";
   var WARNING = "warning";
-  var INFO = "info";
 
   // ── Rule definitions ──────────────────────────────────────────
 

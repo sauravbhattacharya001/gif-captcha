@@ -405,8 +405,6 @@ ChallengeEcosystemHealthEngine.prototype._computeCarryingCapacity = function (ch
 
   // Estimate capacity from activity distribution
   var activeCounts = [];
-  var now = _now();
-  var windowMs = this._cfg.evolutionWindowMs;
 
   for (var i = 0; i < challenges.length; i++) {
     var ch = challenges[i];

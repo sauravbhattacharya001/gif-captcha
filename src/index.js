@@ -9564,7 +9564,6 @@ var createChallengeDecayManager = require("./challenge-decay-manager").createCha
 var _diversityModule = require("./challenge-diversity-analyzer");
 var createChallengeTemplateEngine = require("./challenge-template-engine").createChallengeTemplateEngine;
 var _csvUtils = require("./csv-utils");
-var createFraudRingDetectorStandalone = require("./fraud-ring-detector").createFraudRingDetector;
 var createResponseTimeProfiler = require("./response-time-profiler").createResponseTimeProfiler;
 var createSessionRiskAggregator = require("./session-risk-aggregator").createSessionRiskAggregator;
 var _funnelModule = require("./solve-funnel-analyzer");

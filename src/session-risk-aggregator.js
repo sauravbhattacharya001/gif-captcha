@@ -62,7 +62,6 @@ var _clamp = _shared._clamp;
 var _now = _shared._now;
 var _percentileSorted = _shared._percentileSorted;
 var _decayFactor = _shared._decayFactor;
-var _numAsc = function (a, b) { return a - b; };
 
 // ── Helpers ─────────────────────────────────────────────────────────
 

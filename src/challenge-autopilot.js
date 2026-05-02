@@ -128,8 +128,6 @@ function createChallengeAutopilot(options) {
   var globalWindow = _makeSlidingWindow(cfg.windowMs);
   // Decision history for self-monitoring
   var decisionHistory = [];
-  // Decision outcome tracking
-  var decisionOutcomes = Object.create(null);
 
   // ── Internal Helpers ────────────────────────────────────────────
 

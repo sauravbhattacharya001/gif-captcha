@@ -55,9 +55,6 @@ function _optNum(val, def) {
   return typeof val === "number" && val >= 0 ? val : def;
 }
 
-function _optBool(val, def) {
-  return typeof val === "boolean" ? val : def;
-}
 
 function _epochKey(ts, epochMs) {
   return Math.floor(ts / epochMs);

@@ -76,14 +76,6 @@ function _deepCopy(obj) {
   return JSON.parse(JSON.stringify(obj));
 }
 
-function _euclidean(a, b) {
-  var sum = 0;
-  for (var i = 0; i < a.length; i++) {
-    var d = (a[i] || 0) - (b[i] || 0);
-    sum += d * d;
-  }
-  return Math.sqrt(sum);
-}
 
 /**
  * Check if point A dominates point B in multi-objective sense.
@@ -99,22 +91,6 @@ function _dominates(a, b) {
   return dominated;
 }
 
-/**
- * Normalize a value where lower is better (friction, latency, fatigue)
- * to higher-is-better scale: normalized = 1 - (val - min) / (max - min)
- */
-function _invertNormalize(val, min, max) {
-  if (max === min) return 1;
-  return 1 - _clamp((val - min) / (max - min), 0, 1);
-}
-
-/**
- * Normalize a value where higher is better (catch rate, diversity, coverage)
- */
-function _directNormalize(val, min, max) {
-  if (max === min) return 1;
-  return _clamp((val - min) / (max - min), 0, 1);
-}
 
 // ── DefensePostureOptimizer ──────────────────────────────────────────
 

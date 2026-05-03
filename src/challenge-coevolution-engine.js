@@ -92,15 +92,6 @@ function _safeCloneDict(src) {
 }
 
 /**
- * Safe deep-clone an array.
- * @param {Array} arr
- * @returns {Array}
- */
-function _safeCloneArray(arr) {
-  if (!Array.isArray(arr)) return [];
-  return JSON.parse(JSON.stringify(arr));
-}
-
 /**
  * Compute solve rate from events array.
  * @param {Array} events

@@ -50,23 +50,6 @@ ALGORITHMS["leaky-bucket"] = true;
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
-/**
- * Binary search for the first index >= target in a sorted array.
- * Used for efficiently trimming expired timestamps in sliding window.
- */
-function _lowerBound(arr, target) {
-  var lo = 0;
-  var hi = arr.length;
-  while (lo < hi) {
-    var mid = (lo + hi) >>> 1;
-    if (arr[mid] < target) {
-      lo = mid + 1;
-    } else {
-      hi = mid;
-    }
-  }
-  return lo;
-}
 
 /**
  * Evict oldest entries when key count exceeds maxKeys.

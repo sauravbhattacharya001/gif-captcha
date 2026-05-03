@@ -113,9 +113,6 @@ function _validSeverity(s) {
   return SEVERITIES.indexOf(s) !== -1;
 }
 
-function _validState(s) {
-  return STATES.indexOf(s) !== -1;
-}
 
 function _duration(startMs, endMs) {
   var ms = (endMs || _now()) - startMs;

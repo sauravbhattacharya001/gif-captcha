@@ -14,6 +14,7 @@ var EventEmitter = require("events");
 var crypto = require("crypto");
 var _shared = require("./shared-utils");
 var _clamp = _shared._clamp;
+var _now = _shared._now;
 
 // ── Defaults ────────────────────────────────────────────────────────
 var DEFAULTS = {
@@ -45,7 +46,6 @@ function _hash(s) {
  * Current timestamp in ms.
  * @returns {number}
  */
-function _now() { return Date.now(); }
 
 
 // ── CaptchaReplayDetector ───────────────────────────────────────────

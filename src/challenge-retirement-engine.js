@@ -28,6 +28,7 @@ var _now = _shared._now;
 var _clamp = _shared._clamp;
 var _posOpt = _shared._posOpt;
 var _nnOpt = _shared._nnOpt;
+var _mean = _shared._mean;
 var LruTracker = _shared.LruTracker;
 
 // ── Constants ───────────────────────────────────────────────────────
@@ -62,23 +63,6 @@ var DEFAULTS = {
 
 // ── Helper Functions ────────────────────────────────────────────────
 
-function _mean(arr) {
-  if (!arr || arr.length === 0) return 0;
-  var sum = 0;
-  for (var i = 0; i < arr.length; i++) sum += arr[i];
-  return sum / arr.length;
-}
-
-function _stddev(arr) {
-  if (!arr || arr.length < 2) return 0;
-  var m = _mean(arr);
-  var variance = 0;
-  for (var i = 0; i < arr.length; i++) {
-    var diff = arr[i] - m;
-    variance += diff * diff;
-  }
-  return Math.sqrt(variance / arr.length);
-}
 
 function _decayFactor(ageMs, halfLifeMs) {
   if (ageMs <= 0) return 1;

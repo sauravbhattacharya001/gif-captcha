@@ -509,6 +509,11 @@ function createChallengeCoevolutionEngine(options) {
    * Score evolutionary fitness of challenge types.
    * Fitness = f(current effectiveness, adaptation rate, predicted longevity).
    *
+   * Pre-computes obsolescence predictions for ALL types in one pass
+   * and indexes by type, replacing the previous per-type
+   * predictObsolescence() call inside the loop — eliminates O(types)
+   * redundant _recentEvents + _linearRegression invocations.
+   *
    * @param {string} [challengeType] - Specific type or all
    * @returns {Array<Object>} Fitness scores per challenge type
    */
@@ -516,6 +521,16 @@ function createChallengeCoevolutionEngine(options) {
     var types = challengeType ? [challengeType] : Object.keys(challengeEvents);
     var results = [];
     var now = _now();
+
+    // Pre-compute all obsolescence predictions in one call, then index
+    // by challenge type for O(1) lookup inside the per-type loop.
+    // Previously predictObsolescence(type) was called per type, re-running
+    // _recentEvents + _bucketSolveRates + _linearRegression each time.
+    var allPreds = predictObsolescence(challengeType);
+    var predIndex = Object.create(null);
+    for (var p = 0; p < allPreds.length; p++) {
+      predIndex[allPreds[p].challengeType] = allPreds[p];
+    }
 
     for (var i = 0; i < types.length; i++) {
       var type = types[i];
@@ -529,12 +544,12 @@ function createChallengeCoevolutionEngine(options) {
       var recentEvolutions = _recentEvents(evolutions, adaptationWindowMs, now);
       var adaptationScore = Math.min(recentEvolutions.length / 5, 1); // Up to 5 mutations = max
 
-      // Longevity component from obsolescence predictions
-      var preds = predictObsolescence(type);
+      // Longevity component from pre-computed obsolescence predictions
+      var pred = predIndex[type];
       var longevityScore = 1;
-      if (preds.length > 0 && preds[0].predictedBreakthroughMs !== null) {
-        longevityScore = _clamp(preds[0].predictedBreakthroughMs / obsolescenceForecastMs, 0, 1);
-      } else if (preds.length > 0 && preds[0].status === "broken") {
+      if (pred && pred.predictedBreakthroughMs !== null) {
+        longevityScore = _clamp(pred.predictedBreakthroughMs / obsolescenceForecastMs, 0, 1);
+      } else if (pred && pred.status === "broken") {
         longevityScore = 0;
       }
 
@@ -647,13 +662,23 @@ function createChallengeCoevolutionEngine(options) {
 
   /**
    * Compute composite coevolution health score 0-100.
+   *
+   * Accepts optional pre-computed sub-results to avoid redundant work
+   * when called from getReport() (which also needs the same data for
+   * generateInsights).  Without caching, getReport() recomputed
+   * fitness/races/pressure/obsolescence 3-4× each — O(types²) total
+   * because getEvolutionaryFitness itself calls predictObsolescence
+   * per type.
+   *
+   * @param {Object} [_cache] Pre-computed sub-results (internal use)
    * @returns {Object} Health report
    */
-  function getCoevolutionHealth() {
-    var fitness = getEvolutionaryFitness();
-    var races = detectRedQueenRaces();
-    var pressure = getMutationPressure();
-    var obsolescence = predictObsolescence();
+  function getCoevolutionHealth(_cache) {
+    _cache = _cache || {};
+    var fitness = _cache.fitness || getEvolutionaryFitness();
+    var races = _cache.races || detectRedQueenRaces();
+    var pressure = _cache.pressure || getMutationPressure();
+    var obsolescence = _cache.obsolescence || predictObsolescence();
 
     // Component 1: Average fitness (0-100)
     var fitnessScores = [];
@@ -735,15 +760,22 @@ function createChallengeCoevolutionEngine(options) {
 
   /**
    * Generate autonomous insights about coevolution dynamics.
+   *
+   * Accepts optional pre-computed sub-results (internal cache) so
+   * getReport() can share a single computation pass across health,
+   * insights, and top-level report fields.
+   *
+   * @param {Object} [_cache] Pre-computed sub-results (internal use)
    * @returns {Array<Object>} Insights with recommendations
    */
-  function generateInsights() {
+  function generateInsights(_cache) {
+    _cache = _cache || {};
     var insights = [];
-    var health = getCoevolutionHealth();
-    var races = detectRedQueenRaces();
-    var fitness = getEvolutionaryFitness();
-    var pressure = getMutationPressure();
-    var obsolescence = predictObsolescence();
+    var races = _cache.races || detectRedQueenRaces();
+    var fitness = _cache.fitness || getEvolutionaryFitness();
+    var pressure = _cache.pressure || getMutationPressure();
+    var obsolescence = _cache.obsolescence || predictObsolescence();
+    var health = _cache.health || getCoevolutionHealth({ fitness: fitness, races: races, pressure: pressure, obsolescence: obsolescence });
 
     // Insight: Overall health
     if (health.tier === "COLLAPSED" || health.tier === "LOSING") {
@@ -859,16 +891,32 @@ function createChallengeCoevolutionEngine(options) {
 
   /**
    * Generate a full coevolution report.
+   *
+   * Computes each expensive sub-analysis exactly once and threads
+   * the results through getCoevolutionHealth and generateInsights
+   * via an internal cache object.  Previously each engine was
+   * called independently, causing 3-4× redundant computation of
+   * fitness, races, pressure, and obsolescence (and fitness itself
+   * calls predictObsolescence per type, compounding the cost).
+   *
    * @returns {Object}
    */
   function getReport() {
-    return {
-      health: getCoevolutionHealth(),
+    var cache = {
       races: detectRedQueenRaces(),
       fitness: getEvolutionaryFitness(),
-      mutationPressure: getMutationPressure(),
-      obsolescence: predictObsolescence(),
-      insights: generateInsights(),
+      pressure: getMutationPressure(),
+      obsolescence: predictObsolescence()
+    };
+    cache.health = getCoevolutionHealth(cache);
+    cache.insights = generateInsights(cache);
+    return {
+      health: cache.health,
+      races: cache.races,
+      fitness: cache.fitness,
+      mutationPressure: cache.pressure,
+      obsolescence: cache.obsolescence,
+      insights: cache.insights,
       generatedAt: _now()
     };
   }

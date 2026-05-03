@@ -133,10 +133,21 @@ The library is organized into five functional layers, each composable and indepe
 │  ChallengeRouter · ChallengeAutopilot · ABExperiment    │
 │  ChallengeRotationScheduler · ChallengePoolManager      │
 ├─────────────────────────────────────────────────────────┤
+│             Threat Intelligence Layer                   │
+│  BotMimicryDetector · BotAttributionEngine              │
+│  BotCapabilityProfiler · BotCollectiveIntelDetector     │
+│  AttackEvolutionTracker · ThreatIntelFusion             │
+│  DeceptionCampaignOrchestrator · DefensePostureOptimizer│
+├─────────────────────────────────────────────────────────┤
 │               Security & Trust Layer                    │
 │  BotDetector · TrustScoreEngine · FraudRingDetector     │
 │  GeoRiskScorer · RateLimiter · HoneypotInjector         │
 │  TokenVerifier · ReplayDetector · ProofOfWork           │
+├─────────────────────────────────────────────────────────┤
+│            Challenge Evolution Layer                    │
+│  ChallengeGeneticsLab · ChallengeRetirementEngine       │
+│  ChallengeDifficultyCurveEngine · EcosystemHealthEngine │
+│  ChallengeDecayManager · AdaptiveDifficultyTuner        │
 ├─────────────────────────────────────────────────────────┤
 │              Analytics & Monitoring Layer                │
 │  MetricsAggregator · HealthMonitor · TrafficAnalyzer    │
@@ -146,6 +157,7 @@ The library is organized into five functional layers, each composable and indepe
 │                    Core Layer                           │
 │  createChallenge · validateAnswer · pickChallenges       │
 │  sanitize · textSimilarity · loadGifWithRetry            │
+│  secureRandomInt · crypto-utils · shared-utils           │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -153,7 +165,7 @@ See [docs/architecture.html](https://sauravbhattacharya001.github.io/gif-captcha
 
 ## API Reference
 
-The library exports **80+ functions and factories** across seven domains. See [API.md](API.md) for full documentation.
+The library exports **100+ functions and factories** across nine domains. See [API.md](API.md) for full documentation.
 
 ### Core — Challenge Lifecycle
 
@@ -249,6 +261,28 @@ The library exports **80+ functions and factories** across seven domains. See [A
 | `createSessionRecorder` / `createSessionReplay` | Record and replay user sessions |
 | `WebhookDispatcher` | Send event notifications to external webhooks |
 
+### Advanced Threat Intelligence
+
+| Function | Purpose |
+|----------|---------|
+| `createBotMimicryDetector` | Detect bots that deliberately imitate human behavior — uncanny valley analysis, consistency paradox, fatigue immunity detection |
+| `createBotAttributionEngine` | Attribute bot activity to operators/campaigns via 8-dimensional fingerprint vectors and cosine similarity matching |
+| `createBotCapabilityProfiler` | Build per-bot capability profiles across 8 skill dimensions, classify sophistication tiers, predict challenge vulnerability |
+| `createBotCollectiveIntelDetector` | Detect coordinated bot swarms via timing synchronization, collective learning rate, and swarm topology inference |
+| `createAttackEvolutionTracker` | Track how bot attack strategies evolve, detect learning curves, predict time-to-compromise, recommend preemptive rotations |
+| `createThreatIntelFusion` | Correlate signals from 6 detection subsystems into unified threat assessments with autonomous defense posture management |
+| `createDeceptionCampaignOrchestrator` | Design multi-phase trap sequences exploiting bot weaknesses — 7 deception tactics with autonomous profiling |
+| `createDefensePostureOptimizer` | Multi-objective Pareto optimization across 6 defense dimensions (catch rate, friction, latency, diversity, coverage, fatigue) |
+
+### Challenge Evolution & Ecosystem
+
+| Function | Purpose |
+|----------|---------|
+| `createChallengeGeneticsLab` | Breed more effective challenges via genetic algorithms — tournament selection, crossover, mutation, elitism |
+| `createChallengeEcosystemHealthEngine` | Model the challenge pool as a biological ecosystem — biodiversity indices, predator-prey dynamics, extinction risk |
+| `createChallengeDifficultyCurveEngine` | Model difficulty-vs-outcome curves for humans and bots separately, find optimal difficulty sweet spot |
+| `createChallengeRetirementEngine` | Detect compromised challenges via effectiveness decay, burst attacks, and cross-challenge correlation — 4-tier lifecycle grading |
+
 ### Experimentation & Operations
 
 | Function | Purpose |
@@ -260,6 +294,7 @@ The library exports **80+ functions and factories** across seven domains. See [A
 | `createExportFormatter` | Export data in CSV, JSON, and Markdown formats |
 | `createEventEmitter` | Internal pub/sub event bus for module communication |
 | `csvEscape` / `csvRow` | CSV formatting utilities |
+| `secureRandomInt` / `secureRandomFloat` / `secureRandomChoice` | Cryptographically secure random utilities (shared via `crypto-utils`) |
 
 ## Server Integration
 
@@ -315,7 +350,7 @@ async function captchaPlugin(fastify) {
 
 ## Interactive Platform
 
-The [live site](https://sauravbhattacharya001.github.io/gif-captcha/) hosts **40+ interactive tools** organized into four categories:
+The [live site](https://sauravbhattacharya001.github.io/gif-captcha/) hosts **90+ interactive tools** organized into five categories:
 
 ### 🔬 Research & Analysis
 
@@ -327,7 +362,13 @@ The [live site](https://sauravbhattacharya001.github.io/gif-captcha/) hosts **40
 | [Multi-Model Comparison](https://sauravbhattacharya001.github.io/gif-captcha/comparison.html) | Side-by-side model performance with capability radar |
 | [Effectiveness Dashboard](https://sauravbhattacharya001.github.io/gif-captcha/effectiveness.html) | Detection rates, discrimination power over time |
 | [Cognitive Load Analyzer](https://sauravbhattacharya001.github.io/gif-captcha/cognitive-load.html) | 6-dimension cognitive complexity per CAPTCHA |
+| [Cognitive Fingerprint](https://sauravbhattacharya001.github.io/gif-captcha/cognitive-fingerprint.html) | Behavioral fingerprinting through cognitive patterns |
 | [Research Paper](https://sauravbhattacharya001.github.io/gif-captcha/research-paper.html) | Formal write-up of findings |
+| [Entropy Analyzer](https://sauravbhattacharya001.github.io/gif-captcha/entropy.html) | Challenge entropy and randomness analysis |
+| [Diversity Analyzer](https://sauravbhattacharya001.github.io/gif-captcha/diversity-analyzer.html) | Challenge set diversity metrics (Shannon, Simpson, Gini) |
+| [Solve Histogram](https://sauravbhattacharya001.github.io/gif-captcha/solve-histogram.html) | Solve time distribution visualization |
+| [Timing Analysis](https://sauravbhattacharya001.github.io/gif-captcha/timing.html) | Response timing pattern analysis |
+| [Heatmap](https://sauravbhattacharya001.github.io/gif-captcha/heatmap.html) | Visual heatmap of interaction patterns |
 
 ### 🎮 Interactive Challenges
 
@@ -341,36 +382,91 @@ The [live site](https://sauravbhattacharya001.github.io/gif-captcha/) hosts **40
 | [Competitive Mode](https://sauravbhattacharya001.github.io/gif-captcha/competitive.html) | Head-to-head CAPTCHA solving |
 | [Escape Room](https://sauravbhattacharya001.github.io/gif-captcha/escape-room.html) | Puzzle-style CAPTCHA challenges |
 | [Speed Arena](https://sauravbhattacharya001.github.io/gif-captcha/speed-arena.html) | Race against the clock |
+| [Bot or Human?](https://sauravbhattacharya001.github.io/gif-captcha/bot-or-human.html) | Interactive bot-vs-human classification game |
+| [Leaderboard](https://sauravbhattacharya001.github.io/gif-captcha/leaderboard.html) | Global ranking of CAPTCHA solvers |
+| [My Stats](https://sauravbhattacharya001.github.io/gif-captcha/my-stats.html) | Personal solve statistics and history |
+| [Gallery](https://sauravbhattacharya001.github.io/gif-captcha/gallery.html) | Challenge gallery browser |
 
 ### 🛠️ Configuration & Development
 
 | Tool | Description |
 |------|-------------|
 | [CAPTCHA Workshop](https://sauravbhattacharya001.github.io/gif-captcha/generator.html) | Create, test, and export custom challenge sets |
+| [CAPTCHA Designer](https://sauravbhattacharya001.github.io/gif-captcha/designer.html) | Visual challenge design tool |
 | [Playground](https://sauravbhattacharya001.github.io/gif-captcha/playground.html) | Experiment with challenge configurations |
 | [A/B Configurator](https://sauravbhattacharya001.github.io/gif-captcha/abtest.html) | Design experiments with statistical rigor |
+| [A/B Dashboard](https://sauravbhattacharya001.github.io/gif-captcha/ab-test-dashboard.html) | View A/B experiment results and significance |
 | [Theme Builder](https://sauravbhattacharya001.github.io/gif-captcha/theme-builder.html) | Visual CAPTCHA theme customization |
 | [Embed Generator](https://sauravbhattacharya001.github.io/gif-captcha/embed.html) | Generate copy-paste HTML/JS embed snippets |
 | [Integration Wizard](https://sauravbhattacharya001.github.io/gif-captcha/integration-wizard.html) | Step-by-step integration setup |
+| [Config Editor](https://sauravbhattacharya001.github.io/gif-captcha/config.html) | Configuration management UI |
 | [Frame Inspector](https://sauravbhattacharya001.github.io/gif-captcha/frame-inspector.html) | Frame-by-frame GIF analysis with AI perspective |
 | [Difficulty Planner](https://sauravbhattacharya001.github.io/gif-captcha/difficulty-planner.html) | Plan challenge difficulty curves |
+| [Adaptive Difficulty](https://sauravbhattacharya001.github.io/gif-captcha/adaptive-difficulty.html) | Real-time difficulty adjustment dashboard |
 | [Cost Calculator](https://sauravbhattacharya001.github.io/gif-captcha/cost-calculator.html) | Estimate deployment costs |
+| [Batch Operations](https://sauravbhattacharya001.github.io/gif-captcha/batch.html) | Bulk challenge operations |
+| [Feedback](https://sauravbhattacharya001.github.io/gif-captcha/feedback.html) | User feedback collection |
+| [Directory](https://sauravbhattacharya001.github.io/gif-captcha/directory.html) | Full tool directory and navigation |
 
 ### 🔒 Security & Monitoring
 
 | Tool | Description |
 |------|-------------|
+| [Dashboard](https://sauravbhattacharya001.github.io/gif-captcha/dashboard.html) | Central monitoring dashboard |
 | [Trust Dashboard](https://sauravbhattacharya001.github.io/gif-captcha/trust-dashboard.html) | Trust score monitoring |
+| [Trust Network](https://sauravbhattacharya001.github.io/gif-captcha/trust-network.html) | Trust relationship graph visualization |
 | [Bot Signatures](https://sauravbhattacharya001.github.io/gif-captcha/bot-signatures.html) | Known bot signature database |
+| [Bot Attribution](https://sauravbhattacharya001.github.io/gif-captcha/bot-attribution.html) | Trace bot activity back to operators/campaigns |
+| [Bot Capability Profiler](https://sauravbhattacharya001.github.io/gif-captcha/bot-capability-profiler.html) | Analyze bot sophistication tiers and skill vectors |
 | [Fraud Ring Detector](https://sauravbhattacharya001.github.io/gif-captcha/fraud-rings.html) | Coordinated fraud visualization |
 | [Geo Risk Map](https://sauravbhattacharya001.github.io/gif-captcha/geo-risk-map.html) | Geographic risk heatmap |
+| [Biometrics Lab](https://sauravbhattacharya001.github.io/gif-captcha/biometrics-lab.html) | Behavioral biometrics analysis |
+| [Fingerprint Explorer](https://sauravbhattacharya001.github.io/gif-captcha/fingerprint-explorer.html) | Device and browser fingerprint viewer |
 | [Audit Log](https://sauravbhattacharya001.github.io/gif-captcha/audit-log.html) | Tamper-evident audit trail browser |
 | [Honeypot Designer](https://sauravbhattacharya001.github.io/gif-captcha/honeypot-designer.html) | Honeypot trap designer with bot simulation |
 | [Threat Radar](https://sauravbhattacharya001.github.io/gif-captcha/threat-radar.html) | Real-time threat visualization |
+| [Threat Index](https://sauravbhattacharya001.github.io/gif-captcha/threat-index.html) | Threat severity index and trending |
+| [Threat Feed](https://sauravbhattacharya001.github.io/gif-captcha/threat-feed.html) | Live threat intelligence feed |
+| [Threat Intel Fusion](https://sauravbhattacharya001.github.io/gif-captcha/threat-intel-fusion.html) | Multi-source threat signal correlation |
 | [Incident Timeline](https://sauravbhattacharya001.github.io/gif-captcha/incident-timeline.html) | Security incident history |
+| [Forensic Investigator](https://sauravbhattacharya001.github.io/gif-captcha/forensic-investigator.html) | Deep-dive forensic analysis tools |
+| [Replay Detector](https://sauravbhattacharya001.github.io/gif-captcha/replay-detector.html) | Token replay detection viewer |
+| [Session Replay](https://sauravbhattacharya001.github.io/gif-captcha/session-replay.html) | Replay recorded user sessions |
 | [Rate Limiter](https://sauravbhattacharya001.github.io/gif-captcha/rate-limiter.html) | Rate limiting configuration |
+| [Proof of Work](https://sauravbhattacharya001.github.io/gif-captcha/pow-calibrator.html) | PoW difficulty calibration |
+| [Queue Manager](https://sauravbhattacharya001.github.io/gif-captcha/queue-manager.html) | Challenge queue management |
 | [Compliance](https://sauravbhattacharya001.github.io/gif-captcha/compliance.html) | Regulatory compliance reporting |
 | [Accessibility Audit](https://sauravbhattacharya001.github.io/gif-captcha/accessibility.html) | WCAG 2.1 compliance evaluation |
+| [CAPTCHA Health Monitor](https://sauravbhattacharya001.github.io/gif-captcha/captcha-health-monitor.html) | System health and alerting |
+| [Performance Profiler](https://sauravbhattacharya001.github.io/gif-captcha/performance-profiler.html) | Performance metrics and bottleneck analysis |
+| [Response Time Profiler](https://sauravbhattacharya001.github.io/gif-captcha/response-time-profiler.html) | Solve time distribution profiling |
+| [Load Tester](https://sauravbhattacharya001.github.io/gif-captcha/load-tester.html) | Simulate load and measure throughput |
+| [Funnel](https://sauravbhattacharya001.github.io/gif-captcha/funnel.html) | Solve funnel analytics |
+| [Journey Map](https://sauravbhattacharya001.github.io/gif-captcha/journey-map.html) | User journey visualization |
+
+### 🧬 Advanced Defense & Evolution
+
+| Tool | Description |
+|------|-------------|
+| [Arms Race](https://sauravbhattacharya001.github.io/gif-captcha/arms-race.html) | Bot-vs-defender arms race simulation |
+| [Attack Evolution](https://sauravbhattacharya001.github.io/gif-captcha/attack-evolution.html) | Track how attack strategies evolve over time |
+| [Attack Predictor](https://sauravbhattacharya001.github.io/gif-captcha/attack-predictor.html) | Predict next attack vectors |
+| [Adversarial Trainer](https://sauravbhattacharya001.github.io/gif-captcha/adversarial-trainer.html) | Train challenges against adversarial bots |
+| [Challenge Genetics Lab](https://sauravbhattacharya001.github.io/gif-captcha/challenge-genetics-lab.html) | Breed challenges via genetic algorithms |
+| [Challenge Retirement](https://sauravbhattacharya001.github.io/gif-captcha/challenge-retirement.html) | Challenge lifecycle and retirement management |
+| [Challenge Autopilot](https://sauravbhattacharya001.github.io/gif-captcha/challenge-autopilot.html) | Autonomous challenge selection and rotation |
+| [Rotation Scheduler](https://sauravbhattacharya001.github.io/gif-captcha/rotation-scheduler.html) | Schedule automatic challenge rotations |
+| [Mutation Lab](https://sauravbhattacharya001.github.io/gif-captcha/mutation-lab.html) | Mutate challenge parameters experimentally |
+| [Decay Simulator](https://sauravbhattacharya001.github.io/gif-captcha/decay-simulator.html) | Simulate challenge effectiveness decay |
+| [Resistance Analyzer](https://sauravbhattacharya001.github.io/gif-captcha/resistance.html) | Analyze bot resistance to challenge types |
+| [Immune System](https://sauravbhattacharya001.github.io/gif-captcha/immune-system.html) | Adaptive immune response visualization |
+| [Swarm Intelligence](https://sauravbhattacharya001.github.io/gif-captcha/swarm-intelligence.html) | Bot swarm behavior analysis |
+| [Collective Intel](https://sauravbhattacharya001.github.io/gif-captcha/collective-intel.html) | Collective intelligence dashboard |
+| [Deception Campaign](https://sauravbhattacharya001.github.io/gif-captcha/deception-campaign.html) | Orchestrate multi-phase deception traps |
+| [Defense Strategist](https://sauravbhattacharya001.github.io/gif-captcha/defense-strategist.html) | Defense strategy optimization |
+| [Canary Deployer](https://sauravbhattacharya001.github.io/gif-captcha/canary-deployer.html) | Deploy canary challenges to detect new threats |
+| [Fleet Orchestrator](https://sauravbhattacharya001.github.io/gif-captcha/fleet-orchestrator.html) | Multi-instance fleet management |
+| [Fleet](https://sauravbhattacharya001.github.io/gif-captcha/fleet.html) | Fleet status and operations |
 
 ## Tech Stack
 
@@ -385,7 +481,7 @@ The [live site](https://sauravbhattacharya001.github.io/gif-captcha/) hosts **40
 
 ## Testing
 
-96 test files covering all modules. See [TESTING.md](TESTING.md) for the full guide.
+110 test files covering all 54 modules. See [TESTING.md](TESTING.md) for the full guide.
 
 ```bash
 npm test                # Run all tests
@@ -396,17 +492,22 @@ npm run test:coverage   # Coverage (80% lines, 70% functions, 90% branches)
 
 ```
 gif-captcha/
-├── src/                 # Core library (40+ modules)
+├── src/                 # Core library (54 modules)
 │   ├── index.js         # Main entry point (UMD)
-│   ├── shared-utils.js  # Shared utilities
-│   └── ...              # Bot detection, trust scoring, session management, etc.
-├── tests/               # 96 test files
+│   ├── shared-utils.js  # Shared utilities (LruTracker, clamp, etc.)
+│   ├── crypto-utils.js  # Shared cryptographic random helpers
+│   ├── bot-*.js         # Bot detection, attribution, profiling, swarm detection
+│   ├── challenge-*.js   # Challenge lifecycle, genetics, rotation, difficulty
+│   ├── captcha-*.js     # Analytics, health, compliance, rate limiting
+│   └── ...              # Trust scoring, session management, threat intel, etc.
+├── tests/               # 110 test files
 ├── docs/                # HTML documentation site
 ├── bin/                 # CLI entry point
-├── *.html               # 40+ interactive tool pages
+├── .github/             # CI, CodeQL, Docker, Pages, dependabot, templates
+├── *.html               # 91 interactive tool pages
 ├── shared.css           # Dark theme styles
 ├── shared.js            # Browser shared utilities
-├── Dockerfile           # Production container
+├── Dockerfile           # Production container (nginx-alpine)
 └── nginx-security.conf  # Hardened nginx config
 ```
 

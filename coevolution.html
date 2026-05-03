@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Challenge Coevolution — Red Queen Arms Race Monitor</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+.coevo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.2rem; margin-top: 1rem; }
+@media (max-width: 900px) { .coevo-grid { grid-template-columns: 1fr; } }
+.coevo-card { background: var(--card-bg, #1e1e2e); border-radius: 12px; padding: 1.2rem; border: 1px solid var(--border, #333); }
+.coevo-card h3 { margin: 0 0 .8rem; font-size: 1rem; color: var(--accent, #7c3aed); }
+.health-gauge { text-align: center; padding: 1.5rem 0; }
+.health-score { font-size: 3.5rem; font-weight: 800; }
+.health-tier { font-size: 1.1rem; margin-top: .3rem; opacity: .8; }
+.race-list { list-style: none; padding: 0; margin: 0; }
+.race-item { display: flex; align-items: center; gap: .7rem; padding: .5rem 0; border-bottom: 1px solid var(--border, #333); }
+.race-item:last-child { border-bottom: none; }
+.race-badge { display: inline-block; padding: .15rem .5rem; border-radius: 6px; font-size: .75rem; font-weight: 700; }
+.race-DORMANT { background: #334155; color: #94a3b8; }
+.race-WARMING { background: #422006; color: #fbbf24; }
+.race-ACTIVE { background: #1e3a5f; color: #60a5fa; }
+.race-ESCALATING { background: #4c1d95; color: #c084fc; }
+.race-CRITICAL { background: #7f1d1d; color: #fca5a5; }
+.tier-DOMINANT { color: #22c55e; }
+.tier-COMPETITIVE { color: #60a5fa; }
+.tier-CONTESTED { color: #fbbf24; }
+.tier-LOSING { color: #f97316; }
+.tier-COLLAPSED { color: #ef4444; }
+.fitness-bar { height: 8px; border-radius: 4px; background: var(--border, #333); margin-top: .3rem; }
+.fitness-fill { height: 100%; border-radius: 4px; transition: width .3s; }
+.insight-item { padding: .5rem 0; border-bottom: 1px solid var(--border, #333); }
+.insight-item:last-child { border-bottom: none; }
+.insight-type { display: inline-block; padding: .1rem .4rem; border-radius: 4px; font-size: .7rem; font-weight: 700; margin-right: .4rem; }
+.insight-critical { background: #7f1d1d; color: #fca5a5; }
+.insight-warning { background: #422006; color: #fbbf24; }
+.insight-positive { background: #052e16; color: #86efac; }
+.insight-info { background: #1e3a5f; color: #93c5fd; }
+.velocity-bar { display: flex; align-items: center; gap: .5rem; margin: .3rem 0; font-size: .85rem; }
+.velocity-label { min-width: 120px; }
+.velocity-track { flex: 1; height: 6px; background: var(--border, #333); border-radius: 3px; position: relative; }
+.velocity-fill { height: 100%; border-radius: 3px; position: absolute; top: 0; }
+.vel-bot { background: #ef4444; }
+.vel-defense { background: #22c55e; }
+.pressure-row { display: flex; align-items: center; gap: .6rem; padding: .4rem 0; font-size: .85rem; }
+.pressure-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.pressure-low { background: #22c55e; }
+.pressure-moderate { background: #fbbf24; }
+.pressure-high { background: #f97316; }
+.pressure-critical { background: #ef4444; }
+.demo-btn { margin: 1rem 0; padding: .6rem 1.5rem; background: var(--accent, #7c3aed); color: #fff; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: .9rem; }
+.demo-btn:hover { opacity: .9; }
+table.obs-table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+.obs-table th, .obs-table td { padding: .4rem .6rem; text-align: left; border-bottom: 1px solid var(--border, #333); }
+.obs-table th { opacity: .6; font-weight: 600; }
+.status-safe { color: #22c55e; }
+.status-watch { color: #fbbf24; }
+.status-urgent { color: #f97316; }
+.status-broken { color: #ef4444; }
+.status-unknown { color: #64748b; }
+.summary-stats { display: flex; flex-wrap: wrap; gap: 1rem; margin-top: .5rem; }
+.stat-box { background: var(--border, #222); padding: .6rem 1rem; border-radius: 8px; text-align: center; min-width: 90px; }
+.stat-value { font-size: 1.4rem; font-weight: 700; }
+.stat-label { font-size: .7rem; opacity: .6; margin-top: .2rem; }
+</style>
+</head>
+<body>
+<header>
+<h1>🧬 Challenge Coevolution — Red Queen Arms Race Monitor</h1>
+<p>Autonomous evolutionary arms race tracking between CAPTCHA challenges and bot attackers</p>
+<button class="demo-btn" id="demoBtn">▶ Load Demo Data</button>
+</header>
+
+<div class="coevo-grid">
+  <!-- Health Gauge -->
+  <div class="coevo-card">
+    <h3>Coevolution Health</h3>
+    <div class="health-gauge">
+      <div class="health-score" id="healthScore">—</div>
+      <div class="health-tier" id="healthTier">No data</div>
+    </div>
+    <div class="summary-stats" id="summaryStats"></div>
+  </div>
+
+  <!-- Active Arms Races -->
+  <div class="coevo-card">
+    <h3>🏁 Active Arms Races</h3>
+    <ul class="race-list" id="raceList">
+      <li style="opacity:.5">No races detected</li>
+    </ul>
+  </div>
+
+  <!-- Adaptation Velocity -->
+  <div class="coevo-card">
+    <h3>⚡ Adaptation Velocity (Bot vs Defense)</h3>
+    <div id="velocityPanel"><span style="opacity:.5">No data</span></div>
+  </div>
+
+  <!-- Obsolescence Timeline -->
+  <div class="coevo-card">
+    <h3>⏳ Obsolescence Predictions</h3>
+    <div id="obsPanel"><span style="opacity:.5">No data</span></div>
+  </div>
+
+  <!-- Fitness Leaderboard -->
+  <div class="coevo-card">
+    <h3>🏋️ Fitness Leaderboard</h3>
+    <div id="fitnessPanel"><span style="opacity:.5">No data</span></div>
+  </div>
+
+  <!-- Mutation Pressure -->
+  <div class="coevo-card">
+    <h3>🧪 Mutation Pressure</h3>
+    <div id="pressurePanel"><span style="opacity:.5">No data</span></div>
+  </div>
+
+  <!-- Insights -->
+  <div class="coevo-card" style="grid-column: 1 / -1">
+    <h3>💡 Autonomous Insights</h3>
+    <div id="insightsPanel"><span style="opacity:.5">No insights yet</span></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var NOW = Date.now();
+  var HOUR = 3600000;
+  var DAY = 24 * HOUR;
+  var engine = null;
+
+  // ── Minimal in-browser engine replica ──────────────────────────
+  // (Simplified for demo — the real engine lives in Node.js)
+
+  function mean(arr) { var s = 0; for (var i = 0; i < arr.length; i++) s += arr[i]; return arr.length ? s / arr.length : 0; }
+  function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+  function linReg(xs, ys) {
+    var n = xs.length; if (n < 2) return { slope: 0, intercept: 0 };
+    var sx=0,sy=0,sxy=0,sxx=0;
+    for (var i=0;i<n;i++){sx+=xs[i];sy+=ys[i];sxy+=xs[i]*ys[i];sxx+=xs[i]*xs[i];}
+    var d=n*sxx-sx*sx; if(!d) return {slope:0,intercept:sy/n};
+    var sl=(n*sxy-sx*sy)/d; return {slope:sl,intercept:(sy-sl*sx)/n};
+  }
+
+  function createBrowserEngine() {
+    var events = {}, evolutions = {}, botMuts = {};
+    return {
+      recordChallengeEvent: function(e) {
+        if (!e||!e.challengeType||!e.outcome) return;
+        var t=e.challengeType; if(!events[t]) events[t]=[]; if(!evolutions[t]) evolutions[t]=[];
+        events[t].push({outcome:e.outcome,botId:e.botId||null,timestamp:e.timestamp||NOW,botStrategy:e.botStrategy||null});
+      },
+      recordChallengeEvolution: function(e) {
+        if (!e||!e.challengeType) return; var t=e.challengeType;
+        if(!evolutions[t]) evolutions[t]=[]; if(!events[t]) events[t]=[];
+        evolutions[t].push({mutation:e.mutation,timestamp:e.timestamp||NOW});
+      },
+      recordBotMutation: function(e) {
+        if (!e||!e.botId) return; var b=e.botId;
+        if(!botMuts[b]) botMuts[b]=[];
+        botMuts[b].push({challengeType:e.challengeType||null,newStrategy:e.newStrategy||null,timestamp:e.timestamp||NOW});
+      },
+      getReport: function() {
+        var types=Object.keys(events), races=[], fitness=[], obs=[], insights=[];
+        var now=NOW, winMs=7*DAY, cutoff=now-winMs;
+
+        for (var ti=0;ti<types.length;ti++) {
+          var type=types[ti], ev=events[type]||[], recent=[];
+          for(var ri=0;ri<ev.length;ri++) if(ev[ri].timestamp>=cutoff) recent.push(ev[ri]);
+          if(recent.length<5) continue;
+
+          // Bucket solve rates
+          var bkCount=[0,0,0,0,0,0,0], bkSolve=[0,0,0,0,0,0,0];
+          var bkSize=winMs/7;
+          for(var bi=0;bi<recent.length;bi++){
+            var idx=Math.floor((recent[bi].timestamp-cutoff)/bkSize);
+            if(idx>=7)idx=6; bkCount[idx]++; if(recent[bi].outcome==="solve")bkSolve[idx]++;
+          }
+          var xs=[],ys=[];
+          for(var bj=0;bj<7;bj++) if(bkCount[bj]>0){xs.push(bj);ys.push(bkSolve[bj]/bkCount[bj]);}
+          var reg=linReg(xs,ys), botVel=reg.slope||0;
+
+          var evo=evolutions[type]||[], recentEvo=[];
+          for(var ei=0;ei<evo.length;ei++) if(evo[ei].timestamp>=cutoff) recentEvo.push(evo[ei]);
+          var chalVel=recentEvo.length/(winMs/DAY);
+          var intensity=Math.abs(botVel)+chalVel;
+          var state=intensity<0.01?"DORMANT":intensity<0.05?"WARMING":intensity<0.15?"ACTIVE":intensity<0.3?"ESCALATING":"CRITICAL";
+          races.push({challengeType:type,state:state,intensity:Math.round(intensity*10000)/10000,botVelocity:Math.round(botVel*10000)/10000,challengeVelocity:Math.round(chalVel*10000)/10000});
+
+          var solves=0; for(var si=0;si<recent.length;si++) if(recent[si].outcome==="solve") solves++;
+          var solveRate=solves/recent.length, eff=1-solveRate;
+          var adaptScore=Math.min(recentEvo.length/5,1);
+          var longevity=1;
+          if(reg.slope>0&&solveRate<0.8){
+            var bk2b=(0.8-reg.intercept)/reg.slope;
+            var bMs=Math.round(bk2b*(winMs/7));
+            longevity=clamp(bMs/(30*DAY),0,1);
+            var status=bMs>30*DAY?"safe":bMs>15*DAY?"watch":"urgent";
+            obs.push({challengeType:type,currentSolveRate:Math.round(solveRate*1000)/1000,predictedDays:Math.round(bMs/DAY),status:status});
+          } else if(solveRate>=0.8){
+            longevity=0; obs.push({challengeType:type,currentSolveRate:Math.round(solveRate*1000)/1000,predictedDays:0,status:"broken"});
+          } else {
+            obs.push({challengeType:type,currentSolveRate:Math.round(solveRate*1000)/1000,predictedDays:null,status:"safe"});
+          }
+          var fit=Math.round(clamp(eff*0.4+adaptScore*0.25+longevity*0.35,0,1)*100);
+          fitness.push({challengeType:type,fitness:fit,tier:fit>=80?"dominant":fit>=60?"competitive":fit>=40?"contested":fit>=20?"struggling":"obsolete",effectiveness:Math.round(eff*1000)/1000});
+        }
+
+        // Mutation pressure
+        var bIds=Object.keys(botMuts), pressByType={};
+        for(var pi=0;pi<bIds.length;pi++){
+          var muts=botMuts[bIds[pi]];
+          for(var mi=0;mi<muts.length;mi++){
+            var ct=muts[mi].challengeType||"_global";
+            if(!pressByType[ct]) pressByType[ct]={count:0,bots:{},strats:{}};
+            pressByType[ct].count++; pressByType[ct].bots[bIds[pi]]=1;
+            if(muts[mi].newStrategy) pressByType[ct].strats[muts[mi].newStrategy]=1;
+          }
+        }
+        var pressureArr=[];
+        var ptKeys=Object.keys(pressByType);
+        for(var pk=0;pk<ptKeys.length;pk++){
+          var pp=pressByType[ptKeys[pk]];
+          var ub=Object.keys(pp.bots).length, sd=Object.keys(pp.strats).length;
+          var pres=clamp((pp.count/10)*0.5+(sd/5)*0.3+(ub/5)*0.2,0,1);
+          pressureArr.push({challengeType:ptKeys[pk],count:pp.count,bots:ub,diversity:sd,pressure:Math.round(pres*1000)/1000,severity:pres>=0.8?"critical":pres>=0.6?"high":pres>=0.3?"moderate":"low"});
+        }
+
+        races.sort(function(a,b){return b.intensity-a.intensity;});
+        fitness.sort(function(a,b){return b.fitness-a.fitness;});
+        pressureArr.sort(function(a,b){return b.pressure-a.pressure;});
+
+        var fitScores=[]; for(var fi=0;fi<fitness.length;fi++) fitScores.push(fitness[fi].fitness);
+        var avgFit=fitScores.length?mean(fitScores):50;
+        var crit=0,esc=0; for(var ci=0;ci<races.length;ci++){if(races[ci].state==="CRITICAL")crit++;if(races[ci].state==="ESCALATING")esc++;}
+        var raceSt=clamp(100-crit*25-esc*10,0,100);
+        var avgP=0; if(pressureArr.length){var ps=0;for(var psi=0;psi<pressureArr.length;psi++)ps+=pressureArr[psi].pressure;avgP=ps/pressureArr.length;}
+        var presRes=(1-avgP)*100;
+        var brk=0,urg=0; for(var oi=0;oi<obs.length;oi++){if(obs[oi].status==="broken")brk++;if(obs[oi].status==="urgent")urg++;}
+        var obsSaf=clamp(100-brk*30-urg*15,0,100);
+        var score=Math.round(clamp(avgFit*0.3+raceSt*0.25+presRes*0.25+obsSaf*0.2,0,100));
+        var tier=score>=80?"DOMINANT":score>=60?"COMPETITIVE":score>=40?"CONTESTED":score>=20?"LOSING":"COLLAPSED";
+
+        // Insights
+        if(tier==="COLLAPSED"||tier==="LOSING") insights.push({type:"critical",category:"health",message:"Coevolution health is "+tier+" ("+score+"/100). Bots are winning.",recommendation:"Urgently introduce new challenge types."});
+        if(tier==="DOMINANT") insights.push({type:"positive",category:"health",message:"Defense ecosystem is DOMINANT ("+score+"/100).",recommendation:"Maintain pace; monitor for complacency."});
+        for(var ii=0;ii<races.length;ii++) if(races[ii].state==="CRITICAL"||races[ii].state==="ESCALATING") insights.push({type:"warning",category:"arms_race",message:races[ii].challengeType+" in "+races[ii].state+" arms race.",recommendation:"Accelerate mutations or introduce replacement."});
+        for(var fi2=0;fi2<fitness.length;fi2++) if(fitness[fi2].tier==="obsolete") insights.push({type:"critical",category:"fitness",message:fitness[fi2].challengeType+" is OBSOLETE.",recommendation:"Retire and replace."});
+
+        return {
+          health:{score:score,tier:tier,components:{avgFitness:Math.round(avgFit),raceStability:Math.round(raceSt),pressureResistance:Math.round(presRes),obsolescenceSafety:Math.round(obsSaf)},summary:{challengeTypes:types.length,totalEvents:Object.keys(events).reduce(function(s,k){return s+events[k].length},0),activeRaces:races.length,criticalRaces:crit,brokenDefenses:brk}},
+          races:races,fitness:fitness,obsolescence:obs,pressure:pressureArr,insights:insights
+        };
+      }
+    };
+  }
+
+  // ── Demo Data ──────────────────────────────────────────────────
+  function loadDemo() {
+    engine = createBrowserEngine();
+    var types = [
+      {name:"gif_motion",solveBase:0.15,solveEnd:0.35,count:80,evoCount:4},
+      {name:"text_distortion",solveBase:0.5,solveEnd:0.75,count:60,evoCount:1},
+      {name:"image_puzzle",solveBase:0.08,solveEnd:0.12,count:70,evoCount:6},
+      {name:"audio_challenge",solveBase:0.6,solveEnd:0.85,count:50,evoCount:0},
+      {name:"3d_rotation",solveBase:0.05,solveEnd:0.08,count:40,evoCount:3},
+      {name:"semantic_qa",solveBase:0.3,solveEnd:0.55,count:55,evoCount:2}
+    ];
+    var base = NOW - 6 * DAY;
+    for (var ti = 0; ti < types.length; ti++) {
+      var t = types[ti];
+      for (var i = 0; i < t.count; i++) {
+        var progress = i / t.count;
+        var solveChance = t.solveBase + (t.solveEnd - t.solveBase) * progress;
+        var outcome = Math.random() < solveChance ? "solve" : "fail";
+        engine.recordChallengeEvent({
+          challengeType: t.name, botId: "bot-" + ((i % 5) + 1),
+          outcome: outcome, timestamp: base + i * 2 * HOUR,
+          botStrategy: "strat_v" + (1 + Math.floor(progress * 3))
+        });
+      }
+      for (var ei = 0; ei < t.evoCount; ei++) {
+        engine.recordChallengeEvolution({
+          challengeType: t.name,
+          mutation: ["difficulty_increase","visual_change","timing_change","format_change","new_variant"][ei % 5],
+          timestamp: NOW - (t.evoCount - ei) * DAY
+        });
+      }
+    }
+    // Bot mutations
+    var bots = ["bot-1","bot-2","bot-3","bot-4","bot-5"];
+    var targets = types.map(function(t){return t.name;});
+    for (var bi = 0; bi < bots.length; bi++) {
+      var mutCount = 2 + Math.floor(Math.random() * 6);
+      for (var mi = 0; mi < mutCount; mi++) {
+        engine.recordBotMutation({
+          botId: bots[bi], challengeType: targets[mi % targets.length],
+          oldStrategy: "strat_v" + (mi + 1), newStrategy: "strat_v" + (mi + 2),
+          timestamp: NOW - (mutCount - mi) * 12 * HOUR
+        });
+      }
+    }
+    render();
+  }
+
+  // ── Render ─────────────────────────────────────────────────────
+  function render() {
+    if (!engine) return;
+    var r = engine.getReport();
+
+    // Health gauge
+    var scoreEl = document.getElementById("healthScore");
+    var tierEl = document.getElementById("healthTier");
+    scoreEl.textContent = r.health.score;
+    scoreEl.className = "health-score tier-" + r.health.tier;
+    tierEl.textContent = r.health.tier;
+    tierEl.className = "health-tier tier-" + r.health.tier;
+
+    // Summary stats
+    var statsEl = document.getElementById("summaryStats");
+    var comps = r.health.components;
+    var statsHtml = "";
+    var statItems = [
+      {v: r.health.summary.challengeTypes, l: "Types"},
+      {v: r.health.summary.totalEvents, l: "Events"},
+      {v: Math.round(comps.avgFitness), l: "Avg Fitness"},
+      {v: Math.round(comps.raceStability), l: "Race Stability"},
+      {v: Math.round(comps.pressureResistance), l: "Pressure Resist"},
+      {v: r.health.summary.criticalRaces, l: "Critical Races"}
+    ];
+    for (var si = 0; si < statItems.length; si++) {
+      statsHtml += '<div class="stat-box"><div class="stat-value">' + statItems[si].v + '</div><div class="stat-label">' + statItems[si].l + '</div></div>';
+    }
+    statsEl.innerHTML = statsHtml;
+
+    // Races
+    var raceEl = document.getElementById("raceList");
+    if (r.races.length === 0) { raceEl.innerHTML = '<li style="opacity:.5">No active races</li>'; }
+    else {
+      var rh = "";
+      for (var ri = 0; ri < r.races.length; ri++) {
+        var race = r.races[ri];
+        rh += '<li class="race-item"><span class="race-badge race-' + race.state + '">' + race.state + '</span><span>' + race.challengeType + '</span><span style="margin-left:auto;opacity:.6">intensity: ' + race.intensity + '</span></li>';
+      }
+      raceEl.innerHTML = rh;
+    }
+
+    // Velocity
+    var velEl = document.getElementById("velocityPanel");
+    if (r.races.length === 0) { velEl.innerHTML = '<span style="opacity:.5">No data</span>'; }
+    else {
+      var vh = "";
+      for (var vi = 0; vi < r.races.length; vi++) {
+        var rv = r.races[vi];
+        var botW = Math.min(Math.abs(rv.botVelocity) * 500, 100);
+        var defW = Math.min(rv.challengeVelocity * 100, 100);
+        vh += '<div style="margin-bottom:.6rem"><strong>' + rv.challengeType + '</strong>';
+        vh += '<div class="velocity-bar"><span class="velocity-label">🤖 Bot</span><div class="velocity-track"><div class="velocity-fill vel-bot" style="width:' + botW + '%"></div></div><span>' + rv.botVelocity + '</span></div>';
+        vh += '<div class="velocity-bar"><span class="velocity-label">🛡️ Defense</span><div class="velocity-track"><div class="velocity-fill vel-defense" style="width:' + defW + '%"></div></div><span>' + rv.challengeVelocity + '</span></div></div>';
+      }
+      velEl.innerHTML = vh;
+    }
+
+    // Obsolescence
+    var obsEl = document.getElementById("obsPanel");
+    if (r.obsolescence.length === 0) { obsEl.innerHTML = '<span style="opacity:.5">No data</span>'; }
+    else {
+      var oh = '<table class="obs-table"><tr><th>Type</th><th>Solve Rate</th><th>Predicted Days</th><th>Status</th></tr>';
+      for (var oi = 0; oi < r.obsolescence.length; oi++) {
+        var ob = r.obsolescence[oi];
+        oh += '<tr><td>' + ob.challengeType + '</td><td>' + (ob.currentSolveRate * 100).toFixed(1) + '%</td><td>' + (ob.predictedDays != null ? ob.predictedDays + 'd' : '—') + '</td><td class="status-' + ob.status + '">' + ob.status.toUpperCase() + '</td></tr>';
+      }
+      oh += '</table>';
+      obsEl.innerHTML = oh;
+    }
+
+    // Fitness
+    var fitEl = document.getElementById("fitnessPanel");
+    if (r.fitness.length === 0) { fitEl.innerHTML = '<span style="opacity:.5">No data</span>'; }
+    else {
+      var fh = "";
+      for (var fi = 0; fi < r.fitness.length; fi++) {
+        var f = r.fitness[fi];
+        var col = f.fitness >= 70 ? '#22c55e' : f.fitness >= 40 ? '#fbbf24' : '#ef4444';
+        fh += '<div style="margin-bottom:.6rem"><div style="display:flex;justify-content:space-between"><span>' + f.challengeType + '</span><span style="font-weight:700">' + f.fitness + '/100 <small>(' + f.tier + ')</small></span></div><div class="fitness-bar"><div class="fitness-fill" style="width:' + f.fitness + '%;background:' + col + '"></div></div></div>';
+      }
+      fitEl.innerHTML = fh;
+    }
+
+    // Pressure
+    var presEl = document.getElementById("pressurePanel");
+    if (r.pressure.length === 0) { presEl.innerHTML = '<span style="opacity:.5">No mutations detected</span>'; }
+    else {
+      var ph = "";
+      for (var pi = 0; pi < r.pressure.length; pi++) {
+        var p = r.pressure[pi];
+        ph += '<div class="pressure-row"><span class="pressure-dot pressure-' + p.severity + '"></span><span style="min-width:120px">' + p.challengeType + '</span><span>' + p.count + ' mutations</span><span>' + p.bots + ' bots</span><span>' + p.diversity + ' strategies</span><span style="margin-left:auto;font-weight:600">' + p.severity.toUpperCase() + '</span></div>';
+      }
+      presEl.innerHTML = ph;
+    }
+
+    // Insights
+    var insEl = document.getElementById("insightsPanel");
+    if (r.insights.length === 0) { insEl.innerHTML = '<span style="opacity:.5">No insights</span>'; }
+    else {
+      var ih = "";
+      for (var ii = 0; ii < r.insights.length; ii++) {
+        var ins = r.insights[ii];
+        ih += '<div class="insight-item"><span class="insight-type insight-' + ins.type + '">' + ins.type.toUpperCase() + '</span><strong>' + ins.message + '</strong><br><small style="opacity:.7">→ ' + ins.recommendation + '</small></div>';
+      }
+      insEl.innerHTML = ih;
+    }
+  }
+
+  document.getElementById("demoBtn").addEventListener("click", loadDemo);
+})();
+</script>
+</body>
+</html>

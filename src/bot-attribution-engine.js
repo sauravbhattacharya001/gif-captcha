@@ -25,6 +25,7 @@
 "use strict";
 
 var _shared = require("./shared-utils");
+var _cryptoUtils = require("./crypto-utils");
 var _now = _shared._now;
 var _mean = _shared._mean;
 var _stddev = _shared._stddev;
@@ -73,11 +74,7 @@ var DEFAULT_OPTIONS = {
 // ── Helpers ─────────────────────────────────────────────────────────
 
 function _generateId(prefix) {
-  var hex = "";
-  for (var i = 0; i < 8; i++) {
-    hex += Math.floor(Math.random() * 16).toString(16);
-  }
-  return (prefix || "id") + "_" + hex;
+  return (prefix || "id") + "_" + _cryptoUtils.secureRandomHex(16);
 }
 
 /**

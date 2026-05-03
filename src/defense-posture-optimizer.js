@@ -26,6 +26,7 @@
 "use strict";
 
 var _shared = require("./shared-utils");
+var _cryptoUtils = require("./crypto-utils");
 var _now = _shared._now;
 var _mean = _shared._mean;
 var _stddev = _shared._stddev;
@@ -68,12 +69,7 @@ var CRITICAL_THRESHOLD = 0.30; // 30% change is critical
 // ── Helpers ─────────────────────────────────────────────────────────
 
 function _uid() {
-  var chars = "abcdefghijklmnopqrstuvwxyz0123456789";
-  var id = "";
-  for (var i = 0; i < 12; i++) {
-    id += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return id;
+  return _cryptoUtils.secureRandomHex(12);
 }
 
 function _deepCopy(obj) {

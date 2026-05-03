@@ -122,13 +122,20 @@ This serves the site through nginx with security headers from `nginx-security.co
 ```
 gif-captcha/
 ├── index.html              # Main case study (static HTML + CSS)
-├── demo.html               # Interactive demo (HTML + CSS + inline JS)
-├── analysis.html            # Analysis dashboard (HTML + CSS + Canvas 2D charts)
+├── demo.html               # Interactive demo (10 GIF challenges, scoring)
+├── analysis.html            # Research dashboard (Canvas 2D charts, radar, taxonomy)
+├── shared.js               # Shared front-end utilities
+├── bin/gif-captcha.js       # CLI entry point
+├── src/                     # Core library (53 modules)
+│   ├── index.js             # Main entry — exports core API + SetAnalyzer
+│   └── shared-utils.js      # Shared helpers (LruTracker, sanitizer, stats, crypto)
+├── tests/                   # Node built-in test runner + jsdom (120+ test files)
+├── docs/                    # Documentation site (architecture, deployment, modules)
 ├── Dockerfile               # nginx:alpine container
 ├── nginx-security.conf      # Security headers for Docker deployment
 └── .github/
-    ├── workflows/           # CI, Pages deployment, Docker, CodeQL
-    └── ISSUE_TEMPLATE/      # Bug, feature, research question templates
+    ├── workflows/           # CI, Pages, Docker, CodeQL, publish, dependency-review
+    └── ISSUE_TEMPLATE/      # Bug, feature, research, integration, security templates
 ```
 
 ### Design Decisions
@@ -137,6 +144,118 @@ gif-captcha/
 - **No JavaScript frameworks**: Vanilla JS only, for simplicity and zero build overhead
 - **Canvas 2D for charts**: The analysis page renders charts with the Canvas API rather than a charting library, keeping the project dependency-free
 - **Dark theme**: GitHub-inspired dark color scheme using CSS custom properties
+- **Factory pattern**: Most `src/` modules export a `create*()` factory function rather than classes, keeping state encapsulated and testable
+
+### Module Catalog (src/)
+
+All 53 backend modules organized by functional domain. Each module is independently testable and follows the factory-function pattern.
+
+#### Core & Utilities
+
+| Module | Export | Purpose |
+|--------|--------|---------|
+| `index.js` | `createSetAnalyzer`, core API | Main entry point — re-exports shared-utils + SetAnalyzer |
+| `shared-utils.js` | `LruTracker`, `sanitize`, stats helpers | Shared LRU cache, sanitization, crypto, math utilities |
+| `config-validator.js` | `createConfigValidator`, `createChallengeAnalytics` | Schema validation for config objects + challenge analytics |
+| `crypto-utils.js` | HMAC, token generation | Cryptographic utilities (HMAC signing, secure tokens) |
+| `csv-utils.js` | CSV export/import | CSV serialization and parsing |
+| `i18n.js` | `createI18n` | Localization and internationalization |
+| `captcha-export-formatter.js` | `createExportFormatter` | Multi-format export (JSON, CSV, PDF-ready) |
+
+#### Bot Detection & Attribution
+
+| Module | Export | Purpose |
+|--------|--------|---------|
+| `bot-attribution-engine.js` | `createBotAttributionEngine` | Attributes solve attempts to known bot families |
+| `bot-capability-profiler.js` | `createBotCapabilityProfiler` | Profiles what each bot class can/cannot defeat |
+| `bot-collective-intel.js` | `createBotCollectiveIntelDetector` | Detects coordinated bot swarms via behavioral correlation |
+| `bot-signature-database.js` | `createBotSignatureDatabase` | Stores and matches bot behavioral fingerprints |
+| `behavioral-biometrics.js` | `createBehavioralBiometrics` | Mouse/keyboard/touch behavioral analysis |
+| `solve-pattern-fingerprinter.js` | `createSolvePatternFingerprinter` | Fingerprints solve patterns for bot/human classification |
+| `fraud-ring-detector.js` | `createFraudRingDetector` | Graph-based detection of coordinated fraud rings |
+
+#### Challenge Management
+
+| Module | Export | Purpose |
+|--------|--------|---------|
+| `challenge-pool-manager.js` | `createChallengePoolManager` | Manages active challenge inventory and selection |
+| `challenge-rotation-scheduler.js` | `createRotationScheduler` | Schedules when challenges rotate in/out |
+| `challenge-retirement-engine.js` | `ChallengeRetirementEngine` | Retires compromised or stale challenges |
+| `challenge-decay-manager.js` | `createChallengeDecayManager` | Tracks effectiveness decay over time |
+| `challenge-difficulty-curve-engine.js` | `createDifficultyCurveEngine` | Adaptive difficulty scaling per user/session |
+| `challenge-diversity-analyzer.js` | `createDiversityAnalyzer` | Ensures challenge sets have cognitive diversity |
+| `challenge-template-engine.js` | `createTemplateEngine` | Template-based challenge generation |
+| `challenge-genetics-lab.js` | `createGeneticsLab` | Genetic algorithm for evolving challenge parameters |
+| `challenge-ecosystem-health.js` | `ChallengeEcosystemHealthEngine` | Holistic health scoring across the challenge pool |
+| `challenge-autopilot.js` | `createChallengeAutopilot` | Autonomous challenge lifecycle management |
+| `adaptive-difficulty-tuner.js` | `createAdaptiveDifficultyTuner` | Real-time difficulty adjustment per user risk level |
+
+#### Security & Threat Intelligence
+
+| Module | Export | Purpose |
+|--------|--------|---------|
+| `threat-intel-fusion.js` | `createThreatIntelFusion` | Fuses signals from multiple detection engines |
+| `attack-evolution-tracker.js` | `createAttackEvolutionTracker` | Tracks how attack methods evolve over time |
+| `geo-risk-scorer.js` | `createGeoRiskScorer` | Geographic risk scoring with O(1) country lookups |
+| `captcha-replay-detector.js` | `CaptchaReplayDetector` | Detects replayed/reused CAPTCHA tokens |
+| `honeypot-injector.js` | `createHoneypotInjector` | Injects honeypot challenges to trap bots |
+| `deception-campaign-orchestrator.js` | `createDeceptionCampaign` | Orchestrates multi-stage deception campaigns |
+| `defense-posture-optimizer.js` | `createDefensePostureOptimizer` | Pareto-optimal defense configuration tuning |
+
+#### Session & Trust
+
+| Module | Export | Purpose |
+|--------|--------|---------|
+| `trust-score-engine.js` | `createTrustScoreEngine` | Per-user trust scoring with decay and history |
+| `session-risk-aggregator.js` | `createSessionRiskAggregator` | Aggregates risk signals across a session |
+| `captcha-session-replay.js` | `createSessionReplay` | Records and replays solve sessions for analysis |
+| `captcha-rate-limiter.js` | `createRateLimiter` | Token-bucket rate limiting per IP/session |
+
+#### Monitoring & Analytics
+
+| Module | Export | Purpose |
+|--------|--------|---------|
+| `captcha-stats-collector.js` | `createStatsCollector`, `percentile` | Real-time metrics collection and percentile computation |
+| `captcha-health-monitor.js` | `createHealthMonitor` | System health checks and alerting |
+| `captcha-anomaly-detector.js` | `createAnomalyDetector` | Statistical anomaly detection in solve patterns |
+| `captcha-traffic-analyzer.js` | `createCaptchaTrafficAnalyzer` | Traffic pattern analysis and trending |
+| `captcha-fatigue-detector.js` | `createFatigueDetector` | Detects user fatigue from repeated challenges |
+| `captcha-load-tester.js` | `createCaptchaLoadTester` | Synthetic load generation for performance testing |
+| `response-time-profiler.js` | `createResponseTimeProfiler` | Per-challenge response time distribution analysis |
+| `solve-funnel-analyzer.js` | `createFunnelAnalyzer`, `STAGES` | Solve-attempt funnel with stage-level drop-off analysis |
+| `ab-experiment-runner.js` | `createABExperimentRunner` | A/B experiment framework for challenge variants |
+| `captcha-capacity-planner.js` | `createCapacityPlanner` | Forecasts infrastructure needs based on traffic |
+
+#### Compliance & Operations
+
+| Module | Export | Purpose |
+|--------|--------|---------|
+| `compliance-reporter.js` | `createComplianceReporter` | GDPR/CCPA/accessibility compliance reporting |
+| `captcha-audit-log.js` | `createAuditLog`, `VALID_EVENTS`, `SEVERITY` | Immutable audit trail with severity levels |
+| `captcha-incident-manager.js` | `createIncidentManager` | Incident lifecycle management (create/escalate/resolve) |
+| `captcha-accessibility-analyzer.js` | `createAccessibilityAnalyzer` | WCAG compliance analysis for CAPTCHA challenges |
+| `captcha-localization-manager.js` | `createLocalizationManager` | Per-locale string management and fallback |
+| `webhook-dispatcher.js` | `createWebhookDispatcher` | Event-driven webhook delivery with retry and rate limiting |
+| `captcha-strength-scorer.js` | `createStrengthScorer` | Composite strength scoring for challenge effectiveness |
+
+### Front-End Pages (91 HTML files)
+
+Beyond the three core pages, the project includes specialized dashboards and tools:
+
+| Category | Pages | Examples |
+|----------|-------|----------|
+| **Core** | 3 | `index.html`, `demo.html`, `analysis.html` |
+| **Bot Intelligence** | 8 | `bot-or-human.html`, `bot-signatures.html`, `fraud-rings.html`, `swarm-intelligence.html` |
+| **Challenge Management** | 10 | `designer.html`, `generator.html`, `gallery.html`, `mutation-lab.html`, `escape-room.html` |
+| **Analytics & Dashboards** | 12 | `dashboard.html`, `heatmap.html`, `funnel.html`, `benchmark.html`, `daily.html` |
+| **Security & Threat** | 9 | `threat-radar.html`, `threat-feed.html`, `immune-system.html`, `honeypot-designer.html` |
+| **Operations** | 8 | `queue-manager.html`, `fleet.html`, `config.html`, `audit-log.html`, `compliance.html` |
+| **Testing & Profiling** | 7 | `load-tester.html`, `performance-profiler.html`, `ab-test-dashboard.html`, `simulator.html` |
+| **Trust & Sessions** | 6 | `trust-dashboard.html`, `trust-network.html`, `session-replay.html`, `journey-map.html` |
+| **Research & Docs** | 5 | `research-paper.html`, `cognitive-load.html`, `cognitive-fingerprint.html`, `comparison.html` |
+| **Other** | 23 | `embed.html`, `playground.html`, `directory.html`, `theme-builder.html`, etc. |
+
+Each page is self-contained (inline CSS/JS) and follows the same dark-theme design system. When modifying shared visual elements (color variables, navigation), check all pages for consistency.
 
 ## Coding Standards
 
@@ -172,6 +291,18 @@ All pages enforce strict CSP via `<meta>` tags:
 Don't add external script or stylesheet sources — they'll be blocked.
 
 ## Submitting Changes
+
+### Testing Requirements
+
+The test suite has **120+ test files** covering all `src/` modules. Before submitting:
+
+1. **Run the full suite**: `npm test` — all tests must pass
+2. **Check coverage**: `npm run test:coverage` — thresholds enforced (80% lines, 70% functions, 90% branches)
+3. **New modules require tests**: Add `tests/<module-name>.test.js` for any new `src/` module
+4. **Test naming**: Use descriptive `test()` or `describe()` blocks matching the module's public API surface
+5. **DOM tests**: Use `jsdom` (already a dev dependency) for any front-end DOM interaction tests
+
+See [TESTING.md](TESTING.md) for the full testing guide, conventions, and coverage gap inventory.
 
 ### Pull Request Process
 

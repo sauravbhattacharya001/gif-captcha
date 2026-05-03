@@ -24,6 +24,33 @@ A research case study and full-stack CAPTCHA system exploring GIF-based human ve
 
 ---
 
+## Table of Contents
+
+- [Overview](#overview)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Architecture](#architecture)
+- [API Reference](#api-reference)
+  - [Core — Challenge Lifecycle](#core--challenge-lifecycle)
+  - [Challenge Management](#challenge-management)
+  - [Security & Bot Detection](#security--bot-detection)
+  - [Session & Trust](#session--trust)
+  - [Analytics & Monitoring](#analytics--monitoring)
+  - [Compliance & Audit](#compliance--audit)
+  - [Advanced Threat Intelligence](#advanced-threat-intelligence)
+  - [Challenge Evolution & Ecosystem](#challenge-evolution--ecosystem)
+  - [Experimentation & Operations](#experimentation--operations)
+- [Server Integration](#server-integration)
+- [Interactive Platform](#interactive-platform)
+- [Tech Stack](#tech-stack)
+- [Testing](#testing)
+- [Project Structure](#project-structure)
+- [Future Research](#future-research)
+- [Contributing](#contributing)
+- [License](#license)
+
+---
+
 ## Overview
 
 This project started as a simple question: *can GPT-4 describe what happens in a GIF?* The answer in 2023 was a resounding **no** — text-only LLMs scored 0/10 on GIF CAPTCHAs requiring narrative comprehension of animated sequences.
@@ -138,6 +165,7 @@ The library is organized into five functional layers, each composable and indepe
 │  BotCapabilityProfiler · BotCollectiveIntelDetector     │
 │  AttackEvolutionTracker · ThreatIntelFusion             │
 │  DeceptionCampaignOrchestrator · DefensePostureOptimizer│
+│  BotAdversarialPlaybookEngine                           │
 ├─────────────────────────────────────────────────────────┤
 │               Security & Trust Layer                    │
 │  BotDetector · TrustScoreEngine · FraudRingDetector     │
@@ -165,7 +193,7 @@ See [docs/architecture.html](https://sauravbhattacharya001.github.io/gif-captcha
 
 ## API Reference
 
-The library exports **100+ functions and factories** across nine domains. See [API.md](API.md) for full documentation.
+The library exports **100+ functions and factories** across ten domains. See [API.md](API.md) for full documentation.
 
 ### Core — Challenge Lifecycle
 
@@ -273,6 +301,7 @@ The library exports **100+ functions and factories** across nine domains. See [A
 | `createThreatIntelFusion` | Correlate signals from 6 detection subsystems into unified threat assessments with autonomous defense posture management |
 | `createDeceptionCampaignOrchestrator` | Design multi-phase trap sequences exploiting bot weaknesses — 7 deception tactics with autonomous profiling |
 | `createDefensePostureOptimizer` | Multi-objective Pareto optimization across 6 defense dimensions (catch rate, friction, latency, diversity, coverage, fatigue) |
+| `createBotAdversarialPlaybookEngine` | Autonomous red-team simulation — generates attack scenarios across 10 categories, simulates against current defenses, identifies gaps, produces prioritized countermeasure playbooks with resilience scoring |
 
 ### Challenge Evolution & Ecosystem
 
@@ -481,7 +510,7 @@ The [live site](https://sauravbhattacharya001.github.io/gif-captcha/) hosts **90
 
 ## Testing
 
-110 test files covering all 54 modules. See [TESTING.md](TESTING.md) for the full guide.
+112 test files covering all 55 modules. See [TESTING.md](TESTING.md) for the full guide.
 
 ```bash
 npm test                # Run all tests
@@ -492,15 +521,15 @@ npm run test:coverage   # Coverage (80% lines, 70% functions, 90% branches)
 
 ```
 gif-captcha/
-├── src/                 # Core library (54 modules)
+├── src/                 # Core library (55 modules)
 │   ├── index.js         # Main entry point (UMD)
 │   ├── shared-utils.js  # Shared utilities (LruTracker, clamp, etc.)
 │   ├── crypto-utils.js  # Shared cryptographic random helpers
-│   ├── bot-*.js         # Bot detection, attribution, profiling, swarm detection
+│   ├── bot-*.js         # Bot detection, attribution, profiling, swarm detection, adversarial playbooks
 │   ├── challenge-*.js   # Challenge lifecycle, genetics, rotation, difficulty
 │   ├── captcha-*.js     # Analytics, health, compliance, rate limiting
 │   └── ...              # Trust scoring, session management, threat intel, etc.
-├── tests/               # 110 test files
+├── tests/               # 112 test files
 ├── docs/                # HTML documentation site
 ├── bin/                 # CLI entry point
 ├── .github/             # CI, CodeQL, Docker, Pages, dependabot, templates

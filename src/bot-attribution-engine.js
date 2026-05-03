@@ -171,6 +171,19 @@ function createBotAttributionEngine(options) {
 
   // ── Internal: Fingerprint Computation ─────────────────────────
 
+  /**
+   * Return the bot's fingerprint, recomputing only when stale.
+   * Avoids redundant O(E) recalculations between ingestion events
+   * when no analysis is being performed.
+   */
+  function _ensureFingerprint(bot) {
+    if (!bot.fingerprint || bot._fpDirty) {
+      bot.fingerprint = _computeFingerprint(bot);
+      bot._fpDirty = false;
+    }
+    return bot.fingerprint;
+  }
+
   function _computeFingerprint(bot) {
     var fp = [];
     var now = _now();
@@ -402,8 +415,8 @@ function createBotAttributionEngine(options) {
     var vectors = [];
     for (var i = 0; i < op.knownBots.length; i++) {
       var b = bots[op.knownBots[i]];
-      if (b && b.fingerprint) {
-        vectors.push(b.fingerprint);
+      if (b) {
+        vectors.push(_ensureFingerprint(b));
       }
     }
     var c = _centroid(vectors);
@@ -534,8 +547,11 @@ function createBotAttributionEngine(options) {
     if (record.success) bot.successCount++;
     else bot.failCount++;
 
-    // Recompute fingerprint
-    bot.fingerprint = _computeFingerprint(bot);
+    // Mark fingerprint stale — recomputed lazily when attribution or
+    // analysis actually needs it.  Avoids O(E) _computeFingerprint on
+    // every single event ingestion.
+    bot.fingerprint = null;
+    bot._fpDirty = true;
 
     return { botId: botId, ingested: true };
   }
@@ -550,8 +566,7 @@ function createBotAttributionEngine(options) {
     if (!bots[botId]) return null;
 
     var bot = bots[botId];
-    var fp = bot.fingerprint || _computeFingerprint(bot);
-    bot.fingerprint = fp;
+    var fp = _ensureFingerprint(bot);
 
     var ts = bot.lastSeen || _now();
 
@@ -768,7 +783,7 @@ function createBotAttributionEngine(options) {
     var fps = [];
     for (var i = 0; i < botIds.length; i++) {
       var b = bots[botIds[i]];
-      if (b && b.fingerprint) fps.push(b.fingerprint);
+      if (b) fps.push(_ensureFingerprint(b));
     }
     if (fps.length < 2) return 0;
 
@@ -1089,6 +1104,7 @@ function createBotAttributionEngine(options) {
       bots[bKeys[i]] = {
         events: (b.events || []).slice(),
         fingerprint: b.fingerprint ? b.fingerprint.slice() : null,
+        _fpDirty: !b.fingerprint,
         firstSeen: b.firstSeen,
         lastSeen: b.lastSeen,
         ips: _copyMap(b.ips || {}),

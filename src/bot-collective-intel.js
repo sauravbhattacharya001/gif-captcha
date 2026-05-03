@@ -917,28 +917,64 @@ function createBotCollectiveIntelDetector(options) {
    * @param {object} state
    * @returns {boolean}
    */
+  /**
+   * Detect dangerous keys that could cause prototype pollution (CWE-1321).
+   * @param {string} key
+   * @returns {boolean}
+   */
+  function _isSafeKey(key) {
+    return key !== '__proto__' && key !== 'constructor' && key !== 'prototype';
+  }
+
+  /**
+   * Deep-clone a dict into a null-prototype object, skipping dangerous
+   * keys.  Prevents prototype-chain poisoning (CWE-1321) and
+   * object-reference leakage (CWE-915) — the caller cannot mutate
+   * internal state after import because all values are JSON-round-tripped.
+   * @param {Object} src
+   * @returns {Object}
+   */
+  function _safeCloneDict(src) {
+    var out = Object.create(null);
+    if (!src || typeof src !== 'object' || Array.isArray(src)) return out;
+    var keys = Object.keys(src);
+    for (var i = 0; i < keys.length; i++) {
+      if (!_isSafeKey(keys[i])) continue;
+      out[keys[i]] = JSON.parse(JSON.stringify(src[keys[i]]));
+    }
+    return out;
+  }
+
   function importState(state) {
     if (!state || state.version !== 1) return false;
 
-    sessions = Object.create(null);
-    var sIds = Object.keys(state.sessions || {});
-    for (var i = 0; i < sIds.length; i++) {
-      sessions[sIds[i]] = state.sessions[sIds[i]];
-    }
-    sessionCount = sIds.length;
-    sessionOrder = state.sessionOrder || sIds;
+    // Deep-clone all imported structures to prevent:
+    //  1. Prototype-chain poisoning (CWE-1321): imported {} inherits
+    //     from Object.prototype — attacker-controlled properties on
+    //     the prototype propagate into internal lookups.
+    //  2. Object-reference leakage (CWE-915): caller retains a live
+    //     reference to internal state, allowing post-import mutation.
+    //  3. Getter/setter traps: crafted objects with accessor
+    //     descriptors can execute arbitrary code when properties
+    //     are read during swarm/session processing.
 
-    swarms = Object.create(null);
-    var swIds = Object.keys(state.swarms || {});
-    for (var j = 0; j < swIds.length; j++) {
-      swarms[swIds[j]] = state.swarms[swIds[j]];
-    }
-    swarmCount = swIds.length;
+    sessions = _safeCloneDict(state.sessions);
+    sessionCount = Object.keys(sessions).length;
+    sessionOrder = Array.isArray(state.sessionOrder)
+      ? state.sessionOrder.slice()
+      : Object.keys(sessions);
 
-    sessionToSwarm = state.sessionToSwarm || Object.create(null);
-    nextSwarmId = state.nextSwarmId || 1;
-    knowledgeEvents = state.knowledgeEvents || [];
-    stats = state.stats || stats;
+    swarms = _safeCloneDict(state.swarms);
+    swarmCount = Object.keys(swarms).length;
+
+    sessionToSwarm = _safeCloneDict(state.sessionToSwarm);
+    nextSwarmId = typeof state.nextSwarmId === 'number' ? state.nextSwarmId : 1;
+    knowledgeEvents = Array.isArray(state.knowledgeEvents)
+      ? JSON.parse(JSON.stringify(state.knowledgeEvents))
+      : [];
+    stats = state.stats
+      ? JSON.parse(JSON.stringify(state.stats))
+      : stats;
 
     return true;
   }

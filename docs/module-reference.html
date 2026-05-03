@@ -45,6 +45,7 @@
     <a href="architecture.html">Architecture</a>
     <a href="security-guide.html">Security Guide</a>`n        <a href="testing-guide.html">Testing Guide</a>
     <a href="deployment-guide.html">Deployment Guide</a>
+        <a href="advanced-intelligence.html">Advanced Intelligence</a>
 </nav>
 
 <h2>Table of Contents</h2>
@@ -335,6 +336,59 @@
     <p>Formats CAPTCHA analytics data for export in multiple formats — JSON, CSV, PDF reports — for external consumption.</p>
     <pre><code>const { createExportFormatter } = require('./src/captcha-export-formatter');</code></pre>
 </div>
+
+<h2 id="intelligence">Advanced Intelligence</h2>
+    <p style="color: var(--muted); margin-bottom: 1.5rem;">Autonomous analysis, attribution, and self-optimizing defense. See <a href="advanced-intelligence.html">full Advanced Intelligence docs</a> for detailed usage and integration patterns.</p>
+
+    <h3>bot-mimicry-detector.js <span class="category-label cat-security">security</span></h3>
+    <div class="module-card">
+    <p>Detects bots that deliberately imitate human behavior via 6 detection engines: uncanny valley analysis, consistency paradox, fatigue immunity, template matching, micro-pattern entropy, and cross-session coherence. Produces 0–100 mimicry scores with 5-tier classification.</p>
+    <pre><code>const createBotMimicryDetector = require('./src/bot-mimicry-detector');
+const detector = createBotMimicryDetector();
+detector.recordEvent({ sessionId, solveTimeMs, correct, timestamp });
+const result = detector.analyzeSession(sessionId);
+// { score, tier, engines, insights }</code></pre>
+    </div>
+
+    <h3>bot-attribution-engine.js <span class="category-label cat-security">security</span></h3>
+    <div class="module-card">
+    <p>Attributes bot instances to operators and campaigns via 8-dimensional fingerprint vectors and cosine similarity matching. Tracks operator timelines, detects campaign lifecycle phases, and produces threat assessments.</p>
+    <pre><code>const createBotAttributionEngine = require('./src/bot-attribution-engine');
+const engine = createBotAttributionEngine();
+engine.ingestBotActivity(event);
+const attr = engine.attributeBot(botId);
+const campaign = engine.detectCampaign({ minBots: 5 });</code></pre>
+    </div>
+
+    <h3>challenge-difficulty-curve-engine.js <span class="category-label cat-challenge">challenge</span></h3>
+    <div class="module-card">
+    <p>Models difficulty-vs-outcome curves for humans and bots separately. Finds optimal difficulty sweet spots, detects drift as bots adapt, predicts abandonment rates, and generates autonomous adjustment recommendations.</p>
+    <pre><code>const { ChallengeDifficultyCurveEngine } = require('./src/challenge-difficulty-curve-engine');
+const curve = new ChallengeDifficultyCurveEngine();
+curve.recordSample({ difficulty, isBot, solved });
+const optimal = curve.findOptimalDifficulty();
+const drift = curve.detectDrift();</code></pre>
+    </div>
+
+    <h3>challenge-ecosystem-health.js <span class="category-label cat-analytics">analytics</span></h3>
+    <div class="module-card">
+    <p>Models the challenge pool as a biological ecosystem. Computes Shannon biodiversity, Lotka-Volterra predator-prey dynamics, carrying capacity, extinction risk, evolution pressure, niche analysis, and keystone identification. Composite health score 0–100.</p>
+    <pre><code>const { ChallengeEcosystemHealthEngine } = require('./src/challenge-ecosystem-health');
+const eco = new ChallengeEcosystemHealthEngine();
+eco.register({ id, category, difficulty });
+eco.recordEvent(event);
+const health = eco.analyze(); // { score, biodiversity, keystones, ... }</code></pre>
+    </div>
+
+    <h3>challenge-retirement-engine.js <span class="category-label cat-challenge">challenge</span></h3>
+    <div class="module-card">
+    <p>Detects when challenges are cracked by bots and manages graceful retirement. Tracks effectiveness decay, burst attacks, time-to-solve anomalies, and cross-challenge compromise correlations. 4-tier lifecycle: ACTIVE → WARNING → PROBATION → RETIRED.</p>
+    <pre><code>const { ChallengeRetirementEngine } = require('./src/challenge-retirement-engine');
+const ret = new ChallengeRetirementEngine();
+ret.recordAttempt({ challengeId, isBot, solved, solveTimeMs });
+const status = ret.analyze(challengeId);
+const correlations = ret.detectCorrelations();</code></pre>
+    </div>
 
 <hr style="margin: 3rem 0; border-color: var(--border);">
 <p style="font-size: 0.85rem; color: var(--muted);">

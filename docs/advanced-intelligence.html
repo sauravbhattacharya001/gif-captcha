@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="GIF CAPTCHA Advanced Intelligence — Bot mimicry detection, operator attribution, difficulty optimization, ecosystem health, and challenge retirement">
+    <title>GIF CAPTCHA — Advanced Intelligence</title>
+    <link rel="stylesheet" href="../shared.css">
+    <style>
+        body { padding: 2rem; max-width: 960px; margin: 0 auto; }
+        h1 { font-size: 2rem; margin-bottom: 0.3rem; }
+        h2 { font-size: 1.5rem; margin: 2.5rem 0 1rem; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 0.3rem; }
+        h3 { font-size: 1.15rem; margin: 1.8rem 0 0.5rem; }
+        h4 { font-size: 1rem; margin: 1.2rem 0 0.4rem; color: var(--text); }
+        p, li { color: var(--muted); line-height: 1.65; }
+        .subtitle { color: var(--muted); font-size: 1rem; margin-bottom: 1.5rem; }
+        code { background: var(--surface); padding: 0.15rem 0.4rem; border-radius: 3px; font-size: 0.88em; color: var(--accent); }
+        pre { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 1rem; overflow-x: auto; margin: 1rem 0; }
+        pre code { background: none; padding: 0; color: var(--text); }
+        .nav { display: flex; gap: 1.5rem; margin-bottom: 2rem; flex-wrap: wrap; }
+        .nav a { color: var(--accent); text-decoration: none; font-size: 0.9rem; }
+        .nav a:hover { text-decoration: underline; }
+        .method-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.2rem; margin: 1rem 0; }
+        .method-card h4 { margin-top: 0; font-family: 'Courier New', monospace; color: var(--accent); }
+        .param-table { width: 100%; border-collapse: collapse; margin: 0.8rem 0; font-size: 0.9rem; }
+        .param-table th, .param-table td { padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border); }
+        .param-table th { color: var(--text); font-weight: 600; }
+        .param-table td { color: var(--muted); }
+        .badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 3px; font-size: 0.75rem; font-weight: 600; margin-left: 0.5rem; }
+        .badge-returns { background: #1a3a2a; color: #4ade80; }
+        .badge-event { background: #1a2a3a; color: #60a5fa; }
+        .badge-score { background: #3a2a1a; color: #fbbf24; }
+        .toc { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.5rem; margin: 1.5rem 0; }
+        .toc h3 { margin-top: 0; font-size: 1rem; }
+        .toc ul { margin: 0; padding-left: 1.2rem; }
+        .toc li { margin: 0.3rem 0; }
+        .toc a { color: var(--accent); text-decoration: none; font-size: 0.9rem; }
+        .toc a:hover { text-decoration: underline; }
+        .diagram { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.5rem; margin: 1.5rem 0; font-family: 'Courier New', monospace; font-size: 0.85rem; line-height: 1.5; white-space: pre; overflow-x: auto; color: var(--muted); }
+        .tier-table td:first-child { font-family: 'Courier New', monospace; font-weight: 600; }
+        .highlight { background: #1a2a1a; border-left: 3px solid var(--accent); padding: 0.8rem 1rem; margin: 1rem 0; border-radius: 0 6px 6px 0; }
+        .highlight p { margin: 0; }
+    </style>
+</head>
+<body>
+    <div class="nav">
+        <a href="../index.html">Case Study</a>
+        <a href="../demo.html">Demo</a>
+        <a href="../analysis.html">Analysis</a>
+        <a href="../generator.html">Workshop</a>
+        <a href="getting-started.html">Getting Started</a>
+        <a href="index.html">API Reference</a>
+        <a href="architecture.html">Architecture</a>
+        <a href="security-guide.html">Security Guide</a>
+        <a href="module-reference.html">Module Reference</a>
+        <a href="testing-guide.html">Testing Guide</a>
+        <a href="deployment-guide.html">Deployment Guide</a>
+        <a href="advanced-intelligence.html"><strong>Advanced Intelligence</strong></a>
+    </div>
+
+    <h1>&#x1F9E0; Advanced Intelligence</h1>
+    <p class="subtitle">Bot mimicry detection, operator attribution, difficulty optimization, ecosystem health &amp; challenge retirement</p>
+
+    <div class="highlight">
+        <p>These five modules form the <strong>advanced autonomous intelligence layer</strong> of gif-captcha.
+        They operate above the base detection and challenge management systems, providing
+        deeper behavioral analysis, threat actor attribution, and self-optimizing defense strategies.</p>
+    </div>
+
+    <div class="toc">
+        <h3>Contents</h3>
+        <ul>
+            <li><a href="#overview">Architecture Overview</a></li>
+            <li><a href="#mimicry">BotMimicryDetector</a> &mdash; Uncanny-valley bot detection</li>
+            <li><a href="#attribution">BotAttributionEngine</a> &mdash; Operator &amp; campaign attribution</li>
+            <li><a href="#difficulty">ChallengeDifficultyCurveEngine</a> &mdash; Difficulty optimization</li>
+            <li><a href="#ecosystem">ChallengeEcosystemHealthEngine</a> &mdash; Pool health modeling</li>
+            <li><a href="#retirement">ChallengeRetirementEngine</a> &mdash; Lifecycle management</li>
+            <li><a href="#integration">Integration Patterns</a></li>
+        </ul>
+    </div>
+
+    <!-- ================================================================ -->
+    <h2 id="overview">Architecture Overview</h2>
+
+    <p>The advanced intelligence modules are designed to compose. Each operates independently
+    but they share a common pattern: factory/constructor creation, event ingestion,
+    autonomous analysis with scoring, insight generation, and state export/import.</p>
+
+    <div class="diagram">&#x250C;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2510;
+&#x2502;                     Incoming CAPTCHA Events                     &#x2502;
+&#x2514;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x252C;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x252C;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x252C;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x252C;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2518;
+       &#x2502;             &#x2502;            &#x2502;             &#x2502;
+       &#x25BC;             &#x25BC;            &#x25BC;             &#x25BC;
+  &#x250C;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2510;  &#x250C;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2510; &#x250C;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2510;  &#x250C;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2510;
+  &#x2502; Mimicry  &#x2502;  &#x2502;Attribution&#x2502; &#x2502;Difficulty&#x2502;  &#x2502;Ecosystem &#x2502;
+  &#x2502; Detector &#x2502;  &#x2502;  Engine   &#x2502; &#x2502;  Curve   &#x2502;  &#x2502;  Health  &#x2502;
+  &#x2514;&#x2500;&#x2500;&#x2500;&#x2500;&#x252C;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2518;  &#x2514;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x252C;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2518; &#x2514;&#x2500;&#x2500;&#x2500;&#x2500;&#x252C;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2518;  &#x2514;&#x2500;&#x2500;&#x2500;&#x2500;&#x252C;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2518;
+       &#x2502;             &#x2502;            &#x2502;             &#x2502;
+       &#x2514;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x252C;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2518;            &#x2502;             &#x2502;
+              &#x2502;                   &#x2502;             &#x2502;
+              &#x25BC;                   &#x25BC;             &#x25BC;
+       &#x250C;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2510;
+       &#x2502;     Challenge Retirement Engine      &#x2502;
+       &#x2502;  (consumes signals from all above)   &#x2502;
+       &#x2514;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2518;</div>
+
+    <!-- ================================================================ -->
+    <h2 id="mimicry">BotMimicryDetector</h2>
+    <p><code>src/bot-mimicry-detector.js</code> &mdash; Detects sophisticated bots that deliberately
+    imitate human behavioral patterns. While basic detectors flag inhuman speed or mechanical
+    precision, mimicry detection catches bots that have <em>learned to appear human</em> by finding
+    "uncanny valley" signals: behaviors that are too perfect, too consistent, or too ideal.</p>
+
+    <h3>Six Detection Engines</h3>
+    <table class="param-table">
+        <tr><th>Engine</th><th>What It Detects</th><th>Weight</th></tr>
+        <tr><td><code>uncannyValley</code></td><td>Suspiciously ideal human metrics &mdash; solve times, accuracy, inter-arrival timing that match textbook distributions too closely</td><td>0.20</td></tr>
+        <tr><td><code>consistencyParadox</code></td><td>Fake randomness &mdash; variance-of-windows and autocorrelation tests that expose scripted "jitter" masquerading as natural variation</td><td>0.20</td></tr>
+        <tr><td><code>fatigueImmunity</code></td><td>No degradation over long sessions &mdash; humans slow down and make more mistakes; bots that mimic humans often forget to degrade</td><td>0.15</td></tr>
+        <tr><td><code>templateMatch</code></td><td>Behavioral fingerprints matching known mimicry toolkits via cosine-similarity against an operator-curated template library</td><td>0.15</td></tr>
+        <tr><td><code>microPattern</code></td><td>Sub-second timing entropy analysis &mdash; timing distributions bucketed into 50 bins; low entropy reveals bot clock precision</td><td>0.15</td></tr>
+        <tr><td><code>crossSession</code></td><td>Same source, same behavioral profile across different sessions &mdash; checks signature similarity against recent sessions</td><td>0.15</td></tr>
+    </table>
+
+    <h3>Mimicry Tiers</h3>
+    <table class="param-table tier-table">
+        <tr><th>Tier</th><th>Score Range</th><th>Meaning</th></tr>
+        <tr><td>GENUINE</td><td>0&ndash;20</td><td>Normal human behavior</td></tr>
+        <tr><td>LIKELY_HUMAN</td><td>20&ndash;40</td><td>Minor anomalies, probably human</td></tr>
+        <tr><td>SUSPICIOUS</td><td>40&ndash;60</td><td>Mixed signals, warrants monitoring</td></tr>
+        <tr><td>LIKELY_MIMICRY</td><td>60&ndash;80</td><td>Strong mimicry indicators</td></tr>
+        <tr><td>CONFIRMED_MIMICRY</td><td>80&ndash;100</td><td>Definitive bot mimicry detected</td></tr>
+    </table>
+
+    <h3>Usage</h3>
+    <pre><code>var createBotMimicryDetector = require("gif-captcha/src/bot-mimicry-detector");
+
+var detector = createBotMimicryDetector({
+  maxSessions: 5000,
+  minEventsForAnalysis: 8,
+  weights: { uncannyValley: 0.25, fatigueImmunity: 0.20 }  // override defaults
+});
+
+// Record solve events
+detector.recordEvent({
+  sessionId: "sess-abc",
+  solveTimeMs: 2850,
+  correct: true,
+  timestamp: Date.now()
+});
+
+// Analyze a session
+var result = detector.analyzeSession("sess-abc");
+// { score: 72.3, tier: "LIKELY_MIMICRY", engines: { ... }, insights: [...] }
+
+// Manage mimicry templates
+detector.addTemplate({
+  name: "selenium-puppeteer-v3",
+  signature: { meanSolveMs: 2500, stddevMs: 200, accuracyRate: 0.95 }
+});
+
+// Export/import for persistence
+var state = detector.exportState();
+detector.importState(state);</code></pre>
+
+    <h3>Key Methods</h3>
+    <div class="method-card">
+        <h4>recordEvent(event) <span class="badge badge-event">ingestion</span></h4>
+        <p>Records a CAPTCHA solve event for a session. Automatically manages LRU eviction
+        when <code>maxSessions</code> or <code>maxEventsPerSession</code> limits are reached.</p>
+        <table class="param-table">
+            <tr><th>Field</th><th>Type</th><th>Description</th></tr>
+            <tr><td><code>sessionId</code></td><td>string</td><td>Unique session identifier</td></tr>
+            <tr><td><code>solveTimeMs</code></td><td>number</td><td>Time to solve in milliseconds</td></tr>
+            <tr><td><code>correct</code></td><td>boolean</td><td>Whether the solve was correct</td></tr>
+            <tr><td><code>timestamp</code></td><td>number</td><td>Event timestamp (ms since epoch)</td></tr>
+        </table>
+    </div>
+    <div class="method-card">
+        <h4>analyzeSession(sessionId) <span class="badge badge-returns">returns object</span></h4>
+        <p>Runs all six detection engines against the session&rsquo;s events and returns a composite
+        mimicry assessment. Requires at least <code>minEventsForAnalysis</code> events (default 8).</p>
+        <p>Returns: <code>{ score, tier, engines: { [name]: { score, details } }, insights: [...] }</code></p>
+    </div>
+    <div class="method-card">
+        <h4>addTemplate(template) / removeTemplate(name)</h4>
+        <p>Manage the mimicry template library. Templates are behavioral signatures of known
+        bot toolkits. The <code>templateMatch</code> engine compares session signatures against
+        these via cosine similarity.</p>
+    </div>
+    <div class="method-card">
+        <h4>getStats() <span class="badge badge-returns">returns object</span></h4>
+        <p>Returns aggregate statistics: total sessions analyzed, tier distribution,
+        top mimicry suspects (sorted by score), template match counts, and engine-level breakdowns.</p>
+    </div>
+
+    <!-- ================================================================ -->
+    <h2 id="attribution">BotAttributionEngine</h2>
+    <p><code>src/bot-attribution-engine.js</code> &mdash; Attributes bot activity to specific
+    <strong>operators</strong> and <strong>campaigns</strong> by analyzing toolchain fingerprints,
+    infrastructure patterns, and operational signatures. While fraud-ring-detector finds human
+    CAPTCHA farms and bot-collective-intel detects swarm coordination, this engine identifies
+    the <em>actor behind the bots</em> &mdash; linking separate bot instances to the same threat actor.</p>
+
+    <h3>8-Dimensional Fingerprinting</h3>
+    <p>Each bot&rsquo;s activity is compressed into an 8-dimensional vector capturing:</p>
+    <ol>
+        <li>Solve timing distribution (mean, variance, skew)</li>
+        <li>Error pattern signature</li>
+        <li>Session duration profile</li>
+        <li>Request cadence and burst patterns</li>
+        <li>Challenge selection preferences</li>
+        <li>Geographic/IP cluster behavior</li>
+        <li>User-agent and header fingerprint</li>
+        <li>Retry and backoff strategy</li>
+    </ol>
+    <p>Bots with similar fingerprint vectors (measured by cosine similarity) are grouped under the same <strong>operator</strong>.</p>
+
+    <h3>Usage</h3>
+    <pre><code>var createBotAttributionEngine = require("gif-captcha/src/bot-attribution-engine");
+
+var engine = createBotAttributionEngine({
+  similarityThreshold: 0.82,   // cosine similarity for operator matching
+  maxOperators: 500,
+  maxBotsPerOperator: 1000
+});
+
+// Ingest bot activity
+engine.ingestBotActivity({
+  botId: "bot-xyz",
+  solveTimeMs: 1200,
+  correct: false,
+  headers: { "User-Agent": "..." },
+  ip: "203.0.113.42",
+  timestamp: Date.now()
+});
+
+// Attribute a bot to an operator
+var attr = engine.attributeBot("bot-xyz");
+// { operatorId: "op-12", confidence: 0.91, matchedDimensions: [...] }
+
+// Detect coordinated campaigns
+var campaign = engine.detectCampaign({ minBots: 5, timeWindowMs: 86400000 });
+// { campaignId: "...", botIds: [...], phase: "ESCALATING", confidence: 0.87 }
+
+// Threat assessment for an operator
+var threat = engine.assessThreatLevel("op-12");
+// { level: "HIGH", sophistication: 7.2, botCount: 23, activeCampaigns: 2 }
+
+// Merge operators when identified as the same actor
+engine.mergeOperators("op-12", "op-34");</code></pre>
+
+    <h3>Key Methods</h3>
+    <div class="method-card">
+        <h4>ingestBotActivity(event) <span class="badge badge-event">ingestion</span></h4>
+        <p>Records bot activity and automatically computes/updates the bot&rsquo;s fingerprint vector.
+        If the bot hasn&rsquo;t been assigned to an operator yet, triggers operator matching.</p>
+    </div>
+    <div class="method-card">
+        <h4>attributeBot(botId) <span class="badge badge-returns">returns object</span></h4>
+        <p>Returns the operator attribution for a known bot, including confidence score and
+        which fingerprint dimensions matched most strongly.</p>
+    </div>
+    <div class="method-card">
+        <h4>detectCampaign(opts) <span class="badge badge-returns">returns object</span></h4>
+        <p>Scans operator activity for coordinated campaigns. Returns campaign details including
+        lifecycle phase (<code>PROBING</code>, <code>ESCALATING</code>, <code>SUSTAINED</code>,
+        <code>DECLINING</code>) and confidence score.</p>
+    </div>
+    <div class="method-card">
+        <h4>assessThreatLevel(operatorId) <span class="badge badge-score">scoring</span></h4>
+        <p>Produces a threat assessment for an operator: sophistication score (0&ndash;10),
+        bot count, campaign count, escalation trend, and recommended response.</p>
+    </div>
+    <div class="method-card">
+        <h4>mergeOperators(id1, id2) / getOperatorTimeline(id)</h4>
+        <p>Manual operator management &mdash; merge two operator profiles when confirmed as
+        the same actor, or retrieve the chronological activity timeline for forensic analysis.</p>
+    </div>
+    <div class="method-card">
+        <h4>getSummary() <span class="badge badge-returns">returns object</span></h4>
+        <p>Overall attribution summary: total operators tracked, top operators by bot count,
+        active campaigns, and unattributed bot percentage.</p>
+    </div>
+
+    <!-- ================================================================ -->
+    <h2 id="difficulty">ChallengeDifficultyCurveEngine</h2>
+    <p><code>src/challenge-difficulty-curve-engine.js</code> &mdash; Models the relationship between
+    challenge difficulty and solve outcomes to find and maintain the <strong>optimal difficulty
+    sweet spot</strong>: maximum bot rejection with minimum human frustration. Autonomously tracks
+    drift as bot capabilities evolve.</p>
+
+    <h3>How It Works</h3>
+    <p>The engine divides the difficulty spectrum into configurable buckets and tracks human pass
+    rates and bot rejection rates at each level. It builds two curves:</p>
+    <ul>
+        <li><strong>Human pass curve</strong> &mdash; Monotonically decreasing as difficulty rises</li>
+        <li><strong>Bot reject curve</strong> &mdash; Monotonically increasing as difficulty rises</li>
+    </ul>
+    <p>The optimal zone is where the two curves create the largest gap (high bot rejection,
+    acceptable human pass rate). The engine continuously monitors for <strong>difficulty drift</strong>
+    &mdash; when bots adapt and the optimal zone shifts.</p>
+
+    <h3>Usage</h3>
+    <pre><code>var ChallengeDifficultyCurveEngine = require("gif-captcha/src/challenge-difficulty-curve-engine");
+
+var curve = new ChallengeDifficultyCurveEngine({
+  bucketCount: 20,          // difficulty buckets from 0 to 1
+  minSamplesPerBucket: 50,  // statistical significance threshold
+  driftWindowMs: 86400000   // check drift over 24h
+});
+
+// Record outcomes at various difficulty levels
+curve.recordSample({ difficulty: 0.45, isBot: false, solved: true });
+curve.recordSample({ difficulty: 0.45, isBot: true,  solved: false });
+
+// Find the optimal difficulty zone
+var optimal = curve.findOptimalDifficulty();
+// { difficulty: 0.52, humanPassRate: 0.84, botRejectRate: 0.93, confidence: 0.88 }
+
+// Predict outcomes at a specific difficulty
+var prediction = curve.predictOutcome(0.6);
+// { humanPassRate: 0.71, botRejectRate: 0.97, abandonmentRate: 0.12 }
+
+// Detect difficulty drift
+var drift = curve.detectDrift();
+// { drifted: true, direction: "harder", magnitude: 0.08, recommendation: "..." }
+
+// Detect bot adaptation
+var adaptation = curve.detectBotAdaptation();
+// { adapted: true, previousRejectRate: 0.95, currentRejectRate: 0.78, atDifficulty: 0.5 }
+
+// Get abandonment curve for UX planning
+var abandon = curve.getAbandonmentCurve();
+// [{ difficulty: 0.1, rate: 0.02 }, { difficulty: 0.2, rate: 0.05 }, ...]
+
+// Overall calibration health
+var health = curve.computeHealth();
+// { score: 78, issues: ["Bot adaptation detected at mid-range"], recommendations: [...] }</code></pre>
+
+    <h3>Key Methods</h3>
+    <div class="method-card">
+        <h4>recordSample(sample) <span class="badge badge-event">ingestion</span></h4>
+        <p>Records a solve attempt with its difficulty level, bot/human classification, and outcome.
+        Samples are bucketed by difficulty for curve construction.</p>
+    </div>
+    <div class="method-card">
+        <h4>findOptimalDifficulty() <span class="badge badge-returns">returns object</span></h4>
+        <p>Computes the difficulty level that maximizes <code>botRejectRate - (1 - humanPassRate)</code>.
+        Requires sufficient samples per bucket for statistical confidence.</p>
+    </div>
+    <div class="method-card">
+        <h4>detectDrift() / detectBotAdaptation()</h4>
+        <p><code>detectDrift</code> compares current optimal difficulty against historical snapshots.
+        <code>detectBotAdaptation</code> checks whether bot rejection rates are declining at
+        previously effective difficulty levels.</p>
+    </div>
+    <div class="method-card">
+        <h4>generateRecommendations() <span class="badge badge-returns">returns array</span></h4>
+        <p>Produces autonomous difficulty adjustment recommendations based on current curves,
+        drift analysis, and bot adaptation signals.</p>
+    </div>
+    <div class="method-card">
+        <h4>classifyDifficulty(value) / getBuckets() / getSummary()</h4>
+        <p>Utility methods for inspecting internal state: classify a difficulty value into its
+        bucket, retrieve all bucket data, or get an aggregate summary.</p>
+    </div>
+
+    <!-- ================================================================ -->
+    <h2 id="ecosystem">ChallengeEcosystemHealthEngine</h2>
+    <p><code>src/challenge-ecosystem-health.js</code> &mdash; Models the entire challenge pool as a
+    <strong>biological ecosystem</strong> where challenges are &ldquo;species,&rdquo; bots are
+    &ldquo;predators,&rdquo; and human solvers are &ldquo;pollinators.&rdquo; Provides holistic
+    health metrics that go beyond individual challenge monitoring.</p>
+
+    <h3>Ecosystem Dimensions</h3>
+    <table class="param-table">
+        <tr><th>Dimension</th><th>Biological Analogy</th><th>What It Measures</th></tr>
+        <tr><td><code>biodiversity</code></td><td>Shannon index</td><td>Diversity of challenge types and difficulty levels in active rotation</td></tr>
+        <tr><td><code>predatorPrey</code></td><td>Lotka-Volterra</td><td>Bot-vs-challenge dynamics &mdash; whether bots are &ldquo;consuming&rdquo; challenges faster than new ones emerge</td></tr>
+        <tr><td><code>carryingCapacity</code></td><td>K in logistic growth</td><td>Maximum challenge pool size sustainable given current traffic and solve patterns</td></tr>
+        <tr><td><code>extinctionRisk</code></td><td>Red list</td><td>Challenges at risk of becoming ineffective (low usage + declining solve quality)</td></tr>
+        <tr><td><code>evolutionPressure</code></td><td>Selection pressure</td><td>Bot adaptation speed &mdash; how fast bots are learning to crack current challenge types</td></tr>
+        <tr><td><code>nicheAnalysis</code></td><td>Ecological niches</td><td>Over/under-served difficulty bands where challenges are clustered or absent</td></tr>
+        <tr><td><code>keystones</code></td><td>Keystone species</td><td>Critical challenges that anchor the pool &mdash; their removal would cascade failures</td></tr>
+    </table>
+
+    <h3>Usage</h3>
+    <pre><code>var ChallengeEcosystemHealthEngine = require("gif-captcha/src/challenge-ecosystem-health");
+
+var ecosystem = new ChallengeEcosystemHealthEngine({
+  snapshotIntervalMs: 3600000,   // hourly snapshots
+  maxSnapshots: 168              // one week of history
+});
+
+// Register challenges in the pool
+ecosystem.register({ id: "gif-math-01", category: "math", difficulty: 0.5 });
+ecosystem.register({ id: "gif-pattern-07", category: "pattern", difficulty: 0.7 });
+
+// Record events (solves, failures, bot attempts)
+ecosystem.recordEvent({ challengeId: "gif-math-01", isBot: false, solved: true });
+ecosystem.recordEvent({ challengeId: "gif-math-01", isBot: true, solved: true }); // bot cracked it
+
+// Run full ecosystem analysis
+var health = ecosystem.analyze();
+// { score: 67, biodiversity: 0.82, predatorPrey: { ... }, extinctionRisk: [...],
+//   evolutionPressure: 0.45, niches: { ... }, keystones: [...], insights: [...] }
+
+// Retire a compromised challenge
+ecosystem.retire("gif-math-01");
+
+// Render an HTML dashboard snippet
+var html = ecosystem.renderDashboard();
+
+// Historical tracking
+var history = ecosystem.getHistory();
+// [{ timestamp: ..., score: 72, ... }, { timestamp: ..., score: 67, ... }]</code></pre>
+
+    <h3>Key Methods</h3>
+    <div class="method-card">
+        <h4>register(challenge) / retire(challengeId)</h4>
+        <p>Add challenges to the ecosystem or retire them. Retired challenges are excluded from
+        future analysis but preserved in historical data.</p>
+    </div>
+    <div class="method-card">
+        <h4>recordEvent(event) <span class="badge badge-event">ingestion</span></h4>
+        <p>Records a solve attempt. Events drive all ecosystem metrics &mdash; biodiversity tracking,
+        predator-prey dynamics, extinction risk scoring, and evolution pressure measurement.</p>
+    </div>
+    <div class="method-card">
+        <h4>analyze() <span class="badge badge-score">scoring</span></h4>
+        <p>Runs the full ecosystem analysis across all seven dimensions and produces a composite
+        health score (0&ndash;100) with autonomous insights and recommendations.</p>
+    </div>
+    <div class="method-card">
+        <h4>renderDashboard() <span class="badge badge-returns">returns string</span></h4>
+        <p>Generates an HTML fragment visualizing ecosystem health suitable for embedding in
+        admin dashboards.</p>
+    </div>
+
+    <!-- ================================================================ -->
+    <h2 id="retirement">ChallengeRetirementEngine</h2>
+    <p><code>src/challenge-retirement-engine.js</code> &mdash; Detects when challenges have been
+    cracked by bots and proactively retires them before they become security liabilities.
+    Tracks effectiveness decay, detects burst attacks, correlates cross-challenge compromises,
+    and schedules graceful retirements.</p>
+
+    <h3>Lifecycle Tiers</h3>
+    <table class="param-table tier-table">
+        <tr><th>Tier</th><th>Description</th><th>Action</th></tr>
+        <tr><td>ACTIVE</td><td>Healthy &mdash; strong human pass rate, low bot success</td><td>Continue serving</td></tr>
+        <tr><td>WARNING</td><td>Early degradation signals detected</td><td>Increase monitoring frequency</td></tr>
+        <tr><td>PROBATION</td><td>Significant effectiveness decline</td><td>Reduce serving weight; prepare replacement</td></tr>
+        <tr><td>RETIRED</td><td>Compromised or exhausted</td><td>Remove from active rotation</td></tr>
+    </table>
+
+    <h3>Detection Capabilities</h3>
+    <ul>
+        <li><strong>Effectiveness decay</strong> &mdash; Models bot success rate over time with configurable half-life; detects accelerating decay</li>
+        <li><strong>Burst attacks</strong> &mdash; Identifies sudden automated solve spikes (high volume + high success in short windows)</li>
+        <li><strong>Time-to-solve anomalies</strong> &mdash; Detects bots getting progressively faster at specific challenges</li>
+        <li><strong>Cross-challenge correlation</strong> &mdash; When multiple related challenges are compromised simultaneously, flags coordinated attacks</li>
+    </ul>
+
+    <h3>Usage</h3>
+    <pre><code>var ChallengeRetirementEngine = require("gif-captcha/src/challenge-retirement-engine");
+
+var retirement = new ChallengeRetirementEngine({
+  decayHalfLifeMs: 604800000,  // 7-day half-life
+  burstWindowMs: 60000,         // 1-minute burst detection
+  burstThreshold: 20,           // 20 solves in burst window = suspicious
+  warningThreshold: 0.6,        // tier thresholds
+  probationThreshold: 0.4
+});
+
+// Record solve attempts
+retirement.recordAttempt({
+  challengeId: "gif-math-01",
+  isBot: true,
+  solved: true,
+  solveTimeMs: 800,
+  timestamp: Date.now()
+});
+
+// Analyze a specific challenge
+var status = retirement.analyze("gif-math-01");
+// { tier: "WARNING", effectivenessScore: 0.58, botSuccessRate: 0.42,
+//   burstDetected: false, decayRate: 0.03, insights: [...] }
+
+// Check for correlated compromises
+var correlations = retirement.detectCorrelations();
+// [{ challengeIds: ["gif-math-01", "gif-math-02"], correlation: 0.89, likely: "shared_vulnerability" }]
+
+// Get the retirement log
+var log = retirement.getRetirementLog();
+// [{ challengeId: "gif-old-03", retiredAt: ..., reason: "effectiveness_below_threshold" }]
+
+// Manually retire or reinstate
+retirement.retire("gif-math-01", "manual");
+retirement.reinstate("gif-math-01");
+
+// Get full fleet status
+var fleet = retirement.getStatus();
+// { active: 45, warning: 8, probation: 3, retired: 12, insights: [...] }</code></pre>
+
+    <h3>Key Methods</h3>
+    <div class="method-card">
+        <h4>recordAttempt(attempt) <span class="badge badge-event">ingestion</span></h4>
+        <p>Records a solve attempt for a challenge. Automatically updates effectiveness scoring,
+        burst detection counters, and time-to-solve tracking.</p>
+    </div>
+    <div class="method-card">
+        <h4>analyze(challengeId) <span class="badge badge-score">scoring</span></h4>
+        <p>Runs full analysis on a challenge: effectiveness score, tier classification,
+        decay rate, burst detection, and generated insights.</p>
+    </div>
+    <div class="method-card">
+        <h4>detectCorrelations() <span class="badge badge-returns">returns array</span></h4>
+        <p>Scans for simultaneous compromise patterns across challenges. High correlation
+        between degradation timelines suggests shared vulnerabilities or coordinated attacks.</p>
+    </div>
+    <div class="method-card">
+        <h4>getStatus() <span class="badge badge-returns">returns object</span></h4>
+        <p>Fleet-wide retirement status: counts per tier, overall fleet health,
+        autonomous insights, and a list of challenges approaching retirement.</p>
+    </div>
+    <div class="method-card">
+        <h4>retire(id, reason) / reinstate(id)</h4>
+        <p>Manual lifecycle management. <code>retire</code> moves a challenge to RETIRED with a
+        logged reason. <code>reinstate</code> moves it back to ACTIVE (e.g., after patching a
+        vulnerability).</p>
+    </div>
+
+    <!-- ================================================================ -->
+    <h2 id="integration">Integration Patterns</h2>
+
+    <h3>Composing the Intelligence Layer</h3>
+    <p>These modules are designed to feed each other. A typical production integration:</p>
+
+    <pre><code>var createMimicryDetector = require("gif-captcha/src/bot-mimicry-detector");
+var createAttributionEngine = require("gif-captcha/src/bot-attribution-engine");
+var ChallengeDifficultyCurveEngine = require("gif-captcha/src/challenge-difficulty-curve-engine");
+var ChallengeEcosystemHealthEngine = require("gif-captcha/src/challenge-ecosystem-health");
+var ChallengeRetirementEngine = require("gif-captcha/src/challenge-retirement-engine");
+
+// Initialize
+var mimicry    = createMimicryDetector();
+var attribution = createAttributionEngine();
+var difficulty  = new ChallengeDifficultyCurveEngine();
+var ecosystem   = new ChallengeEcosystemHealthEngine();
+var retirement  = new ChallengeRetirementEngine();
+
+// On every CAPTCHA solve event:
+function onSolveEvent(event) {
+  // Feed all engines
+  mimicry.recordEvent(event);
+  difficulty.recordSample({
+    difficulty: event.challengeDifficulty,
+    isBot: event.isBot,
+    solved: event.solved
+  });
+  ecosystem.recordEvent(event);
+  retirement.recordAttempt(event);
+
+  // If flagged as bot, feed attribution
+  if (event.isBot) {
+    attribution.ingestBotActivity(event);
+  }
+
+  // Periodic analysis (e.g., every 100 events)
+  if (eventCount % 100 === 0) {
+    var health = ecosystem.analyze();
+    if (health.score &lt; 50) {
+      // Trigger alerts, adjust difficulty, accelerate retirement checks
+      var optimal = difficulty.findOptimalDifficulty();
+      var fleet = retirement.getStatus();
+      console.log("Ecosystem degraded — optimal difficulty:", optimal.difficulty);
+      console.log("Fleet:", fleet.active, "active,", fleet.probation, "on probation");
+    }
+  }
+}</code></pre>
+
+    <h3>State Persistence</h3>
+    <p>All five modules support <code>exportState()</code> and <code>importState(state)</code>
+    for persistence across restarts. State is pure JSON &mdash; store it in your database,
+    filesystem, or Redis.</p>
+
+    <pre><code>// Save state
+var states = {
+  mimicry: mimicry.exportState(),
+  attribution: attribution.exportState(),
+  difficulty: difficulty.exportState(),
+  ecosystem: ecosystem.exportState(),
+  retirement: retirement.exportState()
+};
+fs.writeFileSync("intelligence-state.json", JSON.stringify(states));
+
+// Restore state
+var saved = JSON.parse(fs.readFileSync("intelligence-state.json"));
+mimicry.importState(saved.mimicry);
+attribution.importState(saved.attribution);
+difficulty.importState(saved.difficulty);
+ecosystem.importState(saved.ecosystem);
+retirement.importState(saved.retirement);</code></pre>
+
+    <p style="margin-top: 3rem; color: var(--muted); font-size: 0.85rem; border-top: 1px solid var(--border); padding-top: 1rem;">
+        gif-captcha &mdash; Advanced Intelligence documentation &bull;
+        <a href="module-reference.html">Full Module Reference</a> &bull;
+        <a href="architecture.html">Architecture Guide</a>
+    </p>
+</body>
+</html>

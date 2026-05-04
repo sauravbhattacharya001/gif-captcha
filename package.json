@@ -1,12 +1,12 @@
 {
-    "name":  "gif-captcha",
-    "version":  "1.1.0",
-    "description":  "GIF-based CAPTCHA system that uses visual comprehension to distinguish humans from bots",
-    "main":  "src/index.js",
+    "name": "gif-captcha",
+    "version": "1.25.0",
+    "description": "GIF-based CAPTCHA system that uses visual comprehension to distinguish humans from bots",
+    "main": "src/index.js",
     "bin": {
         "gif-captcha": "bin/gif-captcha.js"
     },
-    "browser":  "src/index.js",
+    "browser": "src/index.js",
     "exports": {
         ".": "./src/index.js",
         "./package.json": "./package.json"
@@ -14,47 +14,47 @@
     "engines": {
         "node": ">=18.0.0"
     },
-    "files":  [
-                  "bin/",
-                  "src/",
-                  "shared.js",
-                  "shared.css",
-                  "LICENSE",
-                  "README.md"
-              ],
+    "files": [
+        "bin/",
+        "src/",
+        "shared.js",
+        "shared.css",
+        "LICENSE",
+        "README.md"
+    ],
     "publishConfig": {
         "access": "public",
         "provenance": true
     },
-    "scripts":  {
-                    "prepublishOnly": "npm test",
-                    "test":  "node --test tests/*.test.js",
-                    "test:coverage":  "c8 --reporter=text --reporter=lcov --reporter=json-summary node --test tests/*.test.js",
-                    "coverage":  "c8 --reporter=text --reporter=lcov node --test tests/*.test.js",
-                    "coverage:check":  "c8 check-coverage --lines 75 --functions 85 --branches 85"
-                },
-    "keywords":  [
-                     "captcha",
-                     "gif",
-                     "security",
-                     "bot-detection",
-                     "human-verification",
-                     "visual-captcha",
-                     "anti-bot",
-                     "challenge-response"
-                 ],
-    "author":  "Saurav Bhattacharya",
-    "license":  "MIT",
-    "homepage":  "https://sauravbhattacharya001.github.io/gif-captcha/",
-    "repository":  {
-                       "type":  "git",
-                       "url":  "git+https://github.com/sauravbhattacharya001/gif-captcha.git"
-                   },
-    "bugs":  {
-                 "url":  "https://github.com/sauravbhattacharya001/gif-captcha/issues"
-             },
-    "devDependencies":  {
-                            "c8":  "^11.0.0",
-                            "jsdom":  "^29.1.0"
-                        }
+    "scripts": {
+        "prepublishOnly": "npm test",
+        "test": "node --test tests/*.test.js",
+        "test:coverage": "c8 --reporter=text --reporter=lcov --reporter=json-summary node --test tests/*.test.js",
+        "coverage": "c8 --reporter=text --reporter=lcov node --test tests/*.test.js",
+        "coverage:check": "c8 check-coverage --lines 75 --functions 85 --branches 85"
+    },
+    "keywords": [
+        "captcha",
+        "gif",
+        "security",
+        "bot-detection",
+        "human-verification",
+        "visual-captcha",
+        "anti-bot",
+        "challenge-response"
+    ],
+    "author": "Saurav Bhattacharya",
+    "license": "MIT",
+    "homepage": "https://sauravbhattacharya001.github.io/gif-captcha/",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/sauravbhattacharya001/gif-captcha.git"
+    },
+    "bugs": {
+        "url": "https://github.com/sauravbhattacharya001/gif-captcha/issues"
+    },
+    "devDependencies": {
+        "c8": "^11.0.0",
+        "jsdom": "^29.1.0"
+    }
 }

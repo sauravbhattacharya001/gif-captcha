@@ -62,6 +62,10 @@ function clamp(val, min, max) {
   return val < min ? min : val > max ? max : val;
 }
 
+// Safe hasOwnProperty - guards against prototype-pollution payloads
+// where user objects override hasOwnProperty (CWE-1321).
+var _hasOwn = Function.prototype.call.bind(Object.prototype.hasOwnProperty);
+
 function now() {
   return Date.now();
 }
@@ -70,8 +74,8 @@ function shallowMerge(defaults, overrides) {
   var result = Object.create(null);
   var key;
   for (key in defaults) {
-    if (defaults.hasOwnProperty(key)) {
-      result[key] = overrides && overrides.hasOwnProperty(key) ? overrides[key] : defaults[key];
+    if (_hasOwn(defaults, key)) {
+      result[key] = overrides && _hasOwn(overrides, key) ? overrides[key] : defaults[key];
     }
   }
   return result;
@@ -81,7 +85,7 @@ function deepCopyDimensions(dims) {
   var result = Object.create(null);
   var key;
   for (key in dims) {
-    if (dims.hasOwnProperty(key)) {
+    if (_hasOwn(dims, key)) {
       result[key] = {
         weight: dims[key].weight,
         min: dims[key].min,
@@ -241,7 +245,7 @@ function createAdaptiveDifficultyTuner(options) {
     var totalWeight = 0;
     var weightedSum = 0;
     for (var key in dimensions) {
-      if (dimensions.hasOwnProperty(key)) {
+      if (_hasOwn(dimensions, key)) {
         var dim = dimensions[key];
         // Normalize to 0-1 range, then scale to minDifficulty-maxDifficulty
         var normalized = (dim.value - dim.min) / (dim.max - dim.min || 1);
@@ -261,7 +265,7 @@ function createAdaptiveDifficultyTuner(options) {
     // Scale all dimensions proportionally
     var fraction = (target - opts.minDifficulty) / (opts.maxDifficulty - opts.minDifficulty || 1);
     for (var key in dimensions) {
-      if (dimensions.hasOwnProperty(key)) {
+      if (_hasOwn(dimensions, key)) {
         var dim = dimensions[key];
         dim.value = Math.round((dim.min + fraction * (dim.max - dim.min)) * 100) / 100;
       }
@@ -389,7 +393,7 @@ function createAdaptiveDifficultyTuner(options) {
   function getAllDimensions() {
     var result = Object.create(null);
     for (var key in dimensions) {
-      if (dimensions.hasOwnProperty(key)) {
+      if (_hasOwn(dimensions, key)) {
         result[key] = getDimension(key);
       }
     }
@@ -592,7 +596,7 @@ function createAdaptiveDifficultyTuner(options) {
     }
     if (state.dimensions) {
       for (var key in state.dimensions) {
-        if (state.dimensions.hasOwnProperty(key) && dimensions[key]) {
+        if (_hasOwn(state.dimensions, key) && dimensions[key]) {
           dimensions[key].value = state.dimensions[key].value;
         }
       }

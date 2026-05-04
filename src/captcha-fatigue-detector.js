@@ -67,6 +67,10 @@ function tsNow() { return Date.now(); }
 
 function deepCopy(obj) { return JSON.parse(JSON.stringify(obj)); }
 
+// Safe hasOwnProperty — guards against prototype-pollution payloads
+// where user objects override hasOwnProperty (CWE-1321).
+var _hasOwn = Function.prototype.call.bind(Object.prototype.hasOwnProperty);
+
 function mean(arr) {
   return _mean(arr);
 }
@@ -86,16 +90,16 @@ function createCaptchaFatigueDetector(options) {
   var opts = Object.create(null);
   var key;
   for (key in DEFAULT_OPTIONS) {
-    if (DEFAULT_OPTIONS.hasOwnProperty(key)) opts[key] = DEFAULT_OPTIONS[key];
+    if (_hasOwn(DEFAULT_OPTIONS, key)) opts[key] = DEFAULT_OPTIONS[key];
   }
   if (options) {
     for (key in options) {
-      if (options.hasOwnProperty(key)) {
+      if (_hasOwn(options, key)) {
         if (key === "weights" && typeof options[key] === "object") {
           opts.weights = Object.create(null);
           for (var w in DEFAULT_OPTIONS.weights) {
-            if (DEFAULT_OPTIONS.weights.hasOwnProperty(w)) {
-              opts.weights[w] = (options.weights && options.weights.hasOwnProperty(w))
+            if (_hasOwn(DEFAULT_OPTIONS.weights, w)) {
+              opts.weights[w] = (options.weights && _hasOwn(options.weights, w))
                 ? options.weights[w] : DEFAULT_OPTIONS.weights[w];
             }
           }
@@ -250,7 +254,7 @@ function createCaptchaFatigueDetector(options) {
 
     var score = 0;
     for (var d in dims) {
-      if (dims.hasOwnProperty(d) && opts.weights.hasOwnProperty(d))
+      if (_hasOwn(dims, d) && _hasOwn(opts.weights, d))
         score += dims[d] * opts.weights[d];
     }
     score = clamp(Math.round(score * 100) / 100, 0, 100);

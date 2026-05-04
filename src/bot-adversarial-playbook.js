@@ -35,6 +35,9 @@ var _nnOpt = _shared._nnOpt;
 var _linearRegression = _shared._linearRegression;
 var LruTracker = _shared.LruTracker;
 
+var _cryptoUtils = require("./crypto-utils");
+var secureRandomHex = _cryptoUtils.secureRandomHex;
+
 // ── Constants ───────────────────────────────────────────────────────
 
 /** Attack sophistication tiers */
@@ -225,7 +228,7 @@ var DEFAULT_OPTIONS = {
 // ── Helpers ─────────────────────────────────────────────────────────
 
 function _uid() {
-  return "ap_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  return "ap_" + Date.now().toString(36) + "_" + secureRandomHex(8);
 }
 
 function _sophisticationTier(level) {

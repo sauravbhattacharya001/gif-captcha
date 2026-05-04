@@ -66,30 +66,8 @@ var DEFAULTS = {
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
-/**
- * Detect dangerous keys that could cause prototype pollution (CWE-1321).
- * @param {string} key
- * @returns {boolean}
- */
-function _isSafeKey(key) {
-  return key !== "__proto__" && key !== "constructor" && key !== "prototype";
-}
-
-/**
- * Deep-clone a dict into a null-prototype object, skipping dangerous keys.
- * @param {Object} src
- * @returns {Object}
- */
-function _safeCloneDict(src) {
-  var out = Object.create(null);
-  if (!src || typeof src !== "object" || Array.isArray(src)) return out;
-  var keys = Object.keys(src);
-  for (var i = 0; i < keys.length; i++) {
-    if (!_isSafeKey(keys[i])) continue;
-    out[keys[i]] = JSON.parse(JSON.stringify(src[keys[i]]));
-  }
-  return out;
-}
+var _isSafeKey = _shared._isSafeKey;
+var _safeCloneDict = _shared._safeCloneDict;
 
 /**
 /**

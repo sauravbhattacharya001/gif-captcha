@@ -49,11 +49,9 @@ var DEFAULTS = {
   minSamplesForAnalysis: 3
 };
 
-// ── Helpers ─────────────────────────────────────────────────────────
+  var _isSafeKey = _shared._isSafeKey;
 
-function _isSafeKey(key) {
-  return key !== "__proto__" && key !== "constructor" && key !== "prototype";
-}
+// ── Helpers ─────────────────────────────────────────────────────────
 
 function _safeClone(src) {
   if (src === null || typeof src !== "object") return src;

@@ -51,9 +51,7 @@ var DEFAULTS = {
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
-function _optNum(val, def) {
-  return typeof val === "number" && val >= 0 ? val : def;
-}
+var _optNum = _shared._optNum;
 
 
 function _epochKey(ts, epochMs) {

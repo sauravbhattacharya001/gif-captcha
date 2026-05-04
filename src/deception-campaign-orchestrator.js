@@ -1018,15 +1018,8 @@ DeceptionCampaignOrchestrator.prototype.exportState = function () {
  * Import previously exported state.
  * @param {Object} state
  */
-/**
- * Reject keys that could cause prototype pollution when used as
- * property names on plain objects (CWE-1321).
- * @param {string} key
- * @returns {boolean}
- */
-function _isSafeKey(key) {
-  return key !== "__proto__" && key !== "constructor" && key !== "prototype";
-}
+var _isSafeKey = _shared._isSafeKey;
+var _safeCloneDict = _shared._safeCloneDict;
 
 /**
  * Deep-clone a value via JSON round-trip.  Returns the fallback when
@@ -1041,24 +1034,6 @@ function _isSafeKey(key) {
 function _safeClone(val, fallback) {
   if (!val) return fallback;
   return JSON.parse(JSON.stringify(val));
-}
-
-/**
- * Deep-clone a dict (string-keyed object) into a null-prototype
- * target, skipping dangerous keys.  Provides both prototype-pollution
- * defence and reference isolation in one pass.
- * @param {Object} src
- * @returns {Object}
- */
-function _safeCloneDict(src) {
-  var out = Object.create(null);
-  if (!src || typeof src !== "object" || Array.isArray(src)) return out;
-  var keys = Object.keys(src);
-  for (var i = 0; i < keys.length; i++) {
-    if (!_isSafeKey(keys[i])) continue;
-    out[keys[i]] = JSON.parse(JSON.stringify(src[keys[i]]));
-  }
-  return out;
 }
 
 DeceptionCampaignOrchestrator.prototype.importState = function (state) {

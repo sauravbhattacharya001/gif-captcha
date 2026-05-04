@@ -42,13 +42,8 @@ var DEFAULTS = {
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
-function _optNum(val, def) {
-  return typeof val === "number" && val >= 0 ? val : def;
-}
-
-function _optBool(val, def) {
-  return typeof val === "boolean" ? val : def;
-}
+var _optNum = _shared._optNum;
+var _optBool = _shared._optBool;
 
 function _makeSlidingWindow(windowMs) {
   return { entries: [], windowMs: windowMs };

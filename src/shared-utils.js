@@ -1001,6 +1001,55 @@ function _linearRegression(xsOrYs, ys) {
   return { slope: slope, intercept: intercept, r2: r2 };
 }
 
+// ── Prototype-pollution guards ───────────────────────────────────
+
+/**
+ * Check whether a property key is safe from prototype pollution.
+ * @param {string} key
+ * @returns {boolean}
+ */
+function _isSafeKey(key) {
+  return key !== "__proto__" && key !== "constructor" && key !== "prototype";
+}
+
+/**
+ * Deep-clone a plain object into a null-prototype dict, skipping dangerous keys.
+ * @param {Object} src
+ * @returns {Object}
+ */
+function _safeCloneDict(src) {
+  var out = Object.create(null);
+  if (!src || typeof src !== "object" || Array.isArray(src)) return out;
+  var keys = Object.keys(src);
+  for (var i = 0; i < keys.length; i++) {
+    if (!_isSafeKey(keys[i])) continue;
+    out[keys[i]] = JSON.parse(JSON.stringify(src[keys[i]]));
+  }
+  return out;
+}
+
+// ── Option helpers ──────────────────────────────────────────────
+
+/**
+ * Return val if it is a non-negative number, otherwise def.
+ * @param {*} val
+ * @param {number} def
+ * @returns {number}
+ */
+function _optNum(val, def) {
+  return typeof val === "number" && val >= 0 ? val : def;
+}
+
+/**
+ * Return val if it is a boolean, otherwise def.
+ * @param {*} val
+ * @param {boolean} def
+ * @returns {boolean}
+ */
+function _optBool(val, def) {
+  return typeof val === "boolean" ? val : def;
+}
+
 // ── Exports ─────────────────────────────────────────────────────
 module.exports = {
   _linearRegression: _linearRegression,
@@ -1035,5 +1084,9 @@ module.exports = {
   createChallenge: createChallenge,
   pickChallenges: pickChallenges,
   createAttemptTracker: createAttemptTracker,
-  installRoundRectPolyfill: installRoundRectPolyfill
+  installRoundRectPolyfill: installRoundRectPolyfill,
+  _isSafeKey: _isSafeKey,
+  _safeCloneDict: _safeCloneDict,
+  _optNum: _optNum,
+  _optBool: _optBool
 };

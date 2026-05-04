@@ -677,10 +677,38 @@ function createAttackEvolutionTracker(options) {
     };
   }
 
+  /**
+   * Reject prototype-pollution keys (CWE-1321).
+   * @param {string} key
+   * @returns {boolean}
+   */
+  function _isSafeKey(key) {
+    return key !== "__proto__" && key !== "constructor" && key !== "prototype";
+  }
+
+  /**
+   * Copy own, safe keys from *src* into a null-prototype container.
+   * Skips __proto__ / constructor / prototype to prevent CWE-1321
+   * prototype pollution via crafted import payloads.
+   * @param {Object} src
+   * @returns {Object}
+   */
+  function _sanitizeMap(src) {
+    var out = Object.create(null);
+    if (!src || typeof src !== "object" || Array.isArray(src)) return out;
+    var keys = Object.keys(src);
+    for (var i = 0; i < keys.length; i++) {
+      if (_isSafeKey(keys[i]) && src[keys[i]] && typeof src[keys[i]] === "object") {
+        out[keys[i]] = src[keys[i]];
+      }
+    }
+    return out;
+  }
+
   function importState(state) {
     if (!state || typeof state !== "object") return false;
-    if (state.strategies) strategies = state.strategies;
-    if (state.challenges) challenges = state.challenges;
+    if (state.strategies) strategies = _sanitizeMap(state.strategies);
+    if (state.challenges) challenges = _sanitizeMap(state.challenges);
     if (Array.isArray(state.events)) events = state.events;
     if (Array.isArray(state.evolutionTimeline)) evolutionTimeline = state.evolutionTimeline;
     if (Array.isArray(state.rotationLog)) rotationLog = state.rotationLog;

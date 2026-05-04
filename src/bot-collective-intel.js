@@ -256,22 +256,6 @@ function createBotCollectiveIntelDetector(options) {
   }
 
   /**
-   * Compute composite correlation score between two sessions.
-   * Note: for hot-path bulk scoring in _checkSwarmMembership, we inline this
-   * with cached vectors and early-exit. This function is kept for ad-hoc use.
-   */
-  function _correlationScore(sessA, sessB) {
-    var vecA = _behaviorVector(sessA);
-    var vecB = _behaviorVector(sessB);
-    var behaviorSim = _cosineSimilarity(vecA, vecB);
-    var timingSync = _timingSyncScore(sessA, sessB);
-    var knowledgeShare = _knowledgeSharingScore(sessA, sessB);
-
-    // Weighted composite
-    return (timingSync * 0.35) + (knowledgeShare * 0.30) + (behaviorSim * 0.35);
-  }
-
-  /**
    * Infer swarm topology from member interaction patterns.
    */
   function _inferTopology(swarm) {

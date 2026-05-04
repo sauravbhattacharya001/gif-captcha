@@ -31,6 +31,7 @@ var _now = _shared._now;
 var _mean = _shared._mean;
 var _stddev = _shared._stddev;
 var _clamp = _shared._clamp;
+var _deepCopy = _shared._deepCopy;
 var _posOpt = _shared._posOpt;
 var _nnOpt = _shared._nnOpt;
 var _linearRegression = _shared._linearRegression;
@@ -70,10 +71,6 @@ var CRITICAL_THRESHOLD = 0.30; // 30% change is critical
 
 function _uid() {
   return _cryptoUtils.secureRandomHex(12);
-}
-
-function _deepCopy(obj) {
-  return JSON.parse(JSON.stringify(obj));
 }
 
 

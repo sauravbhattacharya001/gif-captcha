@@ -62,16 +62,9 @@ var _clamp = _shared._clamp;
 var _now = _shared._now;
 var _percentileSorted = _shared._percentileSorted;
 var _decayFactor = _shared._decayFactor;
+var _deepCopy = _shared._deepCopy;
 
 // ── Helpers ─────────────────────────────────────────────────────────
-
-/**
- * Deep-copy an object via JSON round-trip.
- * Use only for nested structures; prefer _shallowCopy for flat objects.
- */
-function _deepCopy(obj) {
-  return JSON.parse(JSON.stringify(obj));
-}
 
 /**
  * Shallow-copy an object (one level deep). Faster than JSON round-trip

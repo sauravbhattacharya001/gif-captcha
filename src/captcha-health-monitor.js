@@ -50,6 +50,7 @@
 var _shared = require("./shared-utils");
 var _percentileSorted = _shared._percentileSorted;
 var _now = _shared._now;
+var _deepCopy = _shared._deepCopy;
 
 // ── Status Levels ────────────────────────────────────────────────────
 
@@ -149,10 +150,6 @@ function _pruneToMax(arr, max) {
   if (arr.length > max) {
     arr.splice(0, arr.length - max);
   }
-}
-
-function _deepCopy(obj) {
-  return JSON.parse(JSON.stringify(obj));
 }
 
 function _merge(target, source) {

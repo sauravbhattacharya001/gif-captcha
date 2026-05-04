@@ -255,6 +255,13 @@ function _constantTimeEqual(a, b) {
 function _clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
 
 /**
+ * Deep-copy a JSON-serialisable object via parse/stringify.
+ * @param {*} obj
+ * @returns {*}
+ */
+function _deepCopy(obj) { return JSON.parse(JSON.stringify(obj)); }
+
+/**
  * Compute an exponential decay factor based on age and half-life.
  * Returns 1.0 for age <= 0, 0.5 at age === halfLifeMs, approaching 0 as age grows.
  * Used for time-weighted signal scoring (session-risk-aggregator, fraud-ring-detector).
@@ -1005,6 +1012,7 @@ module.exports = {
   _now: _now,
   _constantTimeEqual: _constantTimeEqual,
   _clamp: _clamp,
+  _deepCopy: _deepCopy,
   _decayFactor: _decayFactor,
   _cosineSimilarity: _cosineSimilarity,
   _numAsc: _numAsc,

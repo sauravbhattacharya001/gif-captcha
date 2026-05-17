@@ -9575,6 +9575,7 @@ var _adversarialPlaybookModule = require("./bot-adversarial-playbook");
 var createAttackResponsePlaybook = require("./attack-response-playbook").createAttackResponsePlaybook;
 var createAttackForecaster = require("./attack-forecaster").createAttackForecaster;
 var createUserAbandonmentForecaster = require("./user-abandonment-forecaster").createUserAbandonmentForecaster;
+var createFalseRejectRecoveryAdvisor = require("./false-reject-recovery-advisor").createFalseRejectRecoveryAdvisor;
 var WebhookDispatcher = _webhookModule.WebhookDispatcher;
 var gifCaptcha = {
   sanitize: sanitize,
@@ -9660,6 +9661,7 @@ var gifCaptcha = {
   createAttackResponsePlaybook: createAttackResponsePlaybook,
   createAttackForecaster: createAttackForecaster,
   createUserAbandonmentForecaster: createUserAbandonmentForecaster,
+  createFalseRejectRecoveryAdvisor: createFalseRejectRecoveryAdvisor,
 };
 
 // UMD export — works in Node.js, AMD, and browser globals

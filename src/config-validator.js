@@ -10,6 +10,8 @@ var _median = _shared._median;
 var _stddev = _shared._stddev;
 var LruTracker = _shared.LruTracker;
 var _percentile = _shared._percentile;
+var _medianSorted = _shared._medianSorted;
+var _percentileSorted = _shared._percentileSorted;
 
 
 // ── Configuration Validator ─────────────────────────────────────────
@@ -895,13 +897,18 @@ function createChallengeAnalytics(options) {
     if (arr.length === 0) return { count: 0, mean: 0, median: 0, stddev: 0, p5: 0, p95: 0, min: 0, max: 0 };
     var m = _mean(arr);
     var sorted = arr.slice().sort(_numAsc);
+    // We've already paid for one ascending sort above; reuse it for the
+    // median/p5/p95 computations instead of letting _median/_percentile
+    // sort the same N values three more times. _computeTimingStats runs
+    // every snapshot() under load when ChallengePoolManager validates
+    // many high-traffic configs.
     return {
       count: arr.length,
       mean: Math.round(m * 100) / 100,
-      median: Math.round(_median(arr) * 100) / 100,
+      median: Math.round(_medianSorted(sorted) * 100) / 100,
       stddev: Math.round(_stddev(arr, m) * 100) / 100,
-      p5: Math.round(_percentile(arr, 5) * 100) / 100,
-      p95: Math.round(_percentile(arr, 95) * 100) / 100,
+      p5: Math.round(_percentileSorted(sorted, 5) * 100) / 100,
+      p95: Math.round(_percentileSorted(sorted, 95) * 100) / 100,
       min: sorted[0],
       max: sorted[sorted.length - 1],
     };

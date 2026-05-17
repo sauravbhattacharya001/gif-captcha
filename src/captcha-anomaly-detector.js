@@ -101,6 +101,9 @@ var _mean = _shared._mean;
 var _stddev = _shared._stddev;
 var _median = _shared._median;
 var _percentile = _shared._percentile;
+var _medianSorted = _shared._medianSorted;
+var _percentileSorted = _shared._percentileSorted;
+var _sortedCopy = _shared._sortedCopy;
 var _numAsc = _shared._numAsc;
 var _sortedCopy = _shared._sortedCopy;
 
@@ -298,8 +301,12 @@ function createAnomalyDetector(options) {
   function _iqrCheck(values, label, preSorted) {
     if (values.length < minSamples) return [];
     var sorted = preSorted || _sortedCopy(values);
-    var q1 = _percentile(sorted, 25);
-    var q3 = _percentile(sorted, 75);
+    // sorted is guaranteed ascending here -- use the *Sorted helpers to
+    // skip the redundant slice().sort() that _percentile would do on each
+    // call. _iqrCheck runs once per metric on every detect() invocation,
+    // so this saves two N-log-N sorts per metric in the hot path.
+    var q1 = _percentileSorted(sorted, 25);
+    var q3 = _percentileSorted(sorted, 75);
     var iqr = q3 - q1;
     if (iqr === 0) return [];
 
@@ -616,9 +623,12 @@ function createAnomalyDetector(options) {
         totalEvents: windowEvts.length,
         solveRate: Math.round(solveRate * 1000) / 1000,
         avgDuration: Math.round(avgDuration * 100) / 100,
-        medianDuration: Math.round(_median(sortedDurations) * 100) / 100,
-        p95Duration: Math.round(_percentile(sortedDurations, 95) * 100) / 100,
-        p99Duration: Math.round(_percentile(sortedDurations, 99) * 100) / 100,
+        // sortedDurations is already ascending (see _sortedCopy above), so
+        // route through the *Sorted helpers to avoid sorting it three more
+        // times for the median/p95/p99 summary.
+        medianDuration: Math.round(_medianSorted(sortedDurations) * 100) / 100,
+        p95Duration: Math.round(_percentileSorted(sortedDurations, 95) * 100) / 100,
+        p99Duration: Math.round(_percentileSorted(sortedDurations, 99) * 100) / 100,
         stddevDuration: Math.round(sdDuration * 100) / 100,
         emaSolveRate: emaValues.solveRate !== null ? Math.round(emaValues.solveRate * 1000) / 1000 : null,
         emaAvgDuration: emaValues.avgDuration !== null ? Math.round(emaValues.avgDuration * 100) / 100 : null,

@@ -710,10 +710,20 @@ function createBotCollectiveIntelDetector(options) {
       if (solvers.length < 3) continue;
       solvers.sort(function (a, b) { return a.timestamp - b.timestamp; });
 
-      // If 3+ members solved within 10s, that's propagation
-      var first = solvers[0].timestamp;
-      var last = solvers[solvers.length - 1].timestamp;
-      if (last - first < 10000) propagations++;
+      // Sliding window: count one propagation per challenge if ANY window
+      // of 3+ timestamps fits inside the 10s threshold. The previous
+      // range-only check (`last - first < 10000`) missed real bursts the
+      // moment a single straggler solved late, even when 50 other members
+      // clustered within 1s — the exact opposite of how swarm knowledge
+      // propagation actually presents. See issue #133. O(n) per challenge.
+      var lo = 0;
+      for (var hi = 0; hi < solvers.length; hi++) {
+        while (solvers[hi].timestamp - solvers[lo].timestamp >= 10000) lo++;
+        if (hi - lo + 1 >= 3) {
+          propagations++;
+          break; // one event per challenge per window
+        }
+      }
     }
 
     return propagations;

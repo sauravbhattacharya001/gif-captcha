@@ -18,6 +18,18 @@
 ;(function () {
   "use strict";
 
+  /**
+   * Accessibility standards we score against.
+   *
+   * Each entry encodes the three knobs the analyzer needs to decide whether
+   * a configuration meets the bar for that standard:
+   *  - `level`         human-readable conformance level (e.g. "AA")
+   *  - `timeLimitMin`  minimum seconds a challenge may give users
+   *  - `requireAlt`    whether at least one audio/text alternative is required
+   *  - `contrastMin`   minimum foreground/background WCAG contrast ratio
+   *
+   * @const {Object<string, {level:string,timeLimitMin:number,requireAlt:boolean,contrastMin:number}>}
+   */
   var STANDARDS = {
     WCAG_A:   { level: "A",   timeLimitMin: 20, requireAlt: false, contrastMin: 3.0 },
     WCAG_AA:  { level: "AA",  timeLimitMin: 30, requireAlt: true,  contrastMin: 4.5 },
@@ -27,6 +39,16 @@
     EN301549: { level: "EN",  timeLimitMin: 30, requireAlt: true,  contrastMin: 4.5 }
   };
 
+  /**
+   * Relative weights for the weighted-average scoring mode.
+   *
+   * Higher weight means a criterion contributes more to the overall score.
+   * Weights are intentionally tuned to emphasize alternatives, cognitive
+   * load, time limits, keyboard navigation, and screen-reader support over
+   * lower-impact criteria such as instructions and error recovery.
+   *
+   * @const {Object<string, number>}
+   */
   var CRITERION_WEIGHTS = {
     alternatives: 15, cognitiveLoad: 15, timeLimit: 12, keyboardNav: 12,
     colorContrast: 10, screenReader: 12, motorSkill: 10, instructions: 7, errorRecovery: 7
@@ -36,9 +58,37 @@
   var _cryptoUtils;
   try { if (typeof require !== "undefined") _cryptoUtils = require("./crypto-utils"); } catch (e) { /* browser */ }
 
+  /**
+   * Clamp a value into the inclusive `[lo, hi]` range.
+   * @param {number} v
+   * @param {number} lo
+   * @param {number} hi
+   * @returns {number}
+   */
   function _clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+  /**
+   * Map a numeric score in [0,100] to a letter grade.
+   * @param {number} s
+   * @returns {"A"|"B"|"C"|"D"|"F"}
+   */
   function _grade(s) { if (s >= 90) return "A"; if (s >= 80) return "B"; if (s >= 65) return "C"; if (s >= 50) return "D"; return "F"; }
+
+  /**
+   * Current timestamp as an ISO 8601 string (UTC).
+   * @returns {string}
+   */
   function _now() { return new Date().toISOString(); }
+
+  /**
+   * Generate a short, cryptographically random finding ID (`"f-..."`).
+   *
+   * Prefers `crypto-utils.secureRandomHex` (Node.js), falls back to Web
+   * Crypto `getRandomValues` (browser), and finally to a timestamp-seeded
+   * hash (still acceptable - IDs are internal, not security-sensitive).
+   *
+   * @returns {string}
+   */
   function _uid() {
     // Use crypto-utils.secureRandomHex when available (Node.js).
     // Falls back to Web Crypto, then to timestamp hash in browsers
@@ -58,6 +108,13 @@
     return "f-" + Math.abs(h).toString(36);
   }
 
+  /**
+   * Parse a CSS hex color (`#rgb` or `#rrggbb`, with or without the `#`)
+   * into an `{r,g,b}` object with 0-255 channels.
+   *
+   * @param {string} hex
+   * @returns {{r:number,g:number,b:number}|null} `null` for malformed input.
+   */
   function _parseHex(hex) {
     if (typeof hex !== "string") return null;
     hex = hex.replace(/^#/, "");
@@ -67,11 +124,29 @@
     return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
   }
 
+  /**
+   * Compute relative luminance per the WCAG 2.x definition.
+   *
+   * Used as the input to `_contrastRatio`. See WCAG 1.4.3 / 1.4.6.
+   *
+   * @param {{r:number,g:number,b:number}} rgb
+   * @returns {number} relative luminance in [0, 1]
+   */
   function _luminance(rgb) {
     function ch(c) { c = c / 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); }
     return 0.2126 * ch(rgb.r) + 0.7152 * ch(rgb.g) + 0.0722 * ch(rgb.b);
   }
 
+  /**
+   * Compute the WCAG contrast ratio between two hex colors.
+   *
+   * The ratio is in the range [1, 21]. Returns 1 (no contrast) when either
+   * color fails to parse.
+   *
+   * @param {string} hex1 foreground hex color
+   * @param {string} hex2 background hex color
+   * @returns {number}
+   */
   function _contrastRatio(hex1, hex2) {
     var c1 = _parseHex(hex1), c2 = _parseHex(hex2);
     if (!c1 || !c2) return 1;
@@ -79,6 +154,16 @@
     return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
   }
 
+  /**
+   * Estimate cognitive load (0-100, higher = more demanding) for a single
+   * challenge based on its type, complexity, time limit, step count, and
+   * reading / cultural requirements.
+   *
+   * Aggregated by `_checkCognitiveLoad` into the per-criterion score.
+   *
+   * @param {Object} c challenge descriptor (see `registerChallenge`)
+   * @returns {number}
+   */
   function _cognitiveLoadScore(c) {
     var s = 0, type = (c.type || "").toLowerCase();
     var tl = { checkbox: 10, text: 20, math: 40, audio: 30, image: 35, gif: 45, puzzle: 55, drag: 50, click: 25, slider: 20, custom: 35 };
@@ -91,6 +176,14 @@
     return _clamp(s, 0, 100);
   }
 
+  /**
+   * Score keyboard accessibility (0-100, higher = better) for a single
+   * challenge. Penalises drag/slider/click/puzzle interactions that lack
+   * keyboard alternatives, missing focus rings, and bad tab order.
+   *
+   * @param {Object} c challenge descriptor
+   * @returns {number}
+   */
   function _keyboardScore(c) {
     var s = 100, type = (c.type || "").toLowerCase();
     if (type === "drag" || type === "slider") s -= 40;
@@ -103,6 +196,14 @@
     return _clamp(s, 0, 100);
   }
 
+  /**
+   * Estimate fine-motor demand (0-100, higher = more demanding) for a
+   * challenge based on interaction type, required precision, target size,
+   * and gesture requirements like double-tap or long-press.
+   *
+   * @param {Object} c challenge descriptor
+   * @returns {number}
+   */
   function _motorScore(c) {
     var s = 0, type = (c.type || "").toLowerCase();
     if (type === "drag") s += 45; if (type === "slider") s += 30;
@@ -113,6 +214,14 @@
     return _clamp(s, 0, 100);
   }
 
+  /**
+   * Score screen-reader compatibility (0-100, higher = better) for a
+   * challenge based on ARIA labelling, alt text, canvas fallbacks,
+   * role attributes, and live regions.
+   *
+   * @param {Object} c challenge descriptor
+   * @returns {number}
+   */
   function _screenReaderScore(c) {
     var s = 100;
     if (!c.ariaLabel && !c.ariaDescribedBy) s -= 25;
@@ -124,6 +233,37 @@
     return _clamp(s, 0, 100);
   }
 
+  /**
+   * Create a new accessibility analyzer instance.
+   *
+   * The analyzer is stateful: register challenges with `registerChallenge`,
+   * then call `analyze` to produce a scored report. Reports are appended to
+   * an internal history (capped at 100 entries) and can be compared via
+   * `compareReports`.
+   *
+   * @param {Object}   [options]
+   * @param {string}   [options.standard="WCAG_AA"] One of the keys in
+   *        `STANDARDS` (e.g. `"WCAG_A"`, `"WCAG_AAA"`, `"ADA"`, `"EN301549"`).
+   *        Unknown values fall back to `WCAG_AA`.
+   * @param {Array<function(Object[]): Object[]>} [options.customRules=[]]
+   *        Functions that receive the registered challenges list and return
+   *        an array of additional findings to merge into reports.
+   * @param {"weighted"|"equal"} [options.scoringMode="weighted"] How the
+   *        per-criterion scores are combined into the overall score.
+   * @returns {{
+   *   registerChallenge: function(Object): Object,
+   *   removeChallenge:   function(string): boolean,
+   *   getChallenge:      function(string): Object|null,
+   *   listChallenges:    function(): Object[],
+   *   analyze:           function(): Object,
+   *   quickAudit:        function(Object): Object,
+   *   compareReports:    function(Object, Object): Object|null,
+   *   getHistory:        function(): Object[],
+   *   exportJSON:        function(): string,
+   *   getConfig:         function(): Object,
+   *   utils:             Object
+   * }}
+   */
   function createAccessibilityAnalyzer(options) {
     options = options || {};
     var standardKey = (options.standard || "WCAG_AA").toUpperCase();
@@ -132,6 +272,18 @@
     var config = { standard: standardKey, customRules: options.customRules || [], scoringMode: options.scoringMode || "weighted" };
     var history = [];
 
+    /**
+     * Register (or replace) a challenge definition.
+     *
+     * Required: `def.id` (string). All other fields default to a permissive
+     * baseline so simple challenges can be registered with minimal config.
+     * The full schema mirrors WCAG-relevant CAPTCHA properties (ARIA, color,
+     * timing, motor demands, etc.).
+     *
+     * @param {Object} def challenge definition (must include `id`)
+     * @returns {Object} the normalised, stored challenge record
+     * @throws {Error} if `def` is missing or has no `id`
+     */
     function registerChallenge(def) {
       if (!def || !def.id) throw new Error("Challenge definition must include an 'id' property.");
       var id = String(def.id);
@@ -157,10 +309,40 @@
       return challenges[id];
     }
 
+    /**
+     * Remove a previously registered challenge.
+     * @param {string} id
+     * @returns {boolean} `true` if the challenge existed and was removed.
+     */
     function removeChallenge(id) { if (!challenges[id]) return false; delete challenges[id]; return true; }
+
+    /**
+     * Look up a registered challenge by id.
+     * @param {string} id
+     * @returns {Object|null}
+     */
     function getChallenge(id) { return challenges[id] || null; }
+
+    /**
+     * Snapshot all registered challenges as an array.
+     * The returned array is freshly built, but elements are the live
+     * stored records (do not mutate).
+     * @returns {Object[]}
+     */
     function listChallenges() { var r = [], ids = Object.keys(challenges); for (var i = 0; i < ids.length; i++) r.push(challenges[ids[i]]); return r; }
 
+    /**
+     * Build a uniformly shaped finding record. Centralises the schema so
+     * every check produces comparable output.
+     *
+     * @param {string}      criterion    e.g. `"alternatives"`, `"keyboardNav"`
+     * @param {"critical"|"major"|"moderate"|"minor"|"info"} severity
+     * @param {string|null} challengeId  source challenge id, or `null` if global
+     * @param {string}      message      human-readable description
+     * @param {string}      wcag         WCAG success-criterion reference (e.g. `"1.1.1"`)
+     * @param {string}      remediation  short fix recommendation
+     * @returns {{id:string,criterion:string,severity:string,challenge:string|null,message:string,wcag:string,remediation:string}}
+     */
     function _makeFinding(criterion, severity, challengeId, message, wcag, remediation) {
       return { id: _uid(), criterion: criterion, severity: severity, challenge: challengeId, message: message, wcag: wcag, remediation: remediation };
     }
@@ -264,6 +446,22 @@
       return { score: list.length > 0 ? _clamp(100 - (issues / (list.length * 2)) * 60, 0, 100) : 100, findings: findings };
     }
 
+    /**
+     * Score every registered challenge across all nine criteria, merge
+     * any custom-rule findings, and produce a full report.
+     *
+     * Side effect: appends the report to the analyzer's history (capped
+     * at the most recent 100 reports).
+     *
+     * @returns {{
+     *   timestamp:string, standard:string, standardLevel:string,
+     *   challengeCount:number, score:number, grade:string, passed:boolean,
+     *   criterionScores:Object<string,number>,
+     *   findings:Object[],
+     *   severityCounts:{critical:number,major:number,moderate:number,minor:number,info:number},
+     *   summary:string
+     * }}
+     */
     function analyze() {
       var cl = listChallenges();
       var checks = {
@@ -314,11 +512,32 @@
       return report;
     }
 
+    /**
+     * One-shot audit of a single challenge definition without leaving it
+     * registered. Useful for ad-hoc checks during development.
+     *
+     * Note: mutates `def.id` if it is missing (assigns a generated id) so
+     * the temporary registration can be removed afterwards.
+     *
+     * @param {Object} def challenge definition
+     * @returns {Object} the resulting report
+     */
     function quickAudit(def) {
       var tid = def.id || "_qa_" + Date.now(); def.id = tid;
       registerChallenge(def); var r = analyze(); removeChallenge(tid); return r;
     }
 
+    /**
+     * Diff two reports to surface what changed between runs.
+     *
+     * @param {Object} a earlier report
+     * @param {Object} b later report
+     * @returns {{
+     *   scoreDelta:number, gradeBefore:string, gradeAfter:string,
+     *   criterionDeltas:Object<string,number>, findingsDelta:number,
+     *   improved:boolean
+     * }|null} `null` when either argument is missing.
+     */
     function compareReports(a, b) {
       if (!a || !b) return null;
       var delta = Object.create(null), keys = Object.keys(a.criterionScores || {});
@@ -326,10 +545,25 @@
       return { scoreDelta: b.score - a.score, gradeBefore: a.grade, gradeAfter: b.grade, criterionDeltas: delta, findingsDelta: b.findings.length - a.findings.length, improved: b.score > a.score };
     }
 
+    /**
+     * Serialize the analyzer's current configuration, registered
+     * challenges, and most-recent report to a pretty-printed JSON string.
+     * Suitable for snapshotting state between runs.
+     *
+     * @returns {string}
+     */
     function exportJSON() {
       return JSON.stringify({ config: config, challenges: listChallenges(), lastReport: history.length > 0 ? history[history.length - 1] : null }, null, 2);
     }
 
+    /**
+     * Read-only view of the analyzer's effective configuration.
+     *
+     * Returns a copy of `CRITERION_WEIGHTS` so callers can inspect them
+     * without risk of mutating the module-level constants.
+     *
+     * @returns {{standard:string,scoringMode:string,customRulesCount:number,criterionWeights:Object<string,number>}}
+     */
     function getConfig() {
       return { standard: config.standard, scoringMode: config.scoringMode, customRulesCount: config.customRules.length, criterionWeights: JSON.parse(JSON.stringify(CRITERION_WEIGHTS)) };
     }

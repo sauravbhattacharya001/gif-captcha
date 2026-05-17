@@ -3,6 +3,34 @@
 "use strict";
 
 var gifCaptcha = require("../src/index");
+var { secureRandomInt } = require("../src/crypto-utils");
+
+/**
+ * Cryptographically secure Fisher–Yates shuffle.
+ *
+ * Replaces the previous `arr.sort(() => Math.random() - 0.5)` pattern, which
+ * was both biased (sort comparators must be transitive) and predictable
+ * (Math.random is not a CSPRNG — CWE-330).
+ *
+ * This module ships sample CAPTCHA challenges in `SAMPLE_GIFS`; using a
+ * predictable shuffle would let an attacker mirror the CLI's output and
+ * pre-compute likely challenge orderings. The library's own crypto-utils
+ * explicitly forbids Math.random for any CAPTCHA-touching code, so the CLI
+ * must hold the same line.
+ *
+ * @template T
+ * @param {T[]} arr - Array to shuffle (returned, mutated in place).
+ * @returns {T[]}
+ */
+function secureShuffle(arr) {
+  for (var i = arr.length - 1; i > 0; i--) {
+    var j = secureRandomInt(i + 1);
+    var tmp = arr[i];
+    arr[i] = arr[j];
+    arr[j] = tmp;
+  }
+  return arr;
+}
 
 var args = process.argv.slice(2);
 var command = args[0];
@@ -80,8 +108,9 @@ function cmdGenerate() {
   var count = parseInt(flag("count") || "1", 10);
   if (count > SAMPLE_GIFS.length) count = SAMPLE_GIFS.length;
 
-  // Pick random challenges from samples
-  var shuffled = SAMPLE_GIFS.slice().sort(function () { return Math.random() - 0.5; });
+  // Pick random challenges from samples using a CSPRNG-backed shuffle.
+  // Math.random is forbidden in CAPTCHA paths (CWE-330) — see crypto-utils.js.
+  var shuffled = secureShuffle(SAMPLE_GIFS.slice());
   var challenges = [];
   for (var i = 0; i < count; i++) {
     var s = shuffled[i];

@@ -1,5 +1,6 @@
 "use strict";
 
+const { describe, it, beforeEach } = require("node:test");
 var engine = require("../src/challenge-template-engine");
 var createChallengeTemplateEngine = engine.createChallengeTemplateEngine;
 

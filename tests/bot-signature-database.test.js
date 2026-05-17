@@ -1,3 +1,4 @@
+const { describe, test } = require("node:test");
 'use strict';
 
 var _ref = require('../src/bot-signature-database');

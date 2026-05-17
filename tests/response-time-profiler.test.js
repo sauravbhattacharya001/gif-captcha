@@ -1,3 +1,4 @@
+const { describe, it, beforeEach } = require("node:test");
 'use strict';
 var assert = require('assert');
 var createResponseTimeProfiler = require('../src/response-time-profiler').createResponseTimeProfiler;

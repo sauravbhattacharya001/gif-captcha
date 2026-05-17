@@ -1,5 +1,6 @@
 "use strict";
 
+const { describe, it } = require("node:test");
 /**
  * Additional tests for GeoRiskScorer — edge cases, boundary conditions,
  * composite scoring, suspicious travel, concurrency patterns, and

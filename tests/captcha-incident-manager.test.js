@@ -1,3 +1,4 @@
+const { describe, beforeEach, afterEach, test } = require("node:test");
 /**
  * Tests for CaptchaIncidentManager
  */

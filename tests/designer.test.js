@@ -1,3 +1,4 @@
+const { describe, test } = require("node:test");
 /**
  * Tests for Challenge Designer (designer.html)
  */

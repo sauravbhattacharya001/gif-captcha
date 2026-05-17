@@ -1,5 +1,6 @@
 "use strict";
 
+const { describe, test } = require("node:test");
 var cr = require("../src/compliance-reporter");
 
 // ── Helpers ──────────────────────────────────────────────────────────

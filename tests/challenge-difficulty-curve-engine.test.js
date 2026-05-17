@@ -1,3 +1,4 @@
+const { describe, test } = require("node:test");
 /**
  * ChallengeDifficultyCurveEngine — tests
  * 45+ test cases covering sample recording, curve analysis, optimal difficulty

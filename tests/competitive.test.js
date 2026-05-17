@@ -1,3 +1,4 @@
+const { describe, test } = require("node:test");
 /**
  * competitive.test.js — Tests for the Competitive Analysis page data integrity.
  */

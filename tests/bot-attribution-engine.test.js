@@ -1,5 +1,6 @@
 "use strict";
 
+const { describe, it, beforeEach } = require("node:test");
 var _mod = require("../src/bot-attribution-engine");
 var createBotAttributionEngine = _mod.createBotAttributionEngine;
 

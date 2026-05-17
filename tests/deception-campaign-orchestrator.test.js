@@ -1,5 +1,6 @@
 "use strict";
 
+const { describe, it, beforeEach } = require("node:test");
 var assert = require("assert");
 var DCO = require("../src/deception-campaign-orchestrator");
 var DeceptionCampaignOrchestrator = DCO.DeceptionCampaignOrchestrator;

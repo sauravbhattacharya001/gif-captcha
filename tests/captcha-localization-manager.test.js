@@ -1,5 +1,6 @@
 "use strict";
 
+const { describe, it } = require("node:test");
 var assert = require('assert');
 var _mod = require('../src/captcha-localization-manager');
 var createCaptchaLocalizationManager = _mod.createCaptchaLocalizationManager;

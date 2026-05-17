@@ -1,5 +1,6 @@
 "use strict";
 
+const { describe, it } = require("node:test");
 var assert = require("assert");
 var gifCaptcha = require("../src/index");
 var createDeviceCohortAnalyzer = gifCaptcha.createDeviceCohortAnalyzer;

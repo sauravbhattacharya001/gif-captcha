@@ -522,22 +522,26 @@ function _formatText(p) {
   return out.join("\n");
 }
 
-function _csvField(v) {
-  var s = String(v == null ? "" : v);
-  if (/[",\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
-  return s;
-}
+// Use shared csv-utils so every CSV producer in gif-captcha gets the
+// same CWE-1236 formula-injection mitigation (=, +, -, @, \t, \r prefix).
+// Previously this module had its own _csvField that only escaped quotes/
+// newlines/commas, so an attacker who controlled action.label or action.owner
+// (e.g. via a custom action catalog or anomaly-derived label) could produce
+// rows that executed formulas when ops pasted them into Excel/Sheets.
+var _csvUtils = require("./csv-utils");
+var _csvField = _csvUtils.csvEscape;
+var _csvRow = _csvUtils.csvRow;
 
 function _formatCsv(p) {
   var rows = [
-    ["rank", "priority", "id", "label", "owner", "eta_minutes",
-     "reversibility", "blast_radius", "predicted_impact", "score"].join(","),
+    _csvRow(["rank", "priority", "id", "label", "owner", "eta_minutes",
+     "reversibility", "blast_radius", "predicted_impact", "score"]),
   ];
   p.actions.forEach(function (a, i) {
-    rows.push([
-      i + 1, a.priority, a.id, _csvField(a.label), a.owner, a.etaMinutes,
+    rows.push(_csvRow([
+      i + 1, a.priority, a.id, a.label, a.owner, a.etaMinutes,
       a.reversibility, a.blastRadius, a.predictedImpact, a.score,
-    ].join(","));
+    ]));
   });
   return rows.join("\n");
 }

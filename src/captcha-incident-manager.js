@@ -539,37 +539,31 @@ function createIncidentManager(opts) {
 
   // CSV formula injection guard (CWE-1236): prefix dangerous leading
   // characters with a single-quote so spreadsheet apps don't execute them.
-  function _csvSafe(val) {
-    var s = String(val == null ? '' : val);
-    var escaped = s.replace(/"/g, '""');
-    if (escaped.length > 0 && '=+-@\t\r'.indexOf(escaped[0]) >= 0) {
-      return '"' + "'" + escaped + '"';
-    }
-    if (s.indexOf(',') >= 0 || s.indexOf('"') >= 0 || s.indexOf('\n') >= 0) {
-      return '"' + escaped + '"';
-    }
-    return s;
-  }
+  // Delegates to the shared csv-utils helper to guarantee identical
+  // CWE-1236 mitigation across every CSV exporter in the codebase.
+  var _csvUtils = require('./csv-utils');
+  var _csvSafe = _csvUtils.csvEscape;
+  var _csvRow = _csvUtils.csvRow;
 
   function exportCSV() {
     var headers = ['id', 'title', 'severity', 'state', 'source', 'responder', 'createdAt', 'acknowledgedAt', 'resolvedAt', 'ttaMs', 'ttrMs', 'resolution'];
-    var rows = [headers.join(',')];
+    var rows = [_csvRow(headers)];
     Object.keys(incidents).forEach(function (k) {
       var inc = incidents[k];
-      rows.push([
-        _csvSafe(inc.id),
-        _csvSafe(inc.title),
-        _csvSafe(inc.severity),
-        _csvSafe(inc.state),
-        _csvSafe(inc.source),
-        _csvSafe(inc.responder || ''),
+      rows.push(_csvRow([
+        inc.id,
+        inc.title,
+        inc.severity,
+        inc.state,
+        inc.source,
+        inc.responder || '',
         inc.createdAt,
         inc.acknowledgedAt || '',
         inc.resolvedAt || '',
         inc.ttaMs != null ? inc.ttaMs : '',
         inc.ttrMs != null ? inc.ttrMs : '',
-        _csvSafe(inc.resolution || '')
-      ].join(','));
+        inc.resolution || ''
+      ]));
     });
     return rows.join('\n');
   }

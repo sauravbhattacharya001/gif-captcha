@@ -9572,6 +9572,7 @@ var createSolvePatternFingerprinter = require("./solve-pattern-fingerprinter").c
 var _webhookModule = require("./webhook-dispatcher");
 var _autopilotModule = require("./challenge-autopilot");
 var _adversarialPlaybookModule = require("./bot-adversarial-playbook");
+var createAttackResponsePlaybook = require("./attack-response-playbook").createAttackResponsePlaybook;
 var WebhookDispatcher = _webhookModule.WebhookDispatcher;
 var gifCaptcha = {
   sanitize: sanitize,
@@ -9654,6 +9655,7 @@ var gifCaptcha = {
   WebhookDispatcher: WebhookDispatcher,
   createChallengeAutopilot: _autopilotModule.createChallengeAutopilot,
   createBotAdversarialPlaybookEngine: _adversarialPlaybookModule.createBotAdversarialPlaybookEngine,
+  createAttackResponsePlaybook: createAttackResponsePlaybook,
 };
 
 // UMD export — works in Node.js, AMD, and browser globals

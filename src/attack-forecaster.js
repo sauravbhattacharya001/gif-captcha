@@ -351,13 +351,30 @@ function createAttackForecaster(options) {
       anomalies: Array.isArray(snap.anomalies) ? snap.anomalies.slice() : [],
       metrics: (snap.metrics && typeof snap.metrics === "object") ? Object.assign({}, snap.metrics) : {},
     };
-    snapshots.push(entry);
+    // Fast path: in normal operation timestamps are monotonically
+    // non-decreasing (nowFn defaults to Date.now()), so we only need
+    // to fix ordering when a caller pushes an older snapshot. This
+    // avoids an O(n log n) sort on every recordSnapshot() call, which
+    // dominated CPU when ingesting high-frequency telemetry.
+    var n = snapshots.length;
+    if (n === 0 || entry.timestamp >= snapshots[n - 1].timestamp) {
+      snapshots.push(entry);
+    } else {
+      // Binary search for the correct insertion index, then splice.
+      // Out-of-order arrivals are expected to be rare, so the splice
+      // cost is acceptable and we keep the invariant cheaply.
+      var lo = 0, hi = n;
+      while (lo < hi) {
+        var mid = (lo + hi) >>> 1;
+        if (snapshots[mid].timestamp <= entry.timestamp) lo = mid + 1;
+        else hi = mid;
+      }
+      snapshots.splice(lo, 0, entry);
+    }
     // Keep newest, drop oldest if over cap.
     if (snapshots.length > maxSnapshots) {
       snapshots.splice(0, snapshots.length - maxSnapshots);
     }
-    // Maintain timestamp order in case caller pushes out of order.
-    snapshots.sort(function (a, b) { return a.timestamp - b.timestamp; });
   }
 
   function _bandForProb(prob) {

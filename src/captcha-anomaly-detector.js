@@ -18,6 +18,81 @@
  * @module captcha-anomaly-detector
  */
 
+/**
+ * A single CAPTCHA telemetry event consumed by the detector.
+ *
+ * @typedef {Object} CaptchaEvent
+ * @property {string}  [type="solve"]    Event class, e.g. `"solve"`, `"issue"`, `"abandon"`.
+ * @property {number}  [duration]        Response time in milliseconds. Required for response-time anomalies.
+ * @property {boolean} [success=true]    Whether the user solved the challenge. Defaults to `true`.
+ * @property {string}  [country="unknown"] ISO-3166 alpha-2 country code (or any stable label).
+ * @property {string}  [ip]              Optional client IP for downstream auditing (not used in scoring).
+ * @property {string}  [sessionId]       Optional session id (not used in scoring).
+ * @property {number}  [timestamp=Date.now()] Event time in epoch milliseconds.
+ */
+
+/**
+ * A flagged anomaly returned from {@link analyze}.
+ *
+ * Fields after `severity` vary by `method`:
+ *   - `z-score`   → `value`, `zScore`, `mean`, `stddev`
+ *   - `iqr`       → `value`, `q1`, `q3`, `iqr`, `fence` (`"lower"|"upper"`)
+ *   - `burst`     → `count`, `windowMs` (traffic) or `failures`, `total`, `failureRate` (failure)
+ *   - `geo_shift` → `country`, `previousPct`, `currentPct`, `shiftPct`
+ *   - `changepoint` → `currentRate`, `baselineRate`, `zScore`, `direction`
+ *
+ * @typedef {Object} Anomaly
+ * @property {("z-score"|"iqr"|"burst"|"geo_shift"|"changepoint")} method
+ * @property {string} metric  Logical metric name (e.g. `"response_time"`, `"traffic_burst"`).
+ * @property {("warning"|"critical")} severity
+ */
+
+/**
+ * Aggregated metrics snapshot returned alongside anomalies.
+ *
+ * @typedef {Object} AnomalyMetrics
+ * @property {number} totalEvents         Events inside the analysis window.
+ * @property {number} [solveRate]         Success ratio in window, 0..1, rounded to 3dp.
+ * @property {number} [avgDuration]       Mean response time (ms), rounded to 2dp.
+ * @property {number} [medianDuration]    Median response time (ms), rounded to 2dp.
+ * @property {number} [p95Duration]       95th percentile response time (ms).
+ * @property {number} [p99Duration]       99th percentile response time (ms).
+ * @property {number} [stddevDuration]    Std-dev of response time (ms).
+ * @property {?number} [emaSolveRate]     EMA of solve rate (null until first analyze).
+ * @property {?number} [emaAvgDuration]   EMA of average response time (null initially).
+ * @property {?number} [emaTrafficRate]   EMA of window traffic count (null initially).
+ * @property {Array<{country:string,count:number,pct:number}>} [countryBreakdown] Top countries (≤10), `pct` is percentage of window.
+ */
+
+/**
+ * Output of {@link analyze}.
+ *
+ * @typedef {Object} AnalysisResult
+ * @property {Anomaly[]} anomalies        Deduplicated anomalies (one per `method+metric`).
+ * @property {AnomalyMetrics} metrics     Aggregate metrics for the window.
+ * @property {boolean} healthy            `true` when `anomalies.length === 0`.
+ * @property {boolean} [hasCritical]      `true` if any anomaly has severity `"critical"`.
+ * @property {number}  analyzedAt         Epoch ms the analysis ran at.
+ * @property {number}  windowMs           Analysis window length (ms).
+ * @property {string}  sensitivity        Preset name used (`"low"|"medium"|"high"`) or `"medium"` fallback.
+ */
+
+/**
+ * Options accepted by {@link createAnomalyDetector}. All fields are optional;
+ * unspecified fields fall back to the chosen `sensitivity` preset.
+ *
+ * @typedef {Object} AnomalyDetectorOptions
+ * @property {("low"|"medium"|"high")} [sensitivity="medium"] Preset bundle of thresholds.
+ * @property {number} [zThreshold]      Absolute z-score above which a value is flagged.
+ * @property {number} [iqrMultiplier]   Multiplier applied to IQR when building Tukey fences.
+ * @property {number} [emaAlpha]        EMA smoothing factor (0..1). Larger = more reactive.
+ * @property {number} [minSamples]      Minimum samples in window before a detector runs.
+ * @property {number} [burstWindow]     Burst-detection window length (ms).
+ * @property {number} [burstThreshold]  Event count in `burstWindow` that triggers a burst alert.
+ * @property {number} [maxEvents=10000] Hard cap on retained events (oldest are dropped first).
+ * @property {number} [windowMs=3600000] Analysis window length (ms), default 1 hour.
+ */
+
 "use strict";
 
 // ── Shared statistics helpers (deduplicated — issue #91) ────────────
@@ -38,6 +113,26 @@ var SENSITIVITY_PRESETS = {
 
 // ── Core factory ────────────────────────────────────────────────────
 
+/**
+ * Create a new CAPTCHA anomaly detector.
+ *
+ * Internally maintains a rolling buffer of recent events, a country
+ * histogram, per-minute traffic buckets, EMA state for solve rate /
+ * average duration / traffic rate, and a bounded alert history.
+ *
+ * The returned object is stateful — call {@link reset} to clear it.
+ *
+ * @param {AnomalyDetectorOptions} [options]
+ * @returns {{
+ *   recordEvent: (evt: CaptchaEvent) => void,
+ *   recordEvents: (evts: CaptchaEvent[]) => void,
+ *   analyze: (opts?: { timestamp?: number }) => AnalysisResult,
+ *   getAlertHistory: (limit?: number) => Array<{timestamp:number,count:number,critical:boolean,anomalies:Anomaly[]}>,
+ *   getEmaSnapshot: () => {solveRate:?number,avgDuration:?number,trafficRate:?number},
+ *   getStats: () => Object,
+ *   reset: () => void
+ * }}
+ */
 function createAnomalyDetector(options) {
   options = options || {};
 
@@ -66,6 +161,16 @@ function createAnomalyDetector(options) {
   var alertHistory = [];
 
   // ── Record an event ─────────────────────────────────────────────
+  /**
+   * Record a single CAPTCHA event into the rolling buffer.
+   *
+   * Non-object / falsy inputs are silently ignored so callers can pipe
+   * untrusted data through without try/catch. `timestamp` defaults to
+   * `Date.now()` and the buffer is trimmed to `maxEvents` after insert.
+   *
+   * @param {CaptchaEvent} evt
+   * @returns {void}
+   */
   function recordEvent(evt) {
     if (!evt || typeof evt !== "object") return;
     var ts = evt.timestamp || Date.now();
@@ -96,6 +201,12 @@ function createAnomalyDetector(options) {
   }
 
   // ── Batch record ────────────────────────────────────────────────
+  /**
+   * Record a batch of events. Non-array inputs are ignored.
+   *
+   * @param {CaptchaEvent[]} evtArray
+   * @returns {void}
+   */
   function recordEvents(evtArray) {
     if (!Array.isArray(evtArray)) return;
     for (var i = 0; i < evtArray.length; i++) {
@@ -106,6 +217,11 @@ function createAnomalyDetector(options) {
   // ── Filter events to analysis window ────────────────────────────
   // Events are appended in chronological order, so we use binary search
   // to find the cutoff index in O(log n) instead of scanning all events.
+  /**
+   * @private
+   * @param {number} now Reference time (epoch ms).
+   * @returns {CaptchaEvent[]} Events with `timestamp >= now - windowMs`.
+   */
   function _windowEvents(now) {
     var cutoff = now - windowMs;
     // Binary search for the first event >= cutoff
@@ -127,6 +243,14 @@ function createAnomalyDetector(options) {
   //
   // Accepts optional pre-computed mean/stddev to avoid redundant
   // O(n) passes when the caller already has them (e.g. analyze()).
+  /**
+   * @private
+   * @param {number[]} values
+   * @param {string}  label  Metric label used in the returned anomaly.
+   * @param {number}  [precomputedMean]
+   * @param {number}  [precomputedSd]
+   * @returns {Anomaly[]} Either an empty array or a single most-extreme outlier.
+   */
   function _zScoreCheck(values, label, precomputedMean, precomputedSd) {
     if (values.length < minSamples) return [];
     var avg = precomputedMean !== undefined ? precomputedMean : _mean(values);
@@ -164,6 +288,13 @@ function createAnomalyDetector(options) {
   //
   // Accepts an optional pre-sorted array to skip the O(n log n) sort
   // when the caller already has one (e.g. analyze()).
+  /**
+   * @private
+   * @param {number[]} values
+   * @param {string}   label
+   * @param {number[]} [preSorted] Optional ascending-sorted copy of `values`.
+   * @returns {Anomaly[]} Either an empty array or a single most-extreme outlier.
+   */
   function _iqrCheck(values, label, preSorted) {
     if (values.length < minSamples) return [];
     var sorted = preSorted || _sortedCopy(values);
@@ -212,6 +343,15 @@ function createAnomalyDetector(options) {
   }
 
   // ── EMA tracking ────────────────────────────────────────────────
+  /**
+   * @private
+   * Update one of the tracked EMA channels. First update seeds the EMA with
+   * `newValue` directly so the running value is well-defined immediately.
+   *
+   * @param {("solveRate"|"avgDuration"|"trafficRate")} key
+   * @param {number} newValue
+   * @returns {number} The updated EMA value.
+   */
   function _updateEma(key, newValue) {
     if (emaValues[key] === null) {
       emaValues[key] = newValue;
@@ -224,6 +364,14 @@ function createAnomalyDetector(options) {
   // ── Burst detection ─────────────────────────────────────────────
   // Uses binary search to find the burst window start since windowEvents
   // are sorted chronologically from _windowEvents — O(log n) vs O(n).
+  /**
+   * @private
+   * Detect short-term spikes in either total traffic or failures.
+   *
+   * @param {CaptchaEvent[]} windowEvents Chronologically sorted window slice.
+   * @param {number} now Reference time (epoch ms).
+   * @returns {Anomaly[]} Zero, one, or two anomalies (`traffic_burst`, `failure_burst`).
+   */
   function _detectBursts(windowEvents, now) {
     var recentCutoff = now - burstWindow;
     // Binary search for first event at or after recentCutoff
@@ -263,6 +411,14 @@ function createAnomalyDetector(options) {
   }
 
   // ── Geo distribution shift ──────────────────────────────────────
+  /**
+   * @private
+   * Split the window in half and emit one anomaly per country whose share
+   * shifted by more than 30 percentage points between the two halves.
+   *
+   * @param {CaptchaEvent[]} windowEvents
+   * @returns {Anomaly[]}
+   */
   function _detectGeoShift(windowEvents) {
     if (windowEvents.length < minSamples) return [];
 
@@ -312,6 +468,14 @@ function createAnomalyDetector(options) {
   }
 
   // ── Solve rate changepoint ──────────────────────────────────────
+  /**
+   * @private
+   * Chunk the window into ≥5 buckets and z-test the latest bucket's solve
+   * rate against the historical mean of all buckets.
+   *
+   * @param {CaptchaEvent[]} windowEvents
+   * @returns {Anomaly[]}
+   */
   function _detectSolveRateChange(windowEvents) {
     if (windowEvents.length < minSamples) return [];
 
@@ -351,6 +515,16 @@ function createAnomalyDetector(options) {
   }
 
   // ── Main analysis ───────────────────────────────────────────────
+  /**
+   * Run every detector over the current analysis window and return the
+   * deduplicated anomaly set plus an aggregate metrics snapshot.
+   *
+   * Side effects: updates EMAs and (if any anomalies fire) appends an
+   * entry to the bounded alert history.
+   *
+   * @param {{timestamp?: number}} [opts] Override the reference time (epoch ms).
+   * @returns {AnalysisResult}
+   */
   function analyze(opts) {
     opts = opts || {};
     var now = opts.timestamp || Date.now();
@@ -460,6 +634,12 @@ function createAnomalyDetector(options) {
   }
 
   // ── Top countries helper ────────────────────────────────────────
+  /**
+   * @private
+   * @param {CaptchaEvent[]} evts
+   * @param {number} n  Max number of entries to return.
+   * @returns {Array<{country:string,count:number,pct:number}>}
+   */
   function _topCountries(evts, n) {
     var counts = {};
     for (var i = 0; i < evts.length; i++) {
@@ -475,12 +655,25 @@ function createAnomalyDetector(options) {
   }
 
   // ── Get alert history ───────────────────────────────────────────
+  /**
+   * Return the most recent alert entries (oldest first). The history is
+   * capped at 100 entries internally.
+   *
+   * @param {number} [limit=20]
+   * @returns {Array<{timestamp:number,count:number,critical:boolean,anomalies:Anomaly[]}>}
+   */
   function getAlertHistory(limit) {
     limit = limit || 20;
     return alertHistory.slice(-limit);
   }
 
   // ── Get current EMA values ──────────────────────────────────────
+  /**
+   * Snapshot of the current EMA values. Any field is `null` until the
+   * corresponding metric has been observed at least once.
+   *
+   * @returns {{solveRate:?number,avgDuration:?number,trafficRate:?number}}
+   */
   function getEmaSnapshot() {
     return {
       solveRate: emaValues.solveRate,
@@ -490,6 +683,12 @@ function createAnomalyDetector(options) {
   }
 
   // ── Reset state ─────────────────────────────────────────────────
+  /**
+   * Clear every internal buffer (events, EMAs, country histogram, traffic
+   * buckets, alert history). Configuration is preserved.
+   *
+   * @returns {void}
+   */
   function reset() {
     events = [];
     emaValues = { solveRate: null, avgDuration: null, trafficRate: null };
@@ -500,6 +699,23 @@ function createAnomalyDetector(options) {
   }
 
   // ── Stats summary ───────────────────────────────────────────────
+  /**
+   * Lightweight introspection helper: returns counters and the effective
+   * configuration. Useful for dashboards/log lines.
+   *
+   * @returns {{
+   *   totalEventsRecorded: number,
+   *   currentBufferSize: number,
+   *   maxEvents: number,
+   *   alertsRaised: number,
+   *   sensitivity: string,
+   *   config: {
+   *     zThreshold:number, iqrMultiplier:number, emaAlpha:number,
+   *     minSamples:number, burstWindow:number, burstThreshold:number,
+   *     windowMs:number
+   *   }
+   * }}
+   */
   function getStats() {
     return {
       totalEventsRecorded: totalEvents,

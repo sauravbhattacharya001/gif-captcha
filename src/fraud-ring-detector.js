@@ -4,6 +4,7 @@ var _shared = require('./shared-utils');
 var _now = _shared._now;
 var _cosineSimilarity = _shared._cosineSimilarity;
 var _decayFactor = _shared._decayFactor;
+var _isSafeKey = _shared._isSafeKey;
 
 /**
  * createFraudRingDetector — detects coordinated CAPTCHA-solving rings by
@@ -616,14 +617,7 @@ function createFraudRingDetector(options) {
   /**
    * Import previously exported data.
    */
-  /**
-   * Reject keys that could cause prototype pollution (CWE-1321).
-   * @param {string} key
-   * @returns {boolean} true if safe
-   */
-  function _isSafeKey(key) {
-    return key !== '__proto__' && key !== 'constructor' && key !== 'prototype';
-  }
+  // _isSafeKey is imported from shared-utils above (CWE-1321 guard).
 
   function importData(data) {
     if (!data || typeof data !== 'object') {

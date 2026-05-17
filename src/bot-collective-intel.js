@@ -34,6 +34,8 @@ var _posOpt = _shared._posOpt;
 var _nnOpt = _shared._nnOpt;
 var _cosineSimilarity = _shared._cosineSimilarity;
 var _linearRegression = _shared._linearRegression;
+var _isSafeKey = _shared._isSafeKey;
+var _safeCloneDict = _shared._safeCloneDict;
 
 // ── Constants ───────────────────────────────────────────────────────
 
@@ -911,33 +913,9 @@ function createBotCollectiveIntelDetector(options) {
    * @param {object} state
    * @returns {boolean}
    */
-  /**
-   * Detect dangerous keys that could cause prototype pollution (CWE-1321).
-   * @param {string} key
-   * @returns {boolean}
-   */
-  function _isSafeKey(key) {
-    return key !== '__proto__' && key !== 'constructor' && key !== 'prototype';
-  }
-
-  /**
-   * Deep-clone a dict into a null-prototype object, skipping dangerous
-   * keys.  Prevents prototype-chain poisoning (CWE-1321) and
-   * object-reference leakage (CWE-915) — the caller cannot mutate
-   * internal state after import because all values are JSON-round-tripped.
-   * @param {Object} src
-   * @returns {Object}
-   */
-  function _safeCloneDict(src) {
-    var out = Object.create(null);
-    if (!src || typeof src !== 'object' || Array.isArray(src)) return out;
-    var keys = Object.keys(src);
-    for (var i = 0; i < keys.length; i++) {
-      if (!_isSafeKey(keys[i])) continue;
-      out[keys[i]] = JSON.parse(JSON.stringify(src[keys[i]]));
-    }
-    return out;
-  }
+  // _isSafeKey / _safeCloneDict are imported from shared-utils above
+  // (deduplicated; prevents prototype pollution CWE-1321 and reference
+  // leakage CWE-915 via JSON round-tripped clone).
 
   function importState(state) {
     if (!state || state.version !== 1) return false;

@@ -30,6 +30,7 @@ var _posOpt = _shared._posOpt;
 var _nnOpt = _shared._nnOpt;
 var _mean = _shared._mean;
 var LruTracker = _shared.LruTracker;
+var _decayFactor = _shared._decayFactor;
 
 // ── Constants ───────────────────────────────────────────────────────
 
@@ -63,11 +64,7 @@ var DEFAULTS = {
 
 // ── Helper Functions ────────────────────────────────────────────────
 
-
-function _decayFactor(ageMs, halfLifeMs) {
-  if (ageMs <= 0) return 1;
-  return Math.pow(0.5, ageMs / halfLifeMs);
-}
+// _decayFactor is imported from shared-utils above (exponential half-life decay).
 
 function _tierFromScore(score) {
   if (score >= TIER_THRESHOLDS.ACTIVE) return TIERS.ACTIVE;

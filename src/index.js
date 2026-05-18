@@ -37,6 +37,18 @@ var pickChallenges = _shared.pickChallenges;
 var createAttemptTracker = _shared.createAttemptTracker;
 var installRoundRectPolyfill = _shared.installRoundRectPolyfill;
 
+// Node's `crypto` module is required by createProofOfWork(), createTokenVerifier(),
+// and a handful of HMAC helpers further down. The file is also published as the
+// browser entry (see package.json `browser`), so the import is guarded the same
+// way shared-utils.js guards it: best-effort require in Node, `null` in browsers
+// where consumers don't reach into these server-only factories.
+var _crypto = null;
+try {
+  if (typeof require !== "undefined") _crypto = require("crypto");
+} catch (e) {
+  // Not available in this environment (e.g. browser bundle without polyfill).
+}
+
 
 // ── Challenge Set Analyzer ──────────────────────────────────────────
 

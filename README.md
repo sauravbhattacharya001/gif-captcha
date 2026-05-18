@@ -55,7 +55,7 @@ A research case study and full-stack CAPTCHA system exploring GIF-based human ve
 
 This project started as a simple question: *can GPT-4 describe what happens in a GIF?* The answer in 2023 was a resounding **no** — text-only LLMs scored 0/10 on GIF CAPTCHAs requiring narrative comprehension of animated sequences.
 
-What began as a research case study has grown into a **full CAPTCHA platform** with 40+ interactive tools, a Node.js/browser library, bot detection, trust scoring, session management, and a comprehensive security stack.
+What began as a research case study has grown into a **full CAPTCHA platform** with 90+ interactive tools, a Node.js/browser library covering 60+ modules, bot detection, trust scoring, session management, and a comprehensive security stack.
 
 ### Research Timeline
 
@@ -379,7 +379,7 @@ async function captchaPlugin(fastify) {
 
 ## Interactive Platform
 
-The [live site](https://sauravbhattacharya001.github.io/gif-captcha/) hosts **90+ interactive tools** organized into five categories:
+The [live site](https://sauravbhattacharya001.github.io/gif-captcha/) hosts **90+ interactive tools** organized into five categories. A complete index lives at [`directory.html`](https://sauravbhattacharya001.github.io/gif-captcha/directory.html); selected highlights below:
 
 ### 🔬 Research & Analysis
 
@@ -510,18 +510,19 @@ The [live site](https://sauravbhattacharya001.github.io/gif-captcha/) hosts **90
 
 ## Testing
 
-112 test files covering all 55 modules. See [TESTING.md](TESTING.md) for the full guide.
+122 test files covering 60+ modules. See [TESTING.md](TESTING.md) for the full guide.
 
 ```bash
-npm test                # Run all tests
-npm run test:coverage   # Coverage (80% lines, 70% functions, 90% branches)
+npm test                # Run all tests (node:test runner)
+npm run test:coverage   # Coverage with c8 (LCOV + JSON summary)
+npm run coverage:check  # Enforce thresholds: lines 75 / functions 85 / branches 85
 ```
 
 ## Project Structure
 
 ```
 gif-captcha/
-├── src/                 # Core library (55 modules)
+├── src/                 # Core library (60+ modules)
 │   ├── index.js         # Main entry point (UMD)
 │   ├── shared-utils.js  # Shared utilities (LruTracker, clamp, etc.)
 │   ├── crypto-utils.js  # Shared cryptographic random helpers
@@ -529,11 +530,11 @@ gif-captcha/
 │   ├── challenge-*.js   # Challenge lifecycle, genetics, rotation, difficulty
 │   ├── captcha-*.js     # Analytics, health, compliance, rate limiting
 │   └── ...              # Trust scoring, session management, threat intel, etc.
-├── tests/               # 112 test files
+├── tests/               # 122 test files
 ├── docs/                # HTML documentation site
 ├── bin/                 # CLI entry point
 ├── .github/             # CI, CodeQL, Docker, Pages, dependabot, templates
-├── *.html               # 91 interactive tool pages
+├── *.html               # 90+ interactive tool pages
 ├── shared.css           # Dark theme styles
 ├── shared.js            # Browser shared utilities
 ├── Dockerfile           # Production container (nginx-alpine)

@@ -1,3 +1,4 @@
+require("./_expect");
 "use strict";
 
 const { describe, test } = require("node:test");

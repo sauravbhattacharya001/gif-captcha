@@ -1,3 +1,4 @@
+require("./_expect");
 const { describe, test } = require("node:test");
 /**
  * Tests for Bypass Resistance Tester (resistance.html)

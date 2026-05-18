@@ -1,3 +1,4 @@
+require("./_expect");
 const { describe, beforeEach, test } = require("node:test");
 /**
  * solve-funnel-analyzer.test.js — Tests for the CAPTCHA solve funnel analyzer.

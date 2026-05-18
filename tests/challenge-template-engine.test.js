@@ -1,3 +1,4 @@
+require("./_expect");
 "use strict";
 
 const { describe, it, beforeEach } = require("node:test");

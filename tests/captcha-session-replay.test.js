@@ -1,3 +1,4 @@
+require("./_expect");
 const { describe, test } = require("node:test");
 /**
  * Jest tests for captcha-session-replay.js

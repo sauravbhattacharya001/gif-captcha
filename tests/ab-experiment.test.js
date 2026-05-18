@@ -1,3 +1,4 @@
+require("./_expect");
 /**
  * Tests for the A/B Experiment Runner module.
  */

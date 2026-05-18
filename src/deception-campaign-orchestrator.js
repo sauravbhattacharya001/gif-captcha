@@ -861,7 +861,7 @@ DeceptionCampaignOrchestrator.prototype.getSuspectProfile = function (sessionId)
     campaignCount: suspect.campaignVerdicts.length,
     lastVerdict: suspect.lastVerdict,
     overallBotConfidence: Math.round(this._computeOverallConfidence(suspect) * 1000) / 1000,
-    behavioralProfile: JSON.parse(JSON.stringify(suspect.behavioralProfile))
+    behavioralProfile: _deepCopy(suspect.behavioralProfile)
   };
 };
 
@@ -905,7 +905,7 @@ DeceptionCampaignOrchestrator.prototype.getCampaignHistory = function (limit) {
  * @returns {Object}
  */
 DeceptionCampaignOrchestrator.prototype.getStats = function () {
-  var stats = JSON.parse(JSON.stringify(this._stats));
+  var stats = _deepCopy(this._stats);
   stats.activeCampaigns = this._campaignCount;
   stats.trackedSuspects = this._suspectCount;
 
@@ -1004,13 +1004,13 @@ DeceptionCampaignOrchestrator.prototype._countCampaignObs = function (campaign) 
 DeceptionCampaignOrchestrator.prototype.exportState = function () {
   return {
     version: 1,
-    campaigns: JSON.parse(JSON.stringify(this._campaigns)),
+    campaigns: _deepCopy(this._campaigns),
     campaignCount: this._campaignCount,
-    suspects: JSON.parse(JSON.stringify(this._suspects)),
+    suspects: _deepCopy(this._suspects),
     suspectCount: this._suspectCount,
     completed: this._completed.slice(),
-    tacticEffectiveness: JSON.parse(JSON.stringify(this._tacticEffectiveness)),
-    stats: JSON.parse(JSON.stringify(this._stats))
+    tacticEffectiveness: _deepCopy(this._tacticEffectiveness),
+    stats: _deepCopy(this._stats)
   };
 };
 
@@ -1031,9 +1031,33 @@ var _safeCloneDict = _shared._safeCloneDict;
  * @param {*} fallback
  * @returns {*}
  */
+/**
+ * Deep-clone helper used across this module's report / export / import
+ * boundaries. Prefers `structuredClone` (Node ≥17, supported across all
+ * runtimes declared in package.json `engines.node` >= 18) which is typically
+ * 2–5× faster than `JSON.parse(JSON.stringify(...))` for the nested
+ * plain-object payloads here (campaigns, suspects, stats) and also preserves
+ * Dates, Maps, Sets, typed arrays and cyclic references the JSON round-trip
+ * silently corrupts.
+ *
+ * Falls back to the JSON round-trip when:
+ *   - `structuredClone` is unavailable, OR
+ *   - the input contains values that `structuredClone` rejects with a
+ *     DataCloneError (functions, symbols). The JSON fallback silently
+ *     strips those, matching the historical behaviour of this module.
+ */
+var _hasStructuredClone = (typeof structuredClone === 'function');
+function _deepCopy(obj) {
+  if (_hasStructuredClone) {
+    try { return structuredClone(obj); }
+    catch (_e) { /* fall through to JSON fallback for non-cloneable values */ }
+  }
+  return JSON.parse(JSON.stringify(obj));
+}
+
 function _safeClone(val, fallback) {
   if (!val) return fallback;
-  return JSON.parse(JSON.stringify(val));
+  return _deepCopy(val);
 }
 
 DeceptionCampaignOrchestrator.prototype.importState = function (state) {

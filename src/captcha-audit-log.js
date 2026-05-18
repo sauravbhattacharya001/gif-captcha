@@ -325,7 +325,15 @@ function createAuditLog(options = {}) {
    * @returns {number} Number of entries imported
    */
   function importJSON(jsonStr) {
-    const imported = JSON.parse(jsonStr);
+    // Wrap JSON.parse so malformed input raises a descriptive, typed error
+    // (CWE-754) rather than a raw SyntaxError. Downstream validation
+    // continues to enforce shape and event-type allowlists.
+    let imported;
+    try {
+      imported = JSON.parse(jsonStr);
+    } catch (err) {
+      throw new Error('captcha-audit-log.importJSON: invalid JSON (' + err.message + ')');
+    }
     if (!Array.isArray(imported)) throw new Error('Expected JSON array');
     let count = 0;
     for (const item of imported) {

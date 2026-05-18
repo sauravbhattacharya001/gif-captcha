@@ -525,16 +525,48 @@ function createIncidentManager(opts) {
     return JSON.stringify(Object.keys(incidents).map(function (k) { return incidents[k]; }), null, 2);
   }
 
+  // Hardened importJSON:
+  //  * Wraps JSON.parse so a malformed payload yields a typed, descriptive
+  //    error (CWE-754) instead of leaking a raw SyntaxError that callers
+  //    rarely handle correctly.
+  //  * Deep-clones each accepted incident before storing it, so the caller
+  //    cannot retain a live reference into internal state and mutate it
+  //    post-import (CWE-915 / object-reference leakage).
+  //  * Validates incident shape (object, non-empty string id, safe key) and
+  //    silently skips anything malformed instead of poisoning the store.
   function importJSON(json) {
-    var data = typeof json === 'string' ? JSON.parse(json) : json;
-    if (!Array.isArray(data)) throw new Error('Expected array of incidents');
-    data.forEach(function (inc) {
-      if (inc.id && typeof inc.id === 'string' &&
-          inc.id !== '__proto__' && inc.id !== 'constructor' && inc.id !== 'prototype') {
-        incidents[inc.id] = inc;
+    var data;
+    if (typeof json === 'string') {
+      try {
+        data = JSON.parse(json);
+      } catch (err) {
+        throw new Error('captcha-incident-manager.importJSON: invalid JSON (' + err.message + ')');
       }
-    });
-    return data.length;
+    } else {
+      data = json;
+    }
+    if (!Array.isArray(data)) throw new Error('Expected array of incidents');
+    var imported = 0;
+    for (var i = 0; i < data.length; i++) {
+      var inc = data[i];
+      if (!inc || typeof inc !== 'object') continue;
+      if (!inc.id || typeof inc.id !== 'string') continue;
+      if (inc.id === '__proto__' || inc.id === 'constructor' || inc.id === 'prototype') continue;
+      // Deep-clone to sever the caller's reference. structuredClone is
+      // available on every supported runtime (engines.node >= 18); the
+      // JSON fallback preserves the historical behaviour for non-cloneable
+      // payloads (functions/symbols are stripped, matching past semantics).
+      var cloned;
+      if (typeof structuredClone === 'function') {
+        try { cloned = structuredClone(inc); }
+        catch (_e) { cloned = JSON.parse(JSON.stringify(inc)); }
+      } else {
+        cloned = JSON.parse(JSON.stringify(inc));
+      }
+      incidents[inc.id] = cloned;
+      imported++;
+    }
+    return imported;
   }
 
   // CSV formula injection guard (CWE-1236): prefix dangerous leading

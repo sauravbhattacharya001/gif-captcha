@@ -599,7 +599,15 @@ function createSessionReplay(options) {
    * @returns {number} Number of sessions imported
    */
   function importJSON(jsonStr) {
-    const data = JSON.parse(jsonStr);
+    // Wrap JSON.parse so a malformed payload yields a descriptive, typed
+    // error (CWE-754) instead of leaking a raw SyntaxError. The downstream
+    // loop continues to validate per-session shape.
+    let data;
+    try {
+      data = JSON.parse(jsonStr);
+    } catch (err) {
+      throw new Error('captcha-session-replay.importJSON: invalid JSON (' + err.message + ')');
+    }
     if (!data || !Array.isArray(data.sessions))
       throw new Error("Invalid import format");
     let count = 0;

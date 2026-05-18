@@ -369,7 +369,18 @@ function createExportFormatter(opts = {}) {
   }
 
   function importJSON(str) {
-    const parsed = typeof str === 'string' ? JSON.parse(str) : str;
+    // Wrap JSON.parse so malformed input raises a descriptive, typed error
+    // (CWE-754) instead of a raw SyntaxError that callers rarely handle.
+    let parsed;
+    if (typeof str === 'string') {
+      try {
+        parsed = JSON.parse(str);
+      } catch (err) {
+        throw new Error('captcha-export-formatter.importJSON: invalid JSON (' + err.message + ')');
+      }
+    } else {
+      parsed = str;
+    }
     if (!parsed || !Array.isArray(parsed.trials)) throw new Error('Invalid export JSON: missing trials array');
     addTrials(parsed.trials);
     return parsed.trials.length;

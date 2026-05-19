@@ -4832,6 +4832,19 @@ function createClientFingerprinter(options) {
     }
   }
 
+  // Precompute parallel arrays of keys/weights and the total weight so
+  // computeSimilarity() can run a tight indexed loop instead of for..in +
+  // hasOwnProperty + per-call accumulation on every call. signalWeights is
+  // immutable after construction, so this is safe.
+  var _weightKeys = Object.keys(signalWeights);
+  var _weightVals = new Array(_weightKeys.length);
+  var _totalWeight = 0;
+  for (var _wi = 0; _wi < _weightKeys.length; _wi++) {
+    var _wv = signalWeights[_weightKeys[_wi]];
+    _weightVals[_wi] = _wv;
+    _totalWeight += _wv;
+  }
+
   // Storage: fingerprint hash -> { signals, firstSeen, lastSeen, visits, ipSet, meta }
   var store = Object.create(null);
   var storeOrder = new LruTracker(); // O(1) LRU tracking
@@ -4909,17 +4922,20 @@ function createClientFingerprinter(options) {
    * @returns {number} Similarity score
    */
   function computeSimilarity(a, b) {
+    if (_totalWeight === 0) return 0;
     var score = 0;
-    var totalWeight = 0;
-    for (var key in signalWeights) {
-      if (!Object.prototype.hasOwnProperty.call(signalWeights, key)) continue;
-      var w = signalWeights[key];
-      totalWeight += w;
-      if (a[key] === b[key] && a[key] !== "" && a[key] !== "0" && a[key] !== "0x0") {
-        score += w;
+    var keys = _weightKeys;
+    var vals = _weightVals;
+    var n = keys.length;
+    for (var i = 0; i < n; i++) {
+      var key = keys[i];
+      var av = a[key];
+      // Match the original semantics: equal AND not an "empty/default" string.
+      if (av === b[key] && av !== "" && av !== "0" && av !== "0x0") {
+        score += vals[i];
       }
     }
-    return totalWeight > 0 ? score / totalWeight : 0;
+    return score / _totalWeight;
   }
 
   /**

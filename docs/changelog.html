@@ -1,0 +1,904 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="GIF CAPTCHA release notes and version history.">
+    <title>Changelog - GIF CAPTCHA</title>
+    <link rel="stylesheet" href="../shared.css">
+    <style>
+        body { padding: 2rem; max-width: 960px; margin: 0 auto; }
+        h1 { font-size: 2rem; margin-bottom: 0.3rem; }
+        .subtitle { color: var(--muted); font-size: 1rem; margin-bottom: 1.5rem; }
+        .nav { display: flex; gap: 1.5rem; margin-bottom: 2rem; flex-wrap: wrap; }
+        .nav a { color: var(--accent); text-decoration: none; font-size: 0.9rem; }
+        .nav a:hover { text-decoration: underline; }
+
+        .toc { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.5rem; margin: 1.5rem 0 2.5rem; }
+        .toc h3 { margin: 0 0 0.6rem; font-size: 1rem; }
+        .toc ul { margin: 0; padding-left: 0; list-style: none; }
+        .toc li { margin: 0.25rem 0; font-size: 0.9rem; display: flex; gap: 0.6rem; align-items: baseline; flex-wrap: wrap; }
+        .toc a { color: var(--accent); text-decoration: none; white-space: nowrap; }
+        .toc a:hover { text-decoration: underline; }
+        .toc .toc-summary { color: var(--muted); font-size: 0.85rem; }
+        .muted { color: var(--muted); }
+
+        .release { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.2rem 1.4rem; margin: 1.2rem 0; scroll-margin-top: 1rem; }
+        .release-latest { border-color: var(--accent); }
+        .release-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.6rem; }
+        .release-title { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+        .release-title h3 { margin: 0; font-size: 1.1rem; color: var(--text); }
+        .release-meta { display: flex; gap: 0.8rem; align-items: center; font-size: 0.85rem; color: var(--muted); flex-wrap: wrap; }
+        .release-meta code { background: var(--bg, #0d1117); padding: 0.15rem 0.4rem; border-radius: 3px; font-size: 0.85em; color: var(--accent); }
+        .release-meta .external { color: var(--accent); text-decoration: none; }
+        .release-meta .external:hover { text-decoration: underline; }
+
+        .badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 3px; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+        .badge-latest { background: #1a3a2a; color: #4ade80; }
+
+        .release-body h4 { font-size: 0.95rem; margin: 1rem 0 0.3rem; color: var(--text); }
+        .release-body p, .release-body li { color: var(--muted); line-height: 1.55; font-size: 0.92rem; }
+        .release-body ul { margin: 0.3rem 0 0.6rem 1.2rem; padding: 0; }
+        .release-body code { background: var(--bg, #0d1117); padding: 0.1rem 0.35rem; border-radius: 3px; font-size: 0.88em; color: var(--accent); }
+        .release-body a { color: var(--accent); }
+
+        .footer-note { color: var(--muted); font-size: 0.85rem; margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+    </style>
+</head>
+<body>
+    <div class="nav">
+        <a href="../index.html">Case Study</a>
+        <a href="../demo.html">Demo</a>
+        <a href="../analysis.html">Analysis</a>
+        <a href="../generator.html">Workshop</a>
+        <a href="getting-started.html">Getting Started</a>
+        <a href="index.html">API Reference</a>
+        <a href="architecture.html">Architecture</a>
+        <a href="security-guide.html">Security Guide</a>
+        <a href="module-reference.html">Module Reference</a>
+        <a href="testing-guide.html">Testing Guide</a>
+        <a href="deployment-guide.html">Deployment Guide</a>
+        <a href="advanced-intelligence.html">Advanced Intelligence</a>
+        <a href="changelog.html"><strong>Changelog</strong></a>
+    </div>
+
+    <h1>Changelog</h1>
+    <p class="subtitle">All notable changes to <code>gif-captcha</code>. 31 releases, latest <code>v1.25.0</code> (2026-04-30).</p>
+
+    <div class="toc">
+        <h3>Releases</h3>
+        <ul>
+<li><a href="#v1.25.0"><code>v1.25.0</code> <span class="muted">2026-04-30</span></a> <span class="toc-summary">What's New</span></li>
+<li><a href="#v1.24.0"><code>v1.24.0</code> <span class="muted">2026-04-30</span></a> <span class="toc-summary">What's New</span></li>
+<li><a href="#v1.23.0"><code>v1.23.0</code> <span class="muted">2026-04-29</span></a> <span class="toc-summary">What's New</span></li>
+<li><a href="#v1.22.0"><code>v1.22.0</code> <span class="muted">2026-04-29</span></a> <span class="toc-summary">What's New</span></li>
+<li><a href="#v1.21.0"><code>v1.21.0</code> <span class="muted">2026-04-29</span></a> <span class="toc-summary">What's New</span></li>
+<li><a href="#v1.20.0"><code>v1.20.0</code> <span class="muted">2026-04-25</span></a> <span class="toc-summary">What's New</span></li>
+<li><a href="#v1.19.0"><code>v1.19.0</code> <span class="muted">2026-04-25</span></a> <span class="toc-summary">What's New</span></li>
+<li><a href="#v1.18.0"><code>v1.18.0</code> <span class="muted">2026-04-24</span></a> <span class="toc-summary">What's New</span></li>
+<li><a href="#v1.17.0"><code>v1.17.0</code> <span class="muted">2026-04-24</span></a> <span class="toc-summary">What's New</span></li>
+<li><a href="#v1.16.0"><code>v1.16.0</code> <span class="muted">2026-04-24</span></a> <span class="toc-summary">What's New</span></li>
+<li><a href="#v1.15.1"><code>v1.15.1</code> <span class="muted">2026-04-24</span></a> <span class="toc-summary">What's Changed</span></li>
+<li><a href="#v1.15.0"><code>v1.15.0</code> <span class="muted">2026-04-23</span></a> <span class="toc-summary">What's New</span></li>
+<li><a href="#v1.14.1"><code>v1.14.1</code> <span class="muted">2026-04-23</span></a> <span class="toc-summary">What's Changed</span></li>
+<li><a href="#v1.14.0"><code>v1.14.0</code> <span class="muted">2026-04-22</span></a> <span class="toc-summary">What's New</span></li>
+<li><a href="#v1.13.0"><code>v1.13.0</code> <span class="muted">2026-04-22</span></a> <span class="toc-summary">What's New</span></li>
+<li><a href="#v1.12.0"><code>v1.12.0</code> <span class="muted">2026-04-21</span></a> <span class="toc-summary">What's New</span></li>
+<li><a href="#v1.11.0"><code>v1.11.0</code> <span class="muted">2026-04-21</span></a> <span class="toc-summary">What's New</span></li>
+<li><a href="#v1.10.0"><code>v1.10.0</code> <span class="muted">2026-04-21</span></a> <span class="toc-summary">What's Changed</span></li>
+<li><a href="#v1.9.0"><code>v1.9.0</code> <span class="muted">2026-04-20</span></a> <span class="toc-summary">What's Changed</span></li>
+<li><a href="#v1.8.2"><code>v1.8.2</code> <span class="muted">2026-04-17</span></a> <span class="toc-summary">What's Changed</span></li>
+<li><a href="#v1.8.1"><code>v1.8.1</code> <span class="muted">2026-04-17</span></a> <span class="toc-summary">What's Changed</span></li>
+<li><a href="#v1.8.0"><code>v1.8.0</code> <span class="muted">2026-04-16</span></a> <span class="toc-summary">What's Changed</span></li>
+<li><a href="#v1.7.0"><code>v1.7.0</code> <span class="muted">2026-04-05</span></a> <span class="toc-summary">What's New in v1.7.0</span></li>
+<li><a href="#v1.6.1"><code>v1.6.1</code> <span class="muted">2026-03-25</span></a> <span class="toc-summary">What's Changed</span></li>
+<li><a href="#v1.6.0"><code>v1.6.0</code> <span class="muted">2026-03-23</span></a> <span class="toc-summary">What's New</span></li>
+<li><a href="#v1.5.0"><code>v1.5.0</code> <span class="muted">2026-03-20</span></a> <span class="toc-summary">What's New in v1.5.0</span></li>
+<li><a href="#v1.4.0"><code>v1.4.0</code> <span class="muted">2026-03-18</span></a> <span class="toc-summary">What's New in v1.4.0</span></li>
+<li><a href="#v1.3.0"><code>v1.3.0</code> <span class="muted">2026-03-07</span></a> <span class="toc-summary">GIF CAPTCHA v1.3.0</span></li>
+<li><a href="#v1.2.0"><code>v1.2.0</code> <span class="muted">2026-03-01</span></a> <span class="toc-summary">What's New in v1.2.0</span></li>
+<li><a href="#v1.1.0"><code>v1.1.0</code> <span class="muted">2026-02-25</span></a> <span class="toc-summary">What's New in v1.1.0</span></li>
+<li><a href="#v1.0.0"><code>v1.0.0</code> <span class="muted">2026-02-14</span></a> <span class="toc-summary">What's Included</span></li>
+        </ul>
+    </div>
+
+
+    <article class="release release-latest" id="v1.25.0">
+      <header class="release-head">
+        <div class="release-title">
+          <h3>v1.25.0 — Replay Detector Memory Hardening</h3>
+          <span class="badge badge-latest">latest</span>
+        </div>
+        <div class="release-meta">
+          <span class="tag"><code>v1.25.0</code></span>
+          <span class="date">2026-04-30</span>
+          <a href="https://github.com/sauravbhattacharya001/gif-captcha/releases/tag/v1.25.0" target="_blank" rel="noopener" class="external">View on GitHub →</a>
+        </div>
+      </header>
+      <div class="release-body">
+        <h4>What's New</h4>
+<h4>Security Fixes</h4>
+<ul><li><strong>CaptchaReplayDetector: Bounded per-session memory growth (CWE-400)</strong></li><li>\session.solves\, \session.flags\, and \session.threatScores\ arrays previously grew without limit when an attacker sent repeated solve attempts against a single session ID</li><li>Added \MAX_SESSION_SOLVES\ (200) cap — per-session arrays are now FIFO-trimmed after each \ecordSolve()\ call</li><li>Added session eviction in \_prune()\: when \_sessions\ exceeds \maxTokens\, oldest-by-last-solve sessions are evicted</li><li>Prevents memory exhaustion in high-volume replay attack scenarios</li></ul>
+<h4>Testing</h4>
+<ul><li>All 12 existing CaptchaReplayDetector tests pass</li><li>All 121 shared test suite tests pass</li></ul>
+<p>---</p>
+<p><strong>Full Changelog</strong>: https://github.com/sauravbhattacharya001/gif-captcha/compare/v1.24.0...v1.25.0</p>
+      </div>
+    </article>
+
+    <article class="release" id="v1.24.0">
+      <header class="release-head">
+        <div class="release-title">
+          <h3>v1.24.0 — Bot Capability Profiler, Collective Intelligence Detector &amp; Performance Optimizations</h3>
+          
+        </div>
+        <div class="release-meta">
+          <span class="tag"><code>v1.24.0</code></span>
+          <span class="date">2026-04-30</span>
+          <a href="https://github.com/sauravbhattacharya001/gif-captcha/releases/tag/v1.24.0" target="_blank" rel="noopener" class="external">View on GitHub →</a>
+        </div>
+      </header>
+      <div class="release-body">
+        <h4>What's New</h4>
+<h4>Bot Capability Profiler</h4>
+<p>Autonomous bot sophistication analysis engine that profiles detected bots by their capabilities, techniques, and evasion strategies.</p>
+<h4>Bot Collective Intelligence Detector</h4>
+<p>Swarm detection engine that identifies coordinated bot clusters operating as a collective intelligence — detecting shared behavior vectors, temporal overlap, and emergent swarm patterns.</p>
+<h4>Performance Improvements</h4>
+<ul><li><strong>threat-intel-fusion:</strong> Binary-search prune + lazy pruning + O(1) sustained-pressure detection</li><li><strong>bot-collective-intel:</strong> Cached behavior vectors + time-overlap skip + early-exit in swarm detection</li><li><strong>defense-posture-optimizer:</strong> O(n) min/max + incremental Pareto frontier</li></ul>
+<h4>Bug Fixes</h4>
+<ul><li><strong>coverage:</strong> Instrument source files instead of test files, calibrate thresholds</li></ul>
+<h4>Tests</h4>
+<ul><li>17 advanced tests for bot collective intelligence swarm detection</li></ul>
+<p>---</p>
+<p><strong>Full Changelog:</strong> https://github.com/sauravbhattacharya001/gif-captcha/compare/v1.23.0...v1.24.0</p>
+      </div>
+    </article>
+
+    <article class="release" id="v1.23.0">
+      <header class="release-head">
+        <div class="release-title">
+          <h3>v1.23.0 — Defense Posture Optimizer &amp; JSDoc Documentation</h3>
+          
+        </div>
+        <div class="release-meta">
+          <span class="tag"><code>v1.23.0</code></span>
+          <span class="date">2026-04-29</span>
+          <a href="https://github.com/sauravbhattacharya001/gif-captcha/releases/tag/v1.23.0" target="_blank" rel="noopener" class="external">View on GitHub →</a>
+        </div>
+      </header>
+      <div class="release-body">
+        <h4>What's New</h4>
+<h4>✨ Features</h4>
+<ul><li><strong>Defense Posture Optimizer</strong> — autonomous multi-objective defense configuration optimization module with Pareto frontier analysis, snapshot recording, balanced/aggressive/stealth recommendation strategies, simulation mode, and friction-budget constraints (51 tests)</li></ul>
+<h4>📝 Documentation</h4>
+<ul><li>Added comprehensive JSDoc documentation to 10 undocumented prototype methods in \shared-utils.js\ (LruTracker) and \webhook-dispatcher.js\ (pause/resume/_checkRateLimit)</li></ul>
+<p>---</p>
+<p><strong>Full Changelog:</strong> https://github.com/sauravbhattacharya001/gif-captcha/compare/v1.22.0...v1.23.0</p>
+      </div>
+    </article>
+
+    <article class="release" id="v1.22.0">
+      <header class="release-head">
+        <div class="release-title">
+          <h3>v1.22.0 — Deception Campaign Orchestrator &amp; Shared Utils Refinement</h3>
+          
+        </div>
+        <div class="release-meta">
+          <span class="tag"><code>v1.22.0</code></span>
+          <span class="date">2026-04-29</span>
+          <a href="https://github.com/sauravbhattacharya001/gif-captcha/releases/tag/v1.22.0" target="_blank" rel="noopener" class="external">View on GitHub →</a>
+        </div>
+      </header>
+      <div class="release-body">
+        <h4>What's New</h4>
+<h4>🎭 Deception Campaign Orchestrator</h4>
+<p>Autonomous multi-phase bot detection system that deploys staged deception campaigns to identify and fingerprint sophisticated bots:</p>
+<ul><li>Multi-phase campaign lifecycle (setup → bait → observe → escalate → conclude)</li><li>Configurable deception strategies with adaptive difficulty</li><li>Campaign analytics with detection confidence scoring</li></ul>
+<h4>🔧 Refactoring</h4>
+<ul><li><strong>attack-evolution-tracker:</strong> Deduplicated \_linearRegression\ implementation by delegating to the shared-utils module, reducing code duplication across analytics components</li></ul>
+<h4>Full Changelog</h4>
+<p><strong>b0bca92</strong> refactor(attack-evolution-tracker): deduplicate _linearRegression via shared-utils <strong>e5a1edf</strong> feat: Deception Campaign Orchestrator — autonomous multi-phase bot detection</p>
+      </div>
+    </article>
+
+    <article class="release" id="v1.21.0">
+      <header class="release-head">
+        <div class="release-title">
+          <h3>v1.21.0 — Threat Intelligence Fusion, Challenge Genetics Lab &amp; Attack Evolution Tracker</h3>
+          
+        </div>
+        <div class="release-meta">
+          <span class="tag"><code>v1.21.0</code></span>
+          <span class="date">2026-04-29</span>
+          <a href="https://github.com/sauravbhattacharya001/gif-captcha/releases/tag/v1.21.0" target="_blank" rel="noopener" class="external">View on GitHub →</a>
+        </div>
+      </header>
+      <div class="release-body">
+        <h4>What's New</h4>
+<h4>🔬 New Modules</h4>
+<ul><li><strong>Threat Intelligence Fusion Engine</strong> — autonomous cross-system threat correlation that aggregates signals from multiple detection subsystems</li><li><strong>Challenge Genetics Lab</strong> — evolves CAPTCHA challenges via genetic algorithms (selection, crossover, mutation) for adaptive difficulty</li><li><strong>Attack Evolution Tracker</strong> — monitors bot attack pattern evolution over time, detecting strategy shifts and emerging threats</li><li><strong>Challenge Autopilot</strong> — autonomous challenge lifecycle controller for hands-off CAPTCHA management</li><li><strong>Trust Network Analyzer</strong> — Sybil attack detection with trust propagation graphs</li><li><strong>Response Time Profiler</strong> — interactive human vs bot timing analysis</li></ul>
+<h4>🐛 Bug Fixes</h4>
+<ul><li>Fix unbounded population/memory growth in \ChallengeGeneticsLab.evolve()\</li><li>Fix ReferenceError in \challenge-rotation-scheduler\ reset() and missing handler validation in \createEmitter\</li><li>Prune expired replay detector state to prevent false positives and memory growth (CWE-400/CWE-754)</li><li>Fix \importData\ to enforce maxSessions and advance nextRingId (#126)</li><li>Replace \Math.random()\ with \secureRandomInt\ in reservoir sampling (CWE-330)</li></ul>
+<h4>⚡ Performance</h4>
+<ul><li>O(1) ring-buffer history + batch-optimized \atchMatch\ in bot-signature-database</li><li>O(1) BFS dequeue + adjacency-list ring confidence in \detect()\</li><li>Single-pass metric extraction + shared precomputed total for diversity index functions</li></ul>
+<h4>♻️ Refactoring</h4>
+<ul><li>Extract \_restoreArray\ and \_recordEvent\ helpers in captcha-health-monitor</li><li>Extract \_refreshTokenBucket\/\_refreshLeakyBucket\ in captcha-rate-limiter</li><li>Deduplicate \_sortedCopy\, \_cosineSimilarity\, and \_linearRegression\ into shared-utils</li><li>Replace O(n) anomaly-dedup scans with O(1) Set-based \_pushAnomaly\ helper</li></ul>
+<h4>📝 Documentation</h4>
+<ul><li>Expand API reference to all 80+ exports with architecture diagram and server integration examples</li><li>Overhaul README for scannability and completeness</li><li>Add deployment guide with production setup, scaling, monitoring, and runbooks</li><li>Add comprehensive TESTING.md</li><li>Modernize README with ToC, Quick Start, updated 2026 AI landscape</li></ul>
+<h4>🧪 Tests</h4>
+<ul><li>65 node:test tests for SessionRiskAggregator</li></ul>
+<h4>🔧 Maintenance</h4>
+<ul><li>Rewrite copilot agent setup and instructions for full SDK</li><li>Enhance npm publishing: provenance, GitHub Packages, version validation</li><li>Enhance Docker workflow: multi-arch, Trivy scanning, SBOM</li><li>Remove 3 dead modules: canary-deployer, trust-network-analyzer (duplicate), broken test</li><li>Auto-labeler: add granular PR labels for src/ modules + issue categories</li><li>Bump jsdom 29.0.2 → 29.1.0, bump github-actions group with 9 updates</li></ul>
+<p><strong>Full Changelog</strong>: https://github.com/sauravbhattacharya001/gif-captcha/compare/v1.20.0...v1.21.0</p>
+      </div>
+    </article>
+
+    <article class="release" id="v1.20.0">
+      <header class="release-head">
+        <div class="release-title">
+          <h3>v1.20.0 — Shared Event Emitter &amp; Module Reference Docs</h3>
+          
+        </div>
+        <div class="release-meta">
+          <span class="tag"><code>v1.20.0</code></span>
+          <span class="date">2026-04-25</span>
+          <a href="https://github.com/sauravbhattacharya001/gif-captcha/releases/tag/v1.20.0" target="_blank" rel="noopener" class="external">View on GitHub →</a>
+        </div>
+      </header>
+      <div class="release-body">
+        <h4>What's New</h4>
+<h4>Refactoring</h4>
+<ul><li><strong>Shared \createEmitter()\ in \shared-utils.js\</strong> — extracted identical on/off/emit event emitter implementations from \^Gdaptive-difficulty-tuner\, \captcha-fatigue-detector\, and \challenge-rotation-scheduler\ into a single shared factory function, removing ~28 lines of duplication</li></ul>
+<h4>Documentation</h4>
+<ul><li><strong>Comprehensive module reference page</strong> — added full reference documentation covering all 42 \src/\ modules with descriptions, APIs, and cross-references</li></ul>
+<p><strong>Full Changelog</strong>: https://github.com/sauravbhattacharya001/gif-captcha/compare/v1.19.0...v1.20.0</p>
+      </div>
+    </article>
+
+    <article class="release" id="v1.19.0">
+      <header class="release-head">
+        <div class="release-title">
+          <h3>v1.19.0 — Replay Attack Detector, Decay Simulator &amp; Perf Improvements</h3>
+          
+        </div>
+        <div class="release-meta">
+          <span class="tag"><code>v1.19.0</code></span>
+          <span class="date">2026-04-25</span>
+          <a href="https://github.com/sauravbhattacharya001/gif-captcha/releases/tag/v1.19.0" target="_blank" rel="noopener" class="external">View on GitHub →</a>
+        </div>
+      </header>
+      <div class="release-body">
+        <h4>What's New</h4>
+<h4>🛡️ CAPTCHA Replay Attack Detector</h4>
+<ul><li>Token replay detection with timing anomaly analysis</li><li>Credential stuffing pattern matching and fingerprint clustering</li><li>Composite threat scoring with auto-block mode</li><li>Interactive Canvas dashboard: live traffic visualization, threat gauge, attack timeline, solve-time heatmap, session inspector</li><li>5 built-in attack simulation scenarios with JSON export</li></ul>
+<h4>📉 CAPTCHA Decay Simulator</h4>
+<ul><li>Model effectiveness degradation tracking over time</li></ul>
+<h4>📊 CAPTCHA Threat Index Dashboard</h4>
+<ul><li>Aggregated threat index visualization</li></ul>
+<h4>⚡ Performance</h4>
+<ul><li>\session-risk-aggregator\: use \_percentileSorted\ and inline mean in \^[valuateAll\ — eliminates redundant sort passes</li><li>\challenge-decay\: precompute decay constants and hoist \_now()\ out of loops</li></ul>
+<h4>🔧 Refactoring</h4>
+<ul><li>Extract shared ban/whitelist/strike helpers in \captcha-rate-limiter\</li><li>Extract \_countInWindow\/\_classifyRate\ in \captcha-health-monitor\</li><li>Replace raw \crypto.randomBytes\ with \crypto-utils\, deduplicate \_clamp\ in \eplay-detector\</li></ul>
+<p><strong>Full Changelog</strong>: https://github.com/sauravbhattacharya001/gif-captcha/compare/v1.18.0...v1.19.0</p>
+      </div>
+    </article>
+
+    <article class="release" id="v1.18.0">
+      <header class="release-head">
+        <div class="release-title">
+          <h3>v1.18.0 — Cognitive Fingerprinting &amp; Shared Utils Cleanup</h3>
+          
+        </div>
+        <div class="release-meta">
+          <span class="tag"><code>v1.18.0</code></span>
+          <span class="date">2026-04-24</span>
+          <a href="https://github.com/sauravbhattacharya001/gif-captcha/releases/tag/v1.18.0" target="_blank" rel="noopener" class="external">View on GitHub →</a>
+        </div>
+      </header>
+      <div class="release-body">
+        <h4>What's New</h4>
+<h4>🧠 Cognitive Fingerprint Tool</h4>
+<ul><li>New behavioral biometric fingerprinting module that analyzes CAPTCHA solving patterns</li><li>Extracts cognitive signatures from timing, interaction sequences, and error patterns</li><li>Enables bot detection through behavioral analysis beyond traditional challenge-response</li></ul>
+<h4>🔧 Refactoring</h4>
+<ul><li>Deduplicated \_now()\ and \_clamp()\ helper functions into shared \shared-utils.js\ imports</li><li>Reduces code duplication and ensures consistent behavior across modules</li></ul>
+<p><strong>Full Changelog</strong>: https://github.com/sauravbhattacharya001/gif-captcha/compare/v1.17.0...v1.18.0</p>
+      </div>
+    </article>
+
+    <article class="release" id="v1.17.0">
+      <header class="release-head">
+        <div class="release-title">
+          <h3>v1.17.0 — Canary Deployer, Memory Fix &amp; Deduplication</h3>
+          
+        </div>
+        <div class="release-meta">
+          <span class="tag"><code>v1.17.0</code></span>
+          <span class="date">2026-04-24</span>
+          <a href="https://github.com/sauravbhattacharya001/gif-captcha/releases/tag/v1.17.0" target="_blank" rel="noopener" class="external">View on GitHub →</a>
+        </div>
+      </header>
+      <div class="release-body">
+        <h4>What's New</h4>
+<h4>🐤 CAPTCHA Canary Deployer</h4>
+<p>Autonomous early warning system for bot capability evolution — deploys canary CAPTCHAs to detect emerging solver techniques before they reach production traffic.</p>
+<h4>🐛 Bug Fixes</h4>
+<ul><li><strong>Bounded memory in solve-funnel-analyzer</strong> — added maxSessions/maxRecords LRU eviction to prevent unbounded growth (fixes #127)</li></ul>
+<h4>♻️ Refactoring</h4>
+<ul><li><strong>Deduplicated _decayFactor and _cosineSimilarity</strong> from fraud-ring-detector and session-risk-aggregator into shared-utils (~25 lines removed)</li><li><strong>O(1) country risk lookups</strong> in geo-risk-scorer via hash sets instead of indexOf; single-pass listAll in captcha-incident-manager replacing 5 chained .filter() calls</li></ul>
+<p><strong>Full Changelog</strong>: https://github.com/sauravbhattacharya001/gif-captcha/compare/v1.16.0...v1.17.0</p>
+      </div>
+    </article>
+
+    <article class="release" id="v1.16.0">
+      <header class="release-head">
+        <div class="release-title">
+          <h3>v1.16.0 — CAPTCHA Mutation Lab &amp; Shared Stats Deduplication</h3>
+          
+        </div>
+        <div class="release-meta">
+          <span class="tag"><code>v1.16.0</code></span>
+          <span class="date">2026-04-24</span>
+          <a href="https://github.com/sauravbhattacharya001/gif-captcha/releases/tag/v1.16.0" target="_blank" rel="noopener" class="external">View on GitHub →</a>
+        </div>
+      </header>
+      <div class="release-body">
+        <h4>What's New</h4>
+<h4>🧬 CAPTCHA Mutation Lab</h4>
+<p>Interactive genetic algorithm tool that evolves CAPTCHA parameters to find optimal configurations maximizing human solve rate while minimizing bot success.</p>
+<ul><li><strong>10 evolvable gene parameters</strong> — frame rate, distortion, noise, color variance, blur, and more</li><li><strong>Autopilot mode</strong> with stagnation detection and auto-adaptation</li><li><strong>Selection pressure control</strong> — soft, normal, harsh, and brutal modes</li><li><strong>Mass extinction &amp; mutant injection</strong> for exploration when evolution stalls</li><li><strong>Real-time fitness charts</strong> and gene distribution visualization</li><li><strong>Population visualization</strong> with elite/dead specimen tracking</li><li><strong>Proactive insights</strong> — stagnation warnings, diversity alerts, parameter recommendations</li><li><strong>JSON import/export</strong> for sharing evolved configurations across environments</li></ul>
+<h4>🔧 Refactor: Shared Stats Deduplication</h4>
+<ul><li>Deduplicated \mean\, \stddev\, \percentile\, and \clamp\ stat helpers from \ehavioral-biometrics.js\, \esponse-time-profiler.js\, and \captcha-fatigue-detector.js\ into \shared-utils.js\ imports</li><li>~30 lines of duplicated code removed across 3 modules</li></ul>
+<p><strong>Full Changelog</strong>: https://github.com/sauravbhattacharya001/gif-captcha/compare/v1.15.1...v1.16.0</p>
+      </div>
+    </article>
+
+    <article class="release" id="v1.15.1">
+      <header class="release-head">
+        <div class="release-title">
+          <h3>v1.15.1 — PoW Calibrator, Memory Exhaustion Fix &amp; Anomaly Detector Optimization</h3>
+          
+        </div>
+        <div class="release-meta">
+          <span class="tag"><code>v1.15.1</code></span>
+          <span class="date">2026-04-24</span>
+          <a href="https://github.com/sauravbhattacharya001/gif-captcha/releases/tag/v1.15.1" target="_blank" rel="noopener" class="external">View on GitHub →</a>
+        </div>
+      </header>
+      <div class="release-body">
+        <h4>What's Changed</h4>
+<h4>✨ New Features</h4>
+<ul><li><strong>PoW Calibrator</strong> — Dynamic proof-of-work difficulty that adjusts based on client trust signals (GeoIP risk, session trust score, IP reputation). Higher-risk clients get harder puzzles, legitimate users breeze through.</li></ul>
+<h4>🔒 Security Fixes</h4>
+<ul><li><strong>CWE-400 Memory Exhaustion Prevention</strong> — Bounded \lockIP\ and \^GllowIP\ stores in \geo-risk-scorer.js\ with configurable \maxBlockedIPs\/\maxAllowedIPs\ caps. Prevents attackers from growing internal state unboundedly by triggering many unique IP blocks.</li></ul>
+<h4>⚡ Performance</h4>
+<ul><li><strong>Anomaly Detector Optimization</strong> — Pre-compute duration statistics (mean/stddev) once per \^Gnalyze()\ call instead of recalculating per-session, reducing redundant iterations over the session pool.</li></ul>
+<p><strong>Full Changelog</strong>: https://github.com/sauravbhattacharya001/gif-captcha/compare/v1.15.0...v1.15.1</p>
+      </div>
+    </article>
+
+    <article class="release" id="v1.15.0">
+      <header class="release-head">
+        <div class="release-title">
+          <h3>v1.15.0 — Session Replay Analyzer, Adversarial Trainer &amp; Threat Radar</h3>
+          
+        </div>
+        <div class="release-meta">
+          <span class="tag"><code>v1.15.0</code></span>
+          <span class="date">2026-04-23</span>
+          <a href="https://github.com/sauravbhattacharya001/gif-captcha/releases/tag/v1.15.0" target="_blank" rel="noopener" class="external">View on GitHub →</a>
+        </div>
+      </header>
+      <div class="release-body">
+        <h4>What's New</h4>
+<h4>🎬 CAPTCHA Session Replay Analyzer</h4>
+<ul><li>Record, replay, and analyze CAPTCHA solving sessions with autonomous bot detection</li><li>Behavioral fingerprinting via 6-dimension analysis: smoothness, timing entropy, pause patterns, velocity variance, path efficiency, click accuracy</li><li>Canvas mouse trail visualization with heatmap overlays</li><li>Side-by-side comparison mode and real-time auto-detect</li><li>Radar chart visualization and JSON export</li></ul>
+<h4>⚔️ CAPTCHA Adversarial Trainer</h4>
+<ul><li>Autonomous attack evolution engine for stress-testing CAPTCHA defenses</li></ul>
+<h4>🎯 CAPTCHA Threat Radar</h4>
+<ul><li>360° real-time threat visualization dashboard</li></ul>
+<h4>🔧 Refactors</h4>
+<ul><li>Deduplicated _percentile from 3 modules into shared-utils</li><li>Session Risk Aggregator: deduplicated helpers, fixed _merge prototype safety</li></ul>
+<p><strong>Full Changelog</strong>: https://github.com/sauravbhattacharya001/gif-captcha/compare/v1.14.1...v1.15.0</p>
+      </div>
+    </article>
+
+    <article class="release" id="v1.14.1">
+      <header class="release-head">
+        <div class="release-title">
+          <h3>v1.14.1 — Traffic Analyzer Performance &amp; Supply Chain Security</h3>
+          
+        </div>
+        <div class="release-meta">
+          <span class="tag"><code>v1.14.1</code></span>
+          <span class="date">2026-04-23</span>
+          <a href="https://github.com/sauravbhattacharya001/gif-captcha/releases/tag/v1.14.1" target="_blank" rel="noopener" class="external">View on GitHub →</a>
+        </div>
+      </header>
+      <div class="release-body">
+        <h4>What's Changed</h4>
+<h4>⚡ Performance</h4>
+<ul><li><strong>Welford online statistics in CaptchaTrafficAnalyzer</strong> — \getBaseline()\ now computes mean/stddev in a single O(W) pass using Welford's algorithm instead of 4 array allocations + 8 \_mean\/\_stddev\ iterations. Eliminated 3 redundant \getWindows()\ copies in \getSummary\/\getTrend\ calls.</li></ul>
+<h4>🔒 CI &amp; Security</h4>
+<ul><li><strong>Dependency review workflow</strong> — added \dependency-review.yml\ to block PRs that introduce known-vulnerable dependencies</li><li><strong>Hardcoded secret scanning</strong> — added secret detection step to CodeQL workflow (AWS keys, OpenAI/Stripe secrets, GitHub PATs, Slack tokens, Google API keys, SendGrid keys)</li></ul>
+<p><strong>Full Changelog</strong>: https://github.com/sauravbhattacharya001/gif-captcha/compare/v1.14.0...v1.14.1</p>
+      </div>
+    </article>
+
+    <article class="release" id="v1.14.0">
+      <header class="release-head">
+        <div class="release-title">
+          <h3>v1.14.0 — Fleet Orchestrator, Fingerprint &amp; Stats Performance</h3>
+          
+        </div>
+        <div class="release-meta">
+          <span class="tag"><code>v1.14.0</code></span>
+          <span class="date">2026-04-22</span>
+          <a href="https://github.com/sauravbhattacharya001/gif-captcha/releases/tag/v1.14.0" target="_blank" rel="noopener" class="external">View on GitHub →</a>
+        </div>
+      </header>
+      <div class="release-body">
+        <h4>What's New</h4>
+<h4>🚀 Features</h4>
+<ul><li><strong>CAPTCHA Fleet Orchestrator</strong> — Autonomous multi-CAPTCHA deployment manager for coordinating fleets of CAPTCHA instances across services</li></ul>
+<h4>⚡ Performance</h4>
+<ul><li><strong>Lazy fingerprint computation</strong> in solve-pattern-fingerprinter — defers expensive fingerprint calculations until actually needed</li><li><strong>Binary search in _getTypeStats and _pruneHistory</strong> — O(log n) lookups replace O(n) linear scans for time-windowed statistics</li></ul>
+<p>---</p>
+<p><strong>Full Changelog</strong>: https://github.com/sauravbhattacharya001/gif-captcha/compare/v1.13.0...v1.14.0</p>
+      </div>
+    </article>
+
+    <article class="release" id="v1.13.0">
+      <header class="release-head">
+        <div class="release-title">
+          <h3>v1.13.0 — A/B Test Dashboard, Forensic Investigator, Security Fixes</h3>
+          
+        </div>
+        <div class="release-meta">
+          <span class="tag"><code>v1.13.0</code></span>
+          <span class="date">2026-04-22</span>
+          <a href="https://github.com/sauravbhattacharya001/gif-captcha/releases/tag/v1.13.0" target="_blank" rel="noopener" class="external">View on GitHub →</a>
+        </div>
+      </header>
+      <div class="release-body">
+        <h4>What's New</h4>
+<h4>🧪 CAPTCHA A/B Test Dashboard</h4>
+<p>Autonomous experiment runner for comparing CAPTCHA variants — run controlled A/B tests with statistical significance tracking, conversion metrics, and automated winner selection.</p>
+<h4>🔍 CAPTCHA Forensic Investigator</h4>
+<p>Interactive bot fingerprint analysis and investigation tool — deep-dive into suspicious sessions with behavioral timeline, anomaly detection, and evidence collection.</p>
+<h4>📂 Searchable Tool Directory</h4>
+<p>Browse all 67 interactive tools in a categorized, searchable directory page.</p>
+<h4>Security Fixes</h4>
+<ul><li><strong>CWE-20/CWE-400:</strong> Validate imported sessions in captcha-session-replay — event type validation, maxEventsPerSession cap, status validation (a590004)</li><li><strong>CWE-1321:</strong> Fix prototype pollution in FraudRingDetector via hasOwnProperty guards (841d443)</li></ul>
+<h4>Performance</h4>
+<ul><li>Eliminate redundant stats/assess/forecast recomputation in report() — single-pass computation (3ee7a6f)</li></ul>
+<p><strong>Full Changelog:</strong> https://github.com/sauravbhattacharya001/gif-captcha/compare/v1.12.0...v1.13.0</p>
+      </div>
+    </article>
+
+    <article class="release" id="v1.12.0">
+      <header class="release-head">
+        <div class="release-title">
+          <h3>v1.12.0 — Genetic Arms Race, Immune System, Dependabot Config</h3>
+          
+        </div>
+        <div class="release-meta">
+          <span class="tag"><code>v1.12.0</code></span>
+          <span class="date">2026-04-21</span>
+          <a href="https://github.com/sauravbhattacharya001/gif-captcha/releases/tag/v1.12.0" target="_blank" rel="noopener" class="external">View on GitHub →</a>
+        </div>
+      </header>
+      <div class="release-body">
+        <h4>What's New</h4>
+<h4>🧬 CAPTCHA Genetic Arms Race Simulator</h4>
+<p>Evolutionary simulation engine that co-evolves CAPTCHA challenges and bot solvers using genetic algorithms. Observe natural selection dynamics as defenses and attacks adapt to each other in real-time.</p>
+<h4>🛡️ CAPTCHA Immune System — Autonomous Adaptive Defense</h4>
+<p>Self-healing defense layer inspired by biological immune systems. Automatically detects novel attack patterns, generates antibody responses, and builds immunological memory for faster future responses.</p>
+<h4>🔧 CI/CD</h4>
+<ul><li>Added grouped dependency updates to Dependabot configuration</li></ul>
+<p><strong>Full Changelog</strong>: https://github.com/sauravbhattacharya001/gif-captcha/compare/v1.11.0...v1.12.0</p>
+      </div>
+    </article>
+
+    <article class="release" id="v1.11.0">
+      <header class="release-head">
+        <div class="release-title">
+          <h3>v1.11.0 — Honeypot Designer, Perf &amp; Refactor</h3>
+          
+        </div>
+        <div class="release-meta">
+          <span class="tag"><code>v1.11.0</code></span>
+          <span class="date">2026-04-21</span>
+          <a href="https://github.com/sauravbhattacharya001/gif-captcha/releases/tag/v1.11.0" target="_blank" rel="noopener" class="external">View on GitHub →</a>
+        </div>
+      </header>
+      <div class="release-body">
+        <h4>What's New</h4>
+<h4>✨ Features</h4>
+<ul><li><strong>CAPTCHA Honeypot Designer</strong> — interactive trap builder with bot simulation and intelligence dashboard for designing and testing honeypot-based CAPTCHA strategies</li></ul>
+<h4>⚡ Performance</h4>
+<ul><li><strong>Reservoir sampling in getSummary</strong> — replaced O(N) array accumulation + O(N log N) sort with O(N) single-pass reservoir sampling for summary statistics</li></ul>
+<h4>🔧 Refactor</h4>
+<ul><li><strong>Deduplicated shared utilities</strong> — extracted LruTracker, _clamp, and _now from trust-score-engine.js into shared-utils.js imports, removing ~80 lines of inlined code</li></ul>
+<p><strong>Full Changelog:</strong> https://github.com/sauravbhattacharya001/gif-captcha/compare/v1.10.0...v1.11.0</p>
+      </div>
+    </article>
+
+    <article class="release" id="v1.10.0">
+      <header class="release-head">
+        <div class="release-title">
+          <h3>v1.10.0</h3>
+          
+        </div>
+        <div class="release-meta">
+          <span class="tag"><code>v1.10.0</code></span>
+          <span class="date">2026-04-21</span>
+          <a href="https://github.com/sauravbhattacharya001/gif-captcha/releases/tag/v1.10.0" target="_blank" rel="noopener" class="external">View on GitHub →</a>
+        </div>
+      </header>
+      <div class="release-body">
+        <h4>What's Changed</h4>
+<h4>New Features</h4>
+<ul><li><strong>CAPTCHA Swarm Intelligence</strong> — autonomous multi-agent coordination dashboard for distributed CAPTCHA workloads</li><li><strong>Attack Pattern Predictor</strong> — Markov chain-based threat forecasting dashboard for proactive defense</li></ul>
+<h4>Security</h4>
+<ul><li>Use cryptographic IDs for challenge templates (CWE-330 fix)</li></ul>
+<h4>Performance</h4>
+<ul><li>Inline region/hourly aggregation in \getSummary()\ — eliminates 3 redundant \getWindows()\ passes</li><li>Cache \classifySession\ results and use running sum for mean in response-time profiler</li></ul>
+<h4>Refactoring</h4>
+<ul><li>Deduplicate percentile/mean/stddev/median calculations into shared-utils</li><li>Consolidate stats helper imports across modules</li></ul>
+<p><strong>Full Changelog</strong>: https://github.com/sauravbhattacharya001/gif-captcha/compare/v1.9.0...v1.10.0</p>
+      </div>
+    </article>
+
+    <article class="release" id="v1.9.0">
+      <header class="release-head">
+        <div class="release-title">
+          <h3>v1.9.0 — Adaptive Difficulty, Health Monitor &amp; Defense Strategist</h3>
+          
+        </div>
+        <div class="release-meta">
+          <span class="tag"><code>v1.9.0</code></span>
+          <span class="date">2026-04-20</span>
+          <a href="https://github.com/sauravbhattacharya001/gif-captcha/releases/tag/v1.9.0" target="_blank" rel="noopener" class="external">View on GitHub →</a>
+        </div>
+      </header>
+      <div class="release-body">
+        <h4>What's Changed</h4>
+<h4>New Features</h4>
+<ul><li><strong>Adaptive Difficulty Engine</strong> — real-time CAPTCHA difficulty auto-tuning based on solve rates and bot detection signals</li><li><strong>CAPTCHA Health Monitor</strong> — proactive system monitoring dashboard with alerting for anomalous patterns</li><li><strong>Behavioral Biometrics Lab</strong> — interactive bot vs human classification using behavioral signals</li><li><strong>Defense Strategist</strong> — autonomous threat analysis and adaptive defense configuration generator</li></ul>
+<h4>Performance</h4>
+<ul><li><strong>O(n) sliding-window burst detection</strong> and stack-safe min/max in profiler</li><li><strong>Binary search</strong> for anomaly detector window filtering, O(1) outlier reporting</li><li><strong>Sort-once optimization</strong> in capacity planner stats and shared-utils</li><li><strong>Binary search in burst detection</strong>, eliminate JSON deep-copy in stats</li></ul>
+<h4>Refactoring</h4>
+<ul><li>Replace manual stddev calculations with shared \_populationStddev\ helper</li></ul>
+<h4>Fixes</h4>
+<ul><li>Wire 27 orphaned modules into public API exports</li></ul>
+<p><strong>Full Changelog</strong>: https://github.com/sauravbhattacharya001/gif-captcha/compare/v1.8.2...v1.9.0</p>
+      </div>
+    </article>
+
+    <article class="release" id="v1.8.2">
+      <header class="release-head">
+        <div class="release-title">
+          <h3>v1.8.2 — Security Hardening &amp; Refactoring</h3>
+          
+        </div>
+        <div class="release-meta">
+          <span class="tag"><code>v1.8.2</code></span>
+          <span class="date">2026-04-17</span>
+          <a href="https://github.com/sauravbhattacharya001/gif-captcha/releases/tag/v1.8.2" target="_blank" rel="noopener" class="external">View on GitHub →</a>
+        </div>
+      </header>
+      <div class="release-body">
+        <h4>What's Changed</h4>
+<h4>Security</h4>
+<ul><li><strong>Cap geo-risk scorer key growth</strong> to prevent memory exhaustion (CWE-400) — bounds internal map size to prevent DoS via crafted inputs</li><li><strong>Prevent CSV injection and R code injection</strong> in export-formatter (CWE-1236) — sanitizes cell values before export</li></ul>
+<h4>Refactoring</h4>
+<ul><li><strong>Single-pass cohort comparison</strong> in funnel analyzer — reduces iteration count for cohort diff computation</li><li><strong>Deduplicate shared utilities</strong> — consolidate \_posOpt\, \_nnOpt\, \LruTracker\, and \_uid\ across modules into shared helpers</li></ul>
+<h4>Docs</h4>
+<ul><li>Add npm test/coverage workflow to CONTRIBUTING.md</li></ul>
+<p><strong>Full Changelog</strong>: https://github.com/sauravbhattacharya001/gif-captcha/compare/v1.8.1...v1.8.2</p>
+      </div>
+    </article>
+
+    <article class="release" id="v1.8.1">
+      <header class="release-head">
+        <div class="release-title">
+          <h3>v1.8.1 — Bug Fix, Cleanup &amp; README Badges</h3>
+          
+        </div>
+        <div class="release-meta">
+          <span class="tag"><code>v1.8.1</code></span>
+          <span class="date">2026-04-17</span>
+          <a href="https://github.com/sauravbhattacharya001/gif-captcha/releases/tag/v1.8.1" target="_blank" rel="noopener" class="external">View on GitHub →</a>
+        </div>
+      </header>
+      <div class="release-body">
+        <h4>What's Changed</h4>
+<h4>🐛 Bug Fixes</h4>
+<ul><li><strong>fix:</strong> Clear escalation timer on all state transitions from 'open' — prevents stale timers from firing after a captcha is already resolved or expired (9aad79e)</li></ul>
+<h4>🧹 Cleanup</h4>
+<ul><li><strong>cleanup:</strong> Consolidate test directories into \	ests/\, removing orphaned \	est/\ and \__tests__/\ dirs for a cleaner project structure (1ddf13a)</li></ul>
+<h4>📝 Documentation</h4>
+<ul><li><strong>docs:</strong> Add GitHub stars, npm downloads, Node version, and PRs Welcome badges to README (e005518)</li></ul>
+<p><strong>Full Changelog:</strong> https://github.com/sauravbhattacharya001/gif-captcha/compare/v1.8.0...v1.8.1</p>
+      </div>
+    </article>
+
+    <article class="release" id="v1.8.0">
+      <header class="release-head">
+        <div class="release-title">
+          <h3>v1.8.0 — Performance, Tests &amp; Dependency Updates</h3>
+          
+        </div>
+        <div class="release-meta">
+          <span class="tag"><code>v1.8.0</code></span>
+          <span class="date">2026-04-16</span>
+          <a href="https://github.com/sauravbhattacharya001/gif-captcha/releases/tag/v1.8.0" target="_blank" rel="noopener" class="external">View on GitHub →</a>
+        </div>
+      </header>
+      <div class="release-body">
+        <h4>What's Changed</h4>
+<h4>Performance</h4>
+<ul><li><strong>Optimise Jaccard similarity and scoreAnswerDiversity</strong> — reduced allocations and improved hot-path performance in answer scoring</li></ul>
+<h4>Code Quality</h4>
+<ul><li><strong>Deduplicate secureRandomInt</strong> — consolidated into shared crypto-utils module, eliminating redundant implementations</li><li><strong>Add comprehensive tests for captcha-rate-limiter</strong> — full coverage of rate limiting edge cases</li></ul>
+<h4>Dependencies &amp; CI</h4>
+<ul><li>Bump jsdom from 25.0.1 to 29.0.2</li><li>Bump actions/upload-pages-artifact from 4 to 5</li><li>Bump codecov/codecov-action from 5 to 6</li></ul>
+<p><strong>Full Changelog</strong>: https://github.com/sauravbhattacharya001/gif-captcha/compare/v1.7.0...v1.8.0</p>
+      </div>
+    </article>
+
+    <article class="release" id="v1.7.0">
+      <header class="release-head">
+        <div class="release-title">
+          <h3>v1.7.0</h3>
+          
+        </div>
+        <div class="release-meta">
+          <span class="tag"><code>v1.7.0</code></span>
+          <span class="date">2026-04-05</span>
+          <a href="https://github.com/sauravbhattacharya001/gif-captcha/releases/tag/v1.7.0" target="_blank" rel="noopener" class="external">View on GitHub →</a>
+        </div>
+      </header>
+      <div class="release-body">
+        <h4>What's New in v1.7.0</h4>
+<h4>🎮 New Interactive Pages</h4>
+<ul><li><strong>CAPTCHA Escape Room</strong> — 5 themed rooms with 10 puzzle types, key collection, and scoring</li><li><strong>Speed Challenge Arena</strong> — timed CAPTCHA speed-solving game</li><li><strong>Bot or Human? Quiz</strong> — 15-round game analyzing CAPTCHA behavioral signals</li><li><strong>Research Paper Generator</strong> — wizard-guided academic report builder</li><li><strong>Integration Wizard</strong> — generate ready-to-paste code for 6 backends + 4 frontends</li><li><strong>Cost Calculator</strong> — estimate deployment costs at scale</li><li><strong>Threat Intelligence Feed</strong> — real-time threat monitoring dashboard</li><li><strong>Audit Log Dashboard</strong> — browse CAPTCHA challenge records</li><li><strong>User Journey Map</strong> — Sankey flow visualization of CAPTCHA user paths</li><li><strong>Challenge Preview Gallery</strong> — browse and preview challenge types</li><li><strong>Personal Stats Tracker</strong> — individual usage analytics</li></ul>
+<h4>🔒 Security</h4>
+<ul><li>Replace \Math.random()\ with \secureRandomInt()\ in traffic analyzer</li><li>Use cryptographic randomness for session replay IDs</li><li>Sanitize URLs for href in generator GIF error fallback</li><li>Prevent prototype pollution in \importState()\</li><li>Prevent token replay via nonce store eviction flooding</li><li>Harden crypto-utils against CWE-330 and modulo bias</li><li>Harden SSRF protection against IP bypass techniques (CWE-918)</li><li>Escape quotes in browser sanitize to prevent attribute injection XSS</li></ul>
+<h4>⚡ Performance</h4>
+<ul><li>Avoid stack overflow in \eport()\ and reduce O(n) splice in \ecord()\</li><li>Eliminate redundant freshness recomputation in challenge-decay sweep</li><li>Optimize fraud-ring-detector with precomputed distributions and O(1) lookups</li><li>O(1) sliding window trim and O(1) consume for bucket algorithms</li><li>Replace O(n) session eviction with O(1) LRU tracker</li><li>O(n) partial selection for rate limiter eviction</li><li>Sort solve times once in fingerprint building</li><li>Eliminate redundant array sorts in response-time-profiler</li><li>Optimize \esetAll()\ and \getTopKeys()\ in rate limiter</li></ul>
+<h4>🐛 Bug Fixes</h4>
+<ul><li>Correct peek/consume bugs in captcha-rate-limiter</li><li>Fix leaky bucket overflow check</li><li>Prevent token drain on rejected batch \consume()\ requests</li><li>Fix pool \pick()\ floating-point precision issue</li><li>Replace \Math.log2\ with ES5-compatible equivalent</li></ul>
+<h4>🏗️ Refactoring</h4>
+<ul><li>Extract shared utilities into \shared-utils.js\</li><li>Deduplicate math helpers across modules</li><li>Extract i18n and config-validator into separate modules</li><li>Extract shared logic in challenge-decay-manager</li></ul>
+<h4>📦 CI &amp; Dependencies</h4>
+<ul><li>Bump actions/checkout, setup-node, upload-artifact, deploy-pages, configure-pages, labeler, stale</li><li>Bump c8 from 10.1.3 to 11.0.0</li><li>Add npm ecosystem to Dependabot configuration</li></ul>
+<h4>📚 Documentation</h4>
+<ul><li>Add security guide with threat model, CSP, rate limiting, and deployment checklist</li><li>Update project structure with 30+ missing pages</li><li>Add Codecov integration and coverage badge</li><li>Add Contributor Covenant Code of Conduct</li><li>Add comprehensive JSDoc to honeypot-injector</li></ul>
+<h4>🧪 Tests</h4>
+<ul><li>99 new tests for challenge-diversity-analyzer and shared-utils</li><li>Comprehensive tests for challenge-rotation-scheduler, csv-utils, and crypto-utils</li><li>Migrate captcha-session-replay tests to Jest</li></ul>
+      </div>
+    </article>
+
+    <article class="release" id="v1.6.1">
+      <header class="release-head">
+        <div class="release-title">
+          <h3>GIF CAPTCHA v1.6.1</h3>
+          
+        </div>
+        <div class="release-meta">
+          <span class="tag"><code>v1.6.1</code></span>
+          <span class="date">2026-03-25</span>
+          <a href="https://github.com/sauravbhattacharya001/gif-captcha/releases/tag/v1.6.1" target="_blank" rel="noopener" class="external">View on GitHub →</a>
+        </div>
+      </header>
+      <div class="release-body">
+        <h4>What's Changed</h4>
+<h4>Security</h4>
+<ul><li><strong>Fix timing side-channel in constant-time comparison (CWE-208)</strong> — The <code>_constantTimeEqual</code> helper now uses a truly constant-time algorithm, preventing timing-based CAPTCHA token forgery.</li></ul>
+<p><strong>Full Changelog</strong>: https://github.com/sauravbhattacharya001/gif-captcha/compare/v1.6.0...v1.6.1</p>
+      </div>
+    </article>
+
+    <article class="release" id="v1.6.0">
+      <header class="release-head">
+        <div class="release-title">
+          <h3>GIF CAPTCHA v1.6.0</h3>
+          
+        </div>
+        <div class="release-meta">
+          <span class="tag"><code>v1.6.0</code></span>
+          <span class="date">2026-03-23</span>
+          <a href="https://github.com/sauravbhattacharya001/gif-captcha/releases/tag/v1.6.0" target="_blank" rel="noopener" class="external">View on GitHub →</a>
+        </div>
+      </header>
+      <div class="release-body">
+        <h4>What's New</h4>
+<h4>Features</h4>
+<ul><li><strong>Compliance Dashboard</strong> — evaluate CAPTCHA config against WCAG, GDPR, OWASP, and operational standards with scoring, findings, and remediation tracking</li><li><strong>Theme Builder</strong> — interactive visual designer with 8 presets, real-time animated preview, and JSON/PNG export</li><li><strong>Incident Timeline</strong> — severity-colored visual timeline with filtering, stats cards, and event history</li><li><strong>Load Tester</strong> — simulate concurrent CAPTCHA sessions with throughput charts, percentile bars, and real-time metrics</li><li><strong>Challenge Rotation Scheduler</strong> — weekly grid for scheduling CAPTCHA type rotation to prevent bot adaptation</li><li><strong>Solve Time Histogram</strong> — interactive histogram with statistical overlays (mean, median, KDE, bot threshold)</li></ul>
+<h4>Security</h4>
+<ul><li>PII redaction for session replay exports (CWE-359 mitigation)</li><li>Hardened HTTP headers: HSTS with preload, COOP, COEP</li></ul>
+<h4>Improvements</h4>
+<ul><li>Deduplicated statistical utility functions into reusable top-level helpers</li><li>Fixed Dockerfile: missing shared assets, non-root port binding (8080)</li></ul>
+      </div>
+    </article>
+
+    <article class="release" id="v1.5.0">
+      <header class="release-head">
+        <div class="release-title">
+          <h3>GIF CAPTCHA v1.5.0</h3>
+          
+        </div>
+        <div class="release-meta">
+          <span class="tag"><code>v1.5.0</code></span>
+          <span class="date">2026-03-20</span>
+          <a href="https://github.com/sauravbhattacharya001/gif-captcha/releases/tag/v1.5.0" target="_blank" rel="noopener" class="external">View on GitHub →</a>
+        </div>
+      </header>
+      <div class="release-body">
+        <h4>What's New in v1.5.0</h4>
+<h4>Features</h4>
+<ul><li><strong>Rate Limiter Simulator</strong> — Interactive page with 4 rate-limiting algorithms (Token Bucket, Sliding Window, Fixed Window, Leaky Bucket), traffic pattern simulation, and real-time analytics dashboard</li><li><strong>Bot Signature Database</strong> — Interactive catalog of 10 bot behavioral patterns with human comparison baselines, pattern matching engine, and custom signature builder</li><li><strong>Geo Risk Map</strong> — Interactive geographic risk visualization for monitoring CAPTCHA challenge distribution across regions</li></ul>
+<h4>Improvements</h4>
+<ul><li><strong>Geo Risk Scorer module</strong> — Extracted \createGeoRiskScorer\ into its own module for better separation of concerns and testability</li><li><strong>PR size labeler</strong> — Added automatic PR size labels to CI workflow for faster code review triage</li></ul>
+<h4>Full Changelog</h4>
+<p>https://github.com/sauravbhattacharya001/gif-captcha/compare/v1.4.0...v1.5.0</p>
+      </div>
+    </article>
+
+    <article class="release" id="v1.4.0">
+      <header class="release-head">
+        <div class="release-title">
+          <h3>GIF CAPTCHA v1.4.0</h3>
+          
+        </div>
+        <div class="release-meta">
+          <span class="tag"><code>v1.4.0</code></span>
+          <span class="date">2026-03-18</span>
+          <a href="https://github.com/sauravbhattacharya001/gif-captcha/releases/tag/v1.4.0" target="_blank" rel="noopener" class="external">View on GitHub →</a>
+        </div>
+      </header>
+      <div class="release-body">
+        <h4>What's New in v1.4.0</h4>
+<h4>🔒 Security Hardening</h4>
+<ul><li><strong>Prototype pollution prevention</strong>: Replaced all plain {} maps with Object.create(null) across rate limiter, trust-score engine, and fraud detector</li><li><strong>Crypto-secure RNG</strong>: Replaced all Math.random() calls with crypto.getRandomValues() in security-critical modules (pool manager, bot signature DB, honeypot injector, challenge template engine)</li><li><strong>SSRF protection</strong> added to webhook dispatcher</li><li><strong>CSV injection prevention</strong> in audit log export</li><li><strong>Constant-time token comparison</strong> (CWE-208) and TTL/eviction bounds (CWE-400)</li><li><strong>URL injection fix</strong> (CWE-79) in shared.js</li><li><strong>Memory growth bounds</strong> in GeoRiskScorer (CWE-770)</li><li>Added \SECURITY.md\ with vulnerability reporting guidelines</li></ul>
+<h4>✨ New Modules &amp; Features</h4>
+<ul><li><strong>Fleet Monitor Dashboard</strong> — real-time multi-site CAPTCHA deployment monitoring</li><li><strong>Difficulty Curve Planner</strong> — interactive page to design CAPTCHA difficulty progression</li><li><strong>CAPTCHA Strength Scorer</strong> — evaluate challenge configuration strength</li><li><strong>CLI tool</strong> (\doctor\ command for system health diagnostics)</li><li><strong>Fraud Ring Detector</strong> — identify coordinated CAPTCHA-solving rings</li><li><strong>Capacity Planner</strong> — infrastructure capacity planning</li><li><strong>Localization Manager</strong> — multi-language CAPTCHA support</li><li><strong>Solve Funnel Analyzer</strong> — conversion funnel visualization with cohort comparison</li><li><strong>Bypass Resistance Tester</strong> — simulate 6 bot attack strategies</li><li><strong>Interactive Challenge Designer</strong> tool</li><li><strong>Operations Dashboard</strong> — real-time system monitoring</li><li><strong>Incident Manager</strong> — incident lifecycle management</li><li><strong>Anomaly Detector</strong> — statistical anomaly detection for CAPTCHA metrics</li><li><strong>Interactive Configuration Wizard</strong> (config.html)</li><li><strong>Traffic Analyzer</strong> — system-level traffic anomaly detection</li><li><strong>Session Replay</strong> — record and replay CAPTCHA interaction sessions</li><li><strong>Health Monitor</strong> — unified system health monitoring</li><li><strong>Export Formatter</strong> — research data export (LaTeX, R, SPSS, BibTeX)</li><li><strong>Bot Signature Database</strong> — known bot pattern matching</li><li><strong>Competitive Analysis page</strong> — interactive comparison vs 5 CAPTCHA providers</li><li><strong>User Feedback Collector</strong> — survey page with star ratings, emoji sentiment, results dashboard, CSV/JSON export</li><li><strong>Audit Log</strong> — structured, queryable event trail</li><li><strong>Challenge Pool Manager</strong> — pre-generated pool for instant serving</li><li><strong>Webhook Dispatcher</strong> — event notification system</li><li><strong>Statistics Collector</strong> — time-windowed solve metrics</li><li><strong>Response Time Profiler</strong> — timing-based solver classification</li><li><strong>Accessibility Analyzer</strong> — WCAG/ADA compliance scoring</li><li><strong>Rate Limiter</strong> — multi-algorithm rate limiting</li><li><strong>Fatigue Detector</strong> — user frustration detection</li><li><strong>Load Tester</strong> — stress testing module</li><li><strong>Challenge Rotation Scheduler</strong> — auto-rotate challenge types</li><li><strong>Session Risk Aggregator</strong> — unified per-session risk scoring</li><li><strong>Challenge Template Engine</strong> — procedural challenge generation</li><li><strong>Honeypot Injector</strong> — invisible decoy challenge injection (5 strategies)</li><li><strong>Adaptive Difficulty Tuner</strong> — auto-adjusts difficulty based on real-time solve rates</li><li><strong>Device Cohort Analyzer</strong> — device-type cohort grouping and anomaly detection</li><li><strong>Challenge Decay Manager</strong> — time-based freshness and auto-retirement</li><li><strong>Solve Pattern Fingerprinter</strong> — behavioral solve profiling</li><li><strong>Behavioral Biometrics Analyzer</strong> — passive human/bot classification</li><li><strong>Proof-of-Work challenge gate</strong> (Hashcash-style)</li><li><strong>GeoRisk Scorer</strong> — geographic risk analysis</li></ul>
+<h4>⚡ Performance</h4>
+<ul><li>O(1) ring buffer eviction in audit trail</li><li>O(1) deduplication in fraud detector</li><li>Replaced O(n²) array shifts with O(n) splice in pool and profiler</li><li>Bounded \indSimilarSessions\ with maxCompare/maxResults/TTL eviction</li><li>LRU eviction in challenge analytics (replacing FIFO)</li></ul>
+<h4>🏗️ Refactoring</h4>
+<ul><li>Extracted shared \crypto-utils\ module from 6 duplicated implementations</li><li>Extracted 3 largest modules from index.js (-1,855 lines)</li><li>Extracted shared math helpers (\_mean\, \_median\, \_stddev\)</li><li>Extracted shared \_numAsc\ comparator replacing 12 inline sort closures</li></ul>
+<h4>📖 Documentation</h4>
+<ul><li>Comprehensive architecture guide added to docs site</li><li>JSDoc added to GeoRiskScorer and ResponseTimeProfiler APIs</li></ul>
+<h4>🧪 Testing</h4>
+<ul><li>300+ new tests across modules including A/B experiment runner, ComplianceReporter, SessionRiskAggregator, behavioral biometrics, GeoRiskScorer edge cases, and trust-score-engine</li></ul>
+<h4>🔧 CI/CD</h4>
+<ul><li>Bumped Docker actions (login-action v4, setup-buildx v4, metadata-action v6, build-push v7)</li><li>Coverage thresholds enforced in CI pipeline</li></ul>
+<p><strong>Full Changelog</strong>: https://github.com/sauravbhattacharya001/gif-captcha/compare/v1.3.0...v1.4.0</p>
+      </div>
+    </article>
+
+    <article class="release" id="v1.3.0">
+      <header class="release-head">
+        <div class="release-title">
+          <h3>GIF CAPTCHA v1.3.0</h3>
+          
+        </div>
+        <div class="release-meta">
+          <span class="tag"><code>v1.3.0</code></span>
+          <span class="date">2026-03-07</span>
+          <a href="https://github.com/sauravbhattacharya001/gif-captcha/releases/tag/v1.3.0" target="_blank" rel="noopener" class="external">View on GitHub →</a>
+        </div>
+      </header>
+      <div class="release-body">
+        <h4>GIF CAPTCHA v1.3.0</h4>
+<p><strong>64 commits</strong> since v1.2.0 — 33 features, 13 fixes, 3 perf improvements, 3 refactors, 4 test suites, 3 doc updates, 2 cleanups, 1 security fix. <strong>2,455 total tests</strong>, <strong>12,823 source lines</strong>, <strong>40 exported factories</strong>.</p>
+<h4>✨ New Features (33)</h4>
+<p><strong>Core Modules:</strong></p>
+<ul><li><code>createChallengeAnalytics</code> — per-challenge performance analytics with completion rates, timing distributions, difficulty scoring</li><li><code>createConfigValidator</code> — deployment config validation with schema checks, security rules, performance recommendations</li><li><code>createAccessibilityAuditor</code> — WCAG 2.1 accessibility checker for CAPTCHA configurations</li><li><code>createI18n</code> — i18n/localization module with 12 built-in locales and custom locale support</li><li><code>createEventEmitter</code> — lightweight pub/sub for CAPTCHA lifecycle hooks</li><li><code>createTrustScoreEngine</code> — unified client trust scoring with multi-signal aggregation</li><li><code>createMetricsAggregator</code> — unified subsystem monitoring with auto-capture, alert listeners, export</li><li><code>createComplianceReporter</code> — compliance report generator with HTML dashboard renderer</li><li><code>createFraudRingDetector</code> — coordinated CAPTCHA-solving detection (graph-based ring analysis)</li><li><code>createExperimentRunner</code> — A/B experiment runner for CAPTCHA configuration testing</li><li><code>createLoadTester</code> — stress-testing for CAPTCHA systems</li></ul>
+<p><strong>Interactive Tools:</strong></p>
+<ul><li>Interaction Heatmap page — click/mouse visualization and behavior analysis</li><li>Embed Widget Generator page</li><li>Daily Challenge page — Wordle-style daily GIF CAPTCHA</li><li>Share Results Card — downloadable/copyable image card after demo</li><li>Leaderboard page — personal performance dashboard with stats, achievements, charts, export</li><li>Streak Mode — endless timed GIF CAPTCHA challenge</li><li>Challenge Playground — create, test, and export custom CAPTCHA sets</li><li>Frame Inspector — decompose GIFs into individual frames for analysis</li><li>Response Time Analyzer — timing analysis tool</li><li>Batch Validator — bulk response validation and analysis</li></ul>
+<h4>🔒 Security (1)</h4>
+<ul><li>Removed insecure <code>Math.random()</code> fallback in <code>secureRandomInt</code></li></ul>
+<h4>🐛 Bug Fixes (13)</h4>
+<ul><li>Fixed TrustScoreEngine trust-washing vulnerability (#22)</li><li>Excluded abandons from proportion tests in A/B ExperimentRunner</li><li>Fixed random eviction in adaptive timeout history (distribution bias)</li><li>Guard division-by-zero in analytics functions</li><li>Ported compliance and metrics-aggregator tests to Node test runner</li><li>Fixed insertSorted eviction bias in adaptive timeout</li><li>Fixed prototype pollution in <code>resetAll()</code> and internal map objects</li><li>Eliminated modulo bias in <code>secureRandomInt</code> Web Crypto fallback</li><li>Used <code>secureRandomInt</code> for weighted pool selection and session IDs</li></ul>
+<h4>⚡ Performance (3)</h4>
+<ul><li>O(1) doubly-linked-list LRU tracker replacing O(n) indexOf+splice (#21)</li><li>Cached pairwise similarity matrix and reused calibration results</li><li>Eliminated O(n) array shifts and JSON deep clones in incident correlator</li></ul>
+<h4>♻️ Refactor (3)</h4>
+<ul><li>Deduplicated fraud ring detection and replaced O(n) lookups with O(1)</li><li>Replaced 19 verbose option-parsing blocks with <code>_posOpt</code>/<code>_nnOpt</code> helpers</li><li>Extracted compliance scoring into reusable helper functions</li></ul>
+<h4>🧹 Cleanup (2)</h4>
+<ul><li>Extracted shared <code>_now()</code> and <code>_clamp()</code> helpers, removed 7 factory-scoped duplicates</li><li>Extracted <code>_posOpt</code>/<code>_nnOpt</code> helpers for option validation</li></ul>
+<h4>🧪 Tests (4)</h4>
+<ul><li>47 extended tests for <code>createAttemptTracker</code> (prototype pollution, backoff, validation wrapping)</li><li>56 extended tests for <code>createI18n</code> (locale management, interpolation, pluralization)</li><li>37 integration tests for cross-module pipeline</li><li>32 extended tests for <code>createPoolManager</code></li></ul>
+<h4>📚 Docs (3)</h4>
+<ul><li>Documented 15 previously undocumented API exports</li><li>Documented all 21 interactive tools in README</li><li>Comprehensive API reference for all factory functions</li></ul>
+      </div>
+    </article>
+
+    <article class="release" id="v1.2.0">
+      <header class="release-head">
+        <div class="release-title">
+          <h3>GIF CAPTCHA v1.2.0</h3>
+          
+        </div>
+        <div class="release-meta">
+          <span class="tag"><code>v1.2.0</code></span>
+          <span class="date">2026-03-01</span>
+          <a href="https://github.com/sauravbhattacharya001/gif-captcha/releases/tag/v1.2.0" target="_blank" rel="noopener" class="external">View on GitHub →</a>
+        </div>
+      </header>
+      <div class="release-body">
+        <h4>What's New in v1.2.0</h4>
+<h4>Features</h4>
+<ul><li><strong>CAPTCHA Effectiveness Dashboard</strong> — Interactive analytics page showing solve rates, timing distributions, difficulty curves, and accessibility metrics. Canvas-based charting with real-time filtering by CAPTCHA type. 86 tests.</li></ul>
+<ul><li><strong>A/B Testing Configurator</strong> — Experiment management for comparing CAPTCHA variants. Configure traffic splits, significance thresholds, minimum sample sizes, and run duration. Live results tracking with statistical significance calculation. Supports sequential testing and early stopping rules.</li></ul>
+<ul><li><strong>Multi-Model Comparison</strong> — Side-by-side comparison page for evaluating different CAPTCHA generation models. Visual diff with key metrics (solve rate, median time, false positive rate) and automated recommendation engine.</li></ul>
+<h4>Stats</h4>
+<ul><li>3 new features since v1.1.0</li><li>Full test suite: 793+ tests passing</li></ul>
+      </div>
+    </article>
+
+    <article class="release" id="v1.1.0">
+      <header class="release-head">
+        <div class="release-title">
+          <h3>GIF CAPTCHA v1.1.0</h3>
+          
+        </div>
+        <div class="release-meta">
+          <span class="tag"><code>v1.1.0</code></span>
+          <span class="date">2026-02-25</span>
+          <a href="https://github.com/sauravbhattacharya001/gif-captcha/releases/tag/v1.1.0" target="_blank" rel="noopener" class="external">View on GitHub →</a>
+        </div>
+      </header>
+      <div class="release-body">
+        <h4>What's New in v1.1.0</h4>
+<h4>New Research Tools</h4>
+<ul><li><strong>Cognitive Load Analyzer</strong> — 6-dimension CAPTCHA complexity analysis (Visual Processing, Temporal Reasoning, Cultural Context, Humor/Irony, Spatial Awareness, Narrative Comprehension) with per-CAPTCHA radar charts, Human vs AI overlay, and capability gap table</li><li><strong>AI Response Simulator</strong> — Interactive model comparison for 5 AI models (GPT-4, GPT-4V, GPT-4o, Claude 3.5, Gemini 1.5) with side-by-side human comparison, reasoning explanations, and capability bars</li><li><strong>Temporal Sequence Challenge</strong> — Event ordering CAPTCHA format with drag-and-drop reordering, Kendall tau distance scoring, and AI temporal analysis</li><li><strong>Response Time Benchmark</strong> — Timed CAPTCHA solving with ms-precision analytics, summary stats, and AI speed comparison</li><li><strong>Accessibility Audit</strong> — WCAG 2.1 compliance analysis page</li></ul>
+<h4>New Analysis Tools</h4>
+<ul><li><strong>Challenge Set Analyzer</strong> — Research tool for CAPTCHA quality assessment (answer diversity, keyword coverage, duplicate detection, quality grading)</li><li><strong>Difficulty Calibrator</strong> — Performance-based challenge difficulty calibration from response data</li><li><strong>Security Scorer</strong> — 6-dimension security resistance evaluation (Answer Diversity, AI Resistance, Keyword Specificity, Difficulty Coverage, Cognitive Complexity, Pattern Predictability)</li></ul>
+<h4>Security Improvements</h4>
+<ul><li>Challenge objects now frozen with \Object.freeze()\</li><li>Crypto-secure randomness via \crypto.getRandomValues()\</li><li>URL validation to prevent XSS via javascript:/data: URIs</li><li>AttemptTracker for CAPTCHA validation rate limiting</li></ul>
+<h4>Infrastructure</h4>
+<ul><li>Shared CSS/JS extraction (~800 lines of duplication removed)</li><li>npm package publishing support</li><li>Documentation site</li><li>Code coverage with c8</li><li>CI dependency updates (actions/checkout v6, actions/setup-node v6, etc.)</li><li>Dead CSS cleanup across 5 HTML pages</li><li>Performance: cached word sets for O(n²) similarity, precomputed calibration medians</li></ul>
+<h4>Testing</h4>
+<ul><li><strong>812 tests</strong> (up from ~256 in v1.0.0)</li><li>15 test files covering all modules</li></ul>
+<p>--- <strong>Full Changelog</strong>: https://github.com/sauravbhattacharya001/gif-captcha/compare/v1.0.0...v1.1.0</p>
+      </div>
+    </article>
+
+    <article class="release" id="v1.0.0">
+      <header class="release-head">
+        <div class="release-title">
+          <h3>GIF CAPTCHA v1.0.0</h3>
+          
+        </div>
+        <div class="release-meta">
+          <span class="tag"><code>v1.0.0</code></span>
+          <span class="date">2026-02-14</span>
+          <a href="https://github.com/sauravbhattacharya001/gif-captcha/releases/tag/v1.0.0" target="_blank" rel="noopener" class="external">View on GitHub →</a>
+        </div>
+      </header>
+      <div class="release-body">
+        <p># 🎞️ GIF CAPTCHA v1.0.0</p>
+<p>First stable release of the GIF CAPTCHA research case study.</p>
+<h4>What's Included</h4>
+<h4>📊 Research</h4>
+<ul><li><strong>10-GIF test suite</strong> demonstrating that GPT-4 (text-only) could not process animated visual content</li><li>100% CAPTCHA block rate against pre-vision LLMs</li><li><strong>2025 update</strong>: Analysis of how multimodal LLMs (GPT-4V, GPT-4o, Claude 3.5, Gemini 1.5 Pro) have changed the landscape</li></ul>
+<h4>🌐 Interactive Demo</h4>
+<ul><li>Dark-themed case study page with full results table</li><li>CAPTCHA pass/fail badges for each test</li><li>Linked GIF sources for manual verification</li><li>Deployed at <a href="https://sauravbhattacharya001.github.io/gif-captcha/" target="_blank" rel="noopener">sauravbhattacharya001.github.io/gif-captcha</a></li></ul>
+<h4>🛠️ Infrastructure</h4>
+<ul><li>GitHub Pages deployment workflow</li><li>Docker image build/push workflow (GHCR)</li><li>Copilot coding agent setup for autonomous development</li><li>Branch protection on <code>main</code> (PR reviews required, stale dismissal, conversation resolution)</li></ul>
+<h4>📝 Documentation</h4>
+<ul><li>Professional README with badges, methodology, results table, and future research directions</li><li>MIT License</li></ul>
+<h4>Full Changelog</h4>
+<ul><li><code>df1beb6</code> — ci: add GitHub Pages deployment workflow</li><li><code>d7f0d76</code> — Add Dockerfile and Docker build/push workflow for GHCR</li><li><code>c2ee772</code> — ci: add Copilot coding agent setup steps and instructions</li><li><code>36944ff</code> — docs: overhaul README with professional layout, badges, findings, and future research directions</li><li><code>56aa7f2</code> — Add index.html landing page</li><li><code>82766d9</code> — ci: upgrade actions/checkout from v3 to v4</li><li><code>5fb2ba9</code> — docs: add 2025 update on multimodal LLMs and GIF-based CAPTCHA viability</li><li><code>1694e67</code> — docs: rewrite README with proper markdown table and add .gitignore</li><li><code>3fc421c</code> — ci: add Azure Static Web Apps workflow</li><li><code>4ec1f6a</code> — Update README.md</li><li><code>d895993</code> — Initial commit</li></ul>
+      </div>
+    </article>
+
+    <p class="footer-note">
+        Generated from the <a href="https://github.com/sauravbhattacharya001/gif-captcha/releases" target="_blank" rel="noopener">GitHub Releases API</a>.
+        For the full commit history, see <a href="https://github.com/sauravbhattacharya001/gif-captcha/commits/master" target="_blank" rel="noopener">commits on master</a>.
+    </p>
+</body>
+</html>

@@ -9590,6 +9590,7 @@ var createUserAbandonmentForecaster = require("./user-abandonment-forecaster").c
 var createFalseRejectRecoveryAdvisor = require("./false-reject-recovery-advisor").createFalseRejectRecoveryAdvisor;
 var createHumanVerificationConfidenceAuditor = require("./human-verification-confidence-auditor").createHumanVerificationConfidenceAuditor;
 var createHoneypotEffectivenessAdvisor = require("./honeypot-effectiveness-advisor").createHoneypotEffectivenessAdvisor;
+var createCaptchaTypeMixOptimizer = require("./captcha-type-mix-optimizer").createCaptchaTypeMixOptimizer;
 var WebhookDispatcher = _webhookModule.WebhookDispatcher;
 var gifCaptcha = {
   sanitize: sanitize,
@@ -9678,6 +9679,7 @@ var gifCaptcha = {
   createFalseRejectRecoveryAdvisor: createFalseRejectRecoveryAdvisor,
   createHumanVerificationConfidenceAuditor: createHumanVerificationConfidenceAuditor,
   createHoneypotEffectivenessAdvisor: createHoneypotEffectivenessAdvisor,
+  createCaptchaTypeMixOptimizer: createCaptchaTypeMixOptimizer,
 };
 
 // UMD export — works in Node.js, AMD, and browser globals

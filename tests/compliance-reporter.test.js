@@ -1,7 +1,9 @@
 require("./_expect");
 "use strict";
 
-const { describe, test } = require("node:test");
+const { describe, test, before } = require("node:test");
+// Jest-style alias: node:test exposes `before` (per-suite), not `beforeAll`.
+const beforeAll = before;
 var cr = require("../src/compliance-reporter");
 
 // ── Helpers ──────────────────────────────────────────────────────────

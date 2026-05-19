@@ -315,7 +315,7 @@ describe('CaptchaIncidentManager', () => {
   });
 
   describe('auto-escalation', () => {
-    test('auto-escalates unacknowledged incidents', (done) => {
+    test('auto-escalates unacknowledged incidents', () => new Promise((resolve, reject) => {
       let escalated = false;
       const fast = createIncidentManager({
         autoEscalateMs: 100,
@@ -323,16 +323,21 @@ describe('CaptchaIncidentManager', () => {
       });
       const id = fast.create({ title: 'Slow response', severity: 'low' });
       setTimeout(() => {
-        expect(escalated).toBe(true);
-        const inc = fast.get(id);
-        expect(inc.severity).toBe('medium');
-        expect(inc.timeline.some(e => e.action === 'auto-escalated')).toBe(true);
-        fast.destroy();
-        done();
+        try {
+          expect(escalated).toBe(true);
+          const inc = fast.get(id);
+          expect(inc.severity).toBe('medium');
+          expect(inc.timeline.some(e => e.action === 'auto-escalated')).toBe(true);
+          fast.destroy();
+          resolve();
+        } catch (err) {
+          fast.destroy();
+          reject(err);
+        }
       }, 150);
-    });
+    }));
 
-    test('acknowledging cancels auto-escalation', (done) => {
+    test('acknowledging cancels auto-escalation', () => new Promise((resolve, reject) => {
       let escalated = false;
       const fast = createIncidentManager({
         autoEscalateMs: 100,
@@ -341,10 +346,15 @@ describe('CaptchaIncidentManager', () => {
       const id = fast.create({ title: 'Quick ack', severity: 'low' });
       fast.acknowledge(id, { responder: 'fast-responder' });
       setTimeout(() => {
-        expect(escalated).toBe(false);
-        fast.destroy();
-        done();
+        try {
+          expect(escalated).toBe(false);
+          fast.destroy();
+          resolve();
+        } catch (err) {
+          fast.destroy();
+          reject(err);
+        }
       }, 200);
-    });
+    }));
   });
 });

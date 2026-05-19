@@ -138,7 +138,9 @@ function createTrustScoreEngine(options) {
     }
 
     manualSignals = manualSignals || {};
-    var signals = Object.create(null);
+    // Use plain object (not Object.create(null)) so deepStrictEqual({}) works
+    // for callers comparing the empty signals case.
+    var signals = {};
     var breakdown = [];
 
     // Collect signals from providers

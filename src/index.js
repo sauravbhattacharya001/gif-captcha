@@ -4825,7 +4825,7 @@ function createClientFingerprinter(options) {
   var signalWeights = Object.create(null);
   var k;
   for (k in defaultWeights) {
-    if (defaultWeights.hasOwnProperty(k)) {
+    if (Object.prototype.hasOwnProperty.call(defaultWeights, k)) {
       signalWeights[k] = (opts.signalWeights && opts.signalWeights[k] !== undefined)
         ? opts.signalWeights[k]
         : defaultWeights[k];
@@ -4912,7 +4912,7 @@ function createClientFingerprinter(options) {
     var score = 0;
     var totalWeight = 0;
     for (var key in signalWeights) {
-      if (!signalWeights.hasOwnProperty(key)) continue;
+      if (!Object.prototype.hasOwnProperty.call(signalWeights, key)) continue;
       var w = signalWeights[key];
       totalWeight += w;
       if (a[key] === b[key] && a[key] !== "" && a[key] !== "0" && a[key] !== "0x0") {
@@ -5081,7 +5081,7 @@ function createClientFingerprinter(options) {
     var signals = normalizeSignals(rawSignals);
     var results = [];
     for (var hash in store) {
-      if (!store.hasOwnProperty(hash)) continue;
+      if (!Object.prototype.hasOwnProperty.call(store, hash)) continue;
       var sim = computeSimilarity(signals, store[hash].signals);
       if (sim >= threshold) {
         results.push({
@@ -5123,10 +5123,10 @@ function createClientFingerprinter(options) {
     var totalVisits = 0;
     var totalIps = Object.create(null);
     for (var hash in store) {
-      if (!store.hasOwnProperty(hash)) continue;
+      if (!Object.prototype.hasOwnProperty.call(store, hash)) continue;
       totalVisits += store[hash].visits;
       for (var ip in store[hash].ips) {
-        if (store[hash].ips.hasOwnProperty(ip)) {
+        if (Object.prototype.hasOwnProperty.call(store[hash].ips, ip)) {
           totalIps[ip] = true;
         }
       }
@@ -5161,7 +5161,7 @@ function createClientFingerprinter(options) {
     if (state.store) {
       store = Object.create(null);
       for (var h in state.store) {
-        if (state.store.hasOwnProperty(h)) {
+        if (Object.prototype.hasOwnProperty.call(state.store, h)) {
           store[h] = state.store[h];
         }
       }
@@ -5172,7 +5172,7 @@ function createClientFingerprinter(options) {
     if (state.ipHistory) {
       ipHistory = Object.create(null);
       for (var ip in state.ipHistory) {
-        if (state.ipHistory.hasOwnProperty(ip)) {
+        if (Object.prototype.hasOwnProperty.call(state.ipHistory, ip)) {
           ipHistory[ip] = state.ipHistory[ip];
         }
       }
@@ -5349,7 +5349,7 @@ function createIncidentCorrelator(options) {
     // Shallow-copy the flat { type: count } map
     var typesCopy = Object.create(null);
     for (var t in incident.signalTypes) {
-      if (incident.signalTypes.hasOwnProperty(t)) {
+      if (Object.prototype.hasOwnProperty.call(incident.signalTypes, t)) {
         typesCopy[t] = incident.signalTypes[t];
       }
     }
@@ -5563,13 +5563,13 @@ function createIncidentCorrelator(options) {
     }
     var byTypeCopy = Object.create(null);
     for (var st in stats.signalsByType) {
-      if (stats.signalsByType.hasOwnProperty(st)) {
+      if (Object.prototype.hasOwnProperty.call(stats.signalsByType, st)) {
         byTypeCopy[st] = stats.signalsByType[st];
       }
     }
     var bySevCopy = Object.create(null);
     for (var sv in stats.incidentsBySeverity) {
-      if (stats.incidentsBySeverity.hasOwnProperty(sv)) {
+      if (Object.prototype.hasOwnProperty.call(stats.incidentsBySeverity, sv)) {
         bySevCopy[sv] = stats.incidentsBySeverity[sv];
       }
     }

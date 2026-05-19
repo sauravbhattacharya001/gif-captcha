@@ -346,6 +346,138 @@ describe("createHoneypotInjector", function () {
     it("should throw on invalid state", function () {
       assert.throws(function () { createHoneypotInjector().importState(null); }, /state must be an object/);
     });
+
+    // ─── Security hardening (CWE-915, CWE-400, CWE-1321) ─────────────────
+
+    it("should sanitize non-numeric / negative / Infinity counters on import", function () {
+      var hi = createHoneypotInjector();
+      hi.importState({
+        stats: {
+          totalCreated: "42",          // string → coerced
+          totalChecked: -10,            // negative → 0
+          totalTripped: Infinity,       // infinity → 0
+          totalClean: NaN,              // NaN → 0
+          totalExpired: 3.9             // float → floor
+        }
+      });
+      var s = hi.summary();
+      assert.strictEqual(s.totalCreated, 42);
+      assert.strictEqual(s.totalChecked, 0);
+      assert.strictEqual(s.totalTripped, 0);
+      assert.strictEqual(s.totalClean, 0);
+      assert.strictEqual(s.totalExpired, 3);
+    });
+
+    it("should drop unknown / __proto__ keys in byStrategy on import", function () {
+      var hi = createHoneypotInjector();
+      var malicious = { stats: { byStrategy: {} } };
+      malicious.stats.byStrategy["css-hidden"] = { created: 5, tripped: 2, checked: 5 };
+      // Use defineProperty to ensure these get into the JSON shape regardless of engine quirks
+      malicious.stats.byStrategy["bogus-strategy"] = { created: 999, tripped: 999, checked: 999 };
+      Object.defineProperty(malicious.stats.byStrategy, "__proto__", {
+        value: { polluted: true }, enumerable: true, configurable: true, writable: true
+      });
+      hi.importState(malicious);
+      var stratStats = hi.getStrategyStats();
+      var byName = {};
+      for (var i = 0; i < stratStats.length; i++) byName[stratStats[i].strategy] = stratStats[i];
+      assert.strictEqual(byName["css-hidden"].created, 5);
+      assert.ok(!byName["bogus-strategy"], "unknown strategy key must not be retained");
+      // Object.prototype must not have been polluted
+      assert.strictEqual({}.polluted, undefined);
+    });
+
+    it("should reject reserved keys (__proto__/constructor/prototype) in bySession", function () {
+      var hi = createHoneypotInjector();
+      var bySession = {};
+      bySession["legit-session"] = { created: 3, tripped: 1, checked: 3, clean: 2 };
+      bySession["__proto__"]     = { polluted: 1 };
+      bySession["constructor"]   = { polluted: 1 };
+      bySession["prototype"]     = { polluted: 1 };
+      hi.importState({ stats: { bySession: bySession } });
+      var score = hi.getSessionScore("legit-session");
+      assert.ok(score, "legit session should be preserved");
+      assert.strictEqual({}.polluted, undefined,
+        "Object.prototype must not be polluted by import");
+    });
+
+    it("should ignore non-object entries in bySession", function () {
+      var hi = createHoneypotInjector();
+      hi.importState({ stats: { bySession: {
+        "good": { created: 1, tripped: 1, checked: 1, clean: 0 },
+        "bad1": null,
+        "bad2": "string",
+        "bad3": 42
+      }}});
+      // "good" should round-trip with real counters
+      var good = hi.getSessionScore("good");
+      assert.strictEqual(good.checked, 1);
+      assert.strictEqual(good.tripped, 1);
+      // Bad entries should not be stored, so the lookup returns the synthesized
+      // "unknown" default with zeroed counters (not a corrupted record).
+      var bad = hi.getSessionScore("bad1");
+      assert.strictEqual(bad.checked, 0);
+      assert.strictEqual(bad.tripped, 0);
+      assert.strictEqual(bad.verdict, "unknown");
+    });
+
+    it("should cap trippedHistory length to maxTrippedHistory (CWE-400)", function () {
+      var hi = createHoneypotInjector({ maxTrippedHistory: 5 });
+      var big = [];
+      for (var i = 0; i < 10000; i++) big.push({ id: "t" + i, sessionId: "s" + i, trippedAt: i });
+      hi.importState({ trippedHistory: big });
+      var hist = hi.getTrippedHistory();
+      assert.ok(hist.length <= 5, "history must be capped, got " + hist.length);
+      // The most recent records should be retained, not the oldest
+      assert.strictEqual(hist[hist.length - 1].id, "t9999");
+    });
+
+    it("should filter non-object entries from trippedHistory", function () {
+      var hi = createHoneypotInjector();
+      hi.importState({ trippedHistory: [
+        { id: "ok", sessionId: "s", trippedAt: 1 },
+        null,
+        "str",
+        42,
+        ["array"],
+        { id: "ok2", sessionId: "s2", trippedAt: 2 }
+      ]});
+      var hist = hi.getTrippedHistory();
+      assert.strictEqual(hist.length, 2);
+    });
+
+    it("should sanitize per-strategy counter shapes on import", function () {
+      var hi = createHoneypotInjector();
+      hi.importState({ stats: { byStrategy: {
+        "css-hidden": { created: "7", tripped: -3, checked: NaN }
+      }}});
+      var stratStats = hi.getStrategyStats();
+      var entry = null;
+      for (var i = 0; i < stratStats.length; i++) {
+        if (stratStats[i].strategy === "css-hidden") entry = stratStats[i];
+      }
+      assert.ok(entry);
+      assert.strictEqual(entry.created, 7);
+      assert.strictEqual(entry.tripped, 0);
+      assert.strictEqual(entry.checked, 0);
+    });
+
+    it("should ignore non-object byStrategy entries", function () {
+      var hi = createHoneypotInjector();
+      // Pre-populate via real activity
+      var trap = hi.createTrap({ sessionId: "s1", strategy: "css-hidden" });
+      hi.check({ trapId: trap.id, value: "bot" });
+      // Now import a payload that has a malformed entry for css-hidden
+      hi.importState({ stats: { byStrategy: { "css-hidden": null } } });
+      // Should reset to known-good shape (created:0, tripped:0, checked:0) and not crash
+      var stratStats = hi.getStrategyStats();
+      var entry = null;
+      for (var i = 0; i < stratStats.length; i++) {
+        if (stratStats[i].strategy === "css-hidden") entry = stratStats[i];
+      }
+      assert.ok(entry);
+      assert.strictEqual(entry.created, 0);
+    });
   });
 
   describe("reset", function () {

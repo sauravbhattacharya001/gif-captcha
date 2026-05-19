@@ -376,19 +376,96 @@ function createHoneypotInjector(options) {
   /**
    * Import previously exported state, restoring stats and tripped history.
    *
+   * Hardened against hostile / corrupted payloads:
+   *   - Numeric counters are coerced to finite non-negative integers (defaults to 0).
+   *   - Per-strategy keys are restricted to the configured ALL_STRATEGIES set; unknown
+   *     keys (including `__proto__`, `constructor`, `prototype`) are dropped.
+   *   - Per-session entries reject reserved keys (`__proto__`, `constructor`,
+   *     `prototype`) and require object-shaped values; counters are sanitized.
+   *   - The tripped history is capped to `maxTrippedHistory` and elements that are
+   *     not plain objects are filtered out, preventing DoS via oversized arrays
+   *     (CWE-400) and corrupted reporting state.
+   *
+   * Mitigations: CWE-915 (improperly controlled modification of object attributes),
+   * CWE-400 (uncontrolled resource consumption), CWE-1321 (prototype pollution).
+   *
    * @param {Object} state - State object from {@link exportState}
    * @throws {Error} If state is not an object
    */
   function importState(state) {
     if (!state || typeof state !== 'object') throw new Error('state must be an object');
-    if (state.stats) {
-      stats.totalCreated = state.stats.totalCreated || 0; stats.totalChecked = state.stats.totalChecked || 0;
-      stats.totalTripped = state.stats.totalTripped || 0; stats.totalClean = state.stats.totalClean || 0;
-      stats.totalExpired = state.stats.totalExpired || 0;
-      if (state.stats.byStrategy) { var bk = Object.keys(state.stats.byStrategy); for (var w = 0; w < bk.length; w++) stats.byStrategy[bk[w]] = state.stats.byStrategy[bk[w]]; }
-      if (state.stats.bySession) { var sk = Object.keys(state.stats.bySession); for (var x = 0; x < sk.length; x++) stats.bySession[sk[x]] = state.stats.bySession[sk[x]]; }
+
+    if (state.stats && typeof state.stats === 'object') {
+      stats.totalCreated = _safeCount(state.stats.totalCreated);
+      stats.totalChecked = _safeCount(state.stats.totalChecked);
+      stats.totalTripped = _safeCount(state.stats.totalTripped);
+      stats.totalClean   = _safeCount(state.stats.totalClean);
+      stats.totalExpired = _safeCount(state.stats.totalExpired);
+
+      if (state.stats.byStrategy && typeof state.stats.byStrategy === 'object') {
+        // Reset to known-good shape so a partial import cannot leave dangling unknown keys.
+        for (var rs = 0; rs < ALL_STRATEGIES.length; rs++) {
+          stats.byStrategy[ALL_STRATEGIES[rs]] = { created: 0, tripped: 0, checked: 0 };
+        }
+        for (var si = 0; si < ALL_STRATEGIES.length; si++) {
+          var stratName = ALL_STRATEGIES[si];
+          // hasOwn guard prevents inheriting __proto__/toString accessors from a
+          // hostile object that overrode Object.prototype before the call.
+          if (!Object.prototype.hasOwnProperty.call(state.stats.byStrategy, stratName)) continue;
+          var inEntry = state.stats.byStrategy[stratName];
+          if (!inEntry || typeof inEntry !== 'object') continue;
+          stats.byStrategy[stratName] = {
+            created: _safeCount(inEntry.created),
+            tripped: _safeCount(inEntry.tripped),
+            checked: _safeCount(inEntry.checked)
+          };
+        }
+      }
+
+      if (state.stats.bySession && typeof state.stats.bySession === 'object') {
+        stats.bySession = Object.create(null);
+        var sessKeys = Object.keys(state.stats.bySession);
+        for (var x = 0; x < sessKeys.length; x++) {
+          var sKey = sessKeys[x];
+          // Skip reserved keys that could escape the null-prototype container
+          // when later assigned through Object.assign / JSON serialization paths.
+          if (sKey === '__proto__' || sKey === 'constructor' || sKey === 'prototype') continue;
+          var sEntry = state.stats.bySession[sKey];
+          if (!sEntry || typeof sEntry !== 'object') continue;
+          stats.bySession[sKey] = {
+            created: _safeCount(sEntry.created),
+            tripped: _safeCount(sEntry.tripped),
+            checked: _safeCount(sEntry.checked),
+            clean:   _safeCount(sEntry.clean)
+          };
+        }
+      }
     }
-    if (Array.isArray(state.trippedHistory)) trippedHistory = state.trippedHistory.slice();
+
+    if (Array.isArray(state.trippedHistory)) {
+      // Cap import size to prevent memory exhaustion from a hostile snapshot.
+      var src = state.trippedHistory;
+      var startIdx = src.length > maxTrippedHistory ? src.length - maxTrippedHistory : 0;
+      var clean = [];
+      for (var h = startIdx; h < src.length; h++) {
+        var rec = src[h];
+        if (rec && typeof rec === 'object' && !Array.isArray(rec)) clean.push(rec);
+      }
+      trippedHistory = clean;
+    }
+  }
+
+  /**
+   * Coerce an arbitrary value into a finite, non-negative integer.
+   * Used to sanitize imported counters that may be NaN, Infinity, strings,
+   * negative numbers, or hostile-shaped values.
+   * @param {*} v
+   * @returns {number}
+   */
+  function _safeCount(v) {
+    var n = typeof v === 'number' ? v : Number(v);
+    if (!Number.isFinite(n) || n < 0) return 0;
+    return Math.floor(n);
   }
 
   /**

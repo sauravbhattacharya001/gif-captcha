@@ -87,7 +87,7 @@ function createChallengeRotationScheduler(options) {
   var opts = Object.create(null);
   var key;
   for (key in DEFAULT_OPTIONS) {
-    if (DEFAULT_OPTIONS.hasOwnProperty(key)) {
+    if (Object.prototype.hasOwnProperty.call(DEFAULT_OPTIONS, key)) {
       opts[key] = (options && options[key] !== undefined) ? options[key] : DEFAULT_OPTIONS[key];
     }
   }

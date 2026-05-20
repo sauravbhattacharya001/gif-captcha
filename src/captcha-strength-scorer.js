@@ -210,7 +210,7 @@ function createCaptchaStrengthScorer(options) {
   var weights = {};
   var k;
   for (k in DEFAULT_WEIGHTS) {
-    if (DEFAULT_WEIGHTS.hasOwnProperty(k)) {
+    if (Object.prototype.hasOwnProperty.call(DEFAULT_WEIGHTS, k)) {
       weights[k] = (options.weights && options.weights[k] != null) ? options.weights[k] : DEFAULT_WEIGHTS[k];
     }
   }
@@ -218,11 +218,11 @@ function createCaptchaStrengthScorer(options) {
   // Normalize weights
   var wSum = 0;
   for (k in weights) {
-    if (weights.hasOwnProperty(k)) wSum += weights[k];
+    if (Object.prototype.hasOwnProperty.call(weights, k)) wSum += weights[k];
   }
   if (wSum > 0 && Math.abs(wSum - 1) > 0.001) {
     for (k in weights) {
-      if (weights.hasOwnProperty(k)) weights[k] = weights[k] / wSum;
+      if (Object.prototype.hasOwnProperty.call(weights, k)) weights[k] = weights[k] / wSum;
     }
   }
 
@@ -243,7 +243,7 @@ function createCaptchaStrengthScorer(options) {
 
     var composite = 0;
     for (var d in dimensions) {
-      if (dimensions.hasOwnProperty(d) && weights[d] != null) {
+      if (Object.prototype.hasOwnProperty.call(dimensions, d) && weights[d] != null) {
         composite += dimensions[d] * weights[d];
       }
     }
@@ -269,7 +269,7 @@ function createCaptchaStrengthScorer(options) {
     var b = score(cfgB);
     var deltas = {};
     for (var d in a.dimensions) {
-      if (a.dimensions.hasOwnProperty(d)) {
+      if (Object.prototype.hasOwnProperty.call(a.dimensions, d)) {
         deltas[d] = a.dimensions[d] - b.dimensions[d];
       }
     }
@@ -309,7 +309,7 @@ function createCaptchaStrengthScorer(options) {
   function getWeights() {
     var copy = {};
     for (var k in weights) {
-      if (weights.hasOwnProperty(k)) copy[k] = weights[k];
+      if (Object.prototype.hasOwnProperty.call(weights, k)) copy[k] = weights[k];
     }
     return copy;
   }

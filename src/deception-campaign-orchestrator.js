@@ -873,7 +873,7 @@ DeceptionCampaignOrchestrator.prototype.getSuspectProfile = function (sessionId)
 DeceptionCampaignOrchestrator.prototype.getTacticRankings = function () {
   var rankings = [];
   for (var type in this._tacticEffectiveness) {
-    if (!this._tacticEffectiveness.hasOwnProperty(type)) continue;
+    if (!Object.prototype.hasOwnProperty.call(this._tacticEffectiveness, type)) continue;
     var eff = this._tacticEffectiveness[type];
     rankings.push({
       tactic: type,

@@ -73,8 +73,8 @@ function _assignDefaults(target, defaults) {
   var result = {};
   var key;
   for (key in defaults) {
-    if (defaults.hasOwnProperty(key)) {
-      result[key] = (target && target.hasOwnProperty(key)) ? target[key] : defaults[key];
+    if (Object.prototype.hasOwnProperty.call(defaults, key)) {
+      result[key] = (target && Object.prototype.hasOwnProperty.call(target, key)) ? target[key] : defaults[key];
     }
   }
   return result;
@@ -700,7 +700,7 @@ function createThreatIntelFusion(options) {
     var peakHour = null;
     var peakCount = 0;
     for (var h in hourBuckets) {
-      if (hourBuckets.hasOwnProperty(h) && hourBuckets[h] > peakCount) {
+      if (Object.prototype.hasOwnProperty.call(hourBuckets, h) && hourBuckets[h] > peakCount) {
         peakCount = hourBuckets[h];
         peakHour = parseInt(h, 10);
       }

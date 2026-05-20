@@ -103,7 +103,7 @@ function _computeFunnel(stages) {
   var prev = null;
   for (var i = 0; i < STAGES.length; i++) {
     var st = STAGES[i];
-    var c = byStage.hasOwnProperty(st) ? byStage[st] : (prev == null ? 0 : prev);
+    var c = Object.prototype.hasOwnProperty.call(byStage, st) ? byStage[st] : (prev == null ? 0 : prev);
     var dropOffPct = 0;
     if (prev != null && prev > 0) {
       dropOffPct = clamp(((prev - c) / prev) * 100, 0, 100);

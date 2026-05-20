@@ -110,6 +110,63 @@ function loadGifWithRetry(container, challenge, attempt) {
     }
 }
 
+// ===== Browser-side gifCaptcha shim =====
+// Some pages (e.g. batch.html) need a small subset of the library that is
+// genuinely browser-safe (no Node `require`). The full src/index.js is a
+// CommonJS module that throws "require is not defined" when loaded into a
+// plain <script> tag, so we expose just the pure-string helpers here.
+//
+// This intentionally mirrors the names/signatures of the equivalents in
+// src/shared-utils.js so behaviour stays in sync.
+
+/**
+ * Word-set Jaccard similarity between two strings (case-insensitive).
+ * Matches src/shared-utils.js `textSimilarity` so server-side and
+ * browser-side validation produce identical scores.
+ *
+ * @param {string} a
+ * @param {string} b
+ * @returns {number} similarity in [0, 1]
+ */
+function _gcTextSimilarity(a, b) {
+    if (!a || !b) return 0;
+    var wordsA = String(a).toLowerCase().split(/\s+/).filter(Boolean);
+    var wordsB = String(b).toLowerCase().split(/\s+/).filter(Boolean);
+    if (wordsA.length === 0 || wordsB.length === 0) return 0;
+
+    var setA = Object.create(null);
+    var uniqueA = 0;
+    wordsA.forEach(function (w) { if (!setA[w]) { setA[w] = true; uniqueA++; } });
+
+    var intersection = 0;
+    var uniqueB = 0;
+    var setB = Object.create(null);
+    wordsB.forEach(function (w) {
+        if (!setB[w]) {
+            setB[w] = true;
+            uniqueB++;
+            if (setA[w]) intersection++;
+        }
+    });
+
+    // |A ∪ B| = |A| + |B| - |A ∩ B|
+    return intersection / (uniqueA + uniqueB - intersection);
+}
+
+// Expose as `window.gifCaptcha.textSimilarity` so pages can use the same
+// surface they use in Node tests via `require('gif-captcha').textSimilarity`.
+if (typeof window !== "undefined") {
+    window.gifCaptcha = window.gifCaptcha || {};
+    if (typeof window.gifCaptcha.textSimilarity !== "function") {
+        window.gifCaptcha.textSimilarity = _gcTextSimilarity;
+    }
+    if (typeof window.gifCaptcha.sanitize !== "function") {
+        // `sanitize` is declared at file scope above and is HTML-escape only;
+        // exposing it on the namespace lets pages use a single import surface.
+        window.gifCaptcha.sanitize = sanitize;
+    }
+}
+
 // ===== Canvas roundRect Polyfill =====
 // Used by analysis.html and simulator.html for chart rendering.
 if (typeof CanvasRenderingContext2D !== "undefined" &&

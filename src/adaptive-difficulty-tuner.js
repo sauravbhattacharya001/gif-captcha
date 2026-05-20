@@ -619,7 +619,10 @@ function createAdaptiveDifficultyTuner(options) {
 
   function destroy() {
     stopAutoEval();
-    listeners = Object.create(null);
+    // Clear emitter listeners via its public reset(); the previous code
+    // referenced an undefined `listeners` variable (only the emitter closure
+    // owns that state), causing destroy() to throw ReferenceError.
+    _emitter.reset();
     eventWindow.clear();
   }
 

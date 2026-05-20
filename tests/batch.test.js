@@ -12,15 +12,16 @@ const path = require('path');
 const { JSDOM } = require('jsdom');
 
 const BATCH_HTML = fs.readFileSync(path.join(__dirname, '..', 'batch.html'), 'utf8');
-const LIB_JS = fs.readFileSync(path.join(__dirname, '..', 'src', 'index.js'), 'utf8');
+const SHARED_JS = fs.readFileSync(path.join(__dirname, '..', 'shared.js'), 'utf8');
 
 /** Create a fresh jsdom instance with batch.html loaded */
 function createBatchDOM() {
-  // Inject the library source inline before the page's inline scripts
-  // Replace the external script tag with inline library code
+  // Inline shared.js (the actual browser-safe runtime) in place of the
+  // external <script src="shared.js"> tag so jsdom doesn't need to resolve
+  // the file via network.
   const patchedHtml = BATCH_HTML.replace(
-    '<script src="src/index.js"></script>',
-    '<script>' + LIB_JS + '</script>'
+    '<script src="shared.js"></script>',
+    '<script>' + SHARED_JS + '</script>'
   );
   const dom = new JSDOM(patchedHtml, {
     runScripts: 'dangerously',

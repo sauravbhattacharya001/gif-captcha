@@ -9606,6 +9606,7 @@ var createUserAbandonmentForecaster = require("./user-abandonment-forecaster").c
 var createFalseRejectRecoveryAdvisor = require("./false-reject-recovery-advisor").createFalseRejectRecoveryAdvisor;
 var createHumanVerificationConfidenceAuditor = require("./human-verification-confidence-auditor").createHumanVerificationConfidenceAuditor;
 var createHoneypotEffectivenessAdvisor = require("./honeypot-effectiveness-advisor").createHoneypotEffectivenessAdvisor;
+var createBlockedSessionAppealAdjudicator = require("./blocked-session-appeal-adjudicator").createBlockedSessionAppealAdjudicator;
 var createCaptchaTypeMixOptimizer = require("./captcha-type-mix-optimizer").createCaptchaTypeMixOptimizer;
 var WebhookDispatcher = _webhookModule.WebhookDispatcher;
 var gifCaptcha = {
@@ -9695,6 +9696,7 @@ var gifCaptcha = {
   createFalseRejectRecoveryAdvisor: createFalseRejectRecoveryAdvisor,
   createHumanVerificationConfidenceAuditor: createHumanVerificationConfidenceAuditor,
   createHoneypotEffectivenessAdvisor: createHoneypotEffectivenessAdvisor,
+  createBlockedSessionAppealAdjudicator: createBlockedSessionAppealAdjudicator,
   createCaptchaTypeMixOptimizer: createCaptchaTypeMixOptimizer,
 };
 

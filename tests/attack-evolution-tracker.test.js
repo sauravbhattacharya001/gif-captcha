@@ -307,7 +307,13 @@ test("forecast shows stable trend for constant success rate", function () {
     minObservations: 3,
     epochMs: 1000
   });
-  var ts = Date.now();
+  // Align ts to an epoch boundary so every 5-attempt batch (spanning
+  // 0..400ms) lands fully inside one epoch. Without this, when
+  // Date.now() % 1000 >= 600 the final attempts in each batch spill into
+  // the next epoch, producing per-epoch rates that are not constant
+  // (e.g. 1/2, 2/3, ...) and a non-zero slope. Locally we usually get a
+  // lucky offset; CI hosts trip the spillover and the test flakes.
+  var ts = Math.floor(Date.now() / 1000) * 1000;
 
   // 4 epochs with consistent 40% success
   for (var epoch = 0; epoch < 4; epoch++) {

@@ -1,16 +1,35 @@
 # Copilot Coding Agent Setup Steps
+#
 # Configures the environment for GitHub Copilot coding agents (Claude, Codex)
 # to work on issues and PRs in the gif-captcha repository.
+#
+# Goals:
+#  - Get a Node 22 runtime with dependencies installed (`npm ci`).
+#  - Surface the project's testing surface (node:test) and pass/fail counts
+#    so the agent can detect *new* regressions vs. pre-existing failures.
+#  - Syntax-check every source/bin file with `node -c` so even partial work
+#    is verified to parse.
+#  - Optionally exercise the Docker build (skipped automatically when the
+#    Docker daemon is unreachable on the runner).
+#
+# Note: this workflow is purely a setup harness for Copilot agents. It does
+# not gate CI - real CI lives in ci.yml/codeql.yml/etc.
 
 name: "Copilot Setup Steps"
 
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   setup:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -21,52 +40,91 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run test suite
+      - name: Run test suite (node:test)
+        # `node --test` exits non-zero on any failure. Some pre-existing
+        # failures are tolerated so the workflow keeps going; agents should
+        # diff the pass/fail counts before and after their changes.
         run: |
+          set +e
           echo "=== Running tests (node:test runner) ==="
-          node --test tests/*.test.js 2>&1 || true
+          node --test tests/*.test.js
+          EXIT=$?
           echo ""
-          echo "Note: Some pre-existing test failures are expected."
-          echo "Agents should ensure their changes do not introduce NEW failures."
+          echo "node --test exit code: $EXIT"
+          echo "Note: pre-existing failures are expected; agents must not"
+          echo "introduce NEW failures."
+          exit 0
 
-      - name: Run coverage check
+      - name: Coverage snapshot
+        # Non-blocking - gives the agent a sense of the current coverage
+        # baseline (lines/functions/branches) without enforcing thresholds.
         run: |
-          npx c8 --reporter=text node --test tests/*.test.js 2>&1 || true
+          set +e
+          npx --yes c8 --reporter=text --reporter=json-summary node --test tests/*.test.js
+          if [ -f coverage/coverage-summary.json ]; then
+            echo "=== coverage-summary.json (totals) ==="
+            node -e "const s=require('./coverage/coverage-summary.json').total;console.log(JSON.stringify(s,null,2));"
+          fi
+          exit 0
 
-      - name: Validate HTML pages
+      - name: Syntax-check src/ and bin/
+        # Fast structural check - catches typos & broken requires before
+        # an agent burns time spinning up the full test suite.
         run: |
-          npx htmlhint index.html demo.html analysis.html 2>&1 || true
-
-      - name: Syntax-check all source files
-        run: |
+          set -e
           echo "=== Syntax-checking src/ ==="
           for f in src/*.js; do
-            node -c "$f" && echo "✓ $f" || echo "✗ $f FAILED"
+            node -c "$f" && echo "  ok  $f" || { echo "  FAIL $f"; exit 1; }
           done
           echo ""
           echo "=== Syntax-checking bin/ ==="
           for f in bin/*.js; do
-            node -c "$f" && echo "✓ $f" || echo "✗ $f FAILED"
+            node -c "$f" && echo "  ok  $f" || { echo "  FAIL $f"; exit 1; }
           done
+          echo ""
+          echo "=== Syntax-checking tests/ ==="
+          for f in tests/*.test.js; do
+            node -c "$f" && echo "  ok  $f" || { echo "  FAIL $f"; exit 1; }
+          done
+
+      - name: Lint HTML pages (non-blocking)
+        run: |
+          set +e
+          npx --yes htmlhint index.html demo.html analysis.html
+          exit 0
 
       - name: Project structure overview
         run: |
           echo "=== Source modules (src/) ==="
-          ls -1 src/
+          ls -1 src/ | sed 's/^/  /'
           echo ""
-          echo "=== Test files (tests/) ==="
-          ls -1 tests/
+          echo "=== Test files (tests/) (count: $(ls -1 tests/*.test.js | wc -l)) ==="
+          ls -1 tests/ | head -30 | sed 's/^/  /'
+          echo "  ..."
           echo ""
-          echo "=== Static HTML pages (root) ==="
-          ls -1 *.html | head -20
-          echo "... ($(ls -1 *.html | wc -l) total HTML pages)"
+          echo "=== Static HTML pages (root) (count: $(ls -1 *.html | wc -l)) ==="
+          ls -1 *.html | head -10 | sed 's/^/  /'
+          echo "  ..."
           echo ""
           echo "=== GitHub workflows ==="
-          ls -1 .github/workflows/
+          ls -1 .github/workflows/ | sed 's/^/  /'
           echo ""
           echo "=== package.json scripts ==="
-          node -e "const p=require('./package.json');Object.entries(p.scripts).forEach(([k,v])=>console.log(k+': '+v))"
+          node -e "const p=require('./package.json');for(const[k,v]of Object.entries(p.scripts))console.log('  '+k+': '+v)"
 
-      - name: Verify Docker build
+      - name: Verify Docker build (skipped if daemon unreachable)
+        # Wrap the Docker build so the workflow doesn't hard-fail on runners
+        # that don't have Docker available. The image build only validates
+        # the static-site Dockerfile - no runtime test is performed here.
         run: |
+          set +e
+          if ! command -v docker >/dev/null 2>&1; then
+            echo "docker CLI not present - skipping Docker build verification."
+            exit 0
+          fi
+          if ! docker info >/dev/null 2>&1; then
+            echo "Docker daemon not reachable - skipping Docker build verification."
+            exit 0
+          fi
           docker build -t gif-captcha-test . && echo "Docker build successful"
+          exit 0

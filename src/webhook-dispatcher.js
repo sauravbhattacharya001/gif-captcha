@@ -609,18 +609,66 @@ WebhookDispatcher.prototype.isPaused = function () { return this._paused; };
  * Verify a webhook payload signature.
  * Consumers of the webhook can use this to validate authenticity.
  *
- * @param {string} payload - Raw JSON payload string
+ * Hardening notes:
+ *  - Strict type checks: only `string` payload/signature/secret are accepted.
+ *    Buffer/object inputs are rejected outright rather than coerced via
+ *    `Buffer.from(...)`, which previously could lead to unintended behaviour
+ *    when an attacker supplied an object with a custom `toString()`.
+ *  - Length-oracle resistant: when the supplied signature has a different
+ *    byte length than the expected `sha256=<hex>` value, we still perform a
+ *    same-length `timingSafeEqual(expBuf, expBuf)` call before returning
+ *    false, so the rejection time does not vary with signature length
+ *    (CWE-208 - Observable Timing Discrepancy).
+ *  - HMAC computation is wrapped in try/catch so that malformed secrets
+ *    (e.g. wrong type slipped past validation in older runtimes) cannot
+ *    leak via an uncaught exception.
+ *
+ * @param {string} payload   - Raw JSON payload string
  * @param {string} signature - The X-GifCaptcha-Signature header value
- * @param {string} secret - The shared secret
- * @returns {boolean}
+ *                             (must be the full `sha256=<hex>` form)
+ * @param {string} secret    - The shared secret
+ * @returns {boolean} true if the signature is valid for (payload, secret)
  */
 WebhookDispatcher.verifySignature = function (payload, signature, secret) {
-  if (!payload || !signature || !secret) return false;
-  var expected = "sha256=" + crypto.createHmac("sha256", secret).update(payload).digest("hex");
+  // Strict type validation - no coercion of objects/Buffers into strings.
+  if (typeof payload !== "string" ||
+      typeof signature !== "string" ||
+      typeof secret !== "string") {
+    return false;
+  }
+  if (payload.length === 0 || signature.length === 0 || secret.length === 0) {
+    return false;
+  }
+
+  // Compute expected signature. Wrapped in try/catch in case createHmac
+  // throws on an unsupported runtime or pathological secret.
+  var expected;
   try {
-    return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+    expected = "sha256=" + crypto.createHmac("sha256", secret).update(payload).digest("hex");
   } catch (e) {
-    return false; // Length mismatch
+    return false;
+  }
+
+  var sigBuf, expBuf;
+  try {
+    sigBuf = Buffer.from(signature, "utf8");
+    expBuf = Buffer.from(expected, "utf8");
+  } catch (e) {
+    return false;
+  }
+
+  // Length-mismatch path: still perform a constant-time comparison against
+  // a same-length buffer so the rejection time does not depend on how far
+  // the lengths diverge. This closes a length-oracle side channel.
+  if (sigBuf.length !== expBuf.length) {
+    try { crypto.timingSafeEqual(expBuf, expBuf); } catch (_e) { /* ignore */ }
+    return false;
+  }
+
+  try {
+    return crypto.timingSafeEqual(sigBuf, expBuf);
+  } catch (e) {
+    return false;
   }
 };
 

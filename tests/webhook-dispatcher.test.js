@@ -375,6 +375,55 @@ describe("WebhookDispatcher", () => {
     it("returns false for missing params", () => {
       assert.equal(WebhookDispatcher.verifySignature(null, null, null), false);
     });
+
+    // Hardening regression tests (security_fix)
+
+    it("rejects non-string payload (no Buffer coercion)", () => {
+      const secret = "s";
+      const sig = "sha256=" + require("crypto").createHmac("sha256", secret).update("x").digest("hex");
+      assert.equal(WebhookDispatcher.verifySignature(Buffer.from("x"), sig, secret), false);
+      assert.equal(WebhookDispatcher.verifySignature({ toString: () => "x" }, sig, secret), false);
+      assert.equal(WebhookDispatcher.verifySignature(123, sig, secret), false);
+    });
+
+    it("rejects non-string signature", () => {
+      const secret = "s";
+      const sigHex = require("crypto").createHmac("sha256", secret).update("x").digest("hex");
+      assert.equal(WebhookDispatcher.verifySignature("x", Buffer.from("sha256=" + sigHex), secret), false);
+      assert.equal(WebhookDispatcher.verifySignature("x", { toString: () => "sha256=" + sigHex }, secret), false);
+    });
+
+    it("rejects non-string secret", () => {
+      assert.equal(WebhookDispatcher.verifySignature("x", "sha256=deadbeef", Buffer.from("s")), false);
+      assert.equal(WebhookDispatcher.verifySignature("x", "sha256=deadbeef", 42), false);
+    });
+
+    it("rejects empty strings", () => {
+      assert.equal(WebhookDispatcher.verifySignature("", "sha256=x", "s"), false);
+      assert.equal(WebhookDispatcher.verifySignature("x", "", "s"), false);
+      assert.equal(WebhookDispatcher.verifySignature("x", "sha256=x", ""), false);
+    });
+
+    it("rejects signatures of differing length without throwing (length-oracle resistant)", () => {
+      // Signature shorter than expected should not throw and should return false.
+      assert.equal(WebhookDispatcher.verifySignature("x", "sha256=abc", "s"), false);
+      // Signature much longer than expected.
+      const longSig = "sha256=" + "a".repeat(1024);
+      assert.equal(WebhookDispatcher.verifySignature("x", longSig, "s"), false);
+    });
+
+    it("is wrong-secret resistant", () => {
+      const payload = '{"event":"trust.updated","data":{"id":1}}';
+      const sig = "sha256=" + require("crypto").createHmac("sha256", "real").update(payload).digest("hex");
+      assert.equal(WebhookDispatcher.verifySignature(payload, sig, "real"), true);
+      assert.equal(WebhookDispatcher.verifySignature(payload, sig, "wrong"), false);
+    });
+
+    it("is payload-tamper resistant", () => {
+      const secret = "s";
+      const sig = "sha256=" + require("crypto").createHmac("sha256", secret).update("original").digest("hex");
+      assert.equal(WebhookDispatcher.verifySignature("tampered", sig, secret), false);
+    });
   });
 
   // ── EVENT_TYPES constant ────────────────────────────────────────

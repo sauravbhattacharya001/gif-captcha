@@ -116,7 +116,7 @@ node -c src/some-module.js
 | `test` | `node --test tests/*.test.js` | Run all tests |
 | `test:coverage` | `c8 ... node --test tests/*.test.js` | Tests with coverage report |
 | `coverage` | `c8 ... node --test tests/*.test.js` | Coverage (text + lcov) |
-| `coverage:check` | `c8 check-coverage --lines 80 --functions 70 --branches 90` | Enforce coverage thresholds |
+| `coverage:check` | `c8 check-coverage --lines 75 --functions 85 --branches 85` | Enforce coverage thresholds |
 
 ## Code Style & Conventions
 

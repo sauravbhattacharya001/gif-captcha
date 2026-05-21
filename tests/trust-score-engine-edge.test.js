@@ -238,4 +238,110 @@ describe('trust-score-engine edge cases', function () {
       assert.ok(result.signals.botDetection.error);
     });
   });
+
+  describe('importState() security hardening (CWE-1321 / CWE-20)', function () {
+    it('rejects __proto__/constructor/prototype client ids without polluting the prototype', function () {
+      var engine = createTrustScoreEngine({ cacheTtlMs: 0 });
+      var pollutedBefore = ({}).polluted;
+
+      var imported = engine.importState({
+        clients: {
+          '__proto__':   { score: 0.9, action: 'pass', polluted: 'yes' },
+          'constructor': { score: 0.9, action: 'pass' },
+          'prototype':   { score: 0.9, action: 'pass' },
+          '':            { score: 0.9, action: 'pass' },
+          'legit':       { score: 0.5, action: 'challenge' }
+        }
+      });
+
+      assert.equal(imported, 1, 'only the legit id should be imported');
+      assert.equal(({}).polluted, pollutedBefore, 'Object.prototype must not be polluted');
+      // The unsafe ids must not be retrievable as stored clients.
+      assert.equal(engine.getScore('__proto__'), null);
+      assert.equal(engine.getScore('constructor'), null);
+      assert.equal(engine.getScore('legit').action, 'challenge');
+    });
+
+    it('clamps imported action to the valid verdict whitelist (no arbitrary downgrade to pass)', function () {
+      var engine = createTrustScoreEngine({ cacheTtlMs: 0 });
+
+      engine.importState({
+        clients: {
+          'attacker': { score: -0.99, action: 'definitely-allow' },
+          'mixed':    { score: 0.5,   action: 'pass' }
+        }
+      });
+
+      // Tainted action falls back to the most restrictive verdict, not to whatever the blob said.
+      assert.equal(engine.getScore('attacker').action, 'block');
+      // Whitelisted actions are preserved.
+      assert.equal(engine.getScore('mixed').action, 'pass');
+    });
+
+    it('does not crash on non-object client entries, null/array state, or NaN scores', function () {
+      var engine = createTrustScoreEngine({ cacheTtlMs: 0 });
+
+      // Should not throw on any of these tampered shapes.
+      assert.doesNotThrow(function () { engine.importState(null); });
+      assert.doesNotThrow(function () { engine.importState([]); });
+      assert.doesNotThrow(function () { engine.importState({ clients: [] }); });
+      assert.doesNotThrow(function () {
+        engine.importState({
+          clients: {
+            'a': null,
+            'b': 42,
+            'c': 'not-an-object',
+            'd': [],
+            'e': { score: NaN, action: 'block', timestamp: Infinity, history: 'not-an-array' }
+          }
+        });
+      });
+
+      var e = engine.getScore('e');
+      assert.ok(e, 'entry with sanitized fields should still import');
+      assert.equal(e.score, 0, 'NaN score must be coerced to 0');
+      // historyLength is 0 only if history was coerced to []; a string ('not-an-array')
+      // would either crash on .length or return 12 (string length).
+      assert.equal(e.historyLength, 0, 'non-array history must be replaced with []');
+      assert.equal(engine.getScore('a'), null);
+      assert.equal(engine.getScore('b'), null);
+      assert.equal(engine.getScore('c'), null);
+      assert.equal(engine.getScore('d'), null);
+    });
+
+    it('sanitizes stats so NaN/non-numeric counters do not poison getStats()', function () {
+      var engine = createTrustScoreEngine({ cacheTtlMs: 0 });
+
+      engine.importState({
+        clients: {},
+        stats: {
+          totalEvaluations: 'lots',
+          actionCounts: { block: NaN, challenge: -Infinity, softChallenge: '5', pass: null }
+        }
+      });
+
+      var stats = engine.getStats();
+      // Every numeric field must remain a finite number; anything else is a downstream crash.
+      assert.ok(isFinite(stats.totalEvaluations));
+      assert.ok(isFinite(stats.actionCounts.block));
+      assert.ok(isFinite(stats.actionCounts.challenge));
+      assert.ok(isFinite(stats.actionCounts.softChallenge));
+      assert.ok(isFinite(stats.actionCounts.pass));
+    });
+
+    it('round-trips a clean exportState() unchanged', function () {
+      var engine1 = createTrustScoreEngine({ cacheTtlMs: 0 });
+      engine1.evaluate('client-a', { reputation: 0.9 });
+      engine1.evaluate('client-b', { reputation: 0.1 });
+      var state = engine1.exportState();
+
+      var engine2 = createTrustScoreEngine({ cacheTtlMs: 0 });
+      var imported = engine2.importState(state);
+
+      assert.equal(imported, 2);
+      assert.ok(engine2.getScore('client-a'));
+      assert.ok(engine2.getScore('client-b'));
+      assert.equal(engine2.getScore('client-a').action, engine1.getScore('client-a').action);
+    });
+  });
 });

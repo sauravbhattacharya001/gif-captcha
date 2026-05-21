@@ -550,37 +550,107 @@ function createTrustScoreEngine(options) {
   }
 
   /**
+   * Reject keys that could pollute the prototype chain (CWE-1321).
+   * @param {string} key
+   * @returns {boolean} true if the key is safe to use as a client id
+   */
+  function _isSafeClientId(key) {
+    return typeof key === "string" &&
+           key.length > 0 &&
+           key !== "__proto__" &&
+           key !== "constructor" &&
+           key !== "prototype";
+  }
+
+  // Whitelist of action strings produced by _scoreToAction(). Anything
+  // outside this set in imported state would let an attacker downgrade
+  // (or upgrade) the cached verdict for a known client, e.g. flip a
+  // banned client to "pass" after a tainted importState() call.
+  var _VALID_ACTIONS = { block: 1, challenge: 1, softChallenge: 1, pass: 1 };
+
+  /**
+   * Coerce + validate a finite number, falling back to a default.
+   * Rejects NaN, +/-Infinity and non-numeric strings.
+   */
+  function _safeNumber(v, fallback) {
+    return (typeof v === "number" && isFinite(v)) ? v : fallback;
+  }
+
+  /**
    * Import engine state from persistence.
+   *
+   * Defensive against tampered / corrupted state blobs:
+   *   - Skips unsafe client ids (`__proto__`, `constructor`, `prototype`)
+   *     to prevent prototype pollution (CWE-1321).
+   *   - Skips non-object client entries instead of crashing on `s.score`
+   *     (CWE-20: improper input validation).
+   *   - Restricts `action` to the whitelist `_VALID_ACTIONS` so a hostile
+   *     blob can't inject an arbitrary verdict string that downstream
+   *     consumers of getScore() may treat as "pass".
+   *   - Ensures `history` is always an array (caller-supplied non-array
+   *     would later crash getScoreTrend / evaluate paths).
+   *   - Coerces numeric fields with isFinite to reject NaN/Infinity.
+   *
    * @param {Object} state
+   * @returns {number} Number of client entries actually restored.
    */
   function importState(state) {
-    if (!state || !state.clients) return;
+    if (!state || typeof state !== "object" || Array.isArray(state)) return 0;
+    if (!state.clients || typeof state.clients !== "object" || Array.isArray(state.clients)) {
+      // Still allow stats-only imports below, but no clients to restore.
+      var importedNone = 0;
+      if (state.stats && typeof state.stats === "object") {
+        totalEvaluations = _safeNumber(state.stats.totalEvaluations, 0);
+        if (state.stats.actionCounts && typeof state.stats.actionCounts === "object") {
+          var ac0 = state.stats.actionCounts;
+          actionCounts.block = _safeNumber(ac0.block, 0);
+          actionCounts.challenge = _safeNumber(ac0.challenge, 0);
+          actionCounts.softChallenge = _safeNumber(ac0.softChallenge, 0);
+          actionCounts.pass = _safeNumber(ac0.pass, 0);
+        }
+      }
+      return importedNone;
+    }
+
     var ids = Object.keys(state.clients);
+    var imported = 0;
     for (var i = 0; i < ids.length; i++) {
       var id = ids[i];
+      if (!_isSafeClientId(id)) continue;
+
       var s = state.clients[id];
+      if (!s || typeof s !== "object" || Array.isArray(s)) continue;
+
+      var action = (typeof s.action === "string" && _VALID_ACTIONS[s.action])
+        ? s.action
+        : "block"; // safe default: a tainted action falls back to the most restrictive verdict.
+
+      var score = _safeNumber(s.score, 0);
+
       clients[id] = {
-        score: s.score || 0,
-        action: s.action || "block",
+        score: score,
+        action: action,
         signals: {},
         breakdown: [],
-        timestamp: s.timestamp || 0,
-        history: s.history || [],
-        rawScore: s.score || 0
+        timestamp: _safeNumber(s.timestamp, 0),
+        history: Array.isArray(s.history) ? s.history.slice() : [],
+        rawScore: score
       };
       clientOrder.push(id);
+      imported++;
     }
     _evictIfNeeded();
-    if (state.stats) {
-      totalEvaluations = state.stats.totalEvaluations || 0;
-      if (state.stats.actionCounts) {
+    if (state.stats && typeof state.stats === "object") {
+      totalEvaluations = _safeNumber(state.stats.totalEvaluations, 0);
+      if (state.stats.actionCounts && typeof state.stats.actionCounts === "object") {
         var ac = state.stats.actionCounts;
-        actionCounts.block = ac.block || 0;
-        actionCounts.challenge = ac.challenge || 0;
-        actionCounts.softChallenge = ac.softChallenge || 0;
-        actionCounts.pass = ac.pass || 0;
+        actionCounts.block = _safeNumber(ac.block, 0);
+        actionCounts.challenge = _safeNumber(ac.challenge, 0);
+        actionCounts.softChallenge = _safeNumber(ac.softChallenge, 0);
+        actionCounts.pass = _safeNumber(ac.pass, 0);
       }
     }
+    return imported;
   }
 
   /**

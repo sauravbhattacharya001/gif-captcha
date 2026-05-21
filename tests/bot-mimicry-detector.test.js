@@ -549,3 +549,64 @@ _test("custom weights affect scoring", function () {
   // Should be entirely driven by uncanny valley engine
   _assert.ok(typeof result.mimicryScore === "number");
 });
+
+
+// �� importState robustness (bug fix: non-array events / non-object entries) ��
+
+_test("importState skips non-object session entries instead of corrupting the store", function () {
+  var d = createBotMimicryDetector({});
+  var ok = d.importState({
+    version: 1,
+    sessions: {
+      "good":  { id: "good", events: [], totalEvents: 0, firstSeen: 1, lastSeen: 2 },
+      "bad-null":  null,
+      "bad-num":   42,
+      "bad-str":   "not-an-object",
+      "bad-arr":   [1, 2, 3]
+    },
+    sessionOrder: ["good", "bad-null", "bad-num", "bad-str", "bad-arr", "ghost"]
+  });
+  _assert.equal(ok, true);
+
+  // Feeding a new event to a previously-bad id used to be unreachable because
+  // the LRU re-seeded with phantom keys; now recordEvent must work cleanly.
+  var rec = d.recordEvent(makeEvent("bad-null", true, 3000));
+  _assert.ok(rec, "recordEvent must succeed after import");
+});
+
+_test("importState coerces non-array events so recordEvent() does not crash", function () {
+  var d = createBotMimicryDetector({});
+  var ok = d.importState({
+    version: 1,
+    sessions: {
+      "s1": { id: "s1", events: null,         totalEvents: 0, firstSeen: 0, lastSeen: 0 },
+      "s2": { id: "s2", events: "not-array",  totalEvents: 0, firstSeen: 0, lastSeen: 0 },
+      "s3": { id: "s3", events: { 0: "x" },   totalEvents: 0, firstSeen: 0, lastSeen: 0 }
+    }
+  });
+  _assert.equal(ok, true);
+
+  // Before the fix, sess.events.push(entry) threw TypeError because
+  // sess.events was null / a string / a plain object.
+  _assert.doesNotThrow(function () { d.recordEvent(makeEvent("s1", true, 3000)); });
+  _assert.doesNotThrow(function () { d.recordEvent(makeEvent("s2", true, 3000)); });
+  _assert.doesNotThrow(function () { d.recordEvent(makeEvent("s3", true, 3000)); });
+
+  // And analyzeSession must not crash on the sanitized state either.
+  _assert.doesNotThrow(function () { d.analyzeSession("s1"); });
+});
+
+_test("importState ignores non-array sessionOrder / templates / insights", function () {
+  var d = createBotMimicryDetector({});
+  // Previously: state.sessionOrder = {} would throw inside LruTracker.fromArray
+  // because it iterates arr.length (undefined  for {} -> NaN).
+  _assert.doesNotThrow(function () {
+    d.importState({
+      version: 1,
+      sessions: { "ok": { id: "ok", events: [], totalEvents: 0, firstSeen: 0, lastSeen: 0 } },
+      sessionOrder: { "garbage": true },
+      templates: "not-an-array",
+      insights: 42
+    });
+  });
+});

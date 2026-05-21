@@ -810,30 +810,44 @@ function createBotMimicryDetector(options) {
     _templates = [];
     _insights = [];
 
-    if (state.sessions) {
+    if (state.sessions && typeof state.sessions === "object") {
       var keys = Object.keys(state.sessions);
       for (var i = 0; i < keys.length; i++) {
-        var sd = state.sessions[keys[i]];
-        _sessions[keys[i]] = {
-          id: sd.id,
+        var sid = keys[i];
+        var sd = state.sessions[sid];
+        // Skip non-object entries entirely — { events: null }, primitives,
+        // and arrays would crash downstream code that calls
+        // sess.events.push / .length / .slice on the imported state.
+        if (!sd || typeof sd !== "object") continue;
+        _sessions[sid] = {
+          id: typeof sd.id === "string" && sd.id ? sd.id : sid,
           sourceId: sd.sourceId || null,
-          events: sd.events || [],
-          firstSeen: sd.firstSeen || 0,
-          lastSeen: sd.lastSeen || 0,
-          totalEvents: sd.totalEvents || 0
+          // events MUST be an array — defaulting non-arrays to [] prevents
+          // TypeError on the next recordEvent / analyzeSession call.
+          events: Array.isArray(sd.events) ? sd.events.slice() : [],
+          firstSeen: typeof sd.firstSeen === "number" && isFinite(sd.firstSeen) ? sd.firstSeen : 0,
+          lastSeen: typeof sd.lastSeen === "number" && isFinite(sd.lastSeen) ? sd.lastSeen : 0,
+          totalEvents: typeof sd.totalEvents === "number" && isFinite(sd.totalEvents) ? sd.totalEvents : 0
         };
       }
     }
 
-    if (state.sessionOrder) {
-      _sessionLru.fromArray(state.sessionOrder);
+    if (Array.isArray(state.sessionOrder)) {
+      // Only re-seed the LRU with ids we actually imported; otherwise
+      // evictOldest() would return a phantom key that delete leaves untouched.
+      var filtered = [];
+      for (var j = 0; j < state.sessionOrder.length; j++) {
+        var ok = state.sessionOrder[j];
+        if (typeof ok === "string" && _sessions[ok]) filtered.push(ok);
+      }
+      _sessionLru.fromArray(filtered);
     }
 
-    if (state.templates) {
+    if (Array.isArray(state.templates)) {
       _templates = state.templates.slice();
     }
 
-    if (state.insights) {
+    if (Array.isArray(state.insights)) {
       _insights = state.insights.slice();
     }
 

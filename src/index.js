@@ -9604,6 +9604,7 @@ var createAttackResponsePlaybook = require("./attack-response-playbook").createA
 var createAttackForecaster = require("./attack-forecaster").createAttackForecaster;
 var createUserAbandonmentForecaster = require("./user-abandonment-forecaster").createUserAbandonmentForecaster;
 var createFalseRejectRecoveryAdvisor = require("./false-reject-recovery-advisor").createFalseRejectRecoveryAdvisor;
+var createSessionStepUpAdvisor = require("./session-step-up-advisor").createSessionStepUpAdvisor;
 var createHumanVerificationConfidenceAuditor = require("./human-verification-confidence-auditor").createHumanVerificationConfidenceAuditor;
 var createHoneypotEffectivenessAdvisor = require("./honeypot-effectiveness-advisor").createHoneypotEffectivenessAdvisor;
 var createBlockedSessionAppealAdjudicator = require("./blocked-session-appeal-adjudicator").createBlockedSessionAppealAdjudicator;
@@ -9694,6 +9695,7 @@ var gifCaptcha = {
   createAttackForecaster: createAttackForecaster,
   createUserAbandonmentForecaster: createUserAbandonmentForecaster,
   createFalseRejectRecoveryAdvisor: createFalseRejectRecoveryAdvisor,
+  createSessionStepUpAdvisor: createSessionStepUpAdvisor,
   createHumanVerificationConfidenceAuditor: createHumanVerificationConfidenceAuditor,
   createHoneypotEffectivenessAdvisor: createHoneypotEffectivenessAdvisor,
   createBlockedSessionAppealAdjudicator: createBlockedSessionAppealAdjudicator,

@@ -9611,6 +9611,7 @@ var createBlockedSessionAppealAdjudicator = require("./blocked-session-appeal-ad
 var createCrossSessionLinkageAdvisor = require("./cross-session-linkage-advisor").createCrossSessionLinkageAdvisor;
 var createSessionEvidenceBundler = require("./session-evidence-bundler").createSessionEvidenceBundler;
 var createCaptchaTypeMixOptimizer = require("./captcha-type-mix-optimizer").createCaptchaTypeMixOptimizer;
+var createWebhookDeliveryHealthAdvisor = require("./webhook-delivery-health-advisor").createWebhookDeliveryHealthAdvisor;
 var WebhookDispatcher = _webhookModule.WebhookDispatcher;
 var gifCaptcha = {
   sanitize: sanitize,
@@ -9704,6 +9705,7 @@ var gifCaptcha = {
   createCrossSessionLinkageAdvisor: createCrossSessionLinkageAdvisor,
   createSessionEvidenceBundler: createSessionEvidenceBundler,
   createCaptchaTypeMixOptimizer: createCaptchaTypeMixOptimizer,
+  createWebhookDeliveryHealthAdvisor: createWebhookDeliveryHealthAdvisor,
 };
 
 // UMD export — works in Node.js, AMD, and browser globals

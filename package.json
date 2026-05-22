@@ -1,6 +1,6 @@
 {
     "name": "gif-captcha",
-    "version": "1.25.2",
+    "version": "1.26.0",
     "description": "GIF-based CAPTCHA system that uses visual comprehension to distinguish humans from bots",
     "main": "src/index.js",
     "bin": {

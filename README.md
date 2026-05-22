@@ -142,10 +142,36 @@ console.log(result); // { passed: true, score: 0.75, hasKeywords: true }
 
 ### CLI
 
+The package installs a `gif-captcha` executable (also runnable via `npx gif-captcha`) that exposes
+the library's core functionality from the terminal:
+
 ```bash
-npx gif-captcha serve    # Launch local demo server
-npx gif-captcha validate # Validate challenge JSON files
+# Generate sample challenges
+npx gif-captcha generate --count 5
+
+# Score an answer against an expected solution
+npx gif-captcha validate --answer "dog plays" --expected "dog playing tic tac toe" --threshold 0.5
+
+# Benchmark core operations
+npx gif-captcha benchmark --rounds 1000 --sessions 100
+
+# Inspect a challenge pool
+npx gif-captcha pool --size 20 --refill 5
+
+# Look up a client trust score
+npx gif-captcha trust --ip 203.0.113.42
+
+# Set-level statistics for a batch of challenges
+npx gif-captcha stats --challenges 20
+
+# Print library version and available modules
+npx gif-captcha info
+
+# Diagnostic health check (modules + perf + edge cases)
+npx gif-captcha doctor --verbose
 ```
+
+Full CLI reference, exit codes, and scripting examples live in [docs/CLI.md](docs/CLI.md).
 
 ## Architecture
 

@@ -27,10 +27,44 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v6
 
+      # Stage only the actual public site into dist/. This is an allow-list
+      # (not a deny-list) so newly added internal files (tests, src modules,
+      # bin scripts, contributor docs, dotfiles, lockfiles) never accidentally
+      # leak onto Pages. See issue #134.
+      - name: Stage Pages content
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+
+          # Top-level static site: every *.html plus the shared CSS/JS the
+          # pages reference. README is the landing fallback if index.html
+          # is ever missing; LICENSE is intentionally public.
+          shopt -s nullglob
+          cp -- *.html dist/
+          for f in shared.css shared.js LICENSE; do
+            [ -e "$f" ] && cp -- "$f" dist/
+          done
+
+          # Rendered public docs (HTML + intentionally-public .md mirrors).
+          if [ -d docs ]; then
+            cp -r docs dist/
+          fi
+
+          # Explicitly do NOT copy: src/, tests/, bin/, scripts/, .github/,
+          # package*.json, Dockerfile, nginx-security.conf, CONTRIBUTING.md,
+          # TESTING.md, CODE_OF_CONDUCT.md, SECURITY.md, API.md, .dockerignore,
+          # .npmrc, .c8rc.json, .gitignore. If any of those become part of
+          # the public surface, add an explicit cp line above with a comment
+          # justifying why.
+
+          echo "Staged Pages payload:"
+          du -sh dist
+          find dist -maxdepth 2 -type f | sort | head -40
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v5
         with:
-          path: '.'
+          path: dist
 
       - name: Deploy to GitHub Pages
         id: deployment

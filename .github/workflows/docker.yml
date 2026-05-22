@@ -15,12 +15,38 @@ permissions:
   contents: read
   packages: write
   security-events: write
+  id-token: write   # required by cosign keyless signing
 
 jobs:
+  hadolint:
+    name: Lint Dockerfile (hadolint)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Run hadolint
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+          format: sarif
+          output-file: hadolint-results.sarif
+          no-fail: true
+
+      - name: Upload hadolint SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: hadolint-results.sarif
+          category: hadolint
+
   build-and-push:
+    name: Build & Push Multi-Arch Image
+    needs: hadolint
     runs-on: ubuntu-latest
     outputs:
       image-digest: ${{ steps.build.outputs.digest }}
+      image-tags: ${{ steps.meta.outputs.tags }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -64,7 +90,39 @@ jobs:
           sbom: true
           provenance: mode=max
 
+  sign:
+    name: Sign image with cosign (keyless)
+    needs: build-and-push
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3.7.0
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Sign each pushed tag by digest
+        env:
+          DIGEST: ${{ needs.build-and-push.outputs.image-digest }}
+          TAGS: ${{ needs.build-and-push.outputs.image-tags }}
+          COSIGN_EXPERIMENTAL: "true"
+        run: |
+          set -euo pipefail
+          # Sign once per tag, always pinned by digest to avoid TOCTOU.
+          echo "$TAGS" | while IFS= read -r tag; do
+            [ -z "$tag" ] && continue
+            ref="${tag%%:*}@${DIGEST}"
+            echo "Signing $ref"
+            cosign sign --yes "$ref"
+          done
+
   scan:
+    name: Trivy vulnerability scan
     needs: build-and-push
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
@@ -79,13 +137,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Run Trivy vulnerability scanner
+      # Scan by digest so tag pushes (which don't produce a `:main` tag) are
+      # still scanned correctly. Previously this hard-coded `:main` and silently
+      # did nothing on tag pushes / failed to find an image to scan.
+      - name: Run Trivy vulnerability scanner (by digest)
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.build-and-push.outputs.image-digest }}
           format: sarif
           output: trivy-results.sarif
           severity: CRITICAL,HIGH
+          ignore-unfixed: true
           exit-code: 0
 
       - name: Upload Trivy scan results to GitHub Security

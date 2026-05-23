@@ -1198,3 +1198,331 @@ const matches = fp.matchAgainstProfiles(fp.getFingerprint("session-2"));
 |----------|-------|-------------|
 | `GIF_MAX_RETRIES` | `3` | Default max retries for GIF loading |
 | `GIF_RETRY_DELAY_MS` | `1000` | Default delay between retries (ms) |
+
+---
+
+## Additional Modules Reference
+
+The modules below are exported from the package entry point but were previously listed only as headings in [README.md](README.md). They are documented here with their factory signature and full public method surface (introspected from a live instance) so they can be used without reading the source.
+
+All constructors accept a single options object and return an instance whose listed methods form the supported public API. To load a module in isolation (smaller bundles, no other modules touched), require it by its file path instead of pulling the whole entry point.
+
+```js
+const gifCaptcha = require("gif-captcha");
+const tuner = gifCaptcha.createAdaptiveDifficultyTuner();
+
+// Or load just the one module:
+const { createAdaptiveDifficultyTuner } = require("gif-captcha/src/adaptive-difficulty-tuner");
+```
+
+### `createDeviceCohortAnalyzer(options?)`
+
+*Module: `gif-captcha/src/device-cohort-analyzer`*
+
+Aggregates session signals into device cohorts (UA/platform/locale) and tracks per-cohort behaviour profiles for comparison and anomaly detection.
+
+**Returns:** instance exposing `record`, `getCohortProfile`, `getAllProfiles`, `compareCohorts`, `summary`, `reset`, `exportState`, `importState`
+
+### `createHoneypotInjector(options?)`
+
+*Module: `gif-captcha/src/honeypot-injector`*
+
+Generates honeypot traps (hidden fields, timing decoys, fake endpoints) and scores sessions by which decoys they tripped.
+
+**Returns:** instance exposing `createTrap`, `createTrapSet`, `check`, `checkBatch`, `getSessionScore`, `getStrategyStats`, `getTrap`, `getTrippedHistory`, `summary`, `generateReport`, `exportState`, `importState`, `reset`
+
+### `createChallengeRotationScheduler(options?)`
+
+*Module: `gif-captcha/src/challenge-rotation-scheduler`*
+
+Weighted rotation of challenge types with enable/disable, weight tuning, and strategy selection (round-robin / weighted / random).
+
+**Returns:** instance exposing `addChallengeType`, `removeChallengeType`, `setTypeEnabled`, `setTypeWeight`, `getTypes`, `getCurrentType`, `rotate`, `setStrategy`, `getStrategy`, `recordSolve`, `getTypeStats`, `start`, `stop`, `isRunning`, `on`, `off`, `exportState`, `importState`, `reset`, `getSummary`
+
+### `createChallengePoolManager(options?)`
+
+*Module: `gif-captcha/src/challenge-pool-manager`*
+
+Pool manager built on a user-supplied challenge factory; tracks size, refill thresholds, and lifecycle stats. Requires { factory } option.
+
+**Returns:** instance exposing `take`, `warmUp`, `replenish`, `health`, `size`, `drain`, `resetStats`, `getStats`, `peek`, `getTiers`, `exportPool`, `importPool`
+
+### `createSessionReplay(options?)`
+
+*Module: `gif-captcha/src/session-replay`*
+
+Records ordered session events for forensic replay, with abandonment tracking and per-session summaries.
+
+**Returns:** instance exposing `startSession`, `recordEvent`, `endSession`, `abandonSession`, `getSession`, `sessionSummary`, `sessionStats`, `listSessions`, `createPlayback`, `compareSessions`, `searchEvents`, `deleteSession`, `clear`, `aggregateStats`, `exportJSON`, `importJSON`, `textReport`
+
+### `createAdaptiveDifficultyTuner(options?)`
+
+*Module: `gif-captcha/src/adaptive-difficulty-tuner`*
+
+Multi-dimensional difficulty controller that reacts to solve/fail telemetry and recommends per-session or global difficulty adjustments.
+
+**Returns:** instance exposing `recordSolve`, `recordFail`, `evaluate`, `applyRecommendation`, `getDifficulty`, `setDifficulty`, `getCompositeDifficulty`, `setDimension`, `getDimension`, `getAllDimensions`, `addDimension`, `removeDimension`, `startAutoEval`, `stopAutoEval`, `getStatus`, `getReport`, `pause`, `resume`, `reset`, `destroy`, `exportState`, `importState`, `on`, `off`
+
+### `createBotSignatureDatabase(options?)`
+
+*Module: `gif-captcha/src/bot-signature-database`*
+
+Stores attacker signatures (UA / IP / pattern fingerprints) and matches incoming sessions against them in single or batch mode.
+
+**Returns:** instance exposing `addSignature`, `removeSignature`, `getSignature`, `listSignatures`, `matchSession`, `batchMatch`, `getStats`, `getHistory`, `exportDatabase`, `importDatabase`, `reset`, `textReport`
+
+### `createAccessibilityAnalyzer(options?)`
+
+*Module: `gif-captcha/src/captcha-accessibility-analyzer`*
+
+Audits registered challenges against accessibility rules and produces comparable reports + historical trend.
+
+**Returns:** instance exposing `registerChallenge`, `removeChallenge`, `getChallenge`, `listChallenges`, `analyze`, `quickAudit`, `compareReports`, `getHistory`, `exportJSON`, `getConfig`
+
+### `createAnomalyDetector(options?)`
+
+*Module: `gif-captcha/src/captcha-anomaly-detector`*
+
+EMA-based anomaly detector over arbitrary event streams; surfaces alerts and exposes baseline / stats snapshots.
+
+**Returns:** instance exposing `recordEvent`, `recordEvents`, `analyze`, `getAlertHistory`, `getEmaSnapshot`, `getStats`, `reset`
+
+### `createAuditLog(options?)`
+
+*Module: `gif-captcha/src/captcha-audit-log`*
+
+Tamper-evident audit log for challenge / verification events with query, CSV/JSON export, and correlation tracing. Takes no constructor args.
+
+**Returns:** instance exposing `record`, `query`, `stats`, `traceChallenge`, `traceCorrelation`, `exportCSV`, `exportJSON`, `importJSON`, `purge`, `size`, `all`
+
+### `createCapacityPlanner(options?)`
+
+*Module: `gif-captcha/src/captcha-capacity-planner`*
+
+Capacity planning over recorded load samples: forecasts, scenario projections, hourly profile, and headroom recommendations.
+
+**Returns:** instance exposing `recordSample`, `recordBatch`, `stats`, `forecast`, `assess`, `recommend`, `scenario`, `hourlyProfile`, `report`, `getSamples`, `clear`
+
+### `createExportFormatter(options?)`
+
+*Module: `gif-captcha/src/captcha-export-formatter`*
+
+Aggregates experimental trials and exports descriptive statistics + LaTeX / R / CSV formats suitable for academic write-ups.
+
+**Returns:** instance exposing `addTrial`, `addTrials`, `getTrials`, `count`, `clear`, `descriptiveStats`, `toLatex`, `toR`, `toSPSS`, `toBibTeX`, `toAppendix`, `toJSON`, `importJSON`
+
+### `createCaptchaFatigueDetector(options?)`
+
+*Module: `gif-captcha/src/captcha-fatigue-detector`*
+
+Per-session fatigue scoring (repeated challenges, time-on-task) with dismiss / reset and fleet-wide reporting.
+
+**Returns:** instance exposing `recordEvent`, `evaluate`, `dismissFatigue`, `resetSession`, `getSessionReport`, `getFleetReport`, `getFatigueTrend`, `generateTextReport`, `exportState`, `importState`, `on`, `off`
+
+### `createCaptchaHealthMonitor(options?)`
+
+*Module: `gif-captcha/src/captcha-health-monitor`*
+
+Operational health monitor: rolls solve rate, bot detection rate, pool levels, rate-limit hits, and errors into a single health summary.
+
+**Returns:** instance exposing `recordSolve`, `recordBotDetection`, `recordPoolLevel`, `recordRateLimitHit`, `recordError`, `recordOperation`, `check`, `summary`, `trend`, `getAlerts`, `getCheckHistory`, `stats`, `reset`, `exportJSON`, `importJSON`
+
+### `createIncidentManager(options?)`
+
+*Module: `gif-captcha/src/captcha-incident-manager`*
+
+Full incident lifecycle: create / ack / investigate / mitigate / resolve / close / escalate, with structured state transitions.
+
+**Returns:** instance exposing `create`, `get`, `acknowledge`, `investigate`, `mitigate`, `resolve`, `close`, `escalate`, `deescalate`, `addNote`, `listOpen`, `listAll`, `stats`, `generatePostmortem`, `exportJSON`, `importJSON`, `exportCSV`, `purgeResolved`, `getRunbook`, `listRunbooks`, `destroy`
+
+### `createCaptchaLoadTester(options?)`
+
+*Module: `gif-captcha/src/captcha-load-tester`*
+
+Concurrency-controlled load runner. Required option: { handler } — the async function to drive. Reports latency / throughput / error rates.
+
+**Returns:** instance exposing `run`, `cancel`, `stress`, `compare`, `registerScenario`, `runScenario`, `formatReport`, `getHistory`, `exportState`, `importState`, `reset`
+
+### `createCaptchaLocalizationManager(options?)`
+
+*Module: `gif-captcha/src/captcha-localization-manager`*
+
+i18n manager with locale detection, pluralisation rules, and dynamic translation registration on top of the base i18n module.
+
+**Returns:** instance exposing `t`, `translate`, `detectLocale`, `addTranslations`, `removeLocale`, `addPluralRule`, `getLocales`, `getKeys`, `isRTL`, `getDirection`, `coverageReport`, `translateAll`, `normalizeLocale`, `buildFallbackChain`
+
+### `createCaptchaRateLimiter(options?)`
+
+*Module: `gif-captcha/src/captcha-rate-limiter`*
+
+Token-bucket rate limiter with peek / consume, bans, and per-key reset — designed for per-IP and per-session enforcement.
+
+**Returns:** instance exposing `check`, `consume`, `peek`, `ban`, `unban`, `isBanned`, `reset`, `resetAll`, `getStats`, `getTopKeys`, `whitelistAdd`, `whitelistRemove`, `isWhitelisted`, `exportState`, `importState`
+
+### `createStatsCollector(options?)`
+
+*Module: `gif-captcha/src/captcha-stats-collector`*
+
+Lightweight rolling-window stats collector with CSV/JSON export. Takes no constructor args.
+
+**Returns:** instance exposing `record`, `summary`, `report`, `exportCSV`, `exportJSON`, `reset`, `windowCount`
+
+### `createCaptchaStrengthScorer(options?)`
+
+*Module: `gif-captcha/src/captcha-strength-scorer`*
+
+Scores individual challenges against a weighted policy and produces comparative / ranked output across a set.
+
+**Returns:** instance exposing `score`, `compare`, `rank`, `getWeights`
+
+### `createCaptchaTrafficAnalyzer(options?)`
+
+*Module: `gif-captcha/src/captcha-traffic-analyzer`*
+
+Time-series traffic analyzer: windows, baseline, trend, hourly distribution, and per-region breakdown.
+
+**Returns:** instance exposing `record`, `recordBatch`, `analyze`, `getWindows`, `getBaseline`, `getTrend`, `getHourlyDistribution`, `getRegionBreakdown`, `getSummary`, `getAlertHistory`, `exportData`, `importData`, `reset`, `flush`
+
+### `createChallengeTemplateEngine(options?)`
+
+*Module: `gif-captcha/src/challenge-template-engine`*
+
+Template-driven challenge generation with registration, batch generation, validation, and per-template stats.
+
+**Returns:** instance exposing `registerTemplate`, `unregisterTemplate`, `generate`, `generateBatch`, `validate`, `getStats`, `getHistory`, `getTemplateInfo`, `listTemplates`, `getCategories`, `getDifficultyDistribution`, `getParameterSpace`, `findProblematicTemplates`, `exportState`, `importStats`, `reset`, `generateReport`
+
+### `createResponseTimeProfiler(options?)`
+
+*Module: `gif-captcha/src/response-time-profiler`*
+
+Per-challenge-type latency profiling: histograms, anomaly detection, inter-solve gaps, and difficulty / time correlation.
+
+**Returns:** instance exposing `record`, `getTypeProfile`, `getAllTypeProfiles`, `detectAnomalies`, `classifySession`, `getHistogram`, `getDifficultyCorrelation`, `getInterSolveGaps`, `getSummary`, `exportData`, `importData`, `reset`
+
+### `createSessionRiskAggregator(options?)`
+
+*Module: `gif-captcha/src/session-risk-aggregator`*
+
+Aggregates risk signals per session, evaluates composite risk, tracks trend, and supports metadata / unlock / removal.
+
+**Returns:** instance exposing `addSignal`, `evaluate`, `evaluateAll`, `getSession`, `setMetadata`, `unlock`, `removeSession`, `getTrend`, `getStats`, `getWeights`, `setWeights`, `prune`, `report`, `exportData`, `importData`, `reset`
+
+### `createFunnelAnalyzer(options?)`
+
+*Module: `gif-captcha/src/solve-funnel-analyzer`*
+
+Funnel analytics over CAPTCHA solve events: per-step conversion, cohort comparison, trends, CSV/JSON export.
+
+**Returns:** instance exposing `record`, `report`, `compareCohorts`, `trends`, `exportCSV`, `exportJSON`, `reset`
+
+### `createChallengeAutopilot(options?)`
+
+*Module: `gif-captcha/src/challenge-autopilot`*
+
+Autonomously selects challenges and adjusts difficulty based on outcome telemetry; emits decisions and situation reports.
+
+**Returns:** instance exposing `recordOutcome`, `registerChallenge`, `evaluate`, `applyDecision`, `selectChallenge`, `selfReport`, `situationReport`, `getChallengeStats`, `setStatus`, `getConfig`, `listChallenges`
+
+### `createBotAdversarialPlaybookEngine(options?)`
+
+*Module: `gif-captcha/src/bot-adversarial-playbook`*
+
+Runs adversarial assessments, simulates attack scenarios, and tracks adversary evolution against the defense catalog.
+
+**Returns:** instance exposing `runAssessment`, `simulateScenario`, `getEvolution`, `getInsights`, `getAttackCategories`, `getDefenseCatalog`, `getFleetHealth`, `exportState`, `importState`
+
+### `createAttackResponsePlaybook(options?)`
+
+*Module: `gif-captcha/src/attack-response-playbook`*
+
+Generates structured incident-response playbooks; supports simulation, profile listing, and multiple output formats.
+
+**Returns:** instance exposing `generate`, `simulate`, `explain`, `formatAs`, `listProfiles`, `listActions`
+
+### `createAttackForecaster(options?)`
+
+*Module: `gif-captcha/src/attack-forecaster`*
+
+Time-series attack forecaster: records snapshots, projects future attack volume, and simulates intervention effects.
+
+**Returns:** instance exposing `recordSnapshot`, `forecast`, `simulate`, `formatAs`, `formatText`, `formatMarkdown`, `reset`
+
+### `createUserAbandonmentForecaster(options?)`
+
+*Module: `gif-captcha/src/user-abandonment-forecaster`*
+
+Forecasts user abandonment risk from solve-funnel signals; exposes text / Markdown / JSON formatters.
+
+**Returns:** instance exposing `analyze`, `simulate`, `formatText`, `formatMarkdown`, `formatJson`
+
+### `createFalseRejectRecoveryAdvisor(options?)`
+
+*Module: `gif-captcha/src/false-reject-recovery-advisor`*
+
+Recommends recovery flows for users falsely rejected by the CAPTCHA layer.
+
+**Returns:** instance exposing `analyze`, `simulate`, `formatText`, `formatMarkdown`, `formatJson`
+
+### `createSessionStepUpAdvisor(options?)`
+
+*Module: `gif-captcha/src/session-step-up-advisor`*
+
+Decides when a session should be stepped up to a stronger verification challenge.
+
+**Returns:** instance exposing `analyze`, `simulate`, `formatText`, `formatMarkdown`, `formatJson`
+
+### `createHumanVerificationConfidenceAuditor(options?)`
+
+*Module: `gif-captcha/src/human-verification-confidence-auditor`*
+
+Audits the per-session confidence score that the verifier is actually human. Takes no constructor args.
+
+**Returns:** instance exposing `analyze`, `simulate`, `formatText`, `formatMarkdown`, `formatJson`
+
+### `createHoneypotEffectivenessAdvisor(options?)`
+
+*Module: `gif-captcha/src/honeypot-effectiveness-advisor`*
+
+Scores honeypot performance over time and recommends rotation / retirement. Takes no constructor args.
+
+**Returns:** instance exposing `analyze`, `simulate`, `formatText`, `formatMarkdown`, `formatJson`
+
+### `createBlockedSessionAppealAdjudicator(options?)`
+
+*Module: `gif-captcha/src/blocked-session-appeal-adjudicator`*
+
+Adjudicates user appeals against block decisions and emits structured rationales.
+
+**Returns:** instance exposing `adjudicate`, `format`, `formatText`, `formatMarkdown`, `formatJson`
+
+### `createCrossSessionLinkageAdvisor(options?)`
+
+*Module: `gif-captcha/src/cross-session-linkage-advisor`*
+
+Detects likely linkages between distinct sessions (shared bot / solve farm) and explains the linkage signals.
+
+**Returns:** instance exposing `analyze`, `format`
+
+### `createSessionEvidenceBundler(options?)`
+
+*Module: `gif-captcha/src/session-evidence-bundler`*
+
+Bundles per-session evidence (events, signals, decisions) into a single auditable record with on-change hooks.
+
+**Returns:** instance exposing `bundle`, `format`, `history`, `getConfig`, `setConfig`, `onChange`
+
+### `createCaptchaTypeMixOptimizer(options?)`
+
+*Module: `gif-captcha/src/captcha-type-mix-optimizer`*
+
+Recommends an optimal mix of challenge types given current solve/abuse telemetry. Takes no constructor args.
+
+**Returns:** instance exposing `analyze`, `recommendMix`, `formatText`, `formatMarkdown`, `formatJson`
+
+### `createWebhookDeliveryHealthAdvisor(options?)`
+
+*Module: `gif-captcha/src/webhook-delivery-health-advisor`*
+
+Analyses webhook delivery telemetry (success / retry / latency) and surfaces health recommendations.
+
+**Returns:** instance exposing `analyze`, `formatText`, `formatMarkdown`, `formatJson`

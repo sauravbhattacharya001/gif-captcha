@@ -322,6 +322,19 @@ See [TESTING.md](TESTING.md) for the full testing guide, conventions, and covera
 - Describe what you changed and why
 - If adding new research data, cite your sources
 
+### Branch Protection Policy
+
+The `main` branch is the only long-lived branch and is protected with the following rules (configured via the GitHub API):
+
+| Rule | Setting | Why |
+|------|---------|-----|
+| `required_linear_history` | **on** | History stays bisectable — no merge commits, squash or rebase only. |
+| `required_conversation_resolution` | **on** | Every PR review comment must be resolved before merge, so reviewer concerns are never silently dropped. |
+| `allow_force_pushes` | **off** | Published history is immutable — releases pinned to a commit can't be silently rewritten. |
+| `allow_deletions` | **off** | Prevents accidental branch deletion. |
+
+If you propose changing this policy, open an issue first — these rules are part of the supply-chain story for the published npm package.
+
 ### Commit Messages
 
 Use clear, descriptive commit messages:

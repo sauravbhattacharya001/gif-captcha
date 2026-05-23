@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; img-src https:; frame-ancestors 'none'; base-uri 'self'; form-action 'none';">
+    <meta name="referrer" content="no-referrer">
+    <meta name="robots" content="noindex, follow">
+    <title>404 — Page Not Found · GIF CAPTCHA</title>
+    <link rel="stylesheet" href="/shared.css">
+    <style>
+        body {
+            padding: 2rem;
+            max-width: 720px;
+            margin: 0 auto;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        .code {
+            font-size: 5rem;
+            font-weight: 700;
+            color: var(--accent);
+            line-height: 1;
+            margin: 0 0 0.5rem;
+            letter-spacing: -0.04em;
+        }
+        h1 {
+            font-size: 1.6rem;
+            margin: 0 0 1rem;
+            color: var(--text);
+        }
+        p {
+            color: var(--muted);
+            line-height: 1.6;
+            margin: 0 0 1rem;
+        }
+        .links {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem 1rem;
+            margin-top: 1.5rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid var(--border);
+        }
+        .links a {
+            color: var(--accent);
+            text-decoration: none;
+            font-size: 0.95rem;
+        }
+        .links a:hover { text-decoration: underline; }
+        .hint {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1rem 1.25rem;
+            margin-top: 1.5rem;
+            color: var(--muted);
+            font-size: 0.9rem;
+        }
+        code {
+            background: var(--surface);
+            padding: 0.1rem 0.4rem;
+            border-radius: 4px;
+            color: var(--text);
+            font-size: 0.85em;
+        }
+    </style>
+</head>
+<body>
+    <div class="code">404</div>
+    <h1>That page didn't pass the CAPTCHA.</h1>
+    <p>
+        The URL you requested doesn't exist on this site (or moved during a
+        restructuring). The good news: there are 100+ other pages here.
+    </p>
+
+    <div class="hint">
+        Looking for the project? Start at <a href="/"><code>/</code></a> for the
+        case study, <a href="/demo.html"><code>demo.html</code></a> for the
+        interactive demo, or <a href="/directory.html"><code>directory.html</code></a>
+        for the full tool index.
+    </div>
+
+    <nav class="links" aria-label="Site navigation">
+        <a href="/">Home</a>
+        <a href="/demo.html">Demo</a>
+        <a href="/directory.html">All tools</a>
+        <a href="/docs/">Docs</a>
+        <a href="/dashboard.html">Dashboard</a>
+        <a href="https://github.com/sauravbhattacharya001/gif-captcha/issues">Report a broken link</a>
+    </nav>
+</body>
+</html>

@@ -1,0 +1,12 @@
+# robots.txt for https://sauravbhattacharya001.github.io/gif-captcha/
+#
+# The site is a public case study + interactive demo for the gif-captcha
+# project. All HTML pages are intentionally indexable. Tests, source modules,
+# and contributor docs are NOT deployed to Pages (see .github/workflows/pages.yml
+# allow-list), so there is nothing private to disallow here.
+
+User-agent: *
+Allow: /
+
+# Generated sitemap (built from the staged HTML payload at deploy time).
+Sitemap: https://sauravbhattacharya001.github.io/gif-captcha/sitemap.xml

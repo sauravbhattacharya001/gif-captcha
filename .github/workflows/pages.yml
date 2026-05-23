@@ -41,7 +41,7 @@ jobs:
           # is ever missing; LICENSE is intentionally public.
           shopt -s nullglob
           cp -- *.html dist/
-          for f in shared.css shared.js LICENSE; do
+          for f in shared.css shared.js LICENSE robots.txt; do
             [ -e "$f" ] && cp -- "$f" dist/
           done
 
@@ -60,6 +60,36 @@ jobs:
           echo "Staged Pages payload:"
           du -sh dist
           find dist -maxdepth 2 -type f | sort | head -40
+
+      # Generate sitemap.xml from the staged HTML payload. Doing this at
+      # build time means we never have to hand-maintain a list of 100+ pages
+      # and we never accidentally publish stale URLs that point at files
+      # that have since been deleted. Excludes 404.html (noindex by design).
+      - name: Generate sitemap.xml
+        env:
+          SITE_BASE: https://sauravbhattacharya001.github.io/gif-captcha
+        run: |
+          set -euo pipefail
+          today=$(date -u +%Y-%m-%d)
+          {
+            echo '<?xml version="1.0" encoding="UTF-8"?>'
+            echo '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+            # Find every .html file under dist/, normalize index.html to the
+            # containing directory, skip 404.html (intentionally noindex).
+            ( cd dist && find . -type f -name '*.html' | LC_ALL=C sort ) | while read -r rel; do
+              path="${rel#./}"
+              case "$path" in
+                404.html|*/404.html) continue ;;
+                index.html) loc="$SITE_BASE/" ;;
+                */index.html) loc="$SITE_BASE/${path%index.html}" ;;
+                *) loc="$SITE_BASE/$path" ;;
+              esac
+              echo "  <url><loc>$loc</loc><lastmod>$today</lastmod></url>"
+            done
+            echo '</urlset>'
+          } > dist/sitemap.xml
+          echo "sitemap.xml entries: $(grep -c '<url>' dist/sitemap.xml)"
+          head -5 dist/sitemap.xml
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v5

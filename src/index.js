@@ -1,5 +1,5 @@
 /**
- * gif-captcha — Core library for GIF-based CAPTCHA challenges.
+ * gif-captcha - Core library for GIF-based CAPTCHA challenges.
  *
  * Provides utilities for creating, presenting, and validating GIF CAPTCHAs
  * that leverage human visual comprehension to distinguish humans from bots.
@@ -9,7 +9,7 @@
 
 "use strict";
 
-// ── Shared Utilities (extracted to shared-utils.js — issue #91) ──
+// ── Shared Utilities (extracted to shared-utils.js - issue #91) ──
 var _shared = require("./shared-utils");
 var _posOpt = _shared._posOpt;
 var _nnOpt = _shared._nnOpt;
@@ -74,20 +74,28 @@ function createSetAnalyzer(challenges) {
 
   var _challenges = challenges.slice(); // defensive copy
 
-  // Precompute word-sets for pairwise similarity (avoids recomputing in O(n²) loops)
+  // Precompute word-sets for pairwise similarity (avoids recomputing in O(n2) loops)
   var _wordSets = null;
   function _getWordSets() {
     if (_wordSets) return _wordSets;
+    // Each entry stores {lookup, keys, size}. Caching `keys` and `size` here
+    // avoids O(n^2) calls to Object.keys() inside _jaccardSets() — those
+    // allocations dominated diversityScore()/findSimilarPairs() for sets of
+    // ~100+ challenges (each pair invocation allocated two key arrays).
     _wordSets = _challenges.map(function (c) {
       var words = String(c.humanAnswer || "").toLowerCase().split(/\s+/).filter(Boolean);
-      var set = Object.create(null);
-      words.forEach(function (w) { set[w] = true; });
-      return set;
+      var lookup = Object.create(null);
+      var keys = [];
+      for (var i = 0; i < words.length; i++) {
+        var w = words[i];
+        if (!lookup[w]) { lookup[w] = true; keys.push(w); }
+      }
+      return { lookup: lookup, keys: keys, size: keys.length };
     });
     return _wordSets;
   }
 
-  // Cache for pairwise similarity matrix — avoids redundant O(n²) recomputation
+  // Cache for pairwise similarity matrix - avoids redundant O(n2) recomputation
   // in findSimilarPairs(), detectDuplicates(), and diversityScore().
   var _pairwiseSim = null;
   function _getPairwiseSim() {
@@ -114,15 +122,24 @@ function createSetAnalyzer(challenges) {
    * @returns {number} Similarity 0-1
    */
   function _jaccardSets(setA, setB) {
-    var keysA = Object.keys(setA);
-    var keysB = Object.keys(setB);
-    if (keysA.length === 0 || keysB.length === 0) return 0;
+    var sizeA = setA.size;
+    var sizeB = setB.size;
+    if (sizeA === 0 || sizeB === 0) return 0;
+    // Iterate the smaller set's keys against the larger set's hash lookup.
+    // This halves the inner-loop work on lopsided pairs (e.g. a 2-word answer
+    // against a 40-word answer). Correctness is independent of which side we
+    // iterate because intersection is symmetric.
+    var small, large;
+    if (sizeA <= sizeB) { small = setA; large = setB; }
+    else { small = setB; large = setA; }
+    var smallKeys = small.keys;
+    var largeLookup = large.lookup;
     var intersection = 0;
-    for (var k = 0; k < keysB.length; k++) {
-      if (setA[keysB[k]]) intersection++;
+    for (var k = 0; k < smallKeys.length; k++) {
+      if (largeLookup[smallKeys[k]]) intersection++;
     }
-    // |A ∪ B| = |A| + |B| - |A ∩ B| (inclusion-exclusion)
-    var unionSize = keysA.length + keysB.length - intersection;
+    // |A ∪ B| = |A| + |B| − |A ∩ B| (inclusion–exclusion)
+    var unionSize = sizeA + sizeB - intersection;
     return unionSize > 0 ? intersection / unionSize : 0;
   }
 
@@ -143,7 +160,7 @@ function createSetAnalyzer(challenges) {
   }
 
   /**
-   * Compute keyword coverage — which keywords appear across challenges
+   * Compute keyword coverage - which keywords appear across challenges
    * and how frequently.
    * @returns {{ totalKeywords: number, uniqueKeywords: number,
    *             keywordFrequency: Object<string, number>,
@@ -346,7 +363,7 @@ function createSetAnalyzer(challenges) {
       });
     }
 
-    // identical_titles — group by title in single pass
+    // identical_titles - group by title in single pass
     var titleGroups = Object.create(null);
     _challenges.forEach(function (c) {
       var t = (c.title || "").toLowerCase();
@@ -530,7 +547,7 @@ function createDifficultyCalibrator(challenges, opts) {
       _totalCount--;
     }
 
-    // Enforce total cap — evict oldest from the largest bucket
+    // Enforce total cap - evict oldest from the largest bucket
     if (_totalCount >= _maxTotal) {
       var largestId = null;
       var largestLen = 0;
@@ -608,7 +625,7 @@ function createDifficultyCalibrator(challenges, opts) {
       minTime = times[0];
       maxTime = times[times.length - 1];
 
-      // Population stddev (n denominator) — preserved for API compatibility
+      // Population stddev (n denominator) - preserved for API compatibility
       stdDev = _populationStddev(times, avgTime);
     }
 
@@ -709,7 +726,7 @@ function createDifficultyCalibrator(challenges, opts) {
   }
 
   /**
-   * Identify outlier challenges — ones where original difficulty
+   * Identify outlier challenges - ones where original difficulty
    * differs significantly from calibrated difficulty.
    * @param {number} [threshold=20] - Delta threshold to flag as outlier
    * @param {Array} [precomputedCalibration] - Pre-computed calibrateAll() results to reuse
@@ -790,24 +807,24 @@ function createDifficultyCalibrator(challenges, opts) {
 
     var recommendations = [];
     if (dist.easy === 0 && calibrated.length > 0) {
-      recommendations.push("No easy challenges detected — consider adding simpler CAPTCHAs for better UX.");
+      recommendations.push("No easy challenges detected - consider adding simpler CAPTCHAs for better UX.");
     }
     if (dist.hard === 0 && calibrated.length > 0) {
-      recommendations.push("No hard challenges — security may be weak against advanced bots.");
+      recommendations.push("No hard challenges - security may be weak against advanced bots.");
     }
     if (outliers.length > 0) {
       var harderCount = outliers.filter(function (o) { return o.direction === "harder_than_rated"; }).length;
       var easierCount = outliers.length - harderCount;
       if (harderCount > 0) {
-        recommendations.push(harderCount + " challenge(s) are harder than their rated difficulty — consider adjusting.");
+        recommendations.push(harderCount + " challenge(s) are harder than their rated difficulty - consider adjusting.");
       }
       if (easierCount > 0) {
-        recommendations.push(easierCount + " challenge(s) are easier than their rated difficulty — consider adjusting.");
+        recommendations.push(easierCount + " challenge(s) are easier than their rated difficulty - consider adjusting.");
       }
     }
     var totalCh = _challenges.length;
     if (totalResp < totalCh * 5) {
-      recommendations.push("Insufficient data — collect at least 5 responses per challenge for reliable calibration.");
+      recommendations.push("Insufficient data - collect at least 5 responses per challenge for reliable calibration.");
     }
 
     return {
@@ -866,7 +883,7 @@ function createDifficultyCalibrator(challenges, opts) {
 // ── Security Scorer ─────────────────────────────────────────────────
 
 /**
- * createSecurityScorer(challenges) — evaluates a CAPTCHA challenge set's
+ * createSecurityScorer(challenges) - evaluates a CAPTCHA challenge set's
  * resistance to automated solving across 6 security dimensions.
  */
 function createSecurityScorer(challenges) {
@@ -1191,7 +1208,7 @@ function createSecurityScorer(challenges) {
       };
     }
 
-    // first-word diversity — single object tracks both counts and diversity
+    // first-word diversity - single object tracks both counts and diversity
     var firstWordCounts = Object.create(null);
     for (var i = 0; i < answers.length; i++) {
       var w = getWords(answers[i]);
@@ -1302,12 +1319,12 @@ function createSecurityScorer(challenges) {
       if (d.score < 60) {
         var severity = d.score < 20 ? "critical" : d.score < 40 ? "high" : "medium";
         var descriptions = {
-          "Answer Diversity": "Human answers lack diversity — bots can pattern-match common phrasing",
-          "AI Resistance": "AI-generated answers closely match human answers — weak bot discrimination",
-          "Keyword Specificity": "Keywords are too generic — bots can guess challenge content",
+          "Answer Diversity": "Human answers lack diversity - bots can pattern-match common phrasing",
+          "AI Resistance": "AI-generated answers closely match human answers - weak bot discrimination",
+          "Keyword Specificity": "Keywords are too generic - bots can guess challenge content",
           "Difficulty Coverage": "Challenge difficulty is not well-distributed across easy, medium, and hard",
-          "Cognitive Complexity": "Answers lack cognitive complexity — simple patterns are easy for bots",
-          "Pattern Predictability": "Answers follow predictable structural patterns — bots can exploit this",
+          "Cognitive Complexity": "Answers lack cognitive complexity - simple patterns are easy for bots",
+          "Pattern Predictability": "Answers follow predictable structural patterns - bots can exploit this",
         };
         vulns.push({
           dimension: d.name,
@@ -1327,11 +1344,11 @@ function createSecurityScorer(challenges) {
 
     var recTexts = {
       "Answer Diversity": "Add challenges with longer, more varied descriptions to increase answer diversity",
-      "AI Resistance": "Replace challenges where AI answers closely match human answers — these provide weak bot discrimination",
+      "AI Resistance": "Replace challenges where AI answers closely match human answers - these provide weak bot discrimination",
       "Keyword Specificity": "Replace generic keywords (video, gif, funny) with specific, descriptive terms",
       "Difficulty Coverage": "Include challenges across easy, medium, and hard difficulty levels",
       "Cognitive Complexity": "Add challenges requiring temporal or causal reasoning (sequences, cause-effect)",
-      "Pattern Predictability": "Vary answer structure — avoid starting all answers with the same phrase",
+      "Pattern Predictability": "Vary answer structure - avoid starting all answers with the same phrase",
     };
 
     for (var i = 0; i < vulns.length; i++) {
@@ -1346,12 +1363,12 @@ function createSecurityScorer(challenges) {
     var overall = computeOverallScore();
     var generalPriority = overall >= 80 ? "low" : overall >= 65 ? "medium" : overall >= 50 ? "high" : "critical";
     var generalText = overall >= 80
-      ? "Challenge set has strong security — maintain current diversity and complexity levels"
+      ? "Challenge set has strong security - maintain current diversity and complexity levels"
       : overall >= 65
-        ? "Challenge set is reasonably secure — address flagged vulnerabilities for improvement"
+        ? "Challenge set is reasonably secure - address flagged vulnerabilities for improvement"
         : overall >= 50
-          ? "Challenge set has moderate security gaps — prioritize fixing high-severity vulnerabilities"
-          : "Challenge set has significant security weaknesses — comprehensive improvements needed";
+          ? "Challenge set has moderate security gaps - prioritize fixing high-severity vulnerabilities"
+          : "Challenge set has significant security weaknesses - comprehensive improvements needed";
     recs.push({
       priority: generalPriority,
       dimension: "overall",
@@ -2309,7 +2326,7 @@ function createResponseAnalyzer(opts) {
  *   pacing consistency across challenge steps.
  * - **JavaScript verification**: Checks that JS executed (bots sometimes
  *   submit forms without running page scripts).
- * - **Behavior scoring**: Weighted composite score (0–100) from all signals
+ * - **Behavior scoring**: Weighted composite score (0-100) from all signals
  *   with configurable thresholds for flag/block decisions.
  *
  * Usage:
@@ -2338,11 +2355,11 @@ function createResponseAnalyzer(opts) {
  * @param {number} [options.minTimeOnPageMs=3000]
  *   Minimum plausible time a human spends on the page.
  * @param {number} [options.maxTimeOnPageMs=600000]
- *   Maximum plausible time (10 minutes) — bots may have stale sessions.
+ *   Maximum plausible time (10 minutes) - bots may have stale sessions.
  * @param {number} [options.minMouseMovements=3]
  *   Minimum number of mouse movements expected from a human.
  * @param {number} [options.minKeystrokeVariance=10]
- *   Minimum variance (ms²) in inter-key intervals for human-like typing.
+ *   Minimum variance (ms2) in inter-key intervals for human-like typing.
  * @param {number} [options.botThreshold=60]
  *   Composite score at or above which the submission is flagged as bot.
  * @param {number} [options.suspiciousThreshold=40]
@@ -2368,7 +2385,7 @@ function createBotDetector(options) {
   var suspiciousThreshold = typeof options.suspiciousThreshold === 'number'
     ? options.suspiciousThreshold : 40;
 
-  // JS verification token — must be retrieved by client-side JS
+  // JS verification token - must be retrieved by client-side JS
   var _jsTokens = Object.create(null);
   var _jsTokenCount = 0;
 
@@ -2499,7 +2516,7 @@ function createBotDetector(options) {
       flags.push('too_few_movements');
     }
 
-    // Calculate directional entropy — humans change direction frequently
+    // Calculate directional entropy - humans change direction frequently
     var angles = [];
     for (var i = 1; i < movements.length; i++) {
       var dx = movements[i].x - movements[i - 1].x;
@@ -2619,7 +2636,7 @@ function createBotDetector(options) {
       flags.push('impossibly_fast_typing');
     }
 
-    // Zero-hold keys (all exactly 0ms) — scripted input
+    // Zero-hold keys (all exactly 0ms) - scripted input
     var zeroHoldCount = holdTimes.filter(function (t) { return t === 0; }).length;
     if (zeroHoldCount === holdTimes.length && holdTimes.length > 2) {
       score += 35;
@@ -2792,7 +2809,7 @@ function createBotDetector(options) {
     allFlags = allFlags.concat(timing.flags);
     allFlags = allFlags.concat(scroll.flags);
 
-    // Honeypot is decisive — any filled field = instant bot
+    // Honeypot is decisive - any filled field = instant bot
     if (!honeypot.clean) {
       return {
         score: 100,
@@ -2954,7 +2971,7 @@ function createTokenVerifier(options) {
    * Expired nonces can never appear in a valid token (expiry is checked
    * before nonce lookup), so they are safe to remove.  Purging them
    * first prevents an attacker from flooding the nonce store with new
-   * verifications to evict still-valid nonces — which would re-enable
+   * verifications to evict still-valid nonces - which would re-enable
    * replay of previously-used tokens whose nonces were flushed.
    */
   function _purgeExpiredNonces() {
@@ -3098,7 +3115,7 @@ function createTokenVerifier(options) {
       var expBuf = Buffer.from(expectedSig, 'utf-8');
       // timingSafeEqual requires equal-length buffers; if lengths
       // differ, compare expectedSig against itself (constant time)
-      // then reject — this prevents length-oracle attacks.
+      // then reject - this prevents length-oracle attacks.
       if (sigBuf.length === expBuf.length) {
         sigValid = _crypto.timingSafeEqual(sigBuf, expBuf);
       } else {
@@ -4349,7 +4366,7 @@ function createRateLimiter(options) {
   /**
    * Remove expired timestamps from a client's record.
    * Uses in-place splice instead of slice to avoid allocating a new array
-   * on every prune call — reduces GC pressure on the hot path.
+   * on every prune call - reduces GC pressure on the hot path.
    */
   function pruneTimestamps(record, now) {
     var cutoff = now - windowMs;
@@ -4370,7 +4387,7 @@ function createRateLimiter(options) {
    * Evict oldest clients when over maxClients.
    * Uses partial selection (quickselect-style partition) to find the K oldest
    * clients in O(n) average time instead of O(n log n) full sort.
-   * This matters at scale — with 10K clients, evicting 1 shouldn't sort all 10K.
+   * This matters at scale - with 10K clients, evicting 1 shouldn't sort all 10K.
    */
   function evictIfNeeded() {
     if (clientCount <= maxClients) return;
@@ -4384,7 +4401,7 @@ function createRateLimiter(options) {
     }
 
     // For small eviction counts, use simple linear scan to find K oldest
-    // (O(n*k) but k is typically 1, so this is O(n) — much faster than sorting)
+    // (O(n*k) but k is typically 1, so this is O(n) - much faster than sorting)
     if (toEvict <= 10) {
       for (var e = 0; e < toEvict; e++) {
         var minIdx = 0;
@@ -4943,7 +4960,7 @@ function createClientFingerprinter(options) {
    */
   function evict() {
     var now = Date.now();
-    // Remove expired — iterate from oldest (head) since expired entries tend to be oldest
+    // Remove expired - iterate from oldest (head) since expired entries tend to be oldest
     var keys = storeOrder.toArray();
     for (var i = 0; i < keys.length; i++) {
       var hash = keys[i];
@@ -4952,7 +4969,7 @@ function createClientFingerprinter(options) {
         storeOrder.remove(hash);
       }
     }
-    // LRU eviction if over limit — evict oldest first
+    // LRU eviction if over limit - evict oldest first
     while (storeOrder.length > maxFingerprints) {
       var oldest = storeOrder.evictOldest();
       if (oldest !== undefined) delete store[oldest];
@@ -5359,7 +5376,7 @@ function createIncidentCorrelator(options) {
   /**
    * Get a read-only summary of an incident.
    * Uses manual shallow copy for signalTypes instead of
-   * JSON.parse(JSON.stringify(...)) — ~10x faster for flat objects.
+   * JSON.parse(JSON.stringify(...)) - ~10x faster for flat objects.
    */
   function getIncidentSummary(incident) {
     // Shallow-copy the flat { type: count } map
@@ -5776,7 +5793,7 @@ function createAdaptiveTimeout(options) {
     // removed the *smallest* value, biasing percentile calculations upward.
     // The subsequent fix evicted from the middle (arr.length >>> 1), which
     // systematically removed median values and created a bimodal
-    // distribution — overrepresenting both tails and inflating higher
+    // distribution - overrepresenting both tails and inflating higher
     // percentiles used for timeout calibration.
     //
     // Correct approach: evict at a random index so no part of the
@@ -7459,7 +7476,7 @@ function createLoadTester(options) {
 // ─── Fraud Ring Detector ──────────────────────────────────────────────────────
 
 /**
- * createFraudRingDetector — identifies coordinated CAPTCHA-solving operations
+ * createFraudRingDetector - identifies coordinated CAPTCHA-solving operations
  * by analyzing cross-client behavioral patterns.
  *
  * Detects fraud rings through:
@@ -7582,8 +7599,8 @@ function createFraudRingDetector(options) {
    * Build a map of key → list of distinct client IDs that share that key.
    * Reused by findSharedFingerprints and findIPClusters to avoid code duplication.
    * Uses a parallel set-of-sets for O(1) deduplication instead of O(n) indexOf
-   * per client — reduces from O(n*m) to O(n+m) for n clients with m keys each.
-   * @param {string} prop – client property to group by ('fingerprints' | 'ips')
+   * per client - reduces from O(n*m) to O(n+m) for n clients with m keys each.
+   * @param {string} prop - client property to group by ('fingerprints' | 'ips')
    * @returns {Object.<string, string[]>}
    */
   function _buildGroupMap(prop) {
@@ -7891,7 +7908,7 @@ function createFraudRingDetector(options) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// Metrics Aggregator — unified metrics collection from all subsystems
+// Metrics Aggregator - unified metrics collection from all subsystems
 // ═══════════════════════════════════════════════════════════════════
 
 /**
@@ -8218,7 +8235,7 @@ function createMetricsAggregator(options) {
   }
 
   /**
-   * Reset everything — unregister all subsystems and clear history.
+   * Reset everything - unregister all subsystems and clear history.
    */
   function reset() {
     stopAutoCapture();
@@ -8360,24 +8377,24 @@ function createMetricsAggregator(options) {
 //   emitter.emit('challenge.created', { id: 'abc', difficulty: 3 });
 //
 // Supported event conventions (users can use any string):
-//   challenge.created   — a new challenge was generated
-//   challenge.presented — challenge shown to user
-//   challenge.answered  — user submitted an answer
-//   challenge.passed    — answer accepted
-//   challenge.failed    — answer rejected
-//   challenge.expired   — challenge timed out
-//   challenge.suspicious — bot-like behavior detected
-//   session.started     — new verification session
-//   session.completed   — session finished (pass or fail)
+//   challenge.created   - a new challenge was generated
+//   challenge.presented - challenge shown to user
+//   challenge.answered  - user submitted an answer
+//   challenge.passed    - answer accepted
+//   challenge.failed    - answer rejected
+//   challenge.expired   - challenge timed out
+//   challenge.suspicious - bot-like behavior detected
+//   session.started     - new verification session
+//   session.completed   - session finished (pass or fail)
 //
 // Features:
-//   .on(event, fn)       — subscribe (returns unsubscribe function)
-//   .once(event, fn)     — subscribe for one firing only
-//   .off(event, fn)      — unsubscribe specific handler
-//   .emit(event, data)   — fire event, returns count of handlers called
-//   .listeners(event)    — list handlers for an event
-//   .removeAll([event])  — clear handlers (optionally for one event)
-//   .pipe(otherEmitter)  — forward all events to another emitter
+//   .on(event, fn)       - subscribe (returns unsubscribe function)
+//   .once(event, fn)     - subscribe for one firing only
+//   .off(event, fn)      - unsubscribe specific handler
+//   .emit(event, data)   - fire event, returns count of handlers called
+//   .listeners(event)    - list handlers for an event
+//   .removeAll([event])  - clear handlers (optionally for one event)
+//   .pipe(otherEmitter)  - forward all events to another emitter
 
 /**
  * Create an event emitter for CAPTCHA lifecycle hooks.
@@ -8597,7 +8614,7 @@ var createI18n = require("./i18n").createI18n;
  *     maxAttempts: 5,
  *     hasSkipOption: false,
  *   });
- *   // report.score  → 0.78 (0–1)
+ *   // report.score  → 0.78 (0-1)
  *   // report.grade  → "B"
  *   // report.issues → [{rule, severity, wcag, message, recommendation}]
  *   // report.passed → [{rule, wcag, message}]
@@ -8882,7 +8899,7 @@ function createAccessibilityAuditor(options) {
    */
   function summarize(report) {
     var lines = [];
-    lines.push("WCAG " + report.level + " Accessibility Audit — Grade: " + report.grade + " (" + (report.score * 100).toFixed(0) + "%)");
+    lines.push("WCAG " + report.level + " Accessibility Audit - Grade: " + report.grade + " (" + (report.score * 100).toFixed(0) + "%)");
     lines.push("Passed: " + report.passedCount + " / " + report.total + " checks");
     if (report.conformant) {
       lines.push("✓ No critical accessibility errors found.");
@@ -8897,7 +8914,7 @@ function createAccessibilityAuditor(options) {
       lines.push("Issues:");
       for (var i = 0; i < report.issues.length; i++) {
         var issue = report.issues[i];
-        var icon = issue.severity === "error" ? "✗" : issue.severity === "warning" ? "⚠" : "ℹ";
+        var icon = issue.severity === "error" ? "✗" : issue.severity === "warning" ? "⚠" : "i";
         lines.push("  " + icon + " [WCAG " + issue.wcag + "] " + issue.message);
         if (issue.recommendation) {
           lines.push("    → " + issue.recommendation);
@@ -8948,8 +8965,8 @@ var createGeoRiskScorer = require("./geo-risk-scorer").createGeoRiskScorer;
  * in O(1), client solves in O(2^difficulty), server verifies in O(1).
  *
  * This adds an economic cost to every CAPTCHA attempt, deterring large-
- * scale bot farms and automated solvers.  Typical difficulty of 16–20
- * takes 50–500 ms on a modern browser, negligible for humans but
+ * scale bot farms and automated solvers.  Typical difficulty of 16-20
+ * takes 50-500 ms on a modern browser, negligible for humans but
  * expensive at scale for attackers.
  *
  * Options:
@@ -9216,7 +9233,7 @@ function createProofOfWork(options) {
       };
     }
 
-    // Success — record prefix to prevent replay
+    // Success - record prefix to prevent replay
     _recordUsed(prefix);
     _verified++;
 
@@ -9358,7 +9375,7 @@ var DCA_CAPABILITY_TIERS = {
 };
 
 /**
- * Create a DeviceCohortAnalyzer — groups CAPTCHA sessions by device type/capability,
+ * Create a DeviceCohortAnalyzer - groups CAPTCHA sessions by device type/capability,
  * detects statistical anomalies within cohorts, and produces per-cohort risk profiles.
  *
  * @param {Object} [options]
@@ -9567,7 +9584,7 @@ var createComplianceReporter = require("./compliance-reporter").createCompliance
 var createABExperimentRunner = require("./ab-experiment-runner").createABExperimentRunner;
 var createTrustScoreEngine = require("./trust-score-engine").createTrustScoreEngine;
 
-// ── Previously orphaned modules — now wired into public API ─────────
+// ── Previously orphaned modules - now wired into public API ─────────
 var createAdaptiveDifficultyTuner = require("./adaptive-difficulty-tuner").createAdaptiveDifficultyTuner;
 var createBehavioralBiometrics = require("./behavioral-biometrics").createBehavioralBiometrics;
 var createBotSignatureDatabase = require("./bot-signature-database").createBotSignatureDatabase;
@@ -9708,7 +9725,7 @@ var gifCaptcha = {
   createWebhookDeliveryHealthAdvisor: createWebhookDeliveryHealthAdvisor,
 };
 
-// UMD export — works in Node.js, AMD, and browser globals
+// UMD export - works in Node.js, AMD, and browser globals
 if (typeof module !== "undefined" && module.exports) {
   gifCaptcha._internal = { LruTracker: LruTracker };
   module.exports = gifCaptcha;

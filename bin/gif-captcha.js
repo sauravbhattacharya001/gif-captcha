@@ -78,6 +78,9 @@ function printUsage() {
     "    doctor [--verbose]",
     "        Run diagnostic checks on the CAPTCHA system (modules, perf, config health)",
     "",
+    "    config-export [--format json|env|yaml] [--output <path>] [--profile minimal|standard|hardened]",
+    "        Export a deployment configuration template with all tunable options",
+    "",
     "  Examples:",
     "    gif-captcha generate --count 5",
     "    gif-captcha validate --answer \"dog plays\" --expected \"dog playing tic tac toe\"",
@@ -547,6 +550,115 @@ function cmdDoctor() {
   }
 }
 
+function cmdConfigExport() {
+  var format = flag("format") || "json";
+  var output = flag("output");
+  var profile = flag("profile") || "standard";
+
+  if (["json", "env", "yaml"].indexOf(format) === -1) {
+    console.error("\n  Error: --format must be json, env, or yaml\n");
+    process.exit(1);
+  }
+  if (["minimal", "standard", "hardened"].indexOf(profile) === -1) {
+    console.error("\n  Error: --profile must be minimal, standard, or hardened\n");
+    process.exit(1);
+  }
+
+  var profiles = {
+    minimal: {
+      challenge: { poolSize: 20, timeoutMs: 30000, maxAttempts: 5 },
+      validation: { threshold: 0.5, caseSensitive: false },
+      rateLimit: { windowMs: 60000, maxRequests: 30 },
+      session: { maxSessions: 500, ttlMs: 600000 },
+      trust: { initialScore: 50, decayRate: 0.1 },
+      security: { proofOfWork: false, honeypot: false, replayProtection: true },
+      monitoring: { statsEnabled: false, auditLog: false, healthCheck: true },
+    },
+    standard: {
+      challenge: { poolSize: 50, timeoutMs: 30000, maxAttempts: 3, rotationIntervalMs: 3600000, decayEnabled: true },
+      validation: { threshold: 0.6, caseSensitive: false, trimWhitespace: true },
+      rateLimit: { windowMs: 60000, maxRequests: 20, burstMax: 5, blockDurationMs: 300000 },
+      session: { maxSessions: 1000, ttlMs: 600000, cleanupIntervalMs: 60000 },
+      trust: { initialScore: 50, decayRate: 0.05, boostOnPass: 10, penaltyOnFail: 15, minScore: 0, maxScore: 100 },
+      security: { proofOfWork: true, powDifficulty: 4, honeypot: true, replayProtection: true, maxAnswerLength: 500 },
+      monitoring: { statsEnabled: true, auditLog: true, healthCheck: true, anomalyDetection: true },
+      adaptive: { enabled: true, minDifficulty: 1, maxDifficulty: 10, adjustInterval: 50 },
+    },
+    hardened: {
+      challenge: { poolSize: 100, timeoutMs: 20000, maxAttempts: 2, rotationIntervalMs: 1800000, decayEnabled: true, retireAfterSolves: 50 },
+      validation: { threshold: 0.7, caseSensitive: false, trimWhitespace: true, minAnswerLength: 3 },
+      rateLimit: { windowMs: 60000, maxRequests: 10, burstMax: 3, blockDurationMs: 600000, ipWhitelist: [] },
+      session: { maxSessions: 2000, ttlMs: 300000, cleanupIntervalMs: 30000, maxSessionsPerIp: 5 },
+      trust: { initialScore: 30, decayRate: 0.08, boostOnPass: 5, penaltyOnFail: 25, minScore: 0, maxScore: 100, blockBelowScore: 10 },
+      security: { proofOfWork: true, powDifficulty: 6, honeypot: true, replayProtection: true, maxAnswerLength: 300, botSignatureDb: true, behavioralBiometrics: true },
+      monitoring: { statsEnabled: true, auditLog: true, healthCheck: true, anomalyDetection: true, incidentManager: true, webhookAlerts: true },
+      adaptive: { enabled: true, minDifficulty: 3, maxDifficulty: 10, adjustInterval: 25, escalateOnFailStreak: 3 },
+      geo: { enabled: true, highRiskRegions: [], blockTor: true, blockDatacenters: true },
+    },
+  };
+
+  var config = profiles[profile];
+
+  var result;
+  if (format === "json") {
+    result = JSON.stringify(config, null, 2);
+  } else if (format === "env") {
+    result = configToEnv(config, "GIF_CAPTCHA");
+  } else {
+    result = configToYaml(config, 0);
+  }
+
+  if (output) {
+    var fs = require("fs");
+    var path = require("path");
+    var resolved = path.resolve(output);
+    fs.mkdirSync(path.dirname(resolved), { recursive: true });
+    fs.writeFileSync(resolved, result + "\n", "utf8");
+    console.log("\n  ✅ Configuration exported to " + resolved);
+    console.log("     Profile: " + profile + " | Format: " + format + "\n");
+  } else {
+    console.log(result);
+  }
+}
+
+function configToEnv(obj, prefix) {
+  var lines = [];
+  Object.keys(obj).forEach(function (section) {
+    var sectionPrefix = prefix + "_" + section.toUpperCase();
+    if (typeof obj[section] === "object" && obj[section] !== null && !Array.isArray(obj[section])) {
+      Object.keys(obj[section]).forEach(function (key) {
+        var envKey = sectionPrefix + "_" + key.replace(/([A-Z])/g, "_$1").toUpperCase();
+        var val = obj[section][key];
+        if (Array.isArray(val)) val = val.join(",");
+        lines.push(envKey + "=" + val);
+      });
+    } else {
+      var envKey2 = sectionPrefix.replace(/([A-Z])/g, "_$1").toUpperCase();
+      lines.push(envKey2 + "=" + obj[section]);
+    }
+  });
+  return lines.join("\n");
+}
+
+function configToYaml(obj, indent) {
+  var lines = [];
+  var pad = "  ".repeat(indent);
+  Object.keys(obj).forEach(function (key) {
+    var val = obj[key];
+    if (typeof val === "object" && val !== null && !Array.isArray(val)) {
+      lines.push(pad + key + ":");
+      lines.push(configToYaml(val, indent + 1));
+    } else if (Array.isArray(val)) {
+      lines.push(pad + key + ": [" + val.map(function (v) { return JSON.stringify(v); }).join(", ") + "]");
+    } else if (typeof val === "string") {
+      lines.push(pad + key + ": \"" + val + "\"");
+    } else {
+      lines.push(pad + key + ": " + val);
+    }
+  });
+  return lines.join("\n");
+}
+
 // ── Dispatch ──
 
 switch (command) {
@@ -558,6 +670,7 @@ switch (command) {
   case "stats":     cmdStats();     break;
   case "info":      cmdInfo();      break;
   case "doctor":    cmdDoctor();    break;
+  case "config-export": cmdConfigExport(); break;
   case "--help": case "-h": case "help": case undefined:
     printUsage();
     break;

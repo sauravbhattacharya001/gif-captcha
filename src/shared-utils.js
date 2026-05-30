@@ -598,10 +598,23 @@ function loadGifWithRetry(container, challenge, attempt) {
  * @param {string} b - Second string
  * @returns {number} Similarity score between 0 and 1
  */
+// Maximum input length for text comparison functions.
+// Prevents CWE-400 (Uncontrolled Resource Consumption) when an attacker
+// submits megabytes of text as a CAPTCHA answer, causing excessive memory
+// allocation from split() and O(n) set-building.
+var TEXT_SIMILARITY_MAX_LENGTH = 1000;
+
 function textSimilarity(a, b) {
   if (!a || !b) return 0;
-  var wordsA = String(a).toLowerCase().split(/\s+/).filter(Boolean);
-  var wordsB = String(b).toLowerCase().split(/\s+/).filter(Boolean);
+  // Truncate inputs to prevent denial-of-service via oversized strings (CWE-400).
+  // CAPTCHA answers are short descriptions; anything beyond 1000 chars is either
+  // abuse or irrelevant noise that won't improve matching accuracy.
+  var strA = String(a);
+  var strB = String(b);
+  if (strA.length > TEXT_SIMILARITY_MAX_LENGTH) strA = strA.slice(0, TEXT_SIMILARITY_MAX_LENGTH);
+  if (strB.length > TEXT_SIMILARITY_MAX_LENGTH) strB = strB.slice(0, TEXT_SIMILARITY_MAX_LENGTH);
+  var wordsA = strA.toLowerCase().split(/\s+/).filter(Boolean);
+  var wordsB = strB.toLowerCase().split(/\s+/).filter(Boolean);
   if (wordsA.length === 0 || wordsB.length === 0) return 0;
 
   var setA = Object.create(null);
@@ -637,6 +650,12 @@ function validateAnswer(userAnswer, expectedAnswer, options) {
   options = options || {};
   var threshold = options.threshold != null ? options.threshold : 0.3;
   var requiredKeywords = options.requiredKeywords || [];
+
+  // Early rejection for absurdly long inputs (CWE-400). No legitimate CAPTCHA
+  // answer exceeds a few hundred characters; anything longer is abuse.
+  if (typeof userAnswer === "string" && userAnswer.length > TEXT_SIMILARITY_MAX_LENGTH) {
+    return { passed: false, score: 0, hasKeywords: false, reason: "answer_too_long" };
+  }
 
   var score = textSimilarity(userAnswer, expectedAnswer);
   var lowerAnswer = String(userAnswer || "").toLowerCase();

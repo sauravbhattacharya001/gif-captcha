@@ -135,8 +135,13 @@ function _detectCoordinatedBotnet(sessions, minMembers) {
     var times = bucket.map(function (b) { return b.solveTimeMs; }).filter(function (t) { return t != null; });
     var tight = false;
     if (times.length >= 2) {
-      var min = Math.min.apply(null, times);
-      var max = Math.max.apply(null, times);
+      // Use loop instead of Math.min/max.apply to avoid
+      // RangeError on large arrays (call stack overflow at ~65k args).
+      var min = times[0], max = times[0];
+      for (var ti = 1; ti < times.length; ti++) {
+        if (times[ti] < min) min = times[ti];
+        if (times[ti] > max) max = times[ti];
+      }
       if (min > 0 && (max - min) / min <= 0.08) tight = true;
     }
     // Or same fingerprint hash
@@ -227,8 +232,13 @@ function _detectBehavioralTwin(sessions, minMembers) {
     var bucket = byPattern[k];
     if (bucket.length < minMembers) return;
     var times = bucket.map(function (b) { return b.solveTimeMs; });
-    var min = Math.min.apply(null, times);
-    var max = Math.max.apply(null, times);
+    // Use loop instead of Math.min/max.apply to avoid
+    // RangeError on large arrays (call stack overflow at ~65k args).
+    var min = times[0], max = times[0];
+    for (var ti = 1; ti < times.length; ti++) {
+      if (times[ti] < min) min = times[ti];
+      if (times[ti] > max) max = times[ti];
+    }
     if (min <= 0) return;
     var spread = (max - min) / min;
     if (spread > 0.05) return;

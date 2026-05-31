@@ -9629,6 +9629,30 @@ var createCrossSessionLinkageAdvisor = require("./cross-session-linkage-advisor"
 var createSessionEvidenceBundler = require("./session-evidence-bundler").createSessionEvidenceBundler;
 var createCaptchaTypeMixOptimizer = require("./captcha-type-mix-optimizer").createCaptchaTypeMixOptimizer;
 var createWebhookDeliveryHealthAdvisor = require("./webhook-delivery-health-advisor").createWebhookDeliveryHealthAdvisor;
+
+// ── Formerly disconnected modules — wired into public API ───────────
+var createAttackEvolutionTracker = require("./attack-evolution-tracker").createAttackEvolutionTracker;
+var createBotAttributionEngine = require("./bot-attribution-engine").createBotAttributionEngine;
+var _botBehavioralEconomics = require("./bot-behavioral-economics");
+var BotBehavioralEconomicsEngine = _botBehavioralEconomics.BotBehavioralEconomicsEngine;
+var createBotCapabilityProfiler = require("./bot-capability-profiler").createBotCapabilityProfiler;
+var createBotCollectiveIntelDetector = require("./bot-collective-intel").createBotCollectiveIntelDetector;
+var createBotMimicryDetector = require("./bot-mimicry-detector").createBotMimicryDetector;
+var CaptchaReplayDetector = require("./captcha-replay-detector").CaptchaReplayDetector;
+var createCaptchaROIAdvisor = require("./captcha-roi-advisor").createCaptchaROIAdvisor;
+var _coevolutionModule = require("./challenge-coevolution-engine");
+var createChallengeCoevolutionEngine = _coevolutionModule.createChallengeCoevolutionEngine;
+var ChallengeDifficultyCurveEngine = require("./challenge-difficulty-curve-engine").ChallengeDifficultyCurveEngine;
+var ChallengeEcosystemHealthEngine = require("./challenge-ecosystem-health");
+var ChallengeGeneticsLab = require("./challenge-genetics-lab").ChallengeGeneticsLab;
+var ChallengeRetirementEngine = require("./challenge-retirement-engine");
+var _deceptionModule = require("./deception-campaign-orchestrator");
+var DeceptionCampaignOrchestrator = _deceptionModule.DeceptionCampaignOrchestrator;
+var _defenseModule = require("./defense-posture-optimizer");
+var DefensePostureOptimizer = _defenseModule.DefensePostureOptimizer;
+var createRateLimitPolicyTuningAdvisor = require("./rate-limit-policy-tuning-advisor").createRateLimitPolicyTuningAdvisor;
+var createThreatIntelFusion = require("./threat-intel-fusion").createThreatIntelFusion;
+
 var WebhookDispatcher = _webhookModule.WebhookDispatcher;
 var gifCaptcha = {
   sanitize: sanitize,
@@ -9723,6 +9747,24 @@ var gifCaptcha = {
   createSessionEvidenceBundler: createSessionEvidenceBundler,
   createCaptchaTypeMixOptimizer: createCaptchaTypeMixOptimizer,
   createWebhookDeliveryHealthAdvisor: createWebhookDeliveryHealthAdvisor,
+  // ── Formerly disconnected modules ──────────────────────────────
+  createAttackEvolutionTracker: createAttackEvolutionTracker,
+  createBotAttributionEngine: createBotAttributionEngine,
+  BotBehavioralEconomicsEngine: BotBehavioralEconomicsEngine,
+  createBotCapabilityProfiler: createBotCapabilityProfiler,
+  createBotCollectiveIntelDetector: createBotCollectiveIntelDetector,
+  createBotMimicryDetector: createBotMimicryDetector,
+  CaptchaReplayDetector: CaptchaReplayDetector,
+  createCaptchaROIAdvisor: createCaptchaROIAdvisor,
+  createChallengeCoevolutionEngine: createChallengeCoevolutionEngine,
+  ChallengeDifficultyCurveEngine: ChallengeDifficultyCurveEngine,
+  ChallengeEcosystemHealthEngine: ChallengeEcosystemHealthEngine,
+  ChallengeGeneticsLab: ChallengeGeneticsLab,
+  ChallengeRetirementEngine: ChallengeRetirementEngine,
+  DeceptionCampaignOrchestrator: DeceptionCampaignOrchestrator,
+  DefensePostureOptimizer: DefensePostureOptimizer,
+  createRateLimitPolicyTuningAdvisor: createRateLimitPolicyTuningAdvisor,
+  createThreatIntelFusion: createThreatIntelFusion,
 };
 
 // UMD export - works in Node.js, AMD, and browser globals
